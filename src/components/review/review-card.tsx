@@ -65,11 +65,16 @@ const arrived = new Set<string>()
  */
 export function ThreadReviewCards() {
   const threadId = useAuiState((s) => s.threadListItem.remoteId)
-  const messages = useAuiState((s) => (s.thread.isLoading ? undefined : s.thread.messages))
+  const messages = useAuiState((s) =>
+    s.thread.isLoading ? undefined : s.thread.messages,
+  )
   const { data: reviews = [] } = useThreadReviews(threadId)
   const open = reviews.filter((review) => review.status === 'open')
   const arriving = reviews.filter(
-    ({ answer }) => answer && messages && !messages.some((message) => message.id === answer.messageId),
+    ({ answer }) =>
+      answer &&
+      messages &&
+      !messages.some((message) => message.id === answer.messageId),
   )
   const dockOpen = useReviewDock((s) => s.open)
   const newest = open[0]
@@ -92,7 +97,9 @@ export function ThreadReviewCards() {
 
   if (open.length === 0 && !answerOnItsWay) return null
   return (
-    <div className="-mt-8 mb-14 ms-13 flex flex-col gap-2">
+    // Aligned to the reply text (the message grid's 2.25rem avatar column), so
+    // the card reads as part of the answer it belongs to.
+    <div className="-mt-8 mb-14 ms-9 flex flex-col gap-2">
       {[...open, ...arriving].map((review) => (
         <ReviewCard key={review.reviewId} review={review} />
       ))}

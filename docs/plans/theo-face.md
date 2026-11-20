@@ -72,7 +72,7 @@ Rapier body for the whole figure, which this face answers to.
 | Accepted, started, completed, interrupted and failed are different answers                              | A refusal is `rejected` with the path of the step and the reason. `applied` means it started in this browser. The ending is `completed`, `interrupted`, `stopped`, or `running` if the wait ran out. `failed` is an exception while answering            |
 | Reading saved history must not run saved commands again                                                 | Requests are read only from the last assistant message of a conversation whose turn is running, and each request reference is served once per page                                                                                                       |
 | Version the definition apart from the execution                                                         | The book holds immutable versions, `name@n`. An invocation is its own record: id, the version it came from, seed, owner, layer, length, ending                                                                                                           |
-| One moving presence; history keeps a still mark                                                         | One canvas for the page. Earlier replies show an SVG mark of the same eyes                                                                                                                                                                               |
+| One moving presence; history keeps a still mark                                                         | One canvas for the page. Theo sits beside the latest reply only; earlier replies' gutters are empty                                                                                                                                                      |
 | The shell owns anchors, and retargets gracefully when one goes                                          | The shell marks its own elements (`data-face-perch`). The driver looks them up every frame: the live reply's gutter, then the composer, then a corner of the window. A perch that scrolls away or unmounts is simply no longer chosen                    |
 | Free positions too, not only anchors                                                                    | The person drags it anywhere; a program's `go` step takes a named place or a point of the window                                                                                                                                                         |
 | Layer order: the hand, the deliberate performance, small secondary motion, resting identity             | `hand` over `performance` over `reaction` over `form` over `mood`, over rest. Blink, saccade and breath are offsets beside the stack                                                                                                                     |
@@ -95,7 +95,9 @@ small and is moved by a CSS transform, so travel across the page costs no
 redraw of anything else.
 
 - **At rest** it sits in the gutter of the live assistant reply, where
-  `Icon.Speaker` (a folder) was drawn. Earlier replies show the still mark.
+  `Icon.Speaker` (a folder) was drawn. Earlier replies' gutters are empty:
+  Theo appears beside the latest reply only (the still mark is kept for the
+  settings rows that name Theo).
   With no reply on screen it rests on the composer, and with no composer, in
   a corner of the window.
 - **It grows to act.** At rest the visor is 32 px wide. It is 1.8 times that
@@ -201,10 +203,10 @@ Any number may be `{rand:[low,high]}`, drawn from the invocation's seed, or
 program set in place after it ends, until the layer is stopped or played on
 again; that is how a mood or a sleep holds.
 
-Named expressions are entries in a book of performances (30 to start: blink,
+Named expressions are entries in a book of performances (29 to start: blink,
 wink, nod, shake, perk, squint, glare, worry, happy, joy, think, curious,
 startle, wince, dizzy, sigh, scan, melt, sparkle, skeptic, attend, focus, ask,
-sleep, wake, done, visit, boombox, speak, thump). `use: "curious"` is a shortcut the agent may take; writing
+sleep, wake, done, visit, boombox, thump). `use: "curious"` is a shortcut the agent may take; writing
 the steps is always allowed and needs no name.
 
 A saved performance is never changed. Defining a name again adds a version,
@@ -575,9 +577,9 @@ Renders are under `docs/plans/evidence/theo-face/`.
   live turn may, and the newest wins.
 - **How much the manual costs a turn.** `face.read` with no part is about
   10 KB of JSON. The parts are there so a model can ask for less.
-- **A mouth.** Built as a form that follows the sound the page plays
-  (`theo-sound.md`). Whether it is worth keeping beside the loudspeaker is
-  the owner's to say.
+- **A mouth.** Built as a form that followed the sound the page plays, and
+  retired by the owner on 2026-11-16: sound is shown only as the loudspeaker
+  (`theo-sound.md`).
 
 ## Not yet
 

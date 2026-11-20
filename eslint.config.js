@@ -2,6 +2,7 @@
 
 import { tanstackConfig } from '@tanstack/eslint-config'
 import reactHooks from 'eslint-plugin-react-hooks'
+import tseslint from 'typescript-eslint'
 
 export default [
   ...tanstackConfig,
@@ -33,6 +34,14 @@ export default [
       'no-shadow': 'off',
       'react-hooks/refs': 'off',
     },
+  },
+  {
+    // The microphone AudioWorklet is plain JavaScript: Vite hands its text to
+    // audioWorklet.addModule as a data URL, and the worklet's scope parses no
+    // types. It is not in the TypeScript project, so it is linted without the
+    // type-aware parser.
+    files: ['src/lib/speech/mic-worklet.js'],
+    ...tseslint.configs.disableTypeChecked,
   },
   {
     ignores: [

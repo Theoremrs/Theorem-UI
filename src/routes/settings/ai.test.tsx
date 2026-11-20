@@ -5,6 +5,13 @@ import { modelListQuery, parseModelList, usePickedModels } from '@/lib/theorem/m
 import { buttonNamed, cleanup, click, render, waitFor } from '../../../test/blocks/render'
 
 const clients: QueryClient[] = []
+function seedOutputStyles(client: QueryClient) {
+  // This suite exercises model loading; style transport has its own component tests.
+  client.setQueryDefaults(['theorem', 'output-styles'], { staleTime: Infinity })
+  client.setQueryData(['theorem', 'output-styles', 'account'], {
+    styles: [], selection: { account: null, conversation: null, effective: { style: 'normal', name: 'Normal', source: 'shipped' } },
+  })
+}
 afterEach(async () => {
   await cleanup()
   clients.splice(0).forEach((client) => client.clear())
@@ -13,6 +20,7 @@ afterEach(async () => {
 async function settings(body: unknown) {
   const client = new QueryClient()
   clients.push(client)
+  seedOutputStyles(client)
   client.setQueryData(modelListQuery.queryKey, parseModelList(body))
   const Component = Route.options.component!
   return render(<QueryClientProvider client={client}><Component /></QueryClientProvider>)
@@ -45,6 +53,7 @@ test('invalid configured default shows its safe cause while retaining explicit c
 test('a real missing model endpoint shows uncertainty and Retry reloads the catalog', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } })
   clients.push(client)
+  seedOutputStyles(client)
   const originalUrl = window.location.href
   window.location.href = 'https://theorem.test/'
   let available = false
@@ -82,6 +91,7 @@ test('an explicit selection remains selected when the configured default is inva
 test('OpenRouter discovery failure keeps configured choices and Retry loads the directory', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   clients.push(client)
+  seedOutputStyles(client)
   const originalUrl = window.location.href
   window.location.href = 'https://theorem.test/'
   let recovered = false

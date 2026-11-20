@@ -1,7 +1,17 @@
 // SOURCING: the real components, wrapped only in the providers the app itself gives them. Loaded lazily by the story route so none of this reaches production. Artifact stories hand a committed OpenUI program to the thread's own part renderers inside an assistant-ui external-store message; the activity and composer stories hand committed messages to the thread itself the same way, converted by the SDK's toAssistantMessages.
+import { AppearanceControls } from './appearance-controls'
 import { ReactFlow, ReactFlowProvider, applyNodeChanges } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+  useLocation,
+} from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 import {
   AssistantRuntimeProvider,
@@ -11,16 +21,26 @@ import {
   useExternalStoreRuntime,
 } from '@assistant-ui/react'
 import type { ThreadMessageLike } from '@assistant-ui/react'
+import type { ReadonlyJSONObject } from 'assistant-stream/utils'
 import { toAssistantMessages } from '@theoremharness/sdk/assistant-ui'
 import { Thread } from '@/components/assistant-ui/elements/thread.aui'
-import { ARTIFACT_PART, readArtifact } from '@/components/artifacts/artifact-model'
+import {
+  ARTIFACT_PART,
+  readArtifact,
+} from '@/components/artifacts/artifact-model'
 import { ArtifactPanel } from '@/components/artifacts/artifact-panel'
 import { useArtifactView } from '@/components/artifacts/artifact-view'
-import { LIBRARY_ID, LIBRARY_VERSION } from '@/components/artifacts/openui/library'
+import {
+  LIBRARY_ID,
+  LIBRARY_VERSION,
+} from '@/components/artifacts/openui/library'
 import { Canvas } from '@/components/canvas/canvas'
 import { FaceBench, FaceBook } from '@/components/face/face-bench'
 import { FaceStage } from '@/components/face/face-stage'
+import { TheoFaceInverse } from '@/components/face/terminal-face-story'
 import { speechAdapter } from '@/lib/speech/adapter'
+import { theFace } from '@/lib/face/store'
+import { useMicLevel } from '@/lib/speech/dictation'
 import { NoteNodeView } from '@/components/program/program-annotations'
 import { NoteEditor } from '@/components/notes/note-editor'
 import { NoteExcerpt } from '@/components/notes/note-excerpt'
@@ -31,11 +51,68 @@ import { LibrarianFooter } from '@/components/organize/librarian-footer'
 import { ContextPanel } from '@/components/shell/sidebar'
 import { ChatShell } from '@/components/shell/chat-shell'
 import { LifeBackdrop } from '@/components/life/life-backdrop'
+import { GlassCompareStory } from './glass-compare'
+import {
+  WorkbenchBranchesStory,
+  WorkbenchChangesStory,
+  WorkbenchSearchStory,
+  WorkbenchDiagnosticsStory,
+  WorkbenchRunStory,
+  WorkbenchRunListStory,
+  WorkbenchCabinetStory,
+  WorkbenchCabinetPickerStory,
+  WorkbenchFaceStory,
+  WorkbenchFaceCustomStory,
+  WorkbenchAccountSwitchStory,
+  WorkbenchDeviceCopyStory,
+  WorkbenchArrangementsStory,
+  WorkbenchDefaultStory,
+  WorkbenchEditorConflictStory,
+  WorkbenchEditorStory,
+  WorkbenchMarkdownPreviewStory,
+  WorkbenchMarkdownSourceStory,
+  WorkbenchMarkdownSplitStory,
+  WorkbenchMarkdownVisualStory,
+  WorkbenchPickerStory,
+  WorkbenchTerminalStory,
+} from '@/components/workbench/workbench-story'
+import { WorkbenchTerminalProgramReportStory } from '@/components/workbench/workbench-program-report-story'
+import { WorkbenchAppearanceStory } from '@/components/workbench/workbench-appearance-story'
+import { WorkbenchSemanticOverlayStory } from '@/components/workbench/workbench-semantic-overlay-story'
+import {
+  WorkbenchChangesBinaryConflictStory,
+  WorkbenchLayoutsPageStory,
+  WorkbenchRunListExitsStory,
+  WorkbenchRecoveryReloadStory,
+  WorkbenchTerminalAdoptionPendingStory,
+  WorkbenchTerminalAdoptionSettledStory,
+  WorkbenchTerminalAdoptionUnavailableStory,
+} from '@/components/workbench/workbench-state-stories'
+import { WorkbenchAgentOperationsStory } from '@/components/workbench/workbench-agent-story'
+import {
+  WorkbenchAddSelectionStory,
+  WorkbenchFollowStory,
+  WorkbenchDocumentHistoryStory,
+  WorkbenchPresentationStory,
+  WorkbenchDelegationStory,
+  WorkbenchDelegationFromChatStory,
+  WorkbenchReplaceStory,
+  WorkbenchThreadsStory,
+  WorkbenchFilesStory,
+  WorkbenchThreadsWithheldStory,
+  WorkbenchDefaultArrangementStory,
+} from '@/components/workbench/workbench-feature-stories'
+import { WorkbenchResizeStory } from '@/components/workbench/workbench-resize-story'
+import { WorkbenchKeyboardJourneyStory } from '@/components/workbench/workbench-keyboard-journey-story'
+import { PALETTE_MATRIX_REGISTRY } from '@/components/workbench/workbench-palette-stories'
+import { FaceFeel } from '@/components/face/face-feel'
 import { useNote } from '@/lib/theorem/notes'
 import { useOrganization } from '@/lib/theorem/organization'
 import type { NoteFlowNode } from '@/lib/program/flow'
 import { TheoremRuntimeProvider } from '@/lib/theorem/runtime'
 import { useReview } from '@/lib/theorem/reviews'
+import { useSidebarPrefs } from '@/lib/theorem/sidebar-prefs'
+import { POPULATED_PINS } from './fixtures/populated'
 import {
   ACTIVITY_STATES,
   activityMessages,
@@ -48,12 +125,31 @@ import type { ArtifactStory } from './fixtures/artifacts'
 import { documentFixtures } from './fixtures/notes'
 import { PROGRAM_PART } from './fixtures/program'
 import { pointingMessages } from './fixtures/pointing'
+import { PLAN_ARGS, PLAN_RESULT, PLAN_UNDER_WAY } from './fixtures/plan'
+import { PlanGraph } from '@/components/chat/plan-graph'
 
 import { ArtifactView } from '@/components/artifacts/artifact-renderers'
 import { NOTEBOOK_DOCUMENTS, notebookPart } from './fixtures/notebook-parts'
+import { LATIN_PROSE_V1_PARAGRAPHS } from '@/lib/appearance-corpus.mjs'
+import {
+  WorkbenchDeltaParityBeforeStory,
+  WorkbenchDeltaParityStory,
+} from '@/components/workbench/workbench-delta-parity-story'
+import { WorkbenchChangesReviewStory } from '@/components/workbench/workbench-review-story'
+import { WorkbenchTheoBlocksStory } from '@/components/workbench/workbench-theo-blocks-story'
+import { WorkbenchTheoComposerStory } from '@/components/workbench/workbench-theo-composer-story'
+
+// The table's settings route is not needed to boot every conversation fixture.
+const SettingsAiStory = lazy(() =>
+  import('./settings-ai').then((module) => ({
+    default: module.SettingsAiStory,
+  })),
+)
 
 function WithRuntime({ children }: { children: React.ReactNode }) {
-  const [threadId, setThreadId] = useState<string | undefined>('thread-app-gallery')
+  const [threadId, setThreadId] = useState<string | undefined>(
+    'thread-app-gallery',
+  )
   return (
     <TheoremRuntimeProvider
       projectId="project-theorem"
@@ -85,11 +181,12 @@ function LibrarianFooterStory() {
   )
 }
 
-function ComparePaneStory() {
+function ComparePaneStory({ standalone = false }: { standalone?: boolean }) {
   return (
     <WithRuntime>
       <div className="h-dvh w-[380px]">
         <ComparePane
+          standalone={standalone}
           reviewId="review-app-gallery"
           onClose={() => undefined}
           onDetach={() => undefined}
@@ -110,11 +207,153 @@ function ReviewCardStory() {
   )
 }
 
-function ShellCompareStory() {
+/**
+ * The whole shell as a person with work in it sees it: three pins on the
+ * shelf, projects and recent chats, and a long reply with a table, inline
+ * code and a code block above the composer. The design overhaul's fixture.
+ */
+function PopulatedShellStory() {
+  // The shelf is persisted, so the person's own pins come back when the story
+  // closes; set before paint, the first frame already shows the fixture's.
+  useLayoutEffect(() => {
+    const { pins } = useSidebarPrefs.getState()
+    useSidebarPrefs.setState({ pins: POPULATED_PINS })
+    return () => {
+      useSidebarPrefs.setState({ pins })
+    }
+  }, [])
   return (
     <WithRuntime>
       <ChatShell projectId="project-theorem" threadId="thread-app-gallery" />
     </WithRuntime>
+  )
+}
+
+function ShellCompareStory() {
+  return (
+    <WithRuntime>
+      <ChatShell projectId="project-theorem" threadId="thread-app-gallery" />
+      <div className="fixed right-2 top-2 z-40" data-story-appearance-controls>
+        <AppearanceControls />
+      </div>
+    </WithRuntime>
+  )
+}
+
+/** Real mode routes over the story transport, without leaving the fixture. */
+function ShellNavigationStory() {
+  const [router] = useState(() => {
+    const root = createRootRoute({ component: Outlet })
+    const shell = createRoute({
+      getParentRoute: () => root,
+      id: '_chat',
+      component: ShellNavigationFrame,
+    })
+    return createRouter({
+      routeTree: root.addChildren([
+        shell.addChildren(
+          ['/', 'vault', 'notes', 'notes/$documentId'].map((path) =>
+            createRoute({ getParentRoute: () => shell, path }),
+          ),
+        ),
+      ]),
+      history: createMemoryHistory({ initialEntries: ['/vault'] }),
+    })
+  })
+  return <RouterProvider router={router} />
+}
+
+/** Notes mode at desktop width over the story transport, with a note open and no review beside it. */
+function NotesWorkspaceStory() {
+  const [router] = useState(() => {
+    const root = createRootRoute({ component: Outlet })
+    const shell = createRoute({
+      getParentRoute: () => root,
+      id: '_chat',
+      component: NotesWorkspaceFrame,
+    })
+    return createRouter({
+      routeTree: root.addChildren([
+        shell.addChildren(
+          ['/', 'notes', 'notes/$documentId'].map((path) =>
+            createRoute({ getParentRoute: () => shell, path }),
+          ),
+        ),
+      ]),
+      history: createMemoryHistory({ initialEntries: ['/notes/doc-proposal'] }),
+    })
+  })
+  return <RouterProvider router={router} />
+}
+
+/** A project's page in the real shell: the projects route over the story transport. */
+function ProjectHomeStory() {
+  const [router] = useState(() => {
+    const root = createRootRoute({ component: Outlet })
+    const shell = createRoute({
+      getParentRoute: () => root,
+      id: '_chat',
+      component: ShellCompareStory,
+    })
+    return createRouter({
+      routeTree: root.addChildren([
+        shell.addChildren([
+          createRoute({
+            getParentRoute: () => shell,
+            path: 'projects/$projectId',
+          }),
+          createRoute({ getParentRoute: () => shell, path: 'c/$threadId' }),
+        ]),
+      ]),
+      history: createMemoryHistory({
+        initialEntries: ['/projects/project-theorem'],
+      }),
+    })
+  })
+  return <RouterProvider router={router} />
+}
+
+/** A project's session graph on the canvas, in the real shell: Theorem's graph read, Make main chat and saved views over the story transport. */
+function SessionGraphStory() {
+  const [router] = useState(() => {
+    const root = createRootRoute({ component: Outlet })
+    const shell = createRoute({
+      getParentRoute: () => root,
+      id: '_chat',
+      component: ShellCompareStory,
+    })
+    return createRouter({
+      routeTree: root.addChildren([
+        shell.addChildren(
+          ['canvas', 'c/$threadId', 'projects/$projectId'].map((path) =>
+            createRoute({ getParentRoute: () => shell, path }),
+          ),
+        ),
+      ]),
+      history: createMemoryHistory({
+        initialEntries: [
+          `/canvas?sessions=${encodeURIComponent('project:project-theorem')}`,
+        ],
+      }),
+    })
+  })
+  return <RouterProvider router={router} />
+}
+
+function NotesWorkspaceFrame() {
+  return (
+    <WithRuntime>
+      <ChatShell projectId="project-theorem" threadId={undefined} />
+    </WithRuntime>
+  )
+}
+
+function ShellNavigationFrame() {
+  const pathname = useLocation({ select: (location) => location.pathname })
+  return (
+    <div data-shell-route={pathname}>
+      <ShellCompareStory />
+    </div>
   )
 }
 
@@ -286,7 +525,9 @@ function partsStory(messages: ThreadMessageLike[]) {
       <AssistantRuntimeProvider runtime={runtime}>
         <TheoremPartRenderers />
         <div className="mx-auto w-full max-w-(--spacing-reading) px-4 py-4">
-          <ThreadPrimitive.Messages components={{ Message: ArtifactPartMessage }} />
+          <ThreadPrimitive.Messages
+            components={{ Message: ArtifactPartMessage }}
+          />
         </div>
       </AssistantRuntimeProvider>
     )
@@ -347,6 +588,7 @@ function threadStory(
   state?: ActivityState,
   stored = state ? activityMessages(state) : [],
   draft?: string,
+  fixtureId?: string,
 ) {
   const messages: ThreadMessageLike[] = state
     ? toAssistantMessages(stored).map((message) =>
@@ -354,20 +596,35 @@ function threadStory(
           ? { ...message, status: ACTIVITY_STATUS[state] }
           : message,
       )
-    : []
+    : fixtureId === 'F05'
+      ? [
+          {
+            id: 'design-oracle-draft-context',
+            role: 'assistant',
+            status: { type: 'complete', reason: 'stop' },
+            content: [
+              {
+                type: 'text',
+                text: 'A short conversation response gives the draft editor a real prose track for typography and alignment measurements.',
+              },
+            ],
+          },
+        ]
+      : []
   const isRunning = state === 'working' || state === 'approval'
   return function ThreadStory() {
     const runtime = useExternalStoreRuntime({
       messages,
       isRunning,
       onNew: async () => {},
+      ...(fixtureId === 'F06' && { onCancel: async () => {} }),
       convertMessage: (message: ThreadMessageLike) => message,
     })
     return (
       <AssistantRuntimeProvider runtime={runtime}>
         <TheoremPartRenderers />
         {draft && <ComposerDraft text={draft} />}
-        <div className="h-dvh">
+        <div data-appearance-fixture={fixtureId} className="h-dvh">
           <Thread autoFocus={false} />
         </div>
       </AssistantRuntimeProvider>
@@ -375,9 +632,8 @@ function threadStory(
   }
 }
 
-const POINTING_MESSAGES: ThreadMessageLike[] = toAssistantMessages(
-  pointingMessages(),
-)
+const POINTING_MESSAGES: ThreadMessageLike[] =
+  toAssistantMessages(pointingMessages())
 
 /**
  * Theo on a conversation with things to be sent to: a tool call that failed,
@@ -465,7 +721,572 @@ function FaceSoundStory() {
   )
 }
 
+/**
+ * Theo as a microphone: the form it takes while the person holds it to speak.
+ * The face is told to listen and the mic level is held steady, so the grille
+ * throbs at a fixed loudness and the arcs stand where they are: a deterministic
+ * render of the listening form, with no microphone opened.
+ */
+function FaceListenStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: SOUND_MESSAGES,
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  useEffect(() => {
+    const face = theFace()
+    face.notice('person.listen')
+    useMicLevel.setState({ level: 0.5 })
+    return () => {
+      face.notice('person.listen.end')
+      useMicLevel.setState({ level: 0 })
+    }
+  }, [])
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+      <FaceStage />
+    </AssistantRuntimeProvider>
+  )
+}
+
+/**
+ * The harness plan as the thread draws its draft_plan call, at the thread's
+ * own reading width. The result names no plan id, so the card shows the plan
+ * as drafted and reads no live copy.
+ */
+function PlanCardStory() {
+  const { planId: _written, ...result } = PLAN_RESULT
+  const messages = useMemo<ThreadMessageLike[]>(
+    () => [
+      {
+        id: 'plan-ask',
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: 'Make the harness easier for agents to use. Plan it before you start.',
+          },
+        ],
+      },
+      {
+        id: 'plan-answer',
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [
+          {
+            type: 'text',
+            text: 'Here is the plan. The audit and the scope can start together.',
+          },
+          {
+            type: 'tool-call',
+            toolCallId: 'call-plan',
+            toolName: 'draft_plan',
+            args: PLAN_ARGS as unknown as ReadonlyJSONObject,
+            result,
+          },
+        ],
+      },
+    ],
+    [result],
+  )
+  const runtime = useExternalStoreRuntime({
+    messages,
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+    </AssistantRuntimeProvider>
+  )
+}
+
+/** The same plan from Theorem's copy, one root claimed and the other deviating, at the reading width. */
+function PlanCardUnderWayStory() {
+  return (
+    <div className="mx-auto w-full max-w-(--spacing-reading) px-4 py-4">
+      <PlanGraph view={PLAN_UNDER_WAY} />
+    </div>
+  )
+}
+
+/** Fixed Latin calibration prose rendered by the actual assistant-ui Thread. */
+const ORACLE_F02_CONTENT = [
+  '# Conversation reading fixture',
+  '',
+  'Prepared for the fixed Latin calibration corpus. **Six paragraphs** remain plain so browser line measurement is reproducible.',
+  '',
+  '# Reading and writing',
+  '',
+  'The article uses the same measure as the draft editor.',
+  '',
+  '## Reading settings',
+  '',
+  'The displayed text follows the selected content size.',
+  '',
+  '### Stable reading measure',
+  '',
+  LATIN_PROSE_V1_PARAGRAPHS.join('\n\n'),
+  '',
+  'Reviewed against the current appearance policy · metadata',
+  '',
+  '```ts',
+  'const reading = { fixture: "latin-prose-v1", paragraphs: 6 }',
+  '```',
+].join('\n')
+
+function DesignOracleThreadStory({
+  empty = false,
+  fixtureId = empty ? 'F01' : 'F02',
+  content,
+  draft = empty ? undefined : 'Draft a follow-up question.',
+}: {
+  empty?: boolean
+  fixtureId?: string
+  content?: string
+  draft?: string
+}) {
+  const messages: ThreadMessageLike[] = empty
+    ? []
+    : [
+        {
+          id: 'appearance-oracle-long-answer',
+          role: 'assistant',
+          status: { type: 'complete', reason: 'stop' },
+          content: [
+            // The real Activity metadata line is part of the reading fixture. Two
+            // settled progress steps make its Details label visible through the
+            // production MessageMetadata slot without duplicating that component.
+            {
+              type: 'data',
+              name: 'theorem-progress',
+              data: { label: 'Reading the conversation', status: 'complete' },
+            },
+            {
+              type: 'data',
+              name: 'theorem-progress',
+              data: { label: 'Checking the measure', status: 'complete' },
+            },
+            { type: 'text', text: content ?? ORACLE_F02_CONTENT },
+          ],
+        },
+      ]
+  const runtime = useExternalStoreRuntime({
+    messages,
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  return (
+    <div data-appearance-fixture={fixtureId}>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <TheoremPartRenderers />
+        {draft && <ComposerDraft text={draft} />}
+        <div className="h-dvh">
+          <Thread autoFocus={false} />
+        </div>
+      </AssistantRuntimeProvider>
+    </div>
+  )
+}
+
+const ORACLE_PREVIEW_USER = [
+  'Please compare these workspace choices. '.repeat(22),
+  'I need to understand which source is current, what changed since the last review, and how to keep the draft while moving between conversations. '.repeat(
+    4,
+  ),
+].join('')
+
+function DesignOraclePreviewStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: [
+      {
+        id: 'design-oracle-preview-user',
+        role: 'user',
+        content: [{ type: 'text', text: ORACLE_PREVIEW_USER }],
+      },
+      {
+        id: 'design-oracle-preview-answer',
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [{ type: 'text', text: 'Short answer.' }],
+      },
+    ],
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  return (
+    <div data-appearance-fixture="F03">
+      <AssistantRuntimeProvider runtime={runtime}>
+        <TheoremPartRenderers />
+        <div className="h-dvh">
+          <Thread autoFocus={false} />
+        </div>
+      </AssistantRuntimeProvider>
+    </div>
+  )
+}
+
+const ORACLE_MARKUP_CONTENT = [
+  '## Expanded content fixture',
+  '',
+  'A paragraph with **strong text**, *emphasis*, `inline code`, and [a link](https://example.com/a-long-reference-path).',
+  '',
+  'A long URL should wrap or scroll locally: https://example.com/reference/this/is/a/very/long/unbroken/path/used/to/verify/reflow-and-horizontal-overflow',
+  '',
+  '| Role | State | Meaning |',
+  '| --- | --- | --- |',
+  '| Composer | Ready | Draft remains editable |',
+  '| Navigation | Selected | Current location stays visible |',
+  '',
+  '```ts',
+  'const appearance = { material: "flat", contentScale: 1 }',
+  '```',
+].join('\n')
+
+function DesignOracleContentStory({
+  fixtureId,
+  content,
+  direction = 'ltr',
+  lang = 'en',
+  includeArtifact = false,
+}: {
+  fixtureId: string
+  content: string
+  direction?: 'ltr' | 'rtl'
+  lang?: string
+  includeArtifact?: boolean
+}) {
+  const artifact = ARTIFACT_STORIES[0] as ArtifactStory
+  const contentItems: ThreadMessageLike['content'] = [
+    { type: 'text', text: content },
+  ]
+  if (includeArtifact && Array.isArray(contentItems)) {
+    contentItems.push({
+      type: 'data',
+      name: ARTIFACT_PART,
+      data: {
+        artifactId: `art_${artifact.id}`,
+        artifactRevision: 'rev_1',
+        artifactKind: 'openui',
+        rendererId: 'theorem-openui',
+        contractVersion: 'theorem-artifact-v1',
+        lifecycle: 'ready',
+        patchSequence: 1,
+        fallbackText: artifact.title,
+        payload: {
+          documentId: `doc_${artifact.id}`,
+          revision: { position: 1 },
+          title: artifact.title,
+          content: artifact.program,
+          language: 'openui',
+          form: 'openui',
+          formVersion: 1,
+          library: {
+            id: LIBRARY_ID,
+            version: artifact.version ?? LIBRARY_VERSION,
+          },
+          program: artifact.program,
+        },
+      },
+    } as ThreadMessageLike['content'][number])
+  }
+  const runtime = useExternalStoreRuntime({
+    messages: [
+      {
+        id: `design-oracle-${fixtureId}`,
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: contentItems,
+      },
+    ],
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  return (
+    <div data-appearance-fixture={fixtureId} dir={direction} lang={lang}>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <TheoremPartRenderers />
+        <div className="h-dvh">
+          <Thread autoFocus={false} />
+        </div>
+      </AssistantRuntimeProvider>
+    </div>
+  )
+}
+
+const ORACLE_RTL_CONTENT = [
+  'مرحبا، هذا نص تجريبي للتحقق من اتجاه القراءة والمحاذاة في الواجهة.',
+  '日本語の文章も表示し、ラテン文字と日本語のフォールバックが混在する状態を確認します。',
+  ...LATIN_PROSE_V1_PARAGRAPHS.slice(0, 2),
+].join('\n\n')
+
+/** Math the model emits: dollar and bracket delimiters, display and inline,
+ *  beside a price that must stay prose. */
+const MATH_CONTENT = [
+  'The quadratic formula solves $ax^2 + bx + c = 0$:',
+  '',
+  '$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$',
+  '',
+  'Models often write brackets instead: \\(e^{i\\pi} + 1 = 0\\) inline, and',
+  '',
+  '\\[\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}\\]',
+  '',
+  'A price is not math: the plan costs $5 and the add-on $10, billed monthly.',
+].join('\n')
+
+/** A reply that paints an interface: a fact card, a comparison table and steps,
+ *  composed from the generative vocabulary through a ui.present operation. */
+const PRESENT_TREE = {
+  _type: 'Col',
+  gap: 'md',
+  children: [
+    { _type: 'Header', text: 'Release readiness', size: 'lg' },
+    {
+      _type: 'Row',
+      gap: 'md',
+      children: [
+        { _type: 'Fact', label: 'Checks passed', value: '128', delta: '+6', trend: 'up', upIsGood: true },
+        { _type: 'Fact', label: 'Open issues', value: '3', delta: '-2', trend: 'down', upIsGood: false },
+      ],
+    },
+    {
+      _type: 'Table',
+      columns: [{ label: 'Surface' }, { label: 'State' }, { label: 'Owner' }],
+      rows: [
+        ['Composer', 'Ready', 'UI'],
+        ['Runtime', 'Streaming', 'Core'],
+        ['Connections', 'Review', 'Platform'],
+      ],
+    },
+    {
+      _type: 'Steps',
+      steps: [
+        { title: 'Build', detail: 'Compile the workspace' },
+        { title: 'Verify', detail: 'Run the oracles' },
+        { title: 'Ship', detail: 'Promote the release' },
+      ],
+    },
+  ],
+}
+
+function MathStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: [
+      {
+        id: 'message-math',
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [{ type: 'text', text: MATH_CONTENT }],
+      },
+    ],
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+    adapters: {
+      threadList: {
+        threadId: 'story-math',
+        threads: [{ status: 'regular', id: 'story-math', remoteId: 'thread_story_math' }],
+      },
+    },
+  })
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+    </AssistantRuntimeProvider>
+  )
+}
+
+function PresentStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: [
+      {
+        id: 'message-present',
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        metadata: { custom: { theoremRunId: 'run-present-story' } },
+        content: [
+          { type: 'text', text: 'Here is where the release stands.' },
+          {
+            type: 'data',
+            name: 'theorem-client_operation',
+            data: {
+              requestRef: 'req-present-story',
+              operation: 'ui.present',
+              state: 'answered',
+              args: PRESENT_TREE,
+              expectedRevision: 0,
+              receipt: { outcome: 'applied', result: { painted: 'Col' } },
+            },
+          },
+        ],
+      },
+    ],
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+    </AssistantRuntimeProvider>
+  )
+}
+
+/** A conversation whose last run reported its context occupancy, so the
+ *  composer's context ring has real Theorem usage to draw. */
+function ContextUsageStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: [
+      {
+        id: 'message-usage-user',
+        role: 'user',
+        content: [{ type: 'text', text: 'How full is this conversation?' }],
+      },
+      {
+        id: 'message-usage',
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [
+          {
+            type: 'text',
+            text: 'The conversation has room left. The ring beside the composer shows how much of the model\'s context the last request used.',
+          },
+          {
+            type: 'data',
+            name: 'theorem-usage',
+            data: { contextTokens: 84_000, contextWindow: 200_000 },
+          },
+        ],
+      },
+    ],
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+    </AssistantRuntimeProvider>
+  )
+}
+
 export const REGISTRY: Readonly<Record<string, ComponentType>> = {
+  ...PALETTE_MATRIX_REGISTRY,
+  'workbench-default': WorkbenchDefaultStory,
+  'workbench-semantic-overlay': WorkbenchSemanticOverlayStory,
+  'workbench-picker': WorkbenchPickerStory,
+  'workbench-files': WorkbenchFilesStory,
+  'workbench-threads': WorkbenchThreadsStory,
+  'workbench-threads-withheld': WorkbenchThreadsWithheldStory,
+  'workbench-default-arrangement': WorkbenchDefaultArrangementStory,
+  'workbench-delta-parity': WorkbenchDeltaParityStory,
+  'workbench-delta-parity-before': WorkbenchDeltaParityBeforeStory,
+  'workbench-changes-review': WorkbenchChangesReviewStory,
+  'workbench-theo-blocks': WorkbenchTheoBlocksStory,
+  'workbench-theo-composer': WorkbenchTheoComposerStory,
+  'workbench-terminal': WorkbenchTerminalStory,
+  'workbench-terminal-adoption-pending': WorkbenchTerminalAdoptionPendingStory,
+  'workbench-terminal-adoption-unavailable':
+    WorkbenchTerminalAdoptionUnavailableStory,
+  'workbench-terminal-adoption-settled': WorkbenchTerminalAdoptionSettledStory,
+  'workbench-editor': WorkbenchEditorStory,
+  'workbench-editor-conflict': WorkbenchEditorConflictStory,
+  'workbench-changes': WorkbenchChangesStory,
+  'workbench-changes-binary-conflict': WorkbenchChangesBinaryConflictStory,
+  'workbench-branches': WorkbenchBranchesStory,
+  'workbench-search': WorkbenchSearchStory,
+  'workbench-diagnostics': WorkbenchDiagnosticsStory,
+  'workbench-run': WorkbenchRunStory,
+  'workbench-run-list': WorkbenchRunListStory,
+  'workbench-run-list-exits': WorkbenchRunListExitsStory,
+  'workbench-terminal-program-report': WorkbenchTerminalProgramReportStory,
+  'workbench-recovery-reload': WorkbenchRecoveryReloadStory,
+  'workbench-cabinet': WorkbenchCabinetStory,
+  'workbench-cabinet-picker': WorkbenchCabinetPickerStory,
+  'workbench-face': WorkbenchFaceStory,
+  'workbench-face-custom': WorkbenchFaceCustomStory,
+  'workbench-account-switch': WorkbenchAccountSwitchStory,
+  'workbench-device-copy': WorkbenchDeviceCopyStory,
+  'workbench-arrangements': WorkbenchArrangementsStory,
+  'workbench-layouts-page': WorkbenchLayoutsPageStory,
+  'workbench-agent-operations': WorkbenchAgentOperationsStory,
+  'workbench-add-selection': WorkbenchAddSelectionStory,
+  'workbench-follow': WorkbenchFollowStory,
+  'workbench-document-history': WorkbenchDocumentHistoryStory,
+  'workbench-presentation': WorkbenchPresentationStory,
+  'workbench-delegation': WorkbenchDelegationStory,
+  'workbench-delegation-from-chat': WorkbenchDelegationFromChatStory,
+  'workbench-replace': WorkbenchReplaceStory,
+  'workbench-resize': WorkbenchResizeStory,
+  'workbench-keyboard-journey': WorkbenchKeyboardJourneyStory,
+  'workbench-appearance': WorkbenchAppearanceStory,
+  'workbench-markdown-visual': WorkbenchMarkdownVisualStory,
+  'workbench-markdown-source': WorkbenchMarkdownSourceStory,
+  'workbench-markdown-split': WorkbenchMarkdownSplitStory,
+  'workbench-markdown-preview': WorkbenchMarkdownPreviewStory,
+  'design-oracle-empty': () => <DesignOracleThreadStory empty />,
+  'assistant-math': MathStory,
+  'assistant-present': PresentStory,
+  'assistant-context-usage': ContextUsageStory,
+  'design-oracle-long': DesignOracleThreadStory,
+  'design-oracle-reflow': () => <DesignOracleThreadStory fixtureId="F09" />,
+  'design-oracle-draft': threadStory(undefined, [], COMPOSER_DRAFT, 'F05'),
+  'design-oracle-stream': threadStory(
+    'working',
+    activityMessages('working'),
+    undefined,
+    'F06',
+  ),
+  'design-oracle-failure': threadStory(
+    'unfinished',
+    activityMessages('unfinished'),
+    undefined,
+    'F07',
+  ),
+  'design-oracle-continuity': threadStory(undefined, [], COMPOSER_DRAFT, 'F11'),
+  'design-oracle-preview': DesignOraclePreviewStory,
+  'design-oracle-content': () => (
+    <DesignOracleContentStory
+      fixtureId="F04"
+      content={ORACLE_MARKUP_CONTENT}
+      includeArtifact
+    />
+  ),
+  'design-oracle-error': threadStory('unfinished'),
+  'design-oracle-navigation': () => (
+    <div data-appearance-fixture="F08">
+      <ShellCompareStory />
+    </div>
+  ),
+  'design-oracle-rtl': () => (
+    <DesignOracleContentStory
+      fixtureId="F10"
+      content={ORACLE_RTL_CONTENT}
+      direction="rtl"
+      lang="ar"
+    />
+  ),
   'composer-paper': threadStory(),
   'composer-markdown': threadStory(undefined, [], COMPOSER_DRAFT),
   'chat-program': programStory,
@@ -475,20 +1296,47 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   ...Object.fromEntries(
     ARTIFACT_STORIES.map((story) => [story.id, artifactStory(story)]),
   ),
-  'activity-approval-high': threadStory('approval', activityMessages('approval', 'high')),
+  'activity-approval-high': threadStory(
+    'approval',
+    activityMessages('approval', 'high'),
+  ),
   'tool-pills': threadStory('working', toolPillMessages()),
   'tool-calls-check': threadStory('finished', appCheckMessages()),
+  'plan-card': PlanCardStory,
+  'plan-card-under-way': PlanCardUnderWayStory,
   'face-bench': FaceBench,
   'face-book': FaceBook,
   'face-in-shell': ShellCompareStory,
   'face-visit': FaceVisitStory,
   'face-point': FacePointStory,
   'face-sound': FaceSoundStory,
+  'face-listen': FaceListenStory,
+  'theo-face-inverse': TheoFaceInverse,
   'organized-sidebar': OrganizedSidebarStory,
   'librarian-footer': LibrarianFooterStory,
   'compare-pane': ComparePaneStory,
+  'compare-pane-standalone': () => <ComparePaneStory standalone />,
   'review-card': ReviewCardStory,
   'shell-compare': ShellCompareStory,
+  'populated-shell': PopulatedShellStory,
+  'project-home': ProjectHomeStory,
+  'session-graph': SessionGraphStory,
+  'shell-navigation': ShellNavigationStory,
+  'notes-workspace': NotesWorkspaceStory,
+  'settings-ai': SettingsAiStory,
+  'settings-responses': () => <SettingsAiStory path="/settings/responses" />,
+  'glass-compare': () => (
+    <WithRuntime>
+      <GlassCompareStory />
+    </WithRuntime>
+  ),
+  // Theo's motion constants, tuned against the live face. A development bench,
+  // not a setting: the product's Appearance page does not show it.
+  'face-feel': () => (
+    <div className="mx-auto max-w-2xl p-6">
+      <FaceFeel />
+    </div>
+  ),
   'conversation-wide': ConversationWideStory,
   'note-kinds': NoteKindsStory,
   'canvas-note-types': CanvasNoteTypesStory,

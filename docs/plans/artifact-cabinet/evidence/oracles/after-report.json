@@ -1,0 +1,216 @@
+{
+  "schema": "design-oracles-report/1",
+  "skill_version": "1.0.0-portable",
+  "policy_name": "terminal-host",
+  "policy_version": "1.0+rows-v2",
+  "source_revision": "ff2f1cd+wt",
+  "fixture": null,
+  "environment": {
+    "viewport_css_px": 1536,
+    "viewport_height_css_px": 1000,
+    "device_pixel_ratio": 1,
+    "zoom": 1,
+    "browser": "Playwright Chromium (preinstalled)",
+    "route": "/projects/<seeded Headland survey>",
+    "preset": "default appearance; the terminal host uses its dark terminal palette (bg #202733)",
+    "weights_by_chars": {
+      "300": 12,
+      "400": 656,
+      "600": 47
+    },
+    "sizes_by_chars": {
+      "12.5px": 715
+    }
+  },
+  "counts": {
+    "pass": 10,
+    "fail": 0,
+    "review": 2,
+    "not_measurable": 0
+  },
+  "results": [
+    {
+      "id": "TYP-01.host-recipe-consistency",
+      "class": "contract",
+      "predicate": "typography_recipe_equal",
+      "observation": "tab-vs-body",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "pass",
+      "detail": {
+        "mismatched_fields": [],
+        "checked_fields": [
+          "family",
+          "font_size_px",
+          "font_weight"
+        ]
+      },
+      "status": "pass"
+    },
+    {
+      "id": "TYP-01.mono-face",
+      "class": "contract",
+      "predicate": "typography_recipe_equal",
+      "observation": "mono-face",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "pass",
+      "detail": {
+        "mismatched_fields": [],
+        "checked_fields": [
+          "actual_face"
+        ]
+      },
+      "status": "pass"
+    },
+    {
+      "id": "TYP-01.code-size",
+      "class": "target",
+      "predicate": "ratio_range",
+      "observation": "code-size",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "fail",
+      "detail": {
+        "value": 0.9615384615384616,
+        "minimum": 0.99,
+        "maximum": 1.01
+      },
+      "status": "review"
+    },
+    {
+      "id": "TYP-01.line-pitch",
+      "class": "target",
+      "predicate": "ratio_range",
+      "observation": "line-pitch",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "pass",
+      "detail": {
+        "value": 1.5,
+        "minimum": 1.45,
+        "maximum": 1.6
+      },
+      "status": "pass"
+    },
+    {
+      "id": "COL-01.ink",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "ink",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.625228218904192,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "COL-01.heading",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "heading",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "pass",
+      "detail": {
+        "value": 12.364020281348312,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "COL-01.muted",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "muted",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.121267568141515,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "COL-01.accent",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "accent",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.851913460163458,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "COL-01.control-on-raised",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "raised",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "pass",
+      "detail": {
+        "value": 8.48374861018847,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "COL-02.frame-lines",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "lines",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.5346813257822212,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "SPC-01.header-rhythm",
+      "class": "target",
+      "predicate": "spacing_vocabulary",
+      "observation": "header-rhythm",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "pass",
+      "detail": {
+        "off_vocabulary_px": [],
+        "hierarchy_ordered": true
+      },
+      "status": "pass"
+    },
+    {
+      "id": "SPC-03.tab-content-track",
+      "class": "contract",
+      "predicate": "track_alignment",
+      "observation": "tab-track",
+      "evidence_kind": "rendered_web",
+      "provenance": null,
+      "arithmetic": "pass",
+      "detail": {
+        "maximum_error_px": "0.5",
+        "tolerance_px": "1"
+      },
+      "status": "pass"
+    }
+  ],
+  "claim_boundary": "Only the declared observation and evidence kind are evaluated. This report is not whole-product accessibility certification."
+}

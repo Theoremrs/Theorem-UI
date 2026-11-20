@@ -1,0 +1,1183 @@
+{
+  "run": "fc1cbfef",
+  "commitment": "commitment:materials-fc1cbfef",
+  "savedRevision": 2101,
+  "editedRevision": 3117,
+  "requests": [
+    {
+      "turn": 1,
+      "path": "/api/v1/chat/completions",
+      "bodyKeys": [
+        "model",
+        "messages",
+        "max_completion_tokens",
+        "temperature",
+        "top_p",
+        "tools",
+        "stream",
+        "stream_options"
+      ],
+      "model": "thinkingmachines/inkling",
+      "serializedBody": {
+        "note": "The body as the stand-in parsed it, serialized again with JSON.stringify.",
+        "bytes": 180570,
+        "sha256": "9a659182342fbaba12976bea6bd2fceac073669fd35b358add5d7235f50a0e31"
+      },
+      "messageRoles": [
+        "system",
+        "user"
+      ],
+      "systemMessageBytes": 111771,
+      "userMessages": [
+        "When is the materials list for Noor due?"
+      ],
+      "earlierAnswersInHistory": [],
+      "offersLookUp": true,
+      "toolCalls": [],
+      "toolResults": [],
+      "recordSpans": [
+        {
+          "id": "record:Person/person:avery-fc1cbfef@2083",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"type\":\"Person\",\"is_the_person_asking\":true,\"fields\":{\"name\":\"Avery Quinn\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:avery-fc1cbfef@2083",
+          "provenance": {
+            "recordId": "person:avery-fc1cbfef",
+            "objectType": "Person",
+            "revision": 2083,
+            "contentDigest": "46a297b4200b3bbda0b26fa9432b61191947c21dc06a2f8070ace71cba859720"
+          },
+          "schema_valid": true,
+          "why_included": "The saved record of the person asking.",
+          "estimated_tokens": 33
+        },
+        {
+          "id": "record:Constraint/constraint:mornings-fc1cbfef@2105",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Constraint/constraint:mornings-fc1cbfef@2105\",\"type\":\"Constraint\",\"fields\":{\"statement\":\"No calls before 10am\",\"kind\":\"availability\"},\"relations\":{\"applies_to\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Constraint/constraint:mornings-fc1cbfef@2105",
+          "provenance": {
+            "recordId": "constraint:mornings-fc1cbfef",
+            "objectType": "Constraint",
+            "revision": 2105,
+            "contentDigest": "8bd0e0006d85f0abbc6e7ad169297305899e27ba8ed5839f7f171feb41823ce2"
+          },
+          "schema_valid": true,
+          "why_included": "A standing saved record about the person asking.",
+          "estimated_tokens": 72
+        },
+        {
+          "id": "record:Person/person:noor-fc1cbfef@2093",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"type\":\"Person\",\"fields\":{\"name\":\"Noor\",\"role\":\"Runs the glaze workshop with me\"},\"relations\":{\"organization\":[{\"record\":\"record:Organization/org:kiln-fc1cbfef@2089\",\"label\":\"Kiln Street Studio\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:noor-fc1cbfef@2093",
+          "provenance": {
+            "recordId": "person:noor-fc1cbfef",
+            "objectType": "Person",
+            "revision": 2093,
+            "contentDigest": "a0c4f1ca58c73a09b0acdb21a3b6763a445cb9dae1e372e8de288eef246c1480"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record the person's message names.",
+          "estimated_tokens": 63
+        },
+        {
+          "id": "record:Organization/org:kiln-fc1cbfef@2089",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Organization/org:kiln-fc1cbfef@2089\",\"type\":\"Organization\",\"fields\":{\"name\":\"Kiln Street Studio\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Organization/org:kiln-fc1cbfef@2089",
+          "provenance": {
+            "recordId": "org:kiln-fc1cbfef",
+            "objectType": "Organization",
+            "revision": 2089,
+            "contentDigest": "b3f11285f667b4bfc6f76e42dfdb7db32a1f027552dac958f5ecbd72bdff643a"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `organization`.",
+          "estimated_tokens": 29
+        },
+        {
+          "id": "record:Relationship/tie:sister-fc1cbfef@2121",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Relationship/tie:sister-fc1cbfef@2121\",\"type\":\"Relationship\",\"statement\":\"Noor is “sister” to Avery Quinn (the person asking).\",\"fields\":{\"relation\":\"sister\",\"kind\":\"family\"},\"relations\":{\"from_person\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"}],\"to_person\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Relationship/tie:sister-fc1cbfef@2121",
+          "provenance": {
+            "recordId": "tie:sister-fc1cbfef",
+            "objectType": "Relationship",
+            "revision": 2121,
+            "contentDigest": "034fba5c1c2907091b7713be02e7754e42ba619b2ea23bfc59cc01eedf06e9c7"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `from_person`.",
+          "estimated_tokens": 103
+        },
+        {
+          "id": "record:Interaction/interaction:planning-fc1cbfef@2109",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Interaction/interaction:planning-fc1cbfef@2109\",\"type\":\"Interaction\",\"fields\":{\"summary\":\"Planning call for the workshop\",\"kind\":\"call\",\"notes\":\"Noor asked for the materials list before she orders glaze.\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-fc1cbfef@2097\",\"label\":\"Glaze workshop\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Interaction/interaction:planning-fc1cbfef@2109",
+          "provenance": {
+            "recordId": "interaction:planning-fc1cbfef",
+            "objectType": "Interaction",
+            "revision": 2109,
+            "contentDigest": "ebccb0b85fdb45075c41d242711c02bf2fd494115739e0832a71f76e5a9a9565"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 104
+        },
+        {
+          "id": "record:Commitment/commitment:materials-fc1cbfef@2101",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Commitment/commitment:materials-fc1cbfef@2101\",\"type\":\"Commitment\",\"fields\":{\"title\":\"Send Noor the materials list\",\"due\":\"Wednesday\",\"status\":\"open\"},\"relations\":{\"owed_by\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}],\"owed_to\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-fc1cbfef@2097\",\"label\":\"Glaze workshop\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Commitment/commitment:materials-fc1cbfef@2101",
+          "provenance": {
+            "recordId": "commitment:materials-fc1cbfef",
+            "objectType": "Commitment",
+            "revision": 2101,
+            "contentDigest": "88722fcd92a2850bfa923ae76b69e437f40e89b4aba7101c3cfdeaa7b291aedf"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `owed_to`.",
+          "estimated_tokens": 120
+        },
+        {
+          "id": "record:Activity/activity:workshop-fc1cbfef@2097",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Activity/activity:workshop-fc1cbfef@2097\",\"type\":\"Activity\",\"fields\":{\"name\":\"Glaze workshop\",\"status\":\"planned\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"},{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Activity/activity:workshop-fc1cbfef@2097",
+          "provenance": {
+            "recordId": "activity:workshop-fc1cbfef",
+            "objectType": "Activity",
+            "revision": 2097,
+            "contentDigest": "d3e21433150cafb297e6326fac734d645a01621985e590d36a3c3c2c1c368705"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 83
+        },
+        {
+          "id": "record:Relationship/tie:supplier-fc1cbfef@2125",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Relationship/tie:supplier-fc1cbfef@2125\",\"type\":\"Relationship\",\"statement\":\"Riverbed Clay is “supplier” to Kiln Street Studio.\",\"fields\":{\"relation\":\"supplier\",\"kind\":\"business\",\"details\":\"Twelve-month supply agreement\"},\"relations\":{\"from_organization\":[{\"record\":\"record:Organization/org:clay-fc1cbfef@2117\",\"label\":\"Riverbed Clay\"}],\"to_organization\":[{\"record\":\"record:Organization/org:kiln-fc1cbfef@2089\",\"label\":\"Kiln Street Studio\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Relationship/tie:supplier-fc1cbfef@2125",
+          "provenance": {
+            "recordId": "tie:supplier-fc1cbfef",
+            "objectType": "Relationship",
+            "revision": 2125,
+            "contentDigest": "936a8bbf10ba6ee620ae0a57a6be94899a08b490110985651664b9d717fc03a7"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `to_organization`.",
+          "estimated_tokens": 115
+        },
+        {
+          "id": "record:Organization/org:clay-fc1cbfef@2117",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Organization/org:clay-fc1cbfef@2117\",\"type\":\"Organization\",\"fields\":{\"name\":\"Riverbed Clay\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Organization/org:clay-fc1cbfef@2117",
+          "provenance": {
+            "recordId": "org:clay-fc1cbfef",
+            "objectType": "Organization",
+            "revision": 2117,
+            "contentDigest": "3ddb1ce4dffa51a27ea1e12bab3ae245ecd1eb783501851901fd85ebd1dbc29d"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `from_organization`.",
+          "estimated_tokens": 28
+        }
+      ],
+      "modelSpans": [
+        {
+          "id": "life_context_model",
+          "register": "evidence",
+          "content": "{\"data_model\":{\"about\":\"How this person's saved records are organised. `types` names every kind of record they keep and the fields that link one kind to another. `fields` explains the fields of the records given with this request. Records are given when the person's message names them or something related to them; the rest exist and were not given.\",\"types\":[{\"type\":\"Activity\",\"about\":\"Something you are doing with other people: an event, a piece of work, a plan.\",\"records\":1,\"links\":{\"people\":\"Person\",\"organization\":\"Organization\"}},{\"type\":\"Commitment\",\"about\":\"Something one person has said they will do for another.\",\"records\":1,\"links\":{\"owed_by\":\"Person\",\"owed_to\":\"Person\",\"activity\":\"Activity\"}},{\"type\":\"Constraint\",\"about\":\"A limit that shapes what is possible: availability, a budget, a rule you keep.\",\"records\":1,\"links\":{\"applies_to\":\"Person\"}},{\"type\":\"Interaction\",\"about\":\"A conversation, meeting or message exchanged with someone.\",\"records\":1,\"links\":{\"people\":\"Person\",\"activity\":\"Activity\"}},{\"type\":\"Organization\",\"about\":\"A company, group or institution that people belong to.\",\"records\":2},{\"type\":\"Person\",\"about\":\"Someone you know, work with or deal with, yourself included.\",\"records\":2,\"links\":{\"organization\":\"Organization\"}},{\"type\":\"Relationship\",\"about\":\"How two of your records are related: a person to a person, a person to an organization, or one organization to another.\",\"records\":2,\"links\":{\"from_person\":\"Person\",\"from_organization\":\"Organization\",\"to_person\":\"Person\",\"to_organization\":\"Organization\"},\"relates\":\"the record in one of [from_person, from_organization] is what `relation` says to the record in one of [to_person, to_organization]\"}],\"fields\":{\"Person\":{\"name\":\"Name. The name you know them by.\",\"organization\":\"Organization. The organization they belong to.\",\"role\":\"Role. What they do, or who they are to you.\"},\"Constraint\":{\"statement\":\"Constraint. The limit, in plain words.\",\"kind\":\"Kind. What sort of limit it is.\",\"applies_to\":\"Applies to. Whose limit it is.\"},\"Organization\":{\"name\":\"Name. What the organization is called.\"},\"Relationship\":{\"relation\":\"Relation. What the first is to the second: sister, manager, client, supplier.\",\"kind\":\"Kind. What sort of tie it is.\",\"from_person\":\"Person. The person this is about.\",\"from_organization\":\"Organization. The organization this is about, when it is not a person.\",\"to_person\":\"To person. The person they are related to.\",\"to_organization\":\"To organization. The organization they are related to, when it is not a person.\",\"details\":\"Details. Anything that qualifies it: terms, history, how you know.\"},\"Interaction\":{\"summary\":\"Summary. What happened, in a line.\",\"kind\":\"Kind. How it happened.\",\"people\":\"People. Who took part.\",\"activity\":\"Activity. The activity it was about.\",\"notes\":\"Notes. What was said or decided.\"},\"Commitment\":{\"title\":\"Commitment. What was promised.\",\"owed_by\":\"Owed by. Who made the promise.\",\"owed_to\":\"Owed to. Who it was made to.\",\"activity\":\"Activity. The activity it belongs to.\",\"due\":\"Due. When it is due, as it was said.\",\"status\":\"Status. Whether it is still owed.\"},\"Activity\":{\"name\":\"Name. What the activity is called.\",\"status\":\"Status. Where it stands.\",\"people\":\"People. Who is involved.\"}}}}",
+          "source_type": "life_context_model",
+          "derivation_ref": "life_context_model:d3ceea538a1fbdd7dfc163a10736b3c68f36ba1e9a26d95a78ef88994bf17079",
+          "provenance": {
+            "types": [
+              "Activity",
+              "Commitment",
+              "Constraint",
+              "Interaction",
+              "Organization",
+              "Person",
+              "Relationship"
+            ],
+            "explained": [
+              "Person",
+              "Constraint",
+              "Organization",
+              "Relationship",
+              "Interaction",
+              "Commitment",
+              "Activity"
+            ],
+            "contentDigest": "d3ceea538a1fbdd7dfc163a10736b3c68f36ba1e9a26d95a78ef88994bf17079"
+          },
+          "schema_valid": true,
+          "why_included": "How the person's saved records are organised and linked, to read the records given with it.",
+          "estimated_tokens": 813
+        }
+      ],
+      "searchedForInWholeBody": {
+        "phone number kept from Theorem": {
+          "text": "555-0100",
+          "found": false
+        },
+        "private note": {
+          "text": "Noor mentioned the studio may close",
+          "found": false
+        },
+        "other workspace's contact": {
+          "text": "Blake's landlord",
+          "found": false
+        },
+        "other workspace's record id": {
+          "text": "person:noor-other-fc1cbfef",
+          "found": false
+        },
+        "private record's id": {
+          "text": "interaction:private-fc1cbfef",
+          "found": false
+        }
+      }
+    },
+    {
+      "turn": 2,
+      "path": "/api/v1/chat/completions",
+      "bodyKeys": [
+        "model",
+        "messages",
+        "max_completion_tokens",
+        "temperature",
+        "top_p",
+        "tools",
+        "stream",
+        "stream_options"
+      ],
+      "model": "thinkingmachines/inkling",
+      "serializedBody": {
+        "note": "The body as the stand-in parsed it, serialized again with JSON.stringify.",
+        "bytes": 181682,
+        "sha256": "cc2bec1853214b6818fa48cd3f23d15b484bc8d36f28df085eb0a63b982da90c"
+      },
+      "messageRoles": [
+        "system",
+        "user",
+        "assistant",
+        "user"
+      ],
+      "systemMessageBytes": 112346,
+      "userMessages": [
+        "When is the materials list for Noor due?",
+        "Has that changed? When is the materials list for Noor due now?"
+      ],
+      "earlierAnswersInHistory": [
+        "From your saved records. Person: Avery Quinn. Constraint: No calls before 10am. Person: Noor. Organization: Kiln Street Studio. Noor is “sister” to Avery Quinn (the person asking). Interaction: Planning call for the workshop. \"Send Noor the materials list\" is due Wednesday. Activity: Glaze workshop. Riverbed Clay is “supplier” to Kiln Street Studio. Organization: Riverbed Clay."
+      ],
+      "offersLookUp": true,
+      "toolCalls": [],
+      "toolResults": [],
+      "recordSpans": [
+        {
+          "id": "record:Person/person:avery-fc1cbfef@2083",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"type\":\"Person\",\"is_the_person_asking\":true,\"fields\":{\"name\":\"Avery Quinn\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:avery-fc1cbfef@2083",
+          "provenance": {
+            "recordId": "person:avery-fc1cbfef",
+            "objectType": "Person",
+            "revision": 2083,
+            "contentDigest": "46a297b4200b3bbda0b26fa9432b61191947c21dc06a2f8070ace71cba859720"
+          },
+          "schema_valid": true,
+          "why_included": "The saved record of the person asking.",
+          "estimated_tokens": 33
+        },
+        {
+          "id": "record:Constraint/constraint:mornings-fc1cbfef@2105",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Constraint/constraint:mornings-fc1cbfef@2105\",\"type\":\"Constraint\",\"fields\":{\"statement\":\"No calls before 10am\",\"kind\":\"availability\"},\"relations\":{\"applies_to\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Constraint/constraint:mornings-fc1cbfef@2105",
+          "provenance": {
+            "recordId": "constraint:mornings-fc1cbfef",
+            "objectType": "Constraint",
+            "revision": 2105,
+            "contentDigest": "8bd0e0006d85f0abbc6e7ad169297305899e27ba8ed5839f7f171feb41823ce2"
+          },
+          "schema_valid": true,
+          "why_included": "A standing saved record about the person asking.",
+          "estimated_tokens": 72
+        },
+        {
+          "id": "record:Person/person:noor-fc1cbfef@2093",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"type\":\"Person\",\"fields\":{\"name\":\"Noor\",\"role\":\"Runs the glaze workshop with me\"},\"relations\":{\"organization\":[{\"record\":\"record:Organization/org:kiln-fc1cbfef@2089\",\"label\":\"Kiln Street Studio\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:noor-fc1cbfef@2093",
+          "provenance": {
+            "recordId": "person:noor-fc1cbfef",
+            "objectType": "Person",
+            "revision": 2093,
+            "contentDigest": "a0c4f1ca58c73a09b0acdb21a3b6763a445cb9dae1e372e8de288eef246c1480"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record the person's message names.",
+          "estimated_tokens": 63
+        },
+        {
+          "id": "record:Organization/org:kiln-fc1cbfef@2089",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Organization/org:kiln-fc1cbfef@2089\",\"type\":\"Organization\",\"fields\":{\"name\":\"Kiln Street Studio\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Organization/org:kiln-fc1cbfef@2089",
+          "provenance": {
+            "recordId": "org:kiln-fc1cbfef",
+            "objectType": "Organization",
+            "revision": 2089,
+            "contentDigest": "b3f11285f667b4bfc6f76e42dfdb7db32a1f027552dac958f5ecbd72bdff643a"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `organization`.",
+          "estimated_tokens": 29
+        },
+        {
+          "id": "record:Relationship/tie:sister-fc1cbfef@2121",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Relationship/tie:sister-fc1cbfef@2121\",\"type\":\"Relationship\",\"statement\":\"Noor is “sister” to Avery Quinn (the person asking).\",\"fields\":{\"relation\":\"sister\",\"kind\":\"family\"},\"relations\":{\"from_person\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"}],\"to_person\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Relationship/tie:sister-fc1cbfef@2121",
+          "provenance": {
+            "recordId": "tie:sister-fc1cbfef",
+            "objectType": "Relationship",
+            "revision": 2121,
+            "contentDigest": "034fba5c1c2907091b7713be02e7754e42ba619b2ea23bfc59cc01eedf06e9c7"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `from_person`.",
+          "estimated_tokens": 103
+        },
+        {
+          "id": "record:Commitment/commitment:materials-fc1cbfef@3117",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Commitment/commitment:materials-fc1cbfef@3117\",\"type\":\"Commitment\",\"fields\":{\"title\":\"Send Noor the materials list\",\"due\":\"Friday\",\"status\":\"open\"},\"relations\":{\"owed_by\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}],\"owed_to\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-fc1cbfef@2097\",\"label\":\"Glaze workshop\"}]},\"superseded\":{\"due\":{\"previous\":\"Wednesday\"}}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Commitment/commitment:materials-fc1cbfef@3117",
+          "provenance": {
+            "recordId": "commitment:materials-fc1cbfef",
+            "objectType": "Commitment",
+            "revision": 3117,
+            "contentDigest": "546412189f964f21f22abc75c5714f18624701be288b7c3770de06975fb75c0f"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `owed_to`.",
+          "estimated_tokens": 131
+        },
+        {
+          "id": "record:Interaction/interaction:planning-fc1cbfef@2109",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Interaction/interaction:planning-fc1cbfef@2109\",\"type\":\"Interaction\",\"fields\":{\"summary\":\"Planning call for the workshop\",\"kind\":\"call\",\"notes\":\"Noor asked for the materials list before she orders glaze.\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-fc1cbfef@2097\",\"label\":\"Glaze workshop\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Interaction/interaction:planning-fc1cbfef@2109",
+          "provenance": {
+            "recordId": "interaction:planning-fc1cbfef",
+            "objectType": "Interaction",
+            "revision": 2109,
+            "contentDigest": "ebccb0b85fdb45075c41d242711c02bf2fd494115739e0832a71f76e5a9a9565"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 104
+        },
+        {
+          "id": "record:Activity/activity:workshop-fc1cbfef@2097",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Activity/activity:workshop-fc1cbfef@2097\",\"type\":\"Activity\",\"fields\":{\"name\":\"Glaze workshop\",\"status\":\"planned\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"},{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Activity/activity:workshop-fc1cbfef@2097",
+          "provenance": {
+            "recordId": "activity:workshop-fc1cbfef",
+            "objectType": "Activity",
+            "revision": 2097,
+            "contentDigest": "d3e21433150cafb297e6326fac734d645a01621985e590d36a3c3c2c1c368705"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 83
+        },
+        {
+          "id": "record:Relationship/tie:supplier-fc1cbfef@2125",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Relationship/tie:supplier-fc1cbfef@2125\",\"type\":\"Relationship\",\"statement\":\"Riverbed Clay is “supplier” to Kiln Street Studio.\",\"fields\":{\"relation\":\"supplier\",\"kind\":\"business\",\"details\":\"Twelve-month supply agreement\"},\"relations\":{\"from_organization\":[{\"record\":\"record:Organization/org:clay-fc1cbfef@2117\",\"label\":\"Riverbed Clay\"}],\"to_organization\":[{\"record\":\"record:Organization/org:kiln-fc1cbfef@2089\",\"label\":\"Kiln Street Studio\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Relationship/tie:supplier-fc1cbfef@2125",
+          "provenance": {
+            "recordId": "tie:supplier-fc1cbfef",
+            "objectType": "Relationship",
+            "revision": 2125,
+            "contentDigest": "936a8bbf10ba6ee620ae0a57a6be94899a08b490110985651664b9d717fc03a7"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `to_organization`.",
+          "estimated_tokens": 115
+        },
+        {
+          "id": "record:Organization/org:clay-fc1cbfef@2117",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Organization/org:clay-fc1cbfef@2117\",\"type\":\"Organization\",\"fields\":{\"name\":\"Riverbed Clay\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Organization/org:clay-fc1cbfef@2117",
+          "provenance": {
+            "recordId": "org:clay-fc1cbfef",
+            "objectType": "Organization",
+            "revision": 2117,
+            "contentDigest": "3ddb1ce4dffa51a27ea1e12bab3ae245ecd1eb783501851901fd85ebd1dbc29d"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `from_organization`.",
+          "estimated_tokens": 28
+        }
+      ],
+      "modelSpans": [
+        {
+          "id": "life_context_model",
+          "register": "evidence",
+          "content": "{\"data_model\":{\"about\":\"How this person's saved records are organised. `types` names every kind of record they keep and the fields that link one kind to another. `fields` explains the fields of the records given with this request. Records are given when the person's message names them or something related to them; the rest exist and were not given.\",\"types\":[{\"type\":\"Activity\",\"about\":\"Something you are doing with other people: an event, a piece of work, a plan.\",\"records\":1,\"links\":{\"people\":\"Person\",\"organization\":\"Organization\"}},{\"type\":\"Commitment\",\"about\":\"Something one person has said they will do for another.\",\"records\":1,\"links\":{\"owed_by\":\"Person\",\"owed_to\":\"Person\",\"activity\":\"Activity\"}},{\"type\":\"Constraint\",\"about\":\"A limit that shapes what is possible: availability, a budget, a rule you keep.\",\"records\":1,\"links\":{\"applies_to\":\"Person\"}},{\"type\":\"Interaction\",\"about\":\"A conversation, meeting or message exchanged with someone.\",\"records\":1,\"links\":{\"people\":\"Person\",\"activity\":\"Activity\"}},{\"type\":\"Organization\",\"about\":\"A company, group or institution that people belong to.\",\"records\":2},{\"type\":\"Person\",\"about\":\"Someone you know, work with or deal with, yourself included.\",\"records\":2,\"links\":{\"organization\":\"Organization\"}},{\"type\":\"Relationship\",\"about\":\"How two of your records are related: a person to a person, a person to an organization, or one organization to another.\",\"records\":2,\"links\":{\"from_person\":\"Person\",\"from_organization\":\"Organization\",\"to_person\":\"Person\",\"to_organization\":\"Organization\"},\"relates\":\"the record in one of [from_person, from_organization] is what `relation` says to the record in one of [to_person, to_organization]\"}],\"fields\":{\"Person\":{\"name\":\"Name. The name you know them by.\",\"organization\":\"Organization. The organization they belong to.\",\"role\":\"Role. What they do, or who they are to you.\"},\"Constraint\":{\"statement\":\"Constraint. The limit, in plain words.\",\"kind\":\"Kind. What sort of limit it is.\",\"applies_to\":\"Applies to. Whose limit it is.\"},\"Organization\":{\"name\":\"Name. What the organization is called.\"},\"Relationship\":{\"relation\":\"Relation. What the first is to the second: sister, manager, client, supplier.\",\"kind\":\"Kind. What sort of tie it is.\",\"from_person\":\"Person. The person this is about.\",\"from_organization\":\"Organization. The organization this is about, when it is not a person.\",\"to_person\":\"To person. The person they are related to.\",\"to_organization\":\"To organization. The organization they are related to, when it is not a person.\",\"details\":\"Details. Anything that qualifies it: terms, history, how you know.\"},\"Commitment\":{\"title\":\"Commitment. What was promised.\",\"owed_by\":\"Owed by. Who made the promise.\",\"owed_to\":\"Owed to. Who it was made to.\",\"activity\":\"Activity. The activity it belongs to.\",\"due\":\"Due. When it is due, as it was said.\",\"status\":\"Status. Whether it is still owed.\"},\"Interaction\":{\"summary\":\"Summary. What happened, in a line.\",\"kind\":\"Kind. How it happened.\",\"people\":\"People. Who took part.\",\"activity\":\"Activity. The activity it was about.\",\"notes\":\"Notes. What was said or decided.\"},\"Activity\":{\"name\":\"Name. What the activity is called.\",\"status\":\"Status. Where it stands.\",\"people\":\"People. Who is involved.\"}}}}",
+          "source_type": "life_context_model",
+          "derivation_ref": "life_context_model:efb4f09d17f0fefd632ab979649458f591b301e01a887ace3d786ad8f4cb9f72",
+          "provenance": {
+            "types": [
+              "Activity",
+              "Commitment",
+              "Constraint",
+              "Interaction",
+              "Organization",
+              "Person",
+              "Relationship"
+            ],
+            "explained": [
+              "Person",
+              "Constraint",
+              "Organization",
+              "Relationship",
+              "Commitment",
+              "Interaction",
+              "Activity"
+            ],
+            "contentDigest": "efb4f09d17f0fefd632ab979649458f591b301e01a887ace3d786ad8f4cb9f72"
+          },
+          "schema_valid": true,
+          "why_included": "How the person's saved records are organised and linked, to read the records given with it.",
+          "estimated_tokens": 813
+        }
+      ],
+      "searchedForInWholeBody": {
+        "phone number kept from Theorem": {
+          "text": "555-0100",
+          "found": false
+        },
+        "private note": {
+          "text": "Noor mentioned the studio may close",
+          "found": false
+        },
+        "other workspace's contact": {
+          "text": "Blake's landlord",
+          "found": false
+        },
+        "other workspace's record id": {
+          "text": "person:noor-other-fc1cbfef",
+          "found": false
+        },
+        "private record's id": {
+          "text": "interaction:private-fc1cbfef",
+          "found": false
+        }
+      }
+    },
+    {
+      "turn": 3,
+      "path": "/api/v1/chat/completions",
+      "bodyKeys": [
+        "model",
+        "messages",
+        "max_completion_tokens",
+        "temperature",
+        "top_p",
+        "tools",
+        "stream",
+        "stream_options"
+      ],
+      "model": "thinkingmachines/inkling",
+      "serializedBody": {
+        "note": "The body as the stand-in parsed it, serialized again with JSON.stringify.",
+        "bytes": 180670,
+        "sha256": "3dae479f87eccd567166fc37ba745e5a075663747c23e5184b002dc55f8f570b"
+      },
+      "messageRoles": [
+        "system",
+        "user"
+      ],
+      "systemMessageBytes": 111855,
+      "userMessages": [
+        "When is the materials list for Noor due?"
+      ],
+      "earlierAnswersInHistory": [],
+      "offersLookUp": true,
+      "toolCalls": [],
+      "toolResults": [],
+      "recordSpans": [
+        {
+          "id": "record:Person/person:avery-fc1cbfef@2083",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"type\":\"Person\",\"is_the_person_asking\":true,\"fields\":{\"name\":\"Avery Quinn\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:avery-fc1cbfef@2083",
+          "provenance": {
+            "recordId": "person:avery-fc1cbfef",
+            "objectType": "Person",
+            "revision": 2083,
+            "contentDigest": "46a297b4200b3bbda0b26fa9432b61191947c21dc06a2f8070ace71cba859720"
+          },
+          "schema_valid": true,
+          "why_included": "The saved record of the person asking.",
+          "estimated_tokens": 33
+        },
+        {
+          "id": "record:Constraint/constraint:mornings-fc1cbfef@2105",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Constraint/constraint:mornings-fc1cbfef@2105\",\"type\":\"Constraint\",\"fields\":{\"statement\":\"No calls before 10am\",\"kind\":\"availability\"},\"relations\":{\"applies_to\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Constraint/constraint:mornings-fc1cbfef@2105",
+          "provenance": {
+            "recordId": "constraint:mornings-fc1cbfef",
+            "objectType": "Constraint",
+            "revision": 2105,
+            "contentDigest": "8bd0e0006d85f0abbc6e7ad169297305899e27ba8ed5839f7f171feb41823ce2"
+          },
+          "schema_valid": true,
+          "why_included": "A standing saved record about the person asking.",
+          "estimated_tokens": 72
+        },
+        {
+          "id": "record:Person/person:noor-fc1cbfef@2093",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"type\":\"Person\",\"fields\":{\"name\":\"Noor\",\"role\":\"Runs the glaze workshop with me\"},\"relations\":{\"organization\":[{\"record\":\"record:Organization/org:kiln-fc1cbfef@2089\",\"label\":\"Kiln Street Studio\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:noor-fc1cbfef@2093",
+          "provenance": {
+            "recordId": "person:noor-fc1cbfef",
+            "objectType": "Person",
+            "revision": 2093,
+            "contentDigest": "a0c4f1ca58c73a09b0acdb21a3b6763a445cb9dae1e372e8de288eef246c1480"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record the person's message names.",
+          "estimated_tokens": 63
+        },
+        {
+          "id": "record:Organization/org:kiln-fc1cbfef@2089",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Organization/org:kiln-fc1cbfef@2089\",\"type\":\"Organization\",\"fields\":{\"name\":\"Kiln Street Studio\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Organization/org:kiln-fc1cbfef@2089",
+          "provenance": {
+            "recordId": "org:kiln-fc1cbfef",
+            "objectType": "Organization",
+            "revision": 2089,
+            "contentDigest": "b3f11285f667b4bfc6f76e42dfdb7db32a1f027552dac958f5ecbd72bdff643a"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `organization`.",
+          "estimated_tokens": 29
+        },
+        {
+          "id": "record:Relationship/tie:sister-fc1cbfef@2121",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Relationship/tie:sister-fc1cbfef@2121\",\"type\":\"Relationship\",\"statement\":\"Noor is “sister” to Avery Quinn (the person asking).\",\"fields\":{\"relation\":\"sister\",\"kind\":\"family\"},\"relations\":{\"from_person\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"}],\"to_person\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Relationship/tie:sister-fc1cbfef@2121",
+          "provenance": {
+            "recordId": "tie:sister-fc1cbfef",
+            "objectType": "Relationship",
+            "revision": 2121,
+            "contentDigest": "034fba5c1c2907091b7713be02e7754e42ba619b2ea23bfc59cc01eedf06e9c7"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `from_person`.",
+          "estimated_tokens": 103
+        },
+        {
+          "id": "record:Commitment/commitment:materials-fc1cbfef@3117",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Commitment/commitment:materials-fc1cbfef@3117\",\"type\":\"Commitment\",\"fields\":{\"title\":\"Send Noor the materials list\",\"due\":\"Friday\",\"status\":\"open\"},\"relations\":{\"owed_by\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}],\"owed_to\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-fc1cbfef@2097\",\"label\":\"Glaze workshop\"}]},\"superseded\":{\"due\":{\"previous\":\"Wednesday\"}}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Commitment/commitment:materials-fc1cbfef@3117",
+          "provenance": {
+            "recordId": "commitment:materials-fc1cbfef",
+            "objectType": "Commitment",
+            "revision": 3117,
+            "contentDigest": "546412189f964f21f22abc75c5714f18624701be288b7c3770de06975fb75c0f"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `owed_to`.",
+          "estimated_tokens": 131
+        },
+        {
+          "id": "record:Interaction/interaction:planning-fc1cbfef@2109",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Interaction/interaction:planning-fc1cbfef@2109\",\"type\":\"Interaction\",\"fields\":{\"summary\":\"Planning call for the workshop\",\"kind\":\"call\",\"notes\":\"Noor asked for the materials list before she orders glaze.\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-fc1cbfef@2097\",\"label\":\"Glaze workshop\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Interaction/interaction:planning-fc1cbfef@2109",
+          "provenance": {
+            "recordId": "interaction:planning-fc1cbfef",
+            "objectType": "Interaction",
+            "revision": 2109,
+            "contentDigest": "ebccb0b85fdb45075c41d242711c02bf2fd494115739e0832a71f76e5a9a9565"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 104
+        },
+        {
+          "id": "record:Activity/activity:workshop-fc1cbfef@2097",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Activity/activity:workshop-fc1cbfef@2097\",\"type\":\"Activity\",\"fields\":{\"name\":\"Glaze workshop\",\"status\":\"planned\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"},{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Activity/activity:workshop-fc1cbfef@2097",
+          "provenance": {
+            "recordId": "activity:workshop-fc1cbfef",
+            "objectType": "Activity",
+            "revision": 2097,
+            "contentDigest": "d3e21433150cafb297e6326fac734d645a01621985e590d36a3c3c2c1c368705"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 83
+        },
+        {
+          "id": "record:Relationship/tie:supplier-fc1cbfef@2125",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Relationship/tie:supplier-fc1cbfef@2125\",\"type\":\"Relationship\",\"statement\":\"Riverbed Clay is “supplier” to Kiln Street Studio.\",\"fields\":{\"relation\":\"supplier\",\"kind\":\"business\",\"details\":\"Twelve-month supply agreement\"},\"relations\":{\"from_organization\":[{\"record\":\"record:Organization/org:clay-fc1cbfef@2117\",\"label\":\"Riverbed Clay\"}],\"to_organization\":[{\"record\":\"record:Organization/org:kiln-fc1cbfef@2089\",\"label\":\"Kiln Street Studio\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Relationship/tie:supplier-fc1cbfef@2125",
+          "provenance": {
+            "recordId": "tie:supplier-fc1cbfef",
+            "objectType": "Relationship",
+            "revision": 2125,
+            "contentDigest": "936a8bbf10ba6ee620ae0a57a6be94899a08b490110985651664b9d717fc03a7"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `to_organization`.",
+          "estimated_tokens": 115
+        },
+        {
+          "id": "record:Organization/org:clay-fc1cbfef@2117",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Organization/org:clay-fc1cbfef@2117\",\"type\":\"Organization\",\"fields\":{\"name\":\"Riverbed Clay\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Organization/org:clay-fc1cbfef@2117",
+          "provenance": {
+            "recordId": "org:clay-fc1cbfef",
+            "objectType": "Organization",
+            "revision": 2117,
+            "contentDigest": "3ddb1ce4dffa51a27ea1e12bab3ae245ecd1eb783501851901fd85ebd1dbc29d"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `from_organization`.",
+          "estimated_tokens": 28
+        }
+      ],
+      "modelSpans": [
+        {
+          "id": "life_context_model",
+          "register": "evidence",
+          "content": "{\"data_model\":{\"about\":\"How this person's saved records are organised. `types` names every kind of record they keep and the fields that link one kind to another. `fields` explains the fields of the records given with this request. Records are given when the person's message names them or something related to them; the rest exist and were not given.\",\"types\":[{\"type\":\"Activity\",\"about\":\"Something you are doing with other people: an event, a piece of work, a plan.\",\"records\":1,\"links\":{\"people\":\"Person\",\"organization\":\"Organization\"}},{\"type\":\"Commitment\",\"about\":\"Something one person has said they will do for another.\",\"records\":1,\"links\":{\"owed_by\":\"Person\",\"owed_to\":\"Person\",\"activity\":\"Activity\"}},{\"type\":\"Constraint\",\"about\":\"A limit that shapes what is possible: availability, a budget, a rule you keep.\",\"records\":1,\"links\":{\"applies_to\":\"Person\"}},{\"type\":\"Interaction\",\"about\":\"A conversation, meeting or message exchanged with someone.\",\"records\":1,\"links\":{\"people\":\"Person\",\"activity\":\"Activity\"}},{\"type\":\"Organization\",\"about\":\"A company, group or institution that people belong to.\",\"records\":2},{\"type\":\"Person\",\"about\":\"Someone you know, work with or deal with, yourself included.\",\"records\":2,\"links\":{\"organization\":\"Organization\"}},{\"type\":\"Relationship\",\"about\":\"How two of your records are related: a person to a person, a person to an organization, or one organization to another.\",\"records\":2,\"links\":{\"from_person\":\"Person\",\"from_organization\":\"Organization\",\"to_person\":\"Person\",\"to_organization\":\"Organization\"},\"relates\":\"the record in one of [from_person, from_organization] is what `relation` says to the record in one of [to_person, to_organization]\"}],\"fields\":{\"Person\":{\"name\":\"Name. The name you know them by.\",\"organization\":\"Organization. The organization they belong to.\",\"role\":\"Role. What they do, or who they are to you.\"},\"Constraint\":{\"statement\":\"Constraint. The limit, in plain words.\",\"kind\":\"Kind. What sort of limit it is.\",\"applies_to\":\"Applies to. Whose limit it is.\"},\"Organization\":{\"name\":\"Name. What the organization is called.\"},\"Relationship\":{\"relation\":\"Relation. What the first is to the second: sister, manager, client, supplier.\",\"kind\":\"Kind. What sort of tie it is.\",\"from_person\":\"Person. The person this is about.\",\"from_organization\":\"Organization. The organization this is about, when it is not a person.\",\"to_person\":\"To person. The person they are related to.\",\"to_organization\":\"To organization. The organization they are related to, when it is not a person.\",\"details\":\"Details. Anything that qualifies it: terms, history, how you know.\"},\"Commitment\":{\"title\":\"Commitment. What was promised.\",\"owed_by\":\"Owed by. Who made the promise.\",\"owed_to\":\"Owed to. Who it was made to.\",\"activity\":\"Activity. The activity it belongs to.\",\"due\":\"Due. When it is due, as it was said.\",\"status\":\"Status. Whether it is still owed.\"},\"Interaction\":{\"summary\":\"Summary. What happened, in a line.\",\"kind\":\"Kind. How it happened.\",\"people\":\"People. Who took part.\",\"activity\":\"Activity. The activity it was about.\",\"notes\":\"Notes. What was said or decided.\"},\"Activity\":{\"name\":\"Name. What the activity is called.\",\"status\":\"Status. Where it stands.\",\"people\":\"People. Who is involved.\"}}}}",
+          "source_type": "life_context_model",
+          "derivation_ref": "life_context_model:efb4f09d17f0fefd632ab979649458f591b301e01a887ace3d786ad8f4cb9f72",
+          "provenance": {
+            "types": [
+              "Activity",
+              "Commitment",
+              "Constraint",
+              "Interaction",
+              "Organization",
+              "Person",
+              "Relationship"
+            ],
+            "explained": [
+              "Person",
+              "Constraint",
+              "Organization",
+              "Relationship",
+              "Commitment",
+              "Interaction",
+              "Activity"
+            ],
+            "contentDigest": "efb4f09d17f0fefd632ab979649458f591b301e01a887ace3d786ad8f4cb9f72"
+          },
+          "schema_valid": true,
+          "why_included": "How the person's saved records are organised and linked, to read the records given with it.",
+          "estimated_tokens": 813
+        }
+      ],
+      "searchedForInWholeBody": {
+        "phone number kept from Theorem": {
+          "text": "555-0100",
+          "found": false
+        },
+        "private note": {
+          "text": "Noor mentioned the studio may close",
+          "found": false
+        },
+        "other workspace's contact": {
+          "text": "Blake's landlord",
+          "found": false
+        },
+        "other workspace's record id": {
+          "text": "person:noor-other-fc1cbfef",
+          "found": false
+        },
+        "private record's id": {
+          "text": "interaction:private-fc1cbfef",
+          "found": false
+        }
+      }
+    },
+    {
+      "turn": 4,
+      "path": "/api/v1/chat/completions",
+      "bodyKeys": [
+        "model",
+        "messages",
+        "max_completion_tokens",
+        "temperature",
+        "top_p",
+        "tools",
+        "stream",
+        "stream_options"
+      ],
+      "model": "thinkingmachines/inkling",
+      "serializedBody": {
+        "note": "The body as the stand-in parsed it, serialized again with JSON.stringify.",
+        "bytes": 174219,
+        "sha256": "5664784c1c4969e227ef2f88c2640a4136d6e5ef1bb99b2adc165479b8c7af04"
+      },
+      "messageRoles": [
+        "system",
+        "user",
+        "assistant",
+        "user"
+      ],
+      "systemMessageBytes": 105840,
+      "userMessages": [
+        "When is the materials list for Noor due?",
+        "List my interactions"
+      ],
+      "earlierAnswersInHistory": [
+        "From your saved records. Person: Avery Quinn. Constraint: No calls before 10am. Person: Noor. Organization: Kiln Street Studio. Noor is “sister” to Avery Quinn (the person asking). \"Send Noor the materials list\" is due Friday. Interaction: Planning call for the workshop. Activity: Glaze workshop. Riverbed Clay is “supplier” to Kiln Street Studio. Organization: Riverbed Clay."
+      ],
+      "offersLookUp": true,
+      "toolCalls": [],
+      "toolResults": [],
+      "recordSpans": [
+        {
+          "id": "record:Person/person:avery-fc1cbfef@2083",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"type\":\"Person\",\"is_the_person_asking\":true,\"fields\":{\"name\":\"Avery Quinn\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:avery-fc1cbfef@2083",
+          "provenance": {
+            "recordId": "person:avery-fc1cbfef",
+            "objectType": "Person",
+            "revision": 2083,
+            "contentDigest": "46a297b4200b3bbda0b26fa9432b61191947c21dc06a2f8070ace71cba859720"
+          },
+          "schema_valid": true,
+          "why_included": "The saved record of the person asking.",
+          "estimated_tokens": 33
+        },
+        {
+          "id": "record:Constraint/constraint:mornings-fc1cbfef@2105",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Constraint/constraint:mornings-fc1cbfef@2105\",\"type\":\"Constraint\",\"fields\":{\"statement\":\"No calls before 10am\",\"kind\":\"availability\"},\"relations\":{\"applies_to\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Constraint/constraint:mornings-fc1cbfef@2105",
+          "provenance": {
+            "recordId": "constraint:mornings-fc1cbfef",
+            "objectType": "Constraint",
+            "revision": 2105,
+            "contentDigest": "8bd0e0006d85f0abbc6e7ad169297305899e27ba8ed5839f7f171feb41823ce2"
+          },
+          "schema_valid": true,
+          "why_included": "A standing saved record about the person asking.",
+          "estimated_tokens": 72
+        },
+        {
+          "id": "record:Relationship/tie:sister-fc1cbfef@2121",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Relationship/tie:sister-fc1cbfef@2121\",\"type\":\"Relationship\",\"statement\":\"Noor is “sister” to Avery Quinn (the person asking).\",\"fields\":{\"relation\":\"sister\",\"kind\":\"family\"},\"relations\":{\"from_person\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"}],\"to_person\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Relationship/tie:sister-fc1cbfef@2121",
+          "provenance": {
+            "recordId": "tie:sister-fc1cbfef",
+            "objectType": "Relationship",
+            "revision": 2121,
+            "contentDigest": "034fba5c1c2907091b7713be02e7754e42ba619b2ea23bfc59cc01eedf06e9c7"
+          },
+          "schema_valid": true,
+          "why_included": "A standing saved record about the person asking.",
+          "estimated_tokens": 103
+        },
+        {
+          "id": "record:Person/person:noor-fc1cbfef@2093",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"type\":\"Person\",\"fields\":{\"name\":\"Noor\",\"role\":\"Runs the glaze workshop with me\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:noor-fc1cbfef@2093",
+          "provenance": {
+            "recordId": "person:noor-fc1cbfef",
+            "objectType": "Person",
+            "revision": 2093,
+            "contentDigest": "19050f5162d0ab46ae26f3b247e70c1d0d4f550d1d3209317dcf2580674f36fc"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `from_person`.",
+          "estimated_tokens": 34
+        }
+      ],
+      "modelSpans": [
+        {
+          "id": "life_context_model",
+          "register": "evidence",
+          "content": "{\"data_model\":{\"about\":\"How this person's saved records are organised. `types` names every kind of record they keep and the fields that link one kind to another. `fields` explains the fields of the records given with this request. Records are given when the person's message names them or something related to them; the rest exist and were not given.\",\"types\":[{\"type\":\"Activity\",\"about\":\"Something you are doing with other people: an event, a piece of work, a plan.\",\"records\":1,\"links\":{\"people\":\"Person\",\"organization\":\"Organization\"}},{\"type\":\"Commitment\",\"about\":\"Something one person has said they will do for another.\",\"records\":1,\"links\":{\"owed_by\":\"Person\",\"owed_to\":\"Person\",\"activity\":\"Activity\"}},{\"type\":\"Constraint\",\"about\":\"A limit that shapes what is possible: availability, a budget, a rule you keep.\",\"records\":1,\"links\":{\"applies_to\":\"Person\"}},{\"type\":\"Interaction\",\"about\":\"A conversation, meeting or message exchanged with someone.\",\"records\":1,\"links\":{\"people\":\"Person\",\"activity\":\"Activity\"}},{\"type\":\"Organization\",\"about\":\"A company, group or institution that people belong to.\",\"records\":2},{\"type\":\"Person\",\"about\":\"Someone you know, work with or deal with, yourself included.\",\"records\":2,\"links\":{\"organization\":\"Organization\"}},{\"type\":\"Relationship\",\"about\":\"How two of your records are related: a person to a person, a person to an organization, or one organization to another.\",\"records\":2,\"links\":{\"from_person\":\"Person\",\"from_organization\":\"Organization\",\"to_person\":\"Person\",\"to_organization\":\"Organization\"},\"relates\":\"the record in one of [from_person, from_organization] is what `relation` says to the record in one of [to_person, to_organization]\"}],\"fields\":{\"Person\":{\"name\":\"Name. The name you know them by.\",\"role\":\"Role. What they do, or who they are to you.\"},\"Constraint\":{\"statement\":\"Constraint. The limit, in plain words.\",\"kind\":\"Kind. What sort of limit it is.\",\"applies_to\":\"Applies to. Whose limit it is.\"},\"Relationship\":{\"relation\":\"Relation. What the first is to the second: sister, manager, client, supplier.\",\"kind\":\"Kind. What sort of tie it is.\",\"from_person\":\"Person. The person this is about.\",\"to_person\":\"To person. The person they are related to.\"}}}}",
+          "source_type": "life_context_model",
+          "derivation_ref": "life_context_model:e100f2094f53298b9300eacdc749cb91a644bc3783d8599f5e2815051b8c5bd2",
+          "provenance": {
+            "types": [
+              "Activity",
+              "Commitment",
+              "Constraint",
+              "Interaction",
+              "Organization",
+              "Person",
+              "Relationship"
+            ],
+            "explained": [
+              "Person",
+              "Constraint",
+              "Relationship"
+            ],
+            "contentDigest": "e100f2094f53298b9300eacdc749cb91a644bc3783d8599f5e2815051b8c5bd2"
+          },
+          "schema_valid": true,
+          "why_included": "How the person's saved records are organised and linked, to read the records given with it.",
+          "estimated_tokens": 555
+        }
+      ],
+      "searchedForInWholeBody": {
+        "phone number kept from Theorem": {
+          "text": "555-0100",
+          "found": false
+        },
+        "private note": {
+          "text": "Noor mentioned the studio may close",
+          "found": false
+        },
+        "other workspace's contact": {
+          "text": "Blake's landlord",
+          "found": false
+        },
+        "other workspace's record id": {
+          "text": "person:noor-other-fc1cbfef",
+          "found": false
+        },
+        "private record's id": {
+          "text": "interaction:private-fc1cbfef",
+          "found": false
+        }
+      }
+    },
+    {
+      "turn": 5,
+      "path": "/api/v1/chat/completions",
+      "bodyKeys": [
+        "model",
+        "messages",
+        "max_completion_tokens",
+        "temperature",
+        "top_p",
+        "tools",
+        "stream",
+        "stream_options"
+      ],
+      "model": "thinkingmachines/inkling",
+      "serializedBody": {
+        "note": "The body as the stand-in parsed it, serialized again with JSON.stringify.",
+        "bytes": 177135,
+        "sha256": "3340879d9d3725512e1b50b4cd075cc0420ef7ee3b592f161b1969beb11505f6"
+      },
+      "messageRoles": [
+        "system",
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+        "tool"
+      ],
+      "systemMessageBytes": 105840,
+      "userMessages": [
+        "When is the materials list for Noor due?",
+        "List my interactions"
+      ],
+      "earlierAnswersInHistory": [
+        "From your saved records. Person: Avery Quinn. Constraint: No calls before 10am. Person: Noor. Organization: Kiln Street Studio. Noor is “sister” to Avery Quinn (the person asking). \"Send Noor the materials list\" is due Friday. Interaction: Planning call for the workshop. Activity: Glaze workshop. Riverbed Clay is “supplier” to Kiln Street Studio. Organization: Riverbed Clay."
+      ],
+      "offersLookUp": true,
+      "toolCalls": [
+        {
+          "name": "saved_records_look_up",
+          "arguments": "{\"types\":[\"interactions\"]}"
+        }
+      ],
+      "toolResults": [
+        {
+          "records": [
+            {
+              "reference": "record:Person/person:avery-fc1cbfef@2083",
+              "record": {
+                "record": "record:Person/person:avery-fc1cbfef@2083",
+                "type": "Person",
+                "is_the_person_asking": true,
+                "fields": {
+                  "name": "Avery Quinn"
+                }
+              }
+            },
+            {
+              "reference": "record:Interaction/interaction:planning-fc1cbfef@2109",
+              "record": {
+                "record": "record:Interaction/interaction:planning-fc1cbfef@2109",
+                "type": "Interaction",
+                "fields": {
+                  "summary": "Planning call for the workshop",
+                  "kind": "call",
+                  "notes": "Noor asked for the materials list before she orders glaze."
+                }
+              }
+            }
+          ],
+          "held_back": 1,
+          "left_out_to_fit": 1,
+          "about_these_records": {
+            "data_model": {
+              "about": "How this person's saved records are organised. `types` names every kind of record they keep and the fields that link one kind to another. `fields` explains the fields of the records given with this request. Records are given when the person's message names them or something related to them; the rest exist and were not given.",
+              "types": [
+                {
+                  "type": "Activity",
+                  "about": "Something you are doing with other people: an event, a piece of work, a plan.",
+                  "records": 1,
+                  "links": {
+                    "people": "Person",
+                    "organization": "Organization"
+                  }
+                },
+                {
+                  "type": "Commitment",
+                  "about": "Something one person has said they will do for another.",
+                  "records": 1,
+                  "links": {
+                    "owed_by": "Person",
+                    "owed_to": "Person",
+                    "activity": "Activity"
+                  }
+                },
+                {
+                  "type": "Constraint",
+                  "about": "A limit that shapes what is possible: availability, a budget, a rule you keep.",
+                  "records": 1,
+                  "links": {
+                    "applies_to": "Person"
+                  }
+                },
+                {
+                  "type": "Interaction",
+                  "about": "A conversation, meeting or message exchanged with someone.",
+                  "records": 1,
+                  "links": {
+                    "people": "Person",
+                    "activity": "Activity"
+                  }
+                },
+                {
+                  "type": "Organization",
+                  "about": "A company, group or institution that people belong to.",
+                  "records": 2
+                },
+                {
+                  "type": "Person",
+                  "about": "Someone you know, work with or deal with, yourself included.",
+                  "records": 2,
+                  "links": {
+                    "organization": "Organization"
+                  }
+                },
+                {
+                  "type": "Relationship",
+                  "about": "How two of your records are related: a person to a person, a person to an organization, or one organization to another.",
+                  "records": 2,
+                  "links": {
+                    "from_person": "Person",
+                    "from_organization": "Organization",
+                    "to_person": "Person",
+                    "to_organization": "Organization"
+                  },
+                  "relates": "the record in one of [from_person, from_organization] is what `relation` says to the record in one of [to_person, to_organization]"
+                }
+              ],
+              "fields": {
+                "Person": {
+                  "name": "Name. The name you know them by."
+                },
+                "Interaction": {
+                  "summary": "Summary. What happened, in a line.",
+                  "kind": "Kind. How it happened.",
+                  "notes": "Notes. What was said or decided."
+                }
+              }
+            }
+          }
+        }
+      ],
+      "recordSpans": [
+        {
+          "id": "record:Person/person:avery-fc1cbfef@2083",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"type\":\"Person\",\"is_the_person_asking\":true,\"fields\":{\"name\":\"Avery Quinn\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:avery-fc1cbfef@2083",
+          "provenance": {
+            "recordId": "person:avery-fc1cbfef",
+            "objectType": "Person",
+            "revision": 2083,
+            "contentDigest": "46a297b4200b3bbda0b26fa9432b61191947c21dc06a2f8070ace71cba859720"
+          },
+          "schema_valid": true,
+          "why_included": "The saved record of the person asking.",
+          "estimated_tokens": 33
+        },
+        {
+          "id": "record:Constraint/constraint:mornings-fc1cbfef@2105",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Constraint/constraint:mornings-fc1cbfef@2105\",\"type\":\"Constraint\",\"fields\":{\"statement\":\"No calls before 10am\",\"kind\":\"availability\"},\"relations\":{\"applies_to\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Constraint/constraint:mornings-fc1cbfef@2105",
+          "provenance": {
+            "recordId": "constraint:mornings-fc1cbfef",
+            "objectType": "Constraint",
+            "revision": 2105,
+            "contentDigest": "8bd0e0006d85f0abbc6e7ad169297305899e27ba8ed5839f7f171feb41823ce2"
+          },
+          "schema_valid": true,
+          "why_included": "A standing saved record about the person asking.",
+          "estimated_tokens": 72
+        },
+        {
+          "id": "record:Relationship/tie:sister-fc1cbfef@2121",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Relationship/tie:sister-fc1cbfef@2121\",\"type\":\"Relationship\",\"statement\":\"Noor is “sister” to Avery Quinn (the person asking).\",\"fields\":{\"relation\":\"sister\",\"kind\":\"family\"},\"relations\":{\"from_person\":[{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"label\":\"Noor\"}],\"to_person\":[{\"record\":\"record:Person/person:avery-fc1cbfef@2083\",\"label\":\"Avery Quinn\",\"is_the_person_asking\":true}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Relationship/tie:sister-fc1cbfef@2121",
+          "provenance": {
+            "recordId": "tie:sister-fc1cbfef",
+            "objectType": "Relationship",
+            "revision": 2121,
+            "contentDigest": "034fba5c1c2907091b7713be02e7754e42ba619b2ea23bfc59cc01eedf06e9c7"
+          },
+          "schema_valid": true,
+          "why_included": "A standing saved record about the person asking.",
+          "estimated_tokens": 103
+        },
+        {
+          "id": "record:Person/person:noor-fc1cbfef@2093",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:noor-fc1cbfef@2093\",\"type\":\"Person\",\"fields\":{\"name\":\"Noor\",\"role\":\"Runs the glaze workshop with me\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:noor-fc1cbfef@2093",
+          "provenance": {
+            "recordId": "person:noor-fc1cbfef",
+            "objectType": "Person",
+            "revision": 2093,
+            "contentDigest": "19050f5162d0ab46ae26f3b247e70c1d0d4f550d1d3209317dcf2580674f36fc"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `from_person`.",
+          "estimated_tokens": 34
+        }
+      ],
+      "modelSpans": [
+        {
+          "id": "life_context_model",
+          "register": "evidence",
+          "content": "{\"data_model\":{\"about\":\"How this person's saved records are organised. `types` names every kind of record they keep and the fields that link one kind to another. `fields` explains the fields of the records given with this request. Records are given when the person's message names them or something related to them; the rest exist and were not given.\",\"types\":[{\"type\":\"Activity\",\"about\":\"Something you are doing with other people: an event, a piece of work, a plan.\",\"records\":1,\"links\":{\"people\":\"Person\",\"organization\":\"Organization\"}},{\"type\":\"Commitment\",\"about\":\"Something one person has said they will do for another.\",\"records\":1,\"links\":{\"owed_by\":\"Person\",\"owed_to\":\"Person\",\"activity\":\"Activity\"}},{\"type\":\"Constraint\",\"about\":\"A limit that shapes what is possible: availability, a budget, a rule you keep.\",\"records\":1,\"links\":{\"applies_to\":\"Person\"}},{\"type\":\"Interaction\",\"about\":\"A conversation, meeting or message exchanged with someone.\",\"records\":1,\"links\":{\"people\":\"Person\",\"activity\":\"Activity\"}},{\"type\":\"Organization\",\"about\":\"A company, group or institution that people belong to.\",\"records\":2},{\"type\":\"Person\",\"about\":\"Someone you know, work with or deal with, yourself included.\",\"records\":2,\"links\":{\"organization\":\"Organization\"}},{\"type\":\"Relationship\",\"about\":\"How two of your records are related: a person to a person, a person to an organization, or one organization to another.\",\"records\":2,\"links\":{\"from_person\":\"Person\",\"from_organization\":\"Organization\",\"to_person\":\"Person\",\"to_organization\":\"Organization\"},\"relates\":\"the record in one of [from_person, from_organization] is what `relation` says to the record in one of [to_person, to_organization]\"}],\"fields\":{\"Person\":{\"name\":\"Name. The name you know them by.\",\"role\":\"Role. What they do, or who they are to you.\"},\"Constraint\":{\"statement\":\"Constraint. The limit, in plain words.\",\"kind\":\"Kind. What sort of limit it is.\",\"applies_to\":\"Applies to. Whose limit it is.\"},\"Relationship\":{\"relation\":\"Relation. What the first is to the second: sister, manager, client, supplier.\",\"kind\":\"Kind. What sort of tie it is.\",\"from_person\":\"Person. The person this is about.\",\"to_person\":\"To person. The person they are related to.\"}}}}",
+          "source_type": "life_context_model",
+          "derivation_ref": "life_context_model:e100f2094f53298b9300eacdc749cb91a644bc3783d8599f5e2815051b8c5bd2",
+          "provenance": {
+            "types": [
+              "Activity",
+              "Commitment",
+              "Constraint",
+              "Interaction",
+              "Organization",
+              "Person",
+              "Relationship"
+            ],
+            "explained": [
+              "Person",
+              "Constraint",
+              "Relationship"
+            ],
+            "contentDigest": "e100f2094f53298b9300eacdc749cb91a644bc3783d8599f5e2815051b8c5bd2"
+          },
+          "schema_valid": true,
+          "why_included": "How the person's saved records are organised and linked, to read the records given with it.",
+          "estimated_tokens": 555
+        }
+      ],
+      "searchedForInWholeBody": {
+        "phone number kept from Theorem": {
+          "text": "555-0100",
+          "found": false
+        },
+        "private note": {
+          "text": "Noor mentioned the studio may close",
+          "found": false
+        },
+        "other workspace's contact": {
+          "text": "Blake's landlord",
+          "found": false
+        },
+        "other workspace's record id": {
+          "text": "person:noor-other-fc1cbfef",
+          "found": false
+        },
+        "private record's id": {
+          "text": "interaction:private-fc1cbfef",
+          "found": false
+        }
+      }
+    }
+  ]
+}

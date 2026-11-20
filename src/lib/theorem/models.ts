@@ -1,6 +1,7 @@
-// SOURCING: zustand + zustand/middleware persist (the person's starred and picked models, as lib/palette keeps the palette), @tanstack/react-query (the model list Theorem serves at /api/chat/v1/models, OpenRouter's fields passed through)
+// SOURCING: zustand + zustand/middleware persist (the person's starred and picked models, as lib/palette keeps the palette; record table arrangements travel in the same preferences object as `recordLayouts` from components/records/view-state), @tanstack/react-query (the model list Theorem serves at /api/chat/v1/models, OpenRouter's fields passed through)
 import type { Theorem } from './client'
 import { create } from 'zustand'
+import { mergeLayouts, trimLayouts, useRecordLayouts } from '@/components/records/view-state'
 import { describeError, hasStatus, mutate } from './client'
 import { readGeneration, useGenerationDefaults } from './generation'
 import { isNotServed, theoremJson } from './passthrough'
@@ -276,16 +277,24 @@ type Preferences = {
   defaultModel: string | null
   /** The response defaults; a Theorem that does not keep them sends none. */
   generation?: unknown
+  /** The person's record table arrangements, by view key; sanitized by `mergeLayouts`. */
+  recordLayouts?: unknown
+  /** Any key another client keeps in the open preferences object. */
+  [extra: string]: unknown
   revision: number
 }
 
 const preferencesKey = ['theorem', 'preferences'] as const
 
 /**
- * Keeps the starred and picked models, and the response defaults, in step with
- * the person's Theorem preferences, so they follow the person across
- * browsers. A Theorem that refuses the defaults still takes the models, and
- * the defaults stay on this browser. Theorem's copy wins
+ * Keeps the starred and picked models, the response defaults and the record
+ * table arrangements (`recordLayouts`, the 50 most recently changed) in step
+ * with the person's Theorem preferences, so they follow the person across
+ * browsers. A write replaces the whole preferences object, so every write
+ * starts from the last copy Theorem returned and only overwrites the keys
+ * this browser owns; keys it does not know (`decisionModel`) are sent back
+ * untouched. A Theorem that refuses the defaults still takes the models and
+ * layouts, and the defaults stay on this browser. Theorem's copy wins
  * when it loads and when this browser comes back to the front; after that each
  * local change is written back with If-Match, one write at a time. Where Theorem
  * does not serve preferences, the local store stands alone.
@@ -307,6 +316,16 @@ export function usePreferencesSync() {
     mutationFn: async () => {
       const { starred, selected } = usePickedModels.getState()
       const models = { starredModels: starred, defaultModel: selected ?? null }
+      const trimmed = trimLayouts(useRecordLayouts.getState().layouts)
+      // Start from what Theorem last returned: the write replaces the whole object.
+      const { revision: _revision, ...kept } =
+        queryClient.getQueryData<Preferences>(preferencesKey) ?? ({} as Partial<Preferences>)
+      // A Theorem that never held layouts is not sent an empty map.
+      const owned =
+        Object.keys(trimmed).length || 'recordLayouts' in kept
+          ? { ...models, recordLayouts: trimmed }
+          : models
+      const base = { ...kept, ...owned }
       const put = (body: object) =>
         mutate((headers) =>
           theoremJson<Preferences>('/api/chat/v1/preferences', {
@@ -317,9 +336,9 @@ export function usePreferencesSync() {
         )
       const { defaults, onServer } = useGenerationDefaults.getState()
       // A Theorem that has not held the defaults this session is not asked again.
-      if (onServer === false) return put(models)
+      if (onServer === false) return put(base)
       try {
-        const saved = await put({ ...models, generation: defaults })
+        const saved = await put({ ...base, generation: defaults })
         // Theorem holds exactly what was sent: turns stop carrying the
         // defaults until a later change makes the two differ again. A change
         // made while this write was on its way is not what got saved, so it
@@ -332,7 +351,7 @@ export function usePreferencesSync() {
       } catch (error) {
         // A Theorem that does not know the field refuses the whole write.
         if (!hasStatus(error, 400, 422)) throw error
-        const saved = await put(models)
+        const saved = await put(base)
         useGenerationDefaults.setState({ onServer: false, saved: undefined })
         return saved
       }
@@ -364,6 +383,11 @@ export function usePreferencesSync() {
         onServer: true,
         saved: generation,
       })
+    if (data.recordLayouts !== undefined) {
+      const local = useRecordLayouts.getState().layouts
+      const merged = mergeLayouts(local, data.recordLayouts)
+      if (merged !== local) useRecordLayouts.setState({ layouts: merged })
+    }
     applying.current = false
   }, [data])
 
@@ -385,8 +409,12 @@ export function usePreferencesSync() {
     const stopGeneration = useGenerationDefaults.subscribe((state, previous) => {
       if (state.defaults !== previous.defaults) later()
     })
+    const stopLayouts = useRecordLayouts.subscribe((state, previous) => {
+      if (state.layouts !== previous.layouts) later()
+    })
     return () => {
       clearTimeout(timer)
+      stopLayouts()
       stopModels()
       stopGeneration()
     }

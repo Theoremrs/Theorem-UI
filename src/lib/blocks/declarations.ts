@@ -1,12 +1,16 @@
 // SOURCING: acorn (the declaration list is parsed as JavaScript call
 // expressions, so it reads like the calls the block makes). Which calls exist
-// is this app's own capability model (plan D9), hand-rolled.
+// is this app's own vocabulary (plan D9), hand-rolled.
 import { parseExpressionAt } from 'acorn'
 import type { Expression, SpreadElement } from 'acorn'
+import { APP_HISTORY_DAYS } from './app-db'
 
 /**
- * What a block declared it may reach. A block gets exactly these and nothing
- * else: no declaration, no capability.
+ * What a block says it reaches: the folder's files and state, its databases,
+ * the hosts it fetches from and the agent blocks it starts. It tells the page
+ * what the block depends on (which files re-run it, which databases to open,
+ * whether it acts when it runs); it limits nothing. A limit is the person's
+ * (a sandboxed module), set with the same shape.
  */
 export interface Capabilities {
   /** Workspace paths or globs it may read, `files.read("Data/*.csv")`. */
@@ -15,7 +19,7 @@ export interface Capabilities {
   write: Array<string>
   /** Shared state collections, `state("habits")`. */
   state: Array<string>
-  /** Hosts it may fetch from over HTTPS, `net("api.example.com")`. */
+  /** Hosts it fetches from, `net("api.example.com")`. */
   net: Array<string>
   /** Agent blocks it may start, `run("agent:#nightly")`. */
   run: Array<string>
@@ -43,8 +47,21 @@ export const isEffectful = (capabilities: Capabilities): boolean =>
 
 export interface Declarations {
   capabilities: Capabilities
+  /**
+   * Days of past versions each declared database keeps, by name: the window
+   * its declaration gives — `db("crm", { historyDays: 365 })` — or
+   * `APP_HISTORY_DAYS` when it gives none. Every `db` in `capabilities.db` is
+   * in here, so a reader never has to supply a default of its own.
+   */
+  dbHistoryDays: Record<string, number>
   errors: Array<string>
 }
+
+const emptyDeclarations = (): Declarations => ({
+  capabilities: noCapabilities(),
+  dbHistoryDays: {},
+  errors: [],
+})
 
 const CALLS: Record<string, keyof Capabilities> = {
   'files.read': 'read',
@@ -82,6 +99,38 @@ function stringArgument(
   return null
 }
 
+/**
+ * The window in `db("name", { historyDays: n })`'s second argument, or what is
+ * wrong with it.
+ */
+function dbHistoryDays(
+  name: string,
+  node: Expression | SpreadElement,
+): number | string {
+  const usage = `db("${name}", …) takes { historyDays: n }, a number of days, zero or more`
+  if (node.type !== 'ObjectExpression') return usage
+  const [property, ...rest] = node.properties
+  if (!property || rest.length > 0 || property.type !== 'Property') return usage
+  const key =
+    property.key.type === 'Identifier'
+      ? property.key.name
+      : property.key.type === 'Literal'
+        ? property.key.value
+        : null
+  const value = property.value
+  if (
+    property.computed ||
+    property.kind !== 'init' ||
+    key !== 'historyDays' ||
+    value.type !== 'Literal' ||
+    typeof value.value !== 'number' ||
+    !Number.isFinite(value.value) ||
+    value.value < 0
+  )
+    return usage
+  return value.value
+}
+
 function validate(kind: keyof Capabilities, value: string): string | null {
   if (kind === 'net' && !HOST.test(value))
     return `net("${value}") needs a host name such as api.example.com`
@@ -100,7 +149,7 @@ function validate(kind: keyof Capabilities, value: string): string | null {
 /** Parses one list of declarations, `files.read("a.csv"), state("x")`. */
 export function parseDeclarationList(
   text: string,
-  into: Declarations = { capabilities: noCapabilities(), errors: [] },
+  into: Declarations = emptyDeclarations(),
 ): Declarations {
   if (!text.trim()) return into
   let expression: Expression
@@ -122,9 +171,11 @@ export function parseDeclarationList(
       call.type === 'CallExpression' && call.callee.type !== 'Super'
         ? CALLS[calleeName(call.callee) ?? '']
         : undefined
+    const args = call.type === 'CallExpression' ? call.arguments : []
+    // A database may also say how much history it keeps.
     const value =
-      call.type === 'CallExpression' && call.arguments.length === 1
-        ? stringArgument(call.arguments[0])
+      args.length === 1 || (kind === 'db' && args.length === 2)
+        ? stringArgument(args[0])
         : null
     if (!kind || value === null) {
       into.errors.push(
@@ -133,8 +184,32 @@ export function parseDeclarationList(
       continue
     }
     const problem = validate(kind, value)
-    if (problem) into.errors.push(problem)
-    else if (!into.capabilities[kind].includes(value))
+    if (problem) {
+      into.errors.push(problem)
+      continue
+    }
+    if (kind === 'db') {
+      // A declaration of a database always settles its window: the one it
+      // states, or the default it leaves itself. Saying `db("crm")` besides
+      // `db("crm", { historyDays: 365 })` would otherwise mix the two.
+      const days = args[1] ? dbHistoryDays(value, args[1]) : APP_HISTORY_DAYS
+      if (typeof days === 'string') {
+        into.errors.push(days)
+        continue
+      }
+      // A database may be named `constructor`: only own keys count.
+      const before = Object.hasOwn(into.dbHistoryDays, value)
+        ? into.dbHistoryDays[value]
+        : undefined
+      if (before !== undefined && before !== days) {
+        into.errors.push(
+          `db("${value}") is declared with two windows, ${before} and ${days} days`,
+        )
+        continue
+      }
+      into.dbHistoryDays[value] = days
+    }
+    if (!into.capabilities[kind].includes(value))
       into.capabilities[kind].push(value)
   }
   return into
@@ -151,10 +226,7 @@ const USES_LINE = /^\s*\/\/\s*uses:(.*)$/
  * Only the comment lines before the first line of code count.
  */
 export function parseCodeDeclarations(source: string): Declarations {
-  const declarations: Declarations = {
-    capabilities: noCapabilities(),
-    errors: [],
-  }
+  const declarations = emptyDeclarations()
   for (const line of source.split('\n')) {
     const uses = USES_LINE.exec(line)
     if (uses) parseDeclarationList(uses[1] ?? '', declarations)
@@ -165,10 +237,7 @@ export function parseCodeDeclarations(source: string): Declarations {
 
 /** The declarations of an HTML app, from `<meta name="theorem:uses" content="…">`. */
 export function parseHtmlDeclarations(contents: Array<string>): Declarations {
-  const declarations: Declarations = {
-    capabilities: noCapabilities(),
-    errors: [],
-  }
+  const declarations = emptyDeclarations()
   for (const content of contents) parseDeclarationList(content, declarations)
   return declarations
 }

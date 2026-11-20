@@ -10,6 +10,9 @@ test.each(SETS)(
       expect(committed.equals(Buffer.from(bytes)), file).toBe(true)
     }
   },
+  // Tracing a whole set again takes several seconds (the control set passed
+  // bun's 5s default once it reached ten marks).
+  30_000,
 )
 
 test('a pixel splits into the layers by its colour, and they sum to its alpha', () => {

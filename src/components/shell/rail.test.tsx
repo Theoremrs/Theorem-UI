@@ -111,6 +111,20 @@ test('the rail keeps the order destinations were dragged into', () => {
     'vault',
     'spaces',
   ])
+  // Records moved into the Index; an order saved while the CRM had its own
+  // place on the rail still lists only the destinations there are.
+  expect(
+    modes(['crm' as Parameters<typeof orderModes>[0][number], 'ide']),
+  ).toEqual([
+    'ide',
+    'chat',
+    'index',
+    'notes',
+    'pages',
+    'vault',
+    'spaces',
+    'canvas',
+  ])
 })
 
 test('Alt and an arrow move a destination without opening it', async () => {
@@ -140,5 +154,22 @@ test('Alt and an arrow move a destination without opening it', async () => {
   // A screen reader hears where it went.
   expect(container.querySelector('#rail-modes-moved')?.textContent).toBe(
     `IDE moved to position ${labels().length - 2} of ${labels().length}.`,
+  )
+})
+
+test("on the desktop the tab joins the Vault's sheet, which covers the open panel", async () => {
+  useShell.setState({ panelCollapsed: {} })
+  const { router, rendered } = renderRail({ collapsible: true })
+  await rendered
+  const junction = await waitFor(() =>
+    document.querySelector<HTMLElement>('.rail-junction'),
+  )
+  expect(junction.dataset.joins).toBe('sheet')
+  await act(async () => router.navigate({ to: '/' }))
+  await waitFor(() =>
+    document.querySelector<HTMLElement>('.rail-junction')?.dataset.joins ===
+    'navigation'
+      ? true
+      : undefined,
   )
 })

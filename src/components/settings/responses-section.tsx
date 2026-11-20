@@ -1,4 +1,5 @@
 // SOURCING: the settings frame (SettingsSection, SettingsBox, SettingsRow), coss ui Select over Base UI Select, components/chat/generation-fields (the controls the composer shares), lib/theorem/generation (the account defaults)
+import { OutputStyleSelect } from './output-style-select'
 import { CountControl, DetailControl } from '@/components/chat/generation-fields'
 import {
   Select,
@@ -29,14 +30,17 @@ export function ResponsesSection() {
   const change = useGenerationDefaults((s) => s.change)
   return (
     <SettingsSection
-      title="Responses"
-      description={`How long and how deep a response may be. A conversation can set its own from the composer. ${
+      title="Output styles and settings"
+      description={`Choose how replies are written and set optional output limits. Use /output-style or /output-settings in a conversation. ${
         onServer === false
           ? 'This Theorem does not keep them for the account yet, so they are saved on this browser.'
           : 'Saved with your account.'
       }`}
     >
       <SettingsBox>
+        <SettingsRow title="Default output style" description="Instructions for how Theorem writes, independent of token limits.">
+          <OutputStyleSelect />
+        </SettingsRow>
         <SettingsRow title="Response detail" description="How much a reply says.">
           <DetailControl
             value={defaults.responseDetail}

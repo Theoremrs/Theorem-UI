@@ -5,11 +5,6 @@
 // TheoremWeb uses (stroke outlines; provenance in PROVENANCE.md).
 import type { CSSProperties, ComponentProps, FC } from 'react'
 import { cn } from '@/lib/utils'
-import Close from '@/assets/icons/composer/noun-close-8086061.svg?react'
-import Microphone from '@/assets/icons/composer/noun-microphone-8216254.svg?react'
-import Refresh from '@/assets/icons/composer/noun-refresh-8086048.svg?react'
-import Settings from '@/assets/icons/composer/noun-settings-8086044.svg?react'
-import Stop from '@/assets/icons/composer/noun-stop-8086088.svg?react'
 import CopiedMark from '@/assets/icons/message/theorem-copied.svg?react'
 import EditMark from '@/assets/icons/message/theorem-edit.svg?react'
 import MoreMark from '@/assets/icons/message/theorem-more.svg?react'
@@ -41,7 +36,6 @@ import {
   ChevronsRight as Last,
   ChevronsUpDown as UpDown,
   CornerDownRight as Continue,
-  EyeOff as Hide,
   GripVertical as Grip,
   KeyRound as Key,
   Pause,
@@ -57,7 +51,6 @@ import {
   SquareTerminal as Terminal,
   Star,
   Trash2 as Delete,
-  X,
   BellOff as Mute,
   History,
   Radar,
@@ -74,6 +67,7 @@ import {
   Circle,
   File as LucideFile,
   Folder as LucideFolder,
+  FolderOpen as LucideFolderOpen,
   AudioLines as Audio,
   Bell,
   Inbox,
@@ -85,19 +79,14 @@ import {
   LayoutGrid as Apps,
   ListChecks as Checklist,
   MessagesSquare as Conversation,
-  SquareArrowOutUpRight as Detach,
   Sparkles as Sparkle,
   Undo2 as Undo,
 } from 'lucide-react'
 import PenroseTriangle from '@/assets/icons/rail/noun-penrose-triangle-881122.svg?react'
 import Projects from '@/assets/icons/rail/noun-projects-8375031.svg?react'
-import Archive from '@/assets/icons/records/noun-archive-8315826.svg?react'
 import Check from '@/assets/icons/records/noun-checkmark-8086058.svg?react'
 import Coding from '@/assets/icons/records/noun-coding-8259870.svg?react'
-import Expand from '@/assets/icons/records/noun-expand-8086092.svg?react'
-import Eye from '@/assets/icons/records/noun-eye-8086063.svg?react'
 import Menu from '@/assets/icons/records/noun-menu-8086045.svg?react'
-import Link from '@/assets/icons/records/noun-link-8086078.svg?react'
 import ProjectRow from '@/assets/icons/tree/noun-data-8394841.svg?react'
 import FolderClosed from '@/assets/icons/streamline/streamline-folder.png'
 import AgentCursor from '@/assets/icons/streamline/streamline-agent-software-cursor-bot-2.png'
@@ -128,6 +117,8 @@ import SearchSquare from '@/assets/icons/streamline/streamline-search-square.png
 import SquareWireframe from '@/assets/icons/streamline/streamline-square-wireframe-3d.png'
 import ShareBox from '@/assets/icons/streamline/streamline-share-1.png'
 import XMark from '@/assets/icons/streamline/streamline-x.png'
+import CloseMark from '@/assets/icons/streamline/streamline-close.png'
+import ExpandMark from '@/assets/icons/streamline/streamline-expand-5.png'
 import AppWindowCode from '@/assets/icons/streamline/streamline-app-window-code.png'
 import ListEdit from '@/assets/icons/streamline/streamline-list-edit.png'
 
@@ -205,7 +196,13 @@ type PaintedMark = FC<
  * arrow), so each fill takes the next lighter colour: the accent is painted
  * as the tint and the tint as the paper, which keeps the outline legible.
  */
-const SOFT = { tint: 'paper', paper: 'paper', accent: 'tint', line: 'line' }
+const SOFT: LayerPaint = {
+  tint: 'paper',
+  paper: 'paper',
+  accent: 'tint',
+  line: 'line',
+}
+type LayerPaint = Record<(typeof ORDER)[number], (typeof ORDER)[number]>
 
 /**
  * A coloured Streamline mark as stacked masks, one per layer
@@ -219,14 +216,19 @@ const SOFT = { tint: 'paper', paper: 'paper', accent: 'tint', line: 'line' }
 export const painted = (
   layers: MarkLayers,
   shift = 0,
-  soft = false,
-): PaintedMark =>
-  function PaintedMark({ className, style, ...props }) {
+  /** true for SOFT, or a mark's own layer-to-paint map. */
+  soft: boolean | LayerPaint = false,
+  /** A mark that is itself a state (approved) keeps its colours at rest. */
+  state = false,
+): PaintedMark => {
+  const paint = soft === true ? SOFT : soft || undefined
+  return function PaintedMark({ className, style, ...props }) {
     return (
       <span
         aria-hidden="true"
         {...props}
         className={cn('rail-mark size-4', className)}
+        data-mark-state={state || undefined}
         style={{ ...style, '--rail-shift': shift } as CSSProperties}
       >
         {ORDER.map((layer) => {
@@ -235,7 +237,7 @@ export const painted = (
             src && (
               <span
                 key={layer}
-                data-layer={soft ? SOFT[layer] : layer}
+                data-layer={paint ? paint[layer] : layer}
                 className="icon-mask"
                 style={{ '--icon-mask': `url("${src}")` } as CSSProperties}
               />
@@ -245,6 +247,7 @@ export const painted = (
       </span>
     )
   }
+}
 
 /**
  * The folder and the file as the notes tree draws them. A project in the
@@ -257,6 +260,14 @@ const Folder: SvgMark = ({ className, ...props }) => (
     aria-hidden="true"
     {...props}
     className={cn('size-4 shrink-0', className, 'fill-folder text-folder')}
+  />
+)
+/** An open folder: its front flap drawn over a tinted body, so it reads open beside a filled closed one. */
+const FolderOpen: SvgMark = ({ className, ...props }) => (
+  <LucideFolderOpen
+    aria-hidden="true"
+    {...props}
+    className={cn('size-4 shrink-0', className, 'fill-folder/35 text-folder')}
   />
 )
 const FileEntry: SvgMark = ({ className, ...props }) => (
@@ -403,12 +414,59 @@ const Send = painted(CONTROL_LAYERS.send, 0, true)
 const Attachment = painted(CONTROL_LAYERS.upload, 180, true)
 const AttachFolder = painted(CONTROL_LAYERS.attachFolder, 45, true)
 const Plan = painted(CONTROL_LAYERS.plan, 180, true)
-const WebSearch = painted(CONTROL_LAYERS.webSearch, 180, true)
-const NewChat = painted(CONTROL_LAYERS.newChat, 45, true)
+// The owner's 2026-11-16 + menu set: a browser window for Web search, a Lego
+// brick for Plugins, and the coded page for Code mode.
+const WebSearch = painted(CONTROL_LAYERS.browser, 180, true)
+const Plugins = painted(CONTROL_LAYERS.plugins, 180, true)
+const CodeMode = painted(CONTROL_LAYERS.fileCode, 180, true)
+// Skills in the same menu: Icon.Skill's atom traced as a control mark, so it
+// sits in the painted family beside them rather than as a thinner mask.
+const SkillControl = painted(CONTROL_LAYERS.skill, 180, true)
+// The owner's Streamline file with a plus (review, 2026-11-15) for every new
+// thread: the page softened as the other controls' are, the plus kept at the
+// full accent, turned 260 degrees, which takes the default blue to green.
+const NewChat = painted(CONTROL_LAYERS.fileAdd, 260, {
+  ...SOFT,
+  accent: 'accent',
+})
 const ToolRunning = painted(CONTROL_LAYERS.toolRunning, 45, true)
 const ToolDone = painted(CONTROL_LAYERS.toolDone, 135, true)
 const Memory = painted(CONTROL_LAYERS.memory, 180, true)
 const Approval = painted(CONTROL_LAYERS.approval, 0, true)
+/** The sidebar's search, the coloured magnifier of the owner's sidebar reference. */
+const SearchMark = painted(CONTROL_LAYERS.search, 180, true)
+/**
+ * Session marks (components/organize/glyphs): a session's type, and the
+ * states that outrank it. Forks and continuations sit a turn from the rest
+ * so a session others came from reads apart.
+ */
+const SessionText = painted(CONTROL_LAYERS.fileText, 180, true)
+const SessionCode = painted(CONTROL_LAYERS.fileCode, 180, true)
+const SessionCheck = painted(CONTROL_LAYERS.fileCheck, 135, true)
+const SessionImage = painted(CONTROL_LAYERS.imageFileEdit, 180, true)
+const SessionForked = painted(CONTROL_LAYERS.fileModule, 45, true)
+const SessionContinued = painted(CONTROL_LAYERS.fileDouble, 45, true)
+const SessionPair = painted(CONTROL_LAYERS.fileDouble2, 45, true)
+const SessionEmpty = painted(CONTROL_LAYERS.fileEmpty, 180, true)
+
+/* The owner's 2026-11-15 Streamline set, in place of the Noun marks and the
+   Lucide stand-ins for the same ideas. Close and Expand are Light line art;
+   the rest are coloured marks, grey until their control is chosen. */
+const Close = masked(CloseMark)
+const X = Close
+const Expand = masked(ExpandMark)
+const Settings = painted(CONTROL_LAYERS.settings, 180, true)
+const Archive = painted(CONTROL_LAYERS.archive, 45, true)
+const Link = painted(CONTROL_LAYERS.link, 180, true)
+const Eye = painted(CONTROL_LAYERS.eye, 180, true)
+const Hide = painted(CONTROL_LAYERS.hide, 180, true)
+const Stop = painted(CONTROL_LAYERS.stop, 0, true)
+const Detach = painted(CONTROL_LAYERS.detach, 45, true)
+const MicOff = painted(CONTROL_LAYERS.micOff, 0, true)
+const Microphone = painted(CONTROL_LAYERS.microphone, 0, true)
+const Refresh = painted(CONTROL_LAYERS.refresh, 180, true)
+/** A tool call or request the person allowed; a menu's tick stays Check. */
+const Approved = painted(CONTROL_LAYERS.approved, 135, true, true)
 
 export const Icon = {
   Group: SquareDashed,
@@ -443,6 +501,15 @@ export const Icon = {
   Calendar,
   Chat,
   ChatSearch,
+  SearchMark,
+  SessionText,
+  SessionCode,
+  SessionCheck,
+  SessionImage,
+  SessionForked,
+  SessionContinued,
+  SessionPair,
+  SessionEmpty,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -467,6 +534,7 @@ export const Icon = {
   First,
   Follow,
   Folder,
+  FolderOpen,
   Fork,
   Grip,
   Hide,
@@ -479,6 +547,7 @@ export const Icon = {
   Mail,
   Menu,
   Microphone,
+  MicOff,
   Model,
   Moon,
   More,
@@ -513,12 +582,16 @@ export const Icon = {
   Thread,
   Memory,
   Approval,
+  Approved,
   ToolDone,
   ToolRunning,
   Unpin,
   UpDown,
   Web,
   WebSearch,
+  Plugins,
+  CodeMode,
+  SkillControl,
   Agent,
   Attachments,
   Delegate,

@@ -1,0 +1,1047 @@
+/* Theorem appearance v1. Role tokens are defined by appearance-policy.ts and
+   palettes.ts. These rules apply their paint and geometry to real elements. */
+:root {
+  --appearance-ink: var(--ink);
+  --appearance-ink-muted: var(--ink-muted);
+  --appearance-scale-content: 1;
+  --appearance-scale-ui: 1;
+  --appearance-scale-code: 1;
+  --appearance-prose-line-height: calc(
+    1.6875rem * var(--appearance-scale-content)
+  );
+  --recipe-prose: 400 1.0625rem / 1.5882352941 var(--font-sans);
+  --recipe-composer-content: var(--recipe-prose);
+  --recipe-ui-label: 400 0.875rem / 1.4285714286 var(--font-sans);
+  --recipe-ui-section: 500 0.875rem / 1.4285714286 var(--font-sans);
+  --recipe-ui-group: 600 0.9375rem / 1.3333333333 var(--font-sans);
+  --recipe-metadata: 400 0.75rem / 1.5 var(--font-sans);
+  --recipe-code: 400 0.8125rem / 1.5384615385 var(--font-mono);
+  --recipe-heading-small: 650 1.1875rem / 1.3684210526 var(--font-sans);
+  --recipe-heading-medium: 650 1.375rem / 1.3636363636 var(--font-sans);
+  --recipe-heading-large: 650 1.625rem / 1.3076923077 var(--font-sans);
+  --appearance-gap-within: 0.25rem;
+  --appearance-gap-related: 0.5rem;
+  --appearance-gap-group: 1rem;
+  --appearance-navigation-min: 2rem;
+  --appearance-control-min: 2rem;
+  --appearance-icon-size: 1rem;
+  --appearance-composer-padding: 0.75rem;
+  --appearance-editor-toolbar-gap: 0.5rem;
+  --appearance-radius-control: 0.375rem;
+  --appearance-radius-field: 0.5rem;
+  /* Messages, artifacts, code blocks and the composer share one wider corner
+     (15px, owner's choice 2026-11-17). */
+  --appearance-radius-message: 0.9375rem;
+  --appearance-radius-artifact: 0.9375rem;
+  --appearance-radius-composer: 0.9375rem;
+  --appearance-border: 1px;
+  --appearance-expanded-measure: 67.5rem;
+  --appearance-page-padding: 1rem;
+  /* Plex Sans Variable 5.3.0 Latin upright, 16px regular. Corpus and asset
+     hashes and independently measured advances are in the appearance record. */
+  --appearance-measure-comfortable: 35.75em;
+  --appearance-measure-wide: 44.75em;
+  --appearance-prose-measure: var(--appearance-measure-comfortable);
+}
+
+:root[data-density='compact'] {
+  --appearance-gap-related: 0.375rem;
+  --appearance-gap-group: 0.75rem;
+  --appearance-navigation-min: 1.75rem;
+  --appearance-composer-padding: 0.5rem;
+  --appearance-editor-toolbar-gap: 0.375rem;
+}
+
+:root[data-density='touch'] {
+  --appearance-gap-within: 0.5rem;
+  --appearance-gap-related: 0.75rem;
+  --appearance-gap-group: 1.5rem;
+  --appearance-navigation-min: 2.75rem;
+  --appearance-control-min: 2.75rem;
+  --appearance-icon-size: 1.125rem;
+}
+
+@media (pointer: coarse) {
+  :root[data-density]:not([data-density='compact']) {
+    --appearance-gap-within: 0.5rem;
+    --appearance-gap-related: 0.75rem;
+    --appearance-gap-group: 1.5rem;
+    --appearance-navigation-min: 2.75rem;
+    --appearance-control-min: 2.75rem;
+    --appearance-icon-size: 1.125rem;
+  }
+}
+
+:root[data-reading-width='wide'] {
+  --appearance-prose-measure: var(--appearance-measure-wide);
+}
+
+[data-appearance-recipe='prose'] {
+  font: var(--recipe-prose);
+  letter-spacing: normal;
+}
+[data-appearance-recipe='composer.content'] {
+  font: var(--recipe-composer-content);
+  letter-spacing: normal;
+}
+[data-appearance-recipe='ui.label'] {
+  font: var(--recipe-ui-label);
+  letter-spacing: 0.01em;
+}
+[data-appearance-recipe='ui.section'] {
+  font: var(--recipe-ui-section);
+  letter-spacing: 0.01em;
+}
+[data-appearance-recipe='ui.group'] {
+  font: var(--recipe-ui-group);
+  letter-spacing: normal;
+}
+[data-appearance-recipe='metadata'] {
+  font: var(--recipe-metadata);
+  letter-spacing: 0.01em;
+}
+[data-appearance-recipe='code'] {
+  font: var(--recipe-code);
+  letter-spacing: normal;
+}
+[data-appearance-recipe='heading.small'] {
+  font: var(--recipe-heading-small);
+  letter-spacing: normal;
+}
+[data-appearance-recipe='heading.medium'] {
+  font: var(--recipe-heading-medium);
+  letter-spacing: normal;
+}
+[data-appearance-recipe='heading.large'] {
+  font: var(--recipe-heading-large);
+  letter-spacing: normal;
+}
+
+/* Surface roles provide the solid fallback paint for their reading planes. */
+[data-surface-role='canvas'],
+[data-surface-role='assistant-reading'] {
+  --appearance-surface-fill: var(--surface-neutral);
+}
+[data-surface-role='navigation'] {
+  --appearance-surface-fill: var(--surface-sidebar);
+}
+[data-surface-role='composer'] {
+  --appearance-surface-fill: var(--surface-composer);
+}
+[data-surface-role='user-message'] {
+  --appearance-surface-fill: var(--surface-user-message);
+}
+[data-surface-role='popover'],
+[data-appearance-part='popover'],
+[data-appearance-part='tooltip'] {
+  --appearance-surface-fill: var(--popover);
+}
+[data-surface-role='artifact'],
+[data-appearance-part='artifact'] {
+  --appearance-surface-fill: var(--surface-artifact);
+}
+/* The status note is a tint of the error container over what it sits on, so a
+   failed reply reads as a margin note rather than a slab (owner review,
+   2026-11-16). Error ink keeps 4.5:1 against it in every palette. */
+[data-surface-role='status'] {
+  --appearance-surface-fill: color-mix(
+    in oklab,
+    var(--error-container) 45%,
+    transparent
+  );
+}
+
+.appearance-surface[data-material='flat'],
+.appearance-reading-plane {
+  background: var(--appearance-surface-fill);
+}
+.appearance-reading-plane {
+  --ink: var(--appearance-ink);
+  --ink-muted: var(--appearance-ink-muted);
+  --foreground: var(--appearance-ink);
+  --muted-foreground: var(--appearance-ink-muted);
+  color: var(--appearance-ink);
+}
+
+/* Let the established glass renderer paint the whole composer, and the side
+   panel's frost (styles.css glass-panel) paint the whole panel, so the Life
+   field shows through both. Interior paint hid the refraction and replaced the
+   renderer's stronger ink. Custom palettes retain their validated solid
+   reading planes; forced colors below still wins. */
+:where(
+    :root:not([data-palette='custom'])
+      :is([data-surface-role='composer'], [data-surface-role='navigation']):is(
+        [data-material='glass'],
+        [data-material='liquid']
+      )
+  )
+  .appearance-reading-plane {
+  background: transparent;
+  --ink: inherit;
+  --ink-muted: inherit;
+  --foreground: inherit;
+  --muted-foreground: inherit;
+  color: inherit;
+}
+
+/* The transcript shares the canvas paint. A separate solid reading rectangle
+   hides Expressive's sheet gradient; Calm already supplies a flat canvas.
+   Composer, navigation and floating surfaces keep their own reading planes. */
+.appearance-reading-plane[data-surface-role='assistant-reading'],
+[data-slot='aui_assistant-message-footer'].appearance-reading-plane {
+  background: transparent;
+}
+
+/* Custom palettes validate ink against their surfaces, not the built-in sheet
+   stops. Keep the whole shared canvas on that validated surface, including the
+   dark-mode vignette. CSS aliases follow palette edits and mode changes; the
+   scroll-responsive faint text uses the same validated secondary ink. */
+:root[data-palette='custom'] {
+  --surface-raised: var(--popover);
+  --surface-frame: var(--surface-sidebar);
+  --surface-rail: var(--surface-sidebar);
+  --sheet-from: var(--surface-neutral);
+  --sheet-to: var(--surface-neutral);
+  --sheet-shade: var(--surface-neutral);
+  --ink-faint: var(--ink-muted);
+  --ink-faint-top: var(--ink-muted);
+  --ink-faint-bottom: var(--ink-muted);
+}
+
+.appearance-surface.surface-paper {
+  background-color: var(--appearance-surface-fill);
+}
+.appearance-surface[data-material='paper'] {
+  --paper-grain-opacity: 0;
+}
+.appearance-surface[data-material='paper']::before {
+  opacity: 0.1;
+  inset: 0;
+  /* Keep the grain in the perimeter where it cannot affect text. */
+  clip-path: polygon(
+    evenodd,
+    0 0,
+    100% 0,
+    100% 100%,
+    0 100%,
+    0 0,
+    3px 3px,
+    3px calc(100% - 3px),
+    calc(100% - 3px) calc(100% - 3px),
+    calc(100% - 3px) 3px,
+    3px 3px
+  );
+}
+
+.appearance-surface[data-surface-role='composer'],
+.appearance-surface[data-surface-role='user-message'] {
+  border-color: var(--line-control);
+}
+/* The composer is focused nearly always (it takes focus on load and after
+   every send), so its focus edge is a quiet step up from rest rather than the
+   accent: the caret is the focus mark, and an accent ring that never goes
+   away reads as decoration. Glass and liquid keep their own edges (styles.css
+   --glass-edge-focus). Forced colors still draws Highlight below. */
+.appearance-surface[data-surface-role='composer']:focus-within {
+  border-color: color-mix(in oklab, var(--line-control), var(--ink) 22%);
+}
+.appearance-surface[data-surface-role='composer']:is(
+    [data-material='glass'],
+    [data-material='liquid']
+  ) {
+  border-color: var(--glass-edge);
+}
+.appearance-surface[data-surface-role='composer']:is(
+    [data-material='glass'],
+    [data-material='liquid']
+  ):focus-within {
+  border-color: var(--glass-edge-focus);
+}
+/* The person's turn is a soft fill with no outline: the reply beside it is
+   the heavier of the two. The border stays, transparent, so the box keeps its
+   size and forced colors can still draw it. */
+.appearance-surface[data-surface-role='user-message'] {
+  background: var(--surface-user-message);
+  border-color: transparent;
+  border-radius: var(--appearance-radius-message);
+  font: var(--recipe-prose);
+}
+
+:root:where(:not([data-appearance-preset]), [data-appearance-preset='calm']) {
+  --glow-opacity: 0;
+  --shadow-sheet: none;
+}
+
+:root[data-appearance-preset='calm'] .lift-glow {
+  display: none;
+}
+:root[data-appearance-preset='calm'] .on-sheet {
+  --surface-hover: inherit;
+}
+
+.appearance-thread-viewport {
+  scrollbar-gutter: stable both-edges;
+}
+.appearance-conversation-track {
+  --appearance-avatar-width: 2.25rem;
+  --appearance-composer-inset: calc(
+    var(--appearance-composer-padding) + var(--appearance-border)
+  );
+  --appearance-track-side: max(
+    var(--appearance-avatar-width),
+    var(--appearance-composer-inset)
+  );
+  --appearance-conversation-measure: calc(
+    var(--appearance-prose-measure) + 2 * var(--appearance-track-side)
+  );
+  font: var(--recipe-prose);
+  min-inline-size: 0;
+  inline-size: min(
+    var(--appearance-conversation-measure),
+    100% - 2 * var(--appearance-page-padding)
+  );
+}
+
+.appearance-message-grid {
+  grid-template-columns: var(--appearance-track-side) minmax(0, 1fr) var(
+      --appearance-track-side
+    );
+}
+.appearance-avatar-gutter {
+  grid-column: 1;
+}
+.appearance-message-prose {
+  grid-column: 2;
+}
+.appearance-assistant-prose {
+  display: flow-root;
+}
+.appearance-composer-track {
+  margin-inline: calc(
+    var(--appearance-track-side) - var(--appearance-composer-inset)
+  );
+}
+.appearance-flat-footer {
+  background: var(--surface-neutral);
+}
+
+@container (max-width: 35rem) {
+  .appearance-conversation-track {
+    --appearance-avatar-width: 0rem;
+    --appearance-page-padding: 0.5rem;
+  }
+  .appearance-avatar-gutter {
+    grid-column: 2;
+    margin-block-end: 0.25rem;
+  }
+}
+
+.appearance-composer-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--appearance-editor-toolbar-gap);
+  padding: var(--appearance-composer-padding);
+  border-width: var(--appearance-border);
+  border-radius: var(--appearance-radius-composer);
+  --composer-radius: var(--appearance-radius-composer);
+}
+
+.appearance-composer-context {
+  display: flex;
+  flex-direction: column;
+  gap: var(--appearance-gap-related);
+}
+.appearance-composer-context:empty {
+  display: none;
+}
+.appearance-composer-editor {
+  min-inline-size: 0;
+}
+.appearance-composer-toolbar,
+.appearance-composer-tools,
+.appearance-composer-settings,
+.appearance-composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-inline-size: 0;
+  gap: var(--appearance-gap-related);
+}
+.appearance-composer-settings {
+  flex: 1 1 8rem;
+  justify-content: end;
+}
+.appearance-composer-actions {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+}
+.appearance-composer-toolbar :is(button, [role='button']) {
+  font: var(--recipe-ui-label);
+  letter-spacing: 0.01em;
+  min-block-size: var(--appearance-control-min);
+  min-inline-size: var(--appearance-control-min);
+  block-size: auto;
+  border-radius: var(--appearance-radius-control);
+}
+.appearance-composer-toolbar :is(button, [role='button']) > svg {
+  inline-size: var(--appearance-icon-size);
+  block-size: var(--appearance-icon-size);
+}
+.appearance-composer-toolbar
+  :is(.aui-composer-send, .aui-composer-cancel, .aui-composer-resume) {
+  inline-size: var(--appearance-control-min);
+  padding: 0;
+}
+
+/* CSS grid changes placement while keeping the editor and controls mounted.
+   Only the tools move above the editor, the action row stays last. */
+[data-composer-layout='sidecar'] .appearance-composer-box {
+  grid-template-areas: 'context context' 'tools tools' 'editor editor' 'settings actions';
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+[data-composer-layout='sidecar'] .appearance-composer-context {
+  grid-area: context;
+}
+[data-composer-layout='sidecar']
+  .appearance-composer-box:has(.appearance-composer-context:empty) {
+  grid-template-areas: 'tools tools' 'editor editor' 'settings actions';
+}
+[data-composer-layout='sidecar'] .appearance-composer-editor {
+  grid-area: editor;
+}
+[data-composer-layout='sidecar'] .appearance-composer-toolbar {
+  display: contents;
+}
+[data-composer-layout='sidecar'] .appearance-composer-tools {
+  grid-area: tools;
+}
+[data-composer-layout='sidecar'] .appearance-composer-settings {
+  grid-area: settings;
+}
+[data-composer-layout='sidecar'] .appearance-composer-actions {
+  grid-area: actions;
+  align-self: end;
+}
+
+.theorem-composer.theorem-note .milkdown .ProseMirror,
+.theorem-composer.theorem-note .milkdown .ProseMirror :is(p, li),
+.theorem-composer.theorem-note .milkdown .crepe-placeholder::before {
+  font: var(--recipe-composer-content);
+  letter-spacing: normal;
+}
+.theorem-composer.theorem-note .milkdown .ProseMirror {
+  color: var(--ink);
+  /* Two lines of room before anything is written, so the empty composer
+     stands about 110px with its action row and invites a longer message. */
+  min-block-size: 3em;
+  max-block-size: min(24rem, 40dvh);
+  padding: 0;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+  caret-color: var(--link);
+}
+.theorem-composer.theorem-note .milkdown .ProseMirror p {
+  padding: 0;
+  margin: 0;
+}
+.theorem-composer.theorem-note .milkdown .crepe-placeholder::before {
+  color: var(--ink-muted);
+}
+.theorem-composer.theorem-note .milkdown {
+  --crepe-color-surface: var(--popover);
+  --crepe-color-inline-area: var(--popover);
+  --crepe-color-inline-code: var(--ink);
+}
+.theorem-composer.theorem-note .milkdown .ProseMirror code,
+.theorem-composer.theorem-note .milkdown .ProseMirror .cm-scroller,
+.theorem-composer.theorem-note .milkdown .ProseMirror .cm-content {
+  font: var(--recipe-code);
+  letter-spacing: normal;
+}
+.aui-edit-composer-input.theorem-composer.theorem-note .milkdown .ProseMirror {
+  min-block-size: 0;
+  max-block-size: none;
+  padding: 0.5rem 1rem;
+}
+
+.aui-md {
+  display: flow-root;
+  --appearance-paragraph-gap: calc(0.75 * var(--appearance-prose-line-height));
+  --appearance-section-gap: calc(1.5 * var(--appearance-prose-line-height));
+}
+.aui-md > .aui-md-p {
+  margin-block: 0;
+}
+.aui-md > * + .aui-md-p {
+  margin-block-start: var(--appearance-paragraph-gap);
+}
+.aui-md > :is(h1, h2, h3, h4, h5, h6) {
+  margin-block: 0;
+}
+.aui-md > * + :is(h1, h2, h3, h4, h5, h6) {
+  margin-block-start: var(--appearance-section-gap);
+}
+.aui-md > :is(h1, h2, h3, h4, h5, h6) + .aui-md-p {
+  margin-block-start: var(--appearance-paragraph-gap);
+}
+.aui-md :is(.aui-md-li, .aui-md-table) {
+  line-height: inherit;
+}
+
+/* Reading ink: the answer reads a step stronger than the chrome around it,
+   and headings stronger still. Mixed toward the mode's extreme so every
+   palette only gains contrast. */
+.appearance-assistant-prose .aui-md {
+  --appearance-reading-ink: color-mix(
+    in oklab,
+    var(--ink) 78%,
+    light-dark(#000, #fff)
+  );
+  --appearance-section-gap: calc(1.75 * var(--appearance-prose-line-height));
+  color: var(--appearance-reading-ink);
+}
+.appearance-assistant-prose .aui-md :is(h1, h2, h3, h4, h5, h6) {
+  color: color-mix(in oklab, var(--ink) 55%, light-dark(#000, #fff));
+}
+.appearance-assistant-prose .aui-md .aui-md-strong {
+  color: color-mix(in oklab, var(--ink) 60%, light-dark(#000, #fff));
+}
+
+/* Inline code: medium-weight mono at the prose's size in the palette's warm
+   ink on a faint tint of it, with no border. */
+.aui-md-inline-code {
+  font-family: var(--appearance-font-mono, var(--font-mono));
+  font-size: 0.875em;
+  font-weight: 500;
+  letter-spacing: normal;
+  color: var(--attention-ink);
+  background: color-mix(in oklab, var(--attention-ink) 9%, transparent);
+  border-radius: 0.3em;
+  padding: 0.08em 0.32em;
+  overflow-wrap: anywhere;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* A long string in backticks becomes a contained diagnostic block. */
+.aui-md-diagnostic {
+  display: block;
+  margin-block: calc(0.5 * var(--appearance-prose-line-height));
+  padding: 0.625rem 0.875rem;
+  color: var(--ink);
+  background: var(--popover);
+  border: var(--appearance-border) solid var(--line-separator);
+  border-inline-start: 2px solid var(--line-control);
+  border-radius: var(--appearance-radius-field);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Tables: inside the column on an opaque quiet surface, padded, with a clear
+   header, scrolling sideways in their own container. */
+.aui-md > .aui-md-table-wrapper {
+  margin-block: var(--appearance-paragraph-gap);
+  background: var(--popover);
+  border: var(--appearance-border) solid var(--line-separator);
+  border-radius: var(--appearance-radius-artifact);
+  overflow: hidden;
+  font-size: 0.9375em;
+}
+.aui-md-table-wrapper [data-slot='table-container'] {
+  scrollbar-width: thin;
+}
+.aui-md-table .aui-md-thead {
+  background: color-mix(in oklab, var(--ink) 4%, var(--popover));
+}
+.aui-md-table .aui-md-thead .aui-md-tr {
+  border-block-end: var(--appearance-border) solid var(--line-control);
+}
+.aui-md-table .aui-md-tr {
+  border-block-end: var(--appearance-border) solid var(--line-separator);
+}
+.aui-md-table .aui-md-tbody .aui-md-tr:last-child {
+  border-block-end: 0;
+}
+
+.aui-code-block :is(pre, code),
+.aui-user-markdown :is(pre, code) {
+  font: var(--recipe-code);
+  letter-spacing: normal;
+}
+
+.aui-code-block :is(pre, pre *)::selection {
+  color: var(--ink);
+  background-color: var(--surface-selected);
+}
+/* The line-number column, as the owner's CodeBlock draws it: right-aligned
+   in at least two characters, a 1.5rem gutter, in the faint ink. */
+.aui-code-block pre.th-code--line-numbers .th-line::before {
+  min-inline-size: 2ch;
+  inline-size: auto;
+  padding-inline-end: 1.5rem;
+  color: var(--ink-faint);
+}
+.aui-code-block .th-line.highlighted {
+  box-shadow: inset 2px 0 var(--line-control);
+}
+/* The glass block's body, as the framecn source sets it: a narrow number
+   column and a little air between lines. */
+.aui-code-block[data-code-surface='glass'] .th-line {
+  padding-block: 2px;
+}
+.aui-code-block[data-code-surface='glass'] pre.th-code--line-numbers .th-line::before {
+  padding-inline-end: 1rem;
+}
+/* A block that wraps its lines lets each line wrap inside the pre. */
+.aui-code-block.aui-code-wrap .th-line {
+  inline-size: auto;
+  min-inline-size: 0;
+  display: block;
+}
+
+/* Code stays inside the prose column, as tables do, and scrolls sideways in
+   its own region. */
+.appearance-assistant-prose
+  .aui-md
+  > :is(
+    .aui-code-block,
+    .aui-glass-code,
+    .aui-md-pre,
+    .aui-code-header-root
+  ) {
+  inline-size: 100%;
+  max-inline-size: 100%;
+}
+
+[data-appearance-part='popover'],
+[data-appearance-part='tooltip'] {
+  border-radius: var(--appearance-radius-field);
+}
+[data-appearance-part='artifact'] {
+  border-radius: var(--appearance-radius-artifact);
+}
+.appearance-shell :focus-visible,
+.appearance-composer-box :focus-visible,
+.appearance-conversation-track :focus-visible,
+[data-appearance-part='navigation'] :focus-visible,
+[data-appearance-part='popover'] :focus-visible,
+[data-appearance-part='drawer'] :focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+/* The dock clips its content at the panel edge. Reserve space for the
+   rounded header buttons' outer focus outlines inside the panel. */
+.appearance-thread-header {
+  padding-block: 0.375rem;
+}
+.appearance-thread-header :focus-visible,
+.aui-assistant-action-bar-root :focus-visible,
+.appearance-composer-toolbar :is(button, [role='button']):focus-visible {
+  outline-width: 4px;
+  outline-offset: 1px;
+}
+.aui-assistant-action-bar-root :focus-visible,
+.appearance-composer-toolbar :is(button, [role='button']):focus-visible {
+  box-shadow: none;
+}
+/* Dockview intentionally clips the horizontal tab scroller. Keep the
+   keyboard indicator inside the tab's own painted box. */
+.appearance-shell .dv-tab:focus-visible {
+  outline-width: 4px;
+  outline-offset: -4px;
+}
+.appearance-thread-viewport:focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: -6px;
+}
+[data-slot='aui_assistant-message-footer'] {
+  --appearance-surface-fill: var(--surface-neutral);
+}
+:is([data-appearance-part='navigation'], [data-appearance-part='popover'])
+  [data-slot='scroll-area-viewport'] {
+  mask-image: none;
+}
+
+.appearance-conversation-track :focus-visible {
+  scroll-margin-block-end: 9rem;
+}
+.appearance-composer-box :focus-visible {
+  scroll-margin-block-end: 0;
+}
+
+:root[data-appearance-motion='reduced']
+  :is(
+    .aui-thread-root,
+    [data-appearance-part='popover'],
+    [data-appearance-part='drawer']
+  )
+  *,
+:root[data-appearance-motion='reduced']
+  :is(
+    .aui-thread-root,
+    [data-appearance-part='popover'],
+    [data-appearance-part='drawer']
+  ) {
+  animation-duration: 0s !important;
+  transition-duration: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+@media (forced-colors: active) {
+  .appearance-surface,
+  .appearance-reading-plane,
+  .appearance-reading-plane[data-surface-role='assistant-reading'],
+  [data-slot='aui_assistant-message-footer'].appearance-reading-plane,
+  [data-appearance-part='popover'] {
+    background: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .appearance-surface::before,
+  .appearance-surface::after,
+  [data-liquid-canvas] {
+    display: none;
+  }
+  .appearance-shell :focus-visible,
+  .appearance-composer-box :focus-visible,
+  .appearance-conversation-track :focus-visible,
+  [data-appearance-part='navigation'] :focus-visible,
+  [data-appearance-part='popover'] :focus-visible {
+    outline-color: Highlight;
+  }
+}
+
+.appearance-import :focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.appearance-composer-toolbar [data-slot='combobox-trigger'] {
+  min-inline-size: var(--appearance-control-min);
+  /* Room for a default model's name and its "(default)" note; it still
+     shrinks first when the composer is narrow. */
+  max-inline-size: min(15rem, 100%);
+}
+.appearance-composer-toolbar > :is(div) {
+  max-inline-size: 100%;
+}
+.appearance-composer-toolbar :is(button, [role='button']):not(:disabled) {
+  flex-shrink: 0;
+}
+.appearance-composer-toolbar [data-slot='combobox-trigger']:not(:disabled) {
+  flex-shrink: 1;
+}
+
+/* Non-composer roles have opaque paint. Texture, frost and liquid accents
+   affect their perimeter without putting text over a changing backdrop. The
+   menus that open off the composer are the composer's glass instead
+   (glass/menu-glass, styles.css glass-menu). The
+   side panel is the exception: as glass it is the sheet frosted over the Life
+   field (styles.css glass-panel draws its veil), unless a custom palette asks
+   for its validated solid fill. */
+.appearance-surface[data-surface-role='user-message'],
+.appearance-surface[data-surface-role='navigation']:not(
+    [data-material='glass'],
+    [data-material='liquid']
+  ),
+:root[data-palette='custom']
+  .appearance-surface[data-surface-role='navigation'],
+[data-appearance-part='popover']:not(.glass-menu, .glass-menu *),
+[data-appearance-part='tooltip'],
+[data-appearance-part='artifact'],
+[data-surface-role='status'] {
+  --appearance-rim: none;
+  background-color: var(--appearance-surface-fill);
+  box-shadow: var(--appearance-rim);
+}
+.appearance-surface[data-surface-role='navigation']
+  > .appearance-reading-plane {
+  position: relative;
+  z-index: 1;
+}
+.appearance-surface[data-surface-role='navigation'][data-material='paper'],
+:root[data-material-popover='paper']
+  :is(
+    [data-appearance-part='popover']:not(.glass-menu, .glass-menu *),
+    [data-appearance-part='tooltip']
+  ),
+:root[data-material-artifact='paper'] [data-appearance-part='artifact'],
+:root[data-material-status='paper'] [data-surface-role='status'] {
+  --appearance-rim:
+    inset 0 1px 0 var(--paper-highlight),
+    0 2px 8px color-mix(in srgb, var(--ink) 15%, transparent);
+}
+.appearance-surface:is(
+    [data-surface-role='navigation'],
+    [data-surface-role='user-message']
+  )[data-material='glass'],
+:root[data-material-popover='glass']
+  :is(
+    [data-appearance-part='popover']:not(.glass-menu, .glass-menu *),
+    [data-appearance-part='tooltip']
+  ),
+:root[data-material-artifact='glass'] [data-appearance-part='artifact'],
+:root[data-material-status='glass'] [data-surface-role='status'] {
+  --appearance-rim:
+    inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-shade),
+    0 4px 16px color-mix(in srgb, var(--ink) 15%, transparent);
+  backdrop-filter: blur(var(--glass-blur));
+}
+.appearance-surface:is(
+    [data-surface-role='navigation'],
+    [data-surface-role='user-message']
+  )[data-material='liquid'],
+:root[data-material-popover='liquid']
+  :is(
+    [data-appearance-part='popover']:not(.glass-menu, .glass-menu *),
+    [data-appearance-part='tooltip']
+  ),
+:root[data-material-artifact='liquid'] [data-appearance-part='artifact'],
+:root[data-material-status='liquid'] [data-surface-role='status'] {
+  --appearance-rim: inset 0 0 2px 1px var(--glass-rim), var(--liquid-elevation);
+  backdrop-filter: blur(var(--liquid-see-blur));
+}
+:root[data-material-canvas='flat'] .bg-sheet {
+  --sheet-shade: var(--surface-neutral);
+  --sheet-field: none;
+}
+/* The rail's tab is part of the surface it opens onto (rail.tsx Junction):
+   the panel's own fill while the panel is open, or the sheet as the canvas
+   material paints it. */
+.rail-junction[data-joins='navigation'] > * {
+  background-color: var(--surface-sidebar);
+  background-image: none;
+}
+/* Under glass the panel is the composer's glass (styles.css): its tone laid
+   over the sheet's field at the pane's body, of which the screen shows all
+   but --lg-show, the rest being the field itself through the thinned body.
+   Where the field is empty that lands on the tone at body x (1 - show) over
+   the sheet, so the tab lays exactly that and the two meet as one colour. */
+:root:is([data-material-navigation='glass'], [data-material-navigation='liquid'])
+  .rail-junction[data-joins='navigation']
+  > * {
+  --junction-veil: color-mix(
+    in srgb,
+    var(--composer-glass-tone)
+      calc(var(--lg-body) * (1 - var(--lg-show)) * 100%),
+    transparent
+  );
+  background-color: transparent;
+  background-image:
+    linear-gradient(var(--junction-veil), var(--junction-veil)),
+    var(--sheet-field);
+}
+/* Under glass the renderer draws the tab (rail.tsx) as a pane of that glass
+   that runs on into the panel through its concave corners, so the panel's
+   glass alone shows the selection. Its live box grows by the corners to make
+   room for them, and the CSS corners and the veil go. It sits over the rail,
+   so it draws what its thinned body would show (--lg-backdrop) instead of a
+   blur of the rail. Until it draws, the veil above stands in. */
+:root:is([data-material-navigation='glass'], [data-material-navigation='liquid'])
+  .rail-junction[data-joins='navigation'] {
+  & > .rail-junction-tab {
+    isolation: isolate;
+    --lg-backdrop: none;
+    --lg-fillet: var(--junction-corner);
+  }
+
+  & > .rail-junction-tab[data-liquid='live'] {
+    top: calc(var(--rail-y) - var(--junction-corner));
+    height: calc(var(--junction-item) + 2 * var(--junction-corner));
+    background: none;
+  }
+
+  &[data-flush] > .rail-junction-tab[data-liquid='live'] {
+    top: calc(var(--rail-y) - var(--junction-lead, 0px));
+    height: calc(
+      var(--junction-item) + var(--junction-lead, 0px) + var(--junction-corner)
+    );
+  }
+
+  &:has(> .rail-junction-tab[data-liquid='live']) > .rail-junction-corner {
+    display: none;
+  }
+}
+:root[data-material-canvas='flat'] .rail-junction[data-joins='sheet'] > * {
+  background-color: var(--surface-neutral);
+  background-image: none;
+}
+:root[data-material-canvas='glass'] .bg-sheet {
+  backdrop-filter: blur(var(--glass-blur));
+}
+:root[data-material-canvas='liquid'] .bg-sheet {
+  box-shadow: var(--liquid-elevation);
+}
+
+.appearance-composer-tools :is(button, [role='button']) {
+  gap: var(--appearance-gap-within);
+}
+.appearance-composer-tools
+  :is(button, [role='button']):has(> span > .rail-mark) {
+  padding-block: 0.125rem;
+}
+.appearance-composer-toolbar :is(.rail-mark, .aui-composer-send-icon) {
+  inline-size: var(--appearance-icon-size);
+  block-size: var(--appearance-icon-size);
+}
+.aui-composer-send-icon .icon-mask {
+  background-color: currentColor;
+}
+/* Send has no tile: the plane is filled with the accent the tile used to be,
+   under the ink outline, so it reads in light and dark alike. Masks only:
+   without them (Servo) styles.css shows the outline alone. */
+@supports (mask-image: none) {
+  .aui-composer-send-icon > [data-layer='paper'] {
+    background-color: var(--redwood);
+    transition: background-color 150ms;
+  }
+  .aui-composer-send:is(:hover, :focus-visible)
+    .aui-composer-send-icon
+    > [data-layer='paper'] {
+    background-color: var(--redwood-hover);
+  }
+  .aui-composer-send:active .aui-composer-send-icon > [data-layer='paper'] {
+    background-color: var(--redwood-pressed);
+  }
+}
+/* The stop mark on a filled action (Cancel, Stop generating) and the
+   microphone-off of a running dictation are drawn in their button's own
+   colour: the ring and the square on the destructive fill, and the mark in
+   the recording red, and the resume arrows on theirs. Their fills are a
+   faint wash of it. */
+/* Masks only: without them (Servo) styles.css shows the outline alone. */
+@supports (mask-image: none) {
+  :is(
+      .aui-composer-cancel-icon,
+      .aui-composer-stop-dictation-icon,
+      .aui-composer-resume-icon
+    ).rail-mark
+    > .icon-mask {
+    background-color: color-mix(in oklab, currentColor 22%, transparent);
+  }
+  :is(
+      .aui-composer-cancel-icon,
+      .aui-composer-stop-dictation-icon,
+      .aui-composer-resume-icon
+    ).rail-mark
+    > [data-layer='line'],
+  .aui-composer-cancel-icon.rail-mark > [data-layer='tint'] {
+    background-color: currentColor;
+  }
+  /* Resume has no tile either: its arrows take the accent, like Send. Refresh
+     is a soft mark, so its arrows are drawn as the paper layer. */
+  .aui-composer-resume-icon.rail-mark > [data-layer='paper'] {
+    background-color: var(--redwood);
+    transition: background-color 150ms;
+  }
+  .aui-composer-resume:is(:hover, :focus-visible)
+    .aui-composer-resume-icon.rail-mark
+    > [data-layer='paper'] {
+    background-color: var(--redwood-hover);
+  }
+  .aui-composer-resume:active
+    .aui-composer-resume-icon.rail-mark
+    > [data-layer='paper'] {
+    background-color: var(--redwood-pressed);
+  }
+}
+/* Keep paired action paints synchronized, including inherited SVG colors. */
+.appearance-composer-toolbar
+  :is(.aui-composer-send, .appearance-destructive-action),
+.appearance-composer-toolbar
+  :is(.aui-composer-send, .appearance-destructive-action)
+  * {
+  transition-property: transform, scale, rotate, translate, box-shadow;
+}
+.appearance-composer-toolbar .appearance-destructive-action {
+  color: var(--on-error);
+  background: var(--error-solid);
+}
+.appearance-composer-toolbar
+  .appearance-destructive-action:is(:hover, :active) {
+  color: var(--error-ink);
+  background: var(--error-container);
+}
+.appearance-artifact-card[data-selected] {
+  background: var(--surface-selected);
+}
+.appearance-assistant-prose
+  .appearance-artifact-card[data-appearance-expanded] {
+  --appearance-expanded-width: min(
+    var(--appearance-expanded-measure),
+    100cqi - 2rem
+  );
+  inline-size: max(100%, var(--appearance-expanded-width));
+  margin-inline-start: min(0px, (100% - var(--appearance-expanded-width)) / 2);
+}
+
+.appearance-composer-toolbar
+  .appearance-composer-tools
+  :is(button, [role='button']):not([aria-pressed='true']) {
+  color: var(--ink-muted);
+}
+.appearance-composer-toolbar
+  .appearance-composer-tools
+  :is(button, [role='button'])[aria-pressed='true'] {
+  /* A mode that is on (Web, Code) is its coloured mark alone, with no box
+     behind it (owner, 2026-11-17). */
+  color: var(--link);
+}
+.appearance-composer-toolbar :is(button, [role='button']) {
+  white-space: normal;
+}
+.appearance-composer-toolbar
+  :is(button, [role='button'])
+  > :not(svg, [aria-hidden], .sr-only) {
+  overflow-wrap: anywhere;
+}
+.appearance-thread-viewport {
+  scroll-padding-block-end: min(24rem, 60%);
+}
+.appearance-composer-box :focus-visible {
+  scroll-margin-block: 0.25rem;
+}
+.aui-assistant-message-content,
+.aui-user-message-content {
+  overflow-wrap: anywhere;
+}
+
+/* Only a phone-width toolbar gives the tools a row of their own; from 25rem
+   the chips' marks, the settings and the send fit on one row. */
+@container (max-width: 25rem) {
+  .appearance-composer-toolbar {
+    align-items: flex-end;
+  }
+  .appearance-composer-tools {
+    flex: 1 1 100%;
+  }
+  .appearance-composer-settings {
+    justify-content: start;
+  }
+}
+
+@media (forced-colors: active) {
+  .appearance-composer-toolbar .aui-composer-send,
+  .appearance-composer-toolbar .aui-composer-cancel,
+  .appearance-composer-toolbar .aui-composer-resume {
+    border-color: ButtonText;
+  }
+  .appearance-composer-toolbar [aria-pressed='true'],
+  .appearance-artifact-card[data-selected] {
+    outline: 1px solid Highlight;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .appearance-surface,
+  [data-appearance-part='popover'],
+  [data-appearance-part='tooltip'] {
+    background-color: var(--appearance-surface-fill);
+    backdrop-filter: none !important;
+  }
+  .appearance-surface::before,
+  .appearance-surface::after {
+    display: none;
+  }
+}

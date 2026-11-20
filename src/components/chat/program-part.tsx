@@ -1,5 +1,5 @@
 // SOURCING: @assistant-ui/react data parts; the installed CollapsibleRoot over
-// Base UI Collapsible; the chat's Shiki highlighter (shiki-highlighter.tsx),
+// Base UI Collapsible; the chat's TanStack Highlight code block (code-highlighter.tsx),
 // as its code blocks use it. What a program part says and when it is drawn is
 // this app's.
 import { useAuiState } from '@assistant-ui/react'
@@ -10,7 +10,7 @@ import {
   CollapsibleRoot,
   CollapsibleTrigger,
 } from '@/components/assistant-ui/elements/collapsible-root'
-import { SyntaxHighlighter } from '@/components/assistant-ui/elements/shiki-highlighter'
+import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highlighter'
 import { liveEnter } from '@/components/assistant-ui/elements/surfaces'
 import { Icon } from '@/components/icons'
 import { cn } from '@/lib/utils'

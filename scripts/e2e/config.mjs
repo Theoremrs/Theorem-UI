@@ -9,12 +9,19 @@ export const API_PORT = port('E2E_API_PORT', 8392)
 export const IDENTITY_PORT = port('E2E_IDENTITY_PORT', 8398)
 export const STANDIN_PORT = port('E2E_STANDIN_PORT', 8399)
 export const NEON_PORT = port('E2E_NEON_PORT', 8397)
+export const IDE_HOST_PORT = port('E2E_IDE_HOST_PORT', 8790)
+export const SCRIPTED_PORT = port('E2E_SCRIPTED_PORT', 8396)
 
 export const UI = `http://localhost:${UI_PORT}`
 export const API = `http://127.0.0.1:${API_PORT}`
 export const IDENTITY = `http://127.0.0.1:${IDENTITY_PORT}`
 export const STANDIN = `http://127.0.0.1:${STANDIN_PORT}`
 export const NEON = `http://127.0.0.1:${NEON_PORT}`
+export const IDE_HOST = `http://127.0.0.1:${IDE_HOST_PORT}`
+export const SCRIPTED = `http://127.0.0.1:${SCRIPTED_PORT}`
+
+/** The model scripted-model.mjs serves, as Theorem's catalog names it. */
+export const SCRIPTED_MODEL = { provider: 'fixture', model: 'scripted' }
 
 /**
  * How people sign in. `oidc` (the default) is the local OpenID provider in
@@ -37,3 +44,10 @@ export const DATA_DIR =
 
 /** The test account. Its first sign-in provisions a tenant of this name. */
 export const ACCOUNT = 'claude-e2e'
+
+/**
+ * A second person with a workspace of their own, for scenarios that prove one
+ * workspace's records never reach another's. Admitted only by a stack started
+ * with E2E_CONTEXT_STANDIN.
+ */
+export const OTHER_ACCOUNT = 'claude-e2e-other'

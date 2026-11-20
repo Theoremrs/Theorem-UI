@@ -20,10 +20,6 @@ import planLine from './plan-line.svg'
 import planAccent from './plan-accent.svg'
 import planTint from './plan-tint.svg'
 import planPaper from './plan-paper.svg'
-import webSearchLine from './webSearch-line.svg'
-import webSearchAccent from './webSearch-accent.svg'
-import webSearchTint from './webSearch-tint.svg'
-import webSearchPaper from './webSearch-paper.svg'
 import newChatLine from './newChat-line.svg'
 import newChatAccent from './newChat-accent.svg'
 import newChatPaper from './newChat-paper.svg'
@@ -42,6 +38,95 @@ import approvalLine from './approval-line.svg'
 import approvalAccent from './approval-accent.svg'
 import approvalTint from './approval-tint.svg'
 import approvalPaper from './approval-paper.svg'
+import searchLine from './search-line.svg'
+import searchAccent from './search-accent.svg'
+import searchTint from './search-tint.svg'
+import fileTextLine from './fileText-line.svg'
+import fileTextTint from './fileText-tint.svg'
+import fileTextPaper from './fileText-paper.svg'
+import fileCodeLine from './fileCode-line.svg'
+import fileCodeTint from './fileCode-tint.svg'
+import fileCodePaper from './fileCode-paper.svg'
+import fileCheckLine from './fileCheck-line.svg'
+import fileCheckAccent from './fileCheck-accent.svg'
+import fileCheckTint from './fileCheck-tint.svg'
+import fileCheckPaper from './fileCheck-paper.svg'
+import fileModuleLine from './fileModule-line.svg'
+import fileModuleTint from './fileModule-tint.svg'
+import fileModulePaper from './fileModule-paper.svg'
+import fileDoubleLine from './fileDouble-line.svg'
+import fileDoubleTint from './fileDouble-tint.svg'
+import fileDoublePaper from './fileDouble-paper.svg'
+import fileDouble2Line from './fileDouble2-line.svg'
+import fileDouble2Tint from './fileDouble2-tint.svg'
+import fileDouble2Paper from './fileDouble2-paper.svg'
+import fileEmptyLine from './fileEmpty-line.svg'
+import fileEmptyTint from './fileEmpty-tint.svg'
+import fileEmptyPaper from './fileEmpty-paper.svg'
+import fileEditLine from './fileEdit-line.svg'
+import fileEditAccent from './fileEdit-accent.svg'
+import fileEditTint from './fileEdit-tint.svg'
+import fileEditPaper from './fileEdit-paper.svg'
+import fileAddLine from './fileAdd-line.svg'
+import fileAddAccent from './fileAdd-accent.svg'
+import fileAddTint from './fileAdd-tint.svg'
+import fileAddPaper from './fileAdd-paper.svg'
+import imageFileEditLine from './imageFileEdit-line.svg'
+import imageFileEditAccent from './imageFileEdit-accent.svg'
+import imageFileEditPaper from './imageFileEdit-paper.svg'
+import folderEmptyLine from './folderEmpty-line.svg'
+import folderEmptyAccent from './folderEmpty-accent.svg'
+import folderEmptyPaper from './folderEmpty-paper.svg'
+import folderFileLine from './folderFile-line.svg'
+import folderFileAccent from './folderFile-accent.svg'
+import folderFileTint from './folderFile-tint.svg'
+import folderFilePaper from './folderFile-paper.svg'
+import folderHomeLine from './folderHome-line.svg'
+import folderHomeAccent from './folderHome-accent.svg'
+import folderHomePaper from './folderHome-paper.svg'
+import folderCheckLine from './folderCheck-line.svg'
+import folderCheckAccent from './folderCheck-accent.svg'
+import folderCheckTint from './folderCheck-tint.svg'
+import folderCheckPaper from './folderCheck-paper.svg'
+import folderEditLine from './folderEdit-line.svg'
+import folderEditAccent from './folderEdit-accent.svg'
+import folderEditPaper from './folderEdit-paper.svg'
+import settingsLine from './settings-line.svg'
+import settingsTint from './settings-tint.svg'
+import settingsPaper from './settings-paper.svg'
+import archiveLine from './archive-line.svg'
+import archiveAccent from './archive-accent.svg'
+import linkLine from './link-line.svg'
+import linkTint from './link-tint.svg'
+import eyeLine from './eye-line.svg'
+import eyeAccent from './eye-accent.svg'
+import eyeTint from './eye-tint.svg'
+import hideLine from './hide-line.svg'
+import hideAccent from './hide-accent.svg'
+import stopLine from './stop-line.svg'
+import stopAccent from './stop-accent.svg'
+import stopPaper from './stop-paper.svg'
+import detachLine from './detach-line.svg'
+import detachAccent from './detach-accent.svg'
+import detachPaper from './detach-paper.svg'
+import micOffLine from './micOff-line.svg'
+import micOffAccent from './micOff-accent.svg'
+import microphoneLine from './microphone-line.svg'
+import microphoneAccent from './microphone-accent.svg'
+import refreshLine from './refresh-line.svg'
+import refreshTint from './refresh-tint.svg'
+import approvedLine from './approved-line.svg'
+import approvedAccent from './approved-accent.svg'
+import approvedTint from './approved-tint.svg'
+import pluginsLine from './plugins-line.svg'
+import pluginsAccent from './plugins-accent.svg'
+import pluginsTint from './plugins-tint.svg'
+import pluginsPaper from './plugins-paper.svg'
+import browserLine from './browser-line.svg'
+import browserAccent from './browser-accent.svg'
+import browserTint from './browser-tint.svg'
+import browserPaper from './browser-paper.svg'
+import skillLine from './skill-line.svg'
 
 /** Each control mark's masks: the SVG's shape is the layer. */
 export const CONTROL_LAYERS = {
@@ -51,12 +136,41 @@ export const CONTROL_LAYERS = {
   upload: { line: uploadLine, accent: uploadAccent, tint: uploadTint, paper: uploadPaper },
   attachFolder: { line: attachFolderLine, accent: attachFolderAccent, paper: attachFolderPaper },
   plan: { line: planLine, accent: planAccent, tint: planTint, paper: planPaper },
-  webSearch: { line: webSearchLine, accent: webSearchAccent, tint: webSearchTint, paper: webSearchPaper },
   newChat: { line: newChatLine, accent: newChatAccent, paper: newChatPaper },
   toolRunning: { line: toolRunningLine, accent: toolRunningAccent, tint: toolRunningTint, paper: toolRunningPaper },
   toolDone: { line: toolDoneLine, tint: toolDoneTint, paper: toolDonePaper },
   memory: { line: memoryLine, accent: memoryAccent, tint: memoryTint, paper: memoryPaper },
   approval: { line: approvalLine, accent: approvalAccent, tint: approvalTint, paper: approvalPaper },
+  search: { line: searchLine, accent: searchAccent, tint: searchTint },
+  fileText: { line: fileTextLine, tint: fileTextTint, paper: fileTextPaper },
+  fileCode: { line: fileCodeLine, tint: fileCodeTint, paper: fileCodePaper },
+  fileCheck: { line: fileCheckLine, accent: fileCheckAccent, tint: fileCheckTint, paper: fileCheckPaper },
+  fileModule: { line: fileModuleLine, tint: fileModuleTint, paper: fileModulePaper },
+  fileDouble: { line: fileDoubleLine, tint: fileDoubleTint, paper: fileDoublePaper },
+  fileDouble2: { line: fileDouble2Line, tint: fileDouble2Tint, paper: fileDouble2Paper },
+  fileEmpty: { line: fileEmptyLine, tint: fileEmptyTint, paper: fileEmptyPaper },
+  fileEdit: { line: fileEditLine, accent: fileEditAccent, tint: fileEditTint, paper: fileEditPaper },
+  fileAdd: { line: fileAddLine, accent: fileAddAccent, tint: fileAddTint, paper: fileAddPaper },
+  imageFileEdit: { line: imageFileEditLine, accent: imageFileEditAccent, paper: imageFileEditPaper },
+  folderEmpty: { line: folderEmptyLine, accent: folderEmptyAccent, paper: folderEmptyPaper },
+  folderFile: { line: folderFileLine, accent: folderFileAccent, tint: folderFileTint, paper: folderFilePaper },
+  folderHome: { line: folderHomeLine, accent: folderHomeAccent, paper: folderHomePaper },
+  folderCheck: { line: folderCheckLine, accent: folderCheckAccent, tint: folderCheckTint, paper: folderCheckPaper },
+  folderEdit: { line: folderEditLine, accent: folderEditAccent, paper: folderEditPaper },
+  settings: { line: settingsLine, tint: settingsTint, paper: settingsPaper },
+  archive: { line: archiveLine, accent: archiveAccent },
+  link: { line: linkLine, tint: linkTint },
+  eye: { line: eyeLine, accent: eyeAccent, tint: eyeTint },
+  hide: { line: hideLine, accent: hideAccent },
+  stop: { line: stopLine, accent: stopAccent, paper: stopPaper },
+  detach: { line: detachLine, accent: detachAccent, paper: detachPaper },
+  micOff: { line: micOffLine, accent: micOffAccent },
+  microphone: { line: microphoneLine, accent: microphoneAccent },
+  refresh: { line: refreshLine, tint: refreshTint },
+  approved: { line: approvedLine, accent: approvedAccent, tint: approvedTint },
+  plugins: { line: pluginsLine, accent: pluginsAccent, tint: pluginsTint, paper: pluginsPaper },
+  browser: { line: browserLine, accent: browserAccent, tint: browserTint, paper: browserPaper },
+  skill: { line: skillLine },
 } as const
 
 export type ControlIcon = keyof typeof CONTROL_LAYERS

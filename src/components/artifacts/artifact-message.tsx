@@ -1,14 +1,13 @@
 // SOURCING: ui/button and the shared artifact actions; bodies render through
 // the registry (artifact-registry resolve + artifact-renderers' mount table).
 //
-// A result in the conversation: its card, then the artifact at the Preview
-// distance. Whether that preview is passive and whether the artifact offers
-// a live session here comes from its representation, never from its kind.
+// A live authored artifact runs directly in the answer. Its expanded view is
+// the same mounted instance. Other results keep their excerpt and panel.
+// The representation chooses the behavior, never the artifact kind.
 //
-// Beside the chat's dock, Open and a working turn's artifacts go to its panel.
-// On a page whose conversation has no dock beside it (the IDE's), the artifact
-// stays in the message as it is written, and Open takes it to chat's larger
-// panel.
+// Excerpts can open in the dock's panel. A live artifact always belongs to
+// its answer; expanding it does not open a second runtime in the dock.
+import { appearancePair } from '@/lib/appearance-policy'
 import { useAuiState } from '@assistant-ui/react'
 import {
   createContext,
@@ -16,7 +15,6 @@ import {
   useContext,
   useEffect,
   useRef,
-  useState,
 } from 'react'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
@@ -29,6 +27,8 @@ import type { TheoremArtifact } from './artifact-model'
 import { isLive, representationOf } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
 import { ArtifactActions } from './artifact-actions'
+import { focusInlineArtifact, InlineArtifact } from './inline-artifact'
+import { OpenLatestContext } from './app-history'
 import { useArtifactView } from './artifact-view'
 import { OPENS_WHOLE, thingProps } from '@/lib/face/things'
 
@@ -41,29 +41,52 @@ export const ArtifactPlacement = createContext<'panel' | 'inline'>('panel')
 export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
   const artifacts = useThreadArtifacts()
   const inline = useContext(ArtifactPlacement) === 'inline'
-  const [interacting, setInteracting] = useState(false)
+  const liveInline = isLive(artifact, 'interactive')
   const { open } = useArtifactView.getState()
   const openMode = useOpenMode()
   const selected = useArtifactView(
     (s) => s.openId !== undefined && s.openId === artifact.artifactId,
   )
-  const { cardRef, launch } = useArtifactLaunch(artifact, !inline)
+  const { cardRef, launch } = useArtifactLaunch(artifact, !inline && !liveInline)
 
   const versions = artifacts.get(artifact.artifactId) ?? [artifact]
   const position = versions.findIndex((v) => v.revision === artifact.revision)
-  const latest = position === versions.length - 1
+  const newest = versions.at(-1) ?? artifact
+  const latest = position === versions.length - 1 && newest.partId === artifact.partId
   const show = () => {
-    setInteracting(false)
     launch()
     open(artifact.artifactId, latest ? undefined : artifact.revision)
     // The dock is chat's; from a page the larger view is there.
     if (inline) void openMode('chat')
   }
-  // A live session here is offered only when the preview is not one already.
-  const interactive =
-    isLive(artifact, 'interactive') && !isLive(artifact, 'preview')
   const previewed =
     representationOf(artifact, 'preview').rung !== 'theorem_card'
+
+  if (liveInline)
+    return (
+      <InlineArtifact
+        title={artifact.title}
+        artifactId={artifact.artifactId}
+        partId={artifact.partId}
+        current={latest}
+        actions={
+          <ArtifactActions
+            key={artifact.revision}
+            artifact={artifact}
+            latest={latest}
+          />
+        }
+      >
+        <OpenLatestContext value={() => {
+          if (focusInlineArtifact(newest.partId)) return
+          launch()
+          open(artifact.artifactId)
+          if (inline) void openMode('chat')
+        }}>
+          <ArtifactView artifact={artifact} distance="interactive" latest={latest} />
+        </OpenLatestContext>
+      </InlineArtifact>
+    )
 
   return (
     <div className="my-3 w-full">
@@ -72,31 +95,16 @@ export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
         cardRef={cardRef}
         selected={selected}
         latest={latest}
-        wide={interacting || previewed}
+        wide={previewed}
         version={versions.length > 1 ? ` · v${position + 1}` : ''}
         show={show}
-        interact={
-          interactive
-            ? { on: interacting, toggle: () => setInteracting((v) => !v) }
-            : undefined
-        }
       >
-        {interacting ? (
-          <div className="p-3" data-slot="inline-app">
-            <ArtifactView
-              artifact={artifact}
-              distance="interactive"
-              latest={latest}
-            />
-          </div>
-        ) : (
-          previewed && (
-            <ArtifactView
-              artifact={artifact}
-              distance="preview"
-              latest={latest}
-            />
-          )
+        {previewed && (
+          <ArtifactView
+            artifact={artifact}
+            distance="preview"
+            latest={latest}
+          />
         )}
       </ArtifactMessageCard>
     </div>
@@ -111,7 +119,6 @@ function ArtifactMessageCard({
   wide,
   version,
   show,
-  interact,
   children,
 }: {
   artifact: TheoremArtifact
@@ -121,21 +128,24 @@ function ArtifactMessageCard({
   wide: boolean
   version: string
   show: () => void
-  interact?: { on: boolean; toggle: () => void }
   children?: React.ReactNode
 }) {
   return (
     <div
       ref={cardRef}
       data-slot="theorem-artifact-card"
+      data-appearance-part="artifact"
+      data-appearance-radius-role="artifact"
+      data-surface-role="artifact"
       data-face-perch="artifact"
       {...thingProps('artifact', artifact.artifactId, {
         label: artifact.title,
       })}
       data-artifact-id={artifact.artifactId}
       data-selected={selected || undefined}
+      data-appearance-expanded={wide || undefined}
       className={cn(
-        'flex w-full flex-col overflow-hidden rounded-artifact border border-separator bg-artifact',
+        'appearance-artifact-card flex w-full flex-col overflow-hidden rounded-artifact border border-separator bg-artifact',
         !wide && 'max-w-md',
         'transition-colors duration-100',
         selected && 'bg-selected outline outline-1 outline-redwood-ink',
@@ -147,6 +157,7 @@ function ArtifactMessageCard({
           onClick={show}
           className="flex min-w-0 flex-1 items-center gap-3 text-start"
           aria-label={`Open ${artifact.title}`}
+          {...appearancePair('primary', selected ? 'selected' : 'artifact')}
         >
           <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-raised text-ink-muted">
             <Icon.Artifact className="size-5 animate-float motion-reduce:animate-none" />
@@ -160,23 +171,13 @@ function ArtifactMessageCard({
             >
               {artifact.title}
             </span>
-            <span className="truncate text-xs text-ink-faint">
+            <span data-appearance-recipe="metadata" {...appearancePair('secondary', selected ? 'selected' : 'artifact')} className="truncate text-ink-muted">
               {kindLabel(artifact)}
               {version}
             </span>
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-0.5">
-          {interact && (
-            <Button
-              size="xs"
-              variant={interact.on ? 'secondary' : 'ghost'}
-              aria-pressed={interact.on}
-              onClick={interact.toggle}
-            >
-              {interact.on ? 'Done' : 'Interact'}
-            </Button>
-          )}
           <Button
             variant="ghost"
             size="icon"

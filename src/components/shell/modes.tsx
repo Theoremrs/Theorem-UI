@@ -1,4 +1,4 @@
-// SOURCING: @tanstack/react-router (each mode is a route), assistant-ui Thread element, the Spaces canvas (React Flow), the IDE frame (browser-only Theia), the Vault's file list on a phone (FoldersSection), the program canvas (React Flow), Index mode (its page, pages/mode-page.tsx), Pages (Puck over the vault's page files; a mode's page opens there to be arranged), Notes (Theorem documents in the Milkdown note editor)
+// SOURCING: @tanstack/react-router (each mode is a route), assistant-ui Thread element, the Spaces canvas (React Flow), the IDE frame (browser-only Theia), the Vault's file list on a phone (FoldersSection), the program canvas (React Flow), Index mode (its page, pages/mode-page.tsx), Pages (Puck over the vault's page files; a mode's page opens there to be arranged), Notes (Theorem documents in the Milkdown note editor), a project's home in chat mode (components/projects/project-home), and records (components/crm: saved people, organizations and what is owed) inside Index mode
 import { Canvas } from '@/components/canvas/canvas'
 import { ProgramSurface } from '@/components/program/program-surface'
 import { RailMark } from './rail-marks'
@@ -7,9 +7,11 @@ import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { Thread } from '@/components/assistant-ui/elements/thread.aui'
 import { VaultPhone } from '@/components/vault/vault-phone'
 import { useCallback } from 'react'
+import type React from 'react'
 import { useMatches, useNavigate, useParams } from '@tanstack/react-router'
 import { IndexMode } from '@/components/pages/mode-page'
 import { NotesView } from '@/components/notes/notes-view'
+import { ProjectHome } from '@/components/projects/project-home'
 import {
   ModePageView,
   PageStatus,
@@ -119,11 +121,23 @@ export function useOpenMode() {
  * conversation laid out beneath it, and the IDE's page has its own
  * conversation beside Theia; on a phone they take the screen.
  */
-export function ModeView({ docked = false }: { docked?: boolean }) {
+export function ModeView({
+  docked = false,
+  actions,
+}: {
+  docked?: boolean
+  /** The dock's panel controls, for a mode that draws its own top edge (Notes). */
+  actions?: React.ReactNode
+}) {
   const mode = useShellMode()
-  const showThread = mode === 'chat' || (docked && mode === 'vault')
+  // A project's home stands in for the conversation, which stays mounted behind it.
+  const { projectId } = useParams({ strict: false })
+  const projectHome = mode === 'chat' && projectId !== undefined
+  const showThread =
+    (mode === 'chat' && !projectHome) || (docked && mode === 'vault')
   return (
     <>
+      {projectHome && <ProjectHome key={projectId} projectId={projectId} />}
       <div hidden={!showThread} className="h-full">
         <LifeBackdrop>
           <Thread covered={mode !== 'chat'} />
@@ -132,7 +146,7 @@ export function ModeView({ docked = false }: { docked?: boolean }) {
       {mode === 'ide' && !docked && <IdeFrame />}
       {mode === 'vault' && !docked && <VaultPhone />}
       {mode === 'index' && <IndexMode />}
-      {mode === 'notes' && <NotesView />}
+      {mode === 'notes' && <NotesView docked={docked} actions={actions} />}
       {mode === 'pages' && <PagesView />}
       {mode === 'spaces' && <Canvas />}
       {mode === 'canvas' && <ProgramSurface />}

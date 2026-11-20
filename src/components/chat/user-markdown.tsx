@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm'
 import type { Plugin } from 'unified'
 import { SKIP, visit } from 'unist-util-visit'
 import { createDirectiveText } from '@/components/assistant-ui/elements/directive-text'
+import { appearancePair } from '@/lib/appearance-policy'
 
 const ToolText = createDirectiveText(defaultDirectiveFormatter)
 
@@ -24,8 +25,10 @@ const remarkUserTools: Plugin<[], Root> = () => (tree, file) => {
     if (decodeString(raw) !== node.value) return
     const parts: Text[] = []
     let cursor = 0
+    // A / tool pick writes `:tool[name]`; a skill from the + menu writes
+    // `:skill[title]`, with `{name=id}` when the pack id differs from its title.
     for (const match of raw.matchAll(
-      /:tool\[([\p{L}\p{N}_.:/-]{1,1024})\]/gu,
+      /:tool\[[\p{L}\p{N}_.:/-]{1,1024}\]|:skill\[[^\]\n]{1,256}\](?:\{name=[^}\n]{1,1024}\})?/gu,
     )) {
       const before = raw.slice(0, match.index)
       if ((before.match(/\\+$/)?.[0].length ?? 0) % 2) continue
@@ -36,8 +39,8 @@ const remarkUserTools: Plugin<[], Root> = () => (tree, file) => {
         parts.push({ type: 'text', value: node.value.slice(cursor, offset) })
       parts.push({
         type: 'text',
-        value: match[1]!,
-        data: { hName: 'span', hProperties: { 'data-user-tool': match[1]! } },
+        value: match[0],
+        data: { hName: 'span', hProperties: { 'data-user-directive': match[0] } },
       })
       cursor = offset + match[0].length
     }
@@ -50,10 +53,14 @@ const remarkUserTools: Plugin<[], Root> = () => (tree, file) => {
 }
 
 const components: Components = {
+  p: ({ node: _node, ...props }) => <p data-appearance-recipe="prose" {...appearancePair('primary', 'user-message')} {...props} />,
+  a: ({ node: _node, ...props }) => <a {...appearancePair('link', 'user-message')} {...props} />,
+  code: ({ node: _node, ...props }) => <code data-appearance-recipe="code" {...appearancePair('code', 'popover')} {...props} />,
+
   span: ({ node, children, ...props }) => {
-    const tool = node?.properties['data-user-tool']
-    return typeof tool === 'string' ? (
-      <ToolText text={`:tool[${tool}]`} />
+    const directive = node?.properties['data-user-directive']
+    return typeof directive === 'string' ? (
+      <ToolText text={directive} />
     ) : (
       <span {...props}>{children}</span>
     )
@@ -69,7 +76,7 @@ const components: Components = {
 
 export function UserMarkdown({ text }: { text: string }) {
   return (
-    <div className="aui-user-markdown whitespace-normal [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:ps-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:ps-5 [&_li]:my-1 [&_blockquote]:my-2 [&_blockquote]:border-s-2 [&_blockquote]:border-separator [&_blockquote]:ps-3 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-raised [&_pre]:p-3 [&_pre]:text-[0.9em] [&_code]:font-mono [&_pre_code]:whitespace-pre [&_a]:text-link [&_a]:underline [&_a]:underline-offset-2 [&_:is(h1,h2,h3,h4,h5,h6)]:my-2 [&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold [&>:first-child]:mt-0 [&>:last-child]:mb-0">
+    <div className="aui-user-markdown whitespace-normal [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:ps-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:ps-5 [&_li]:my-1 [&_blockquote]:my-2 [&_blockquote]:border-s-2 [&_blockquote]:border-separator [&_blockquote]:ps-3 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-popover [&_pre]:p-3 [&_pre]:text-[0.9em] [&_code]:bg-popover [&_code]:text-ink [&_code]:font-mono [&_pre_code]:whitespace-pre [&_a]:text-link [&_a]:underline [&_a]:underline-offset-2 [&_:is(h1,h2,h3,h4,h5,h6)]:my-2 [&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold [&>:first-child]:mt-0 [&>:last-child]:mb-0">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkUserTools]}
         components={components}

@@ -603,6 +603,15 @@ test('an inspector acts in the scope its item was opened in', async () => {
       new Response(JSON.stringify(body), {
         headers: { 'content-type': 'application/json' },
       })
+    // The inspector also shows the records the document is about: none.
+    if (path.endsWith('/record-filings'))
+      return json({
+        schema: 'theorem-document/2',
+        documentId: 'd1',
+        receipts: [],
+        links: [],
+        corrections: [],
+      })
     if (path.endsWith('/filings'))
       return json(
         method === 'POST'

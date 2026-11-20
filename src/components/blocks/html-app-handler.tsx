@@ -4,7 +4,7 @@
 // HTMLRewriter), lodash-es's debounce (a burst of saves reloads the app
 // once), and the frame, trust and editor components beside this one. An
 // `.html` file or a folder with `index.html`, as plan D13 shows it: a
-// sandboxed frame (D9) in its panel and up close on a canvas, its snapshot
+// frame of its own origin (D9) in its panel and up close on a canvas, its snapshot
 // far out.
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { debounce } from 'lodash-es'

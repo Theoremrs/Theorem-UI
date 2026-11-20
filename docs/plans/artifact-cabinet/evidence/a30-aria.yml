@@ -1,0 +1,16 @@
+- searchbox "Search the gallery"
+- combobox "Preview style":
+  - option "Theme default (original)" [selected]
+  - option "Pixel"
+  - option "Original"
+- group "Filter artifacts":
+  - button "All" [pressed]
+  - button "Docs"
+  - button "Images"
+  - button "Apps"
+- list "Artifacts, most recent first":
+  - listitem:
+    - button "headland-at-dusk.png. Image · PNG · 10 KB. Image attachment headland-at-dusk.png. Media type image/png. Dimensions 1000 by 625 pixels. Content is available by its cited source hash."
+  - listitem:
+    - 'button "field-notes.md. Document · MARKDOWN · 713 B. # Field notes: the north headland survey Three walks along the headland between October and November, recording where the path has eroded and which markers survive. ## Findings - The cliff edge moved inland by roughly two metres at the second stile. - Marker posts 4 and 7 are go…"'
+- paragraph: 2 artifacts

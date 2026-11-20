@@ -624,45 +624,6 @@ export const BUILT_IN: ReadonlyArray<Entry> = [
       ],
     },
   ),
-  own(
-    'speak',
-    'While sound plays: a mouth that opens as far as the sound is loud. The mouth is a feature this adds.',
-    {
-      keep: true,
-      steps: [
-        {
-          op: 'par',
-          steps: [
-            {
-              op: 'feature',
-              id: 'mouth',
-              side: 'centre',
-              set: { x: 0, y: 19, w: 6.5, h: 0.9, round: 2.4, share: 0.3 },
-            },
-            { op: 'to', set: { 'eyes.y': -5, 'eyes.h': 11.5 }, over: 260 },
-            {
-              op: 'follow',
-              channel: 'mouth.h',
-              signal: 'sound.level',
-              amp: 6,
-            },
-            {
-              op: 'follow',
-              channel: 'mouth.w',
-              signal: 'sound.mid',
-              amp: -1.6,
-            },
-            {
-              op: 'follow',
-              channel: 'face.dy',
-              signal: 'sound.beat',
-              amp: -0.8,
-            },
-          ],
-        },
-      ],
-    },
-  ),
   own('thump', 'A jolt through the whole face, as at a loud sound.', {
     steps: [
       { op: 'burst', strength: { arg: 'kick', or: 50 } },
@@ -675,6 +636,90 @@ export const BUILT_IN: ReadonlyArray<Entry> = [
       },
     ],
   }),
+  // What the face is while it listens to the person (a held press, the
+  // composer's mic). It keeps, and follows the person's voice: with nothing
+  // said, nothing in it moves. The inverse of the boombox: that one shows what
+  // the page plays, this one what the person says.
+  own(
+    'listen',
+    'While the person speaks to it: the eyes gather into one microphone head, a mesh grille that throbs with the voice, a stand below it, and arcs leave its sides as it is spoken to.',
+    {
+      keep: true,
+      steps: [
+        {
+          op: 'par',
+          steps: [
+            {
+              op: 'feature',
+              id: 'mic',
+              side: 'centre',
+              set: {
+                x: 0,
+                y: -2,
+                w: 11,
+                h: 15,
+                round: 6,
+                mesh: 9,
+                share: 0.9,
+                alpha: 1,
+              },
+            },
+            {
+              op: 'feature',
+              id: 'stand',
+              side: 'centre',
+              set: {
+                x: 0,
+                y: 12,
+                w: 2.2,
+                h: 7,
+                round: 8,
+                share: 0.3,
+                alpha: 0.8,
+              },
+            },
+            {
+              op: 'to',
+              set: {
+                'eyes.share': 0,
+                'eyes.lid': 0,
+                'eyes.low': 0,
+                'gaze.x': 0,
+                'gaze.y': 0,
+                'matter.cohesion': 0.96,
+                'matter.drift': 0.03,
+                'matter.size': 0.5,
+                'matter.glow': 1.3,
+                'auto.blink': 0,
+                'auto.saccade': 0,
+              },
+              over: 300,
+              bounce: 0.3,
+            },
+            // The grille throbs with the voice; the arcs are as many as it is loud.
+            {
+              op: 'follow',
+              channel: 'mic.scale',
+              signal: 'mic.level',
+              amp: 0.12,
+            },
+            {
+              op: 'follow',
+              channel: 'emit.left',
+              signal: 'mic.level',
+              amp: 1,
+            },
+            {
+              op: 'follow',
+              channel: 'emit.right',
+              signal: 'mic.level',
+              amp: 1,
+            },
+          ],
+        },
+      ],
+    },
+  ),
 ]
 
 /** The channels a blink and the lids use, for layers that must let them go together. */

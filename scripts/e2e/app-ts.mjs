@@ -12,6 +12,19 @@ import { writeFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 import { servePage } from './harness.mjs'
 
+const BLOCK_SANDBOX = [
+  'allow-scripts',
+  'allow-forms',
+  'allow-modals',
+  'allow-popups',
+  'allow-popups-to-escape-sandbox',
+  'allow-downloads',
+  'allow-pointer-lock',
+  'allow-presentation',
+  'allow-orientation-lock',
+  'allow-top-navigation-by-user-activation',
+].join(' ')
+
 const source = (files) =>
   Object.entries(files)
     .map(
@@ -385,19 +398,53 @@ try {
       ms: Date.now() - started,
     },
   )
+  // Every App frame gets BLOCK_SANDBOX (src/lib/blocks/executor.ts): every
+  // allow token but allow-same-origin, so it is an origin of its own and is
+  // never signed in as the person.
+  const sandbox = (await page.$eval('iframe', (el) => el.getAttribute('sandbox'))) ?? ''
   check(
-    'its frame is the same sandbox as any App',
-    (await page.$eval('iframe', (el) => el.getAttribute('sandbox'))) ===
-      'allow-scripts',
+    'its frame is the same sandbox as any App, with no origin of the site',
+    sandbox === BLOCK_SANDBOX && !sandbox.split(' ').includes('allow-same-origin'),
+    sandbox,
   )
   check(
     'the type check of a correct App finds nothing',
     (await settled(0)).length === 0,
   )
+  // Enlarging the answer keeps its actual browser frame, not a second
+  // instance restored from saved state. Unsaved inputs survive as well.
+  const inlineFrame = await page.$('iframe')
+  const continuity = await frame().evaluate(() => {
+    window.continuity = crypto.randomUUID()
+    const input = document.createElement('input')
+    input.setAttribute('aria-label', 'Unsaved artifact input')
+    document.body.append(input)
+    return window.continuity
+  })
+  await frame().getByLabel('Unsaved artifact input').fill('Keep my work')
+  await page.getByRole('button', { name: 'Expand', exact: true }).click()
+  check(
+    'an answer expands the same running App with its unsaved state',
+    await page.$eval('iframe', (el, before) => el === before, inlineFrame) &&
+      await frame().evaluate(() => window.continuity) === continuity &&
+      await frame().getByLabel('Unsaved artifact input').inputValue() === 'Keep my work' &&
+      await page.$eval('[data-slot="inline-artifact"]', (el) => el.matches(':modal')),
+  )
+  await page.keyboard.press('Escape')
+  check(
+    'Escape returns that App to the answer without restarting it',
+    await page.$eval('iframe', (el, before) => el === before, inlineFrame) &&
+      await frame().evaluate(() => window.continuity) === continuity &&
+      await frame().getByLabel('Unsaved artifact input').inputValue() === 'Keep my work' &&
+      await page.$eval('[data-slot="inline-artifact"]', (el) => el.open && !el.matches(':modal')),
+  )
+  await frame().getByLabel('Unsaved artifact input').evaluate((el) => el.remove())
   // Pointing at something in the App names the place in its source.
   const stamp = await frame().$eval('tr[data-row-id="org:b"] td', (cell) =>
     cell.getAttribute('data-theorem-source'),
   )
+  const beforeAsk = await page.$('iframe')
+  await page.getByRole('button', { name: 'Expand', exact: true }).click()
   await frame().click('tr[data-row-id="org:b"] td')
   await page.click('button:has-text("Ask about selection")')
   const [pointed] = await page.evaluate(() => window.oracle.references())
@@ -408,6 +455,12 @@ try {
       selection?.source === stamp &&
       selection.rowId === 'org:b',
     { stamp, label: pointed?.label, selection },
+  )
+  check(
+    'Ask in an expanded App returns to the composer and keeps the frame',
+    await page.$eval('[data-slot="inline-artifact"]', (el) => el.open && !el.matches(':modal')) &&
+      await page.$eval('iframe', (el, before) => el === before, beforeAsk) &&
+      await page.evaluate(() => document.activeElement?.matches('.aui-composer-input .ProseMirror')),
   )
   // What a check costs here, once the checker is loaded: its own clock and
   // the compiler's peak memory.
@@ -522,6 +575,43 @@ try {
     (await heading('title wide|Funders')) &&
       (await table(2)).length === 2 &&
       (await settled(0)).length === 0,
+  )
+
+  // The host's quiet defaults in a real cascade: a plain control takes them,
+  // and any rule the App brings wins, whether unlayered or in a component
+  // library's own layer. This page loads no palette, so the defaults read
+  // here are the ones that use no token: padding, background and cursor.
+  await revise(`<!doctype html>
+<style>button.own { background-color: rgb(250, 250, 249); padding: 0 }</style>
+<style>@layer lib-base { button.lib { background-color: rgb(1, 2, 3); padding: 2px } }</style>
+<button class="plain">Plain</button><button class="own">Own</button><button class="lib">Lib</button><input>`)
+  let cascade
+  for (const deadline = Date.now() + 30_000; Date.now() < deadline; ) {
+    cascade = await frame()
+      ?.evaluate(() => {
+        if (!document.querySelector('button.lib')) return undefined
+        const of = (selector) => {
+          const style = getComputedStyle(document.querySelector(selector))
+          return `${style.backgroundColor} ${style.paddingLeft} ${style.cursor}`
+        }
+        return {
+          plain: of('.plain'),
+          input: of('input'),
+          own: of('.own'),
+          lib: of('.lib'),
+        }
+      })
+      .catch(() => undefined)
+    if (cascade) break
+    await page.waitForTimeout(100)
+  }
+  check(
+    'plain controls take the host look, and the App’s rules win over it, layered or not',
+    cascade?.plain === 'rgba(0, 0, 0, 0) 10px pointer' &&
+      cascade.input.startsWith('rgba(0, 0, 0, 0) 8px') &&
+      cascade.own === 'rgb(250, 250, 249) 0px pointer' &&
+      cascade.lib === 'rgb(1, 2, 3) 2px pointer',
+    cascade,
   )
 
   await revise(GOOD)

@@ -1,8 +1,11 @@
-// SOURCING: coss ui menu over Base UI Menu (the same parts serve the More button and the right-click ContextMenu), coss ui toast (a refused change, said after the menu has closed), date-fns for the Later presets, lib/theorem/organization for placement and Later, thread-tree for forks. Placement rules are Theorem's; this only asks.
+// SOURCING: coss ui menu over Base UI Menu (the same parts serve the More button and the right-click ContextMenu), coss ui toast (a refused change, said after the menu has closed), date-fns for the Later presets, lib/theorem/organization for placement and Later, thread-tree for forks, lib/theorem/sessions for whether a session's graph is worth opening on the canvas. Placement rules are Theorem's; this only asks.
+import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { addDays, addHours, nextMonday, setHours, startOfHour } from 'date-fns'
 import {
   MenuCheckboxItem,
   MenuItem,
+  MenuLinkItem,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
@@ -10,15 +13,26 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
 } from '@/components/coss/menu'
+import { Lock, LockOpen } from 'lucide-react'
 import { Icon } from '@/components/icons'
 import { toastManager } from '@/components/coss/toast'
 import { describeError } from '@/lib/theorem/client'
 import {
+  organizationQuery,
   primaryProjectId,
   useLater,
   useMoveThread,
   usePlacement,
 } from '@/lib/theorem/organization'
+import {
+  allTypes,
+  isPinned,
+  useSessionType,
+  useSidebarPrefs,
+} from '@/lib/theorem/sidebar-prefs'
+import { inSessionGraph, scopeParam } from '@/lib/theorem/sessions'
+import { TypeMarkIcon } from './glyphs'
+import { useNewTypeDialog } from './session-type-dialog'
 import type {
   LaterCondition,
   ProjectEntry,
@@ -79,11 +93,19 @@ export function ThreadMenuItems({
   )
   const primaryTitle = projects.find((p) => p.projectId === primary)?.title
   const waitable = running.filter((t) => t.threadId !== thread.threadId)
+  // Its graph is offered once it was forked or continued, or another was from it.
+  const { data: hasGraph } = useQuery({
+    ...organizationQuery(),
+    select: (read) => inSessionGraph(read, thread.threadId),
+  })
   const place = (condition: LaterCondition | null) =>
     later.mutate({ threadId: thread.threadId, condition })
 
   return (
     <>
+      <PinItem threadId={thread.threadId} />
+      <TypeSub threadId={thread.threadId} />
+      <MenuSeparator />
       <MenuItem disabled={!canStartFrom} onClick={onFork}>
         <Icon.Fork className="size-4" />
         Fork into new thread
@@ -92,6 +114,21 @@ export function ThreadMenuItems({
         <Icon.Continue className="size-4" />
         Continue in new thread
       </MenuItem>
+      {hasGraph && (
+        <MenuLinkItem
+          render={
+            <Link
+              to="/canvas"
+              search={{
+                sessions: scopeParam({ kind: 'tree', treeId: thread.threadId }),
+              }}
+            />
+          }
+        >
+          <Icon.Graph className="size-4" />
+          Open graph
+        </MenuLinkItem>
+      )}
       <MenuSeparator />
       {served ? (
         <MenuSub>
@@ -145,7 +182,7 @@ export function ThreadMenuItems({
                   {project.title}
                 </MenuRadioItem>
               ))}
-              <MenuRadioItem value="unsorted">Chats</MenuRadioItem>
+              <MenuRadioItem value="unsorted">Recent</MenuRadioItem>
             </MenuRadioGroup>
           </MenuSubPopup>
         </MenuSub>
@@ -163,12 +200,15 @@ export function ThreadMenuItems({
                 })
               }
             >
+              {/* A placement lock, not a sidebar pin: it keeps the Librarian from moving the thread out. */}
               {primaryMembership.pinned ? (
-                <Icon.Unpin className="size-4" />
+                <LockOpen className="size-4" strokeWidth={1.75} />
               ) : (
-                <Icon.Pin className="size-4" />
+                <Lock className="size-4" strokeWidth={1.75} />
               )}
-              {primaryMembership.pinned ? 'Unpin from' : 'Pin to'}{' '}
+              {primaryMembership.pinned
+                ? 'Let the Librarian move it from'
+                : 'Keep in'}{' '}
               {primaryTitle}
             </MenuItem>
           )}
@@ -227,5 +267,56 @@ export function ThreadMenuItems({
         Delete
       </MenuItem>
     </>
+  )
+}
+
+/** Pins the session to the top of this browser's sidebar, or takes it off. Changes nothing in Theorem. */
+function PinItem({ threadId }: { threadId: string }) {
+  const pin = { kind: 'thread', id: threadId } as const
+  const pinned = useSidebarPrefs((s) => isPinned(s.pins, pin))
+  const toggle = useSidebarPrefs((s) => s.togglePin)
+  return (
+    <MenuItem onClick={() => toggle(pin)}>
+      {pinned ? (
+        <Icon.Unpin className="size-4" />
+      ) : (
+        <Icon.Pin className="size-4" />
+      )}
+      {pinned ? 'Unpin' : 'Pin'}
+    </MenuItem>
+  )
+}
+
+/** The session's type: its label and mark in every list. Appearance only. */
+export function TypeSub({ threadId }: { threadId: string }) {
+  const current = useSessionType(threadId)
+  const custom = useSidebarPrefs((s) => s.customTypes)
+  const setType = useSidebarPrefs((s) => s.setSessionType)
+  const newType = useNewTypeDialog()
+  return (
+    <MenuSub>
+      <MenuSubTrigger>
+        <TypeMarkIcon mark={current.mark} />
+        Type: {current.label}
+      </MenuSubTrigger>
+      <MenuSubPopup className="min-w-48">
+        <MenuRadioGroup
+          value={current.id}
+          onValueChange={(value: string) => setType(threadId, value)}
+        >
+          {allTypes(custom).map((type) => (
+            <MenuRadioItem key={type.id} value={type.id}>
+              <TypeMarkIcon mark={type.mark} className="text-ink-muted" />
+              {type.label}
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+        <MenuSeparator />
+        <MenuItem onClick={() => newType.open(threadId)}>
+          <Icon.Add className="size-4" />
+          New type…
+        </MenuItem>
+      </MenuSubPopup>
+    </MenuSub>
   )
 }

@@ -18,10 +18,23 @@
 // GitHub. The accounts' passwords are in secrets.json under neonPasswords.
 // Generated secrets stay in E2E_DATA_DIR, in a file only this user can read.
 //
+// With E2E_CONTEXT_STANDIN set, for scripts/e2e/crm-context.mjs, no real model
+// is called at all: scripts/e2e/context-standin.mjs sits in OpenRouter's place,
+// keeps each request and answers from the saved records in it.
+//
+// With E2E_IDE_HOST_BIN (a built theorem-ide-host) and E2E_HERDR_HC (a herdr-core binary) set,
+// for scripts/e2e/workbench.mjs, a real IDE host runs beside the server on E2E_IDE_HOST_PORT, with
+// Herdr terminals in a core session of its own (scripts/e2e/ide-host.mjs), and the server is bound
+// to it. The host is not supervised here, so a scenario can kill it and start it again.
+//
 // With E2E_KEY_STANDIN set, for scripts/e2e/keys.mjs, the deployment has no OpenRouter
 // key and reaches OpenRouter through scripts/e2e/provider-standin.mjs. That takes only
 // a generated test key and swaps in the real one as it forwards, so a page never
 // holds a real key.
+//
+// With E2E_SCRIPTED_MODEL set, for scripts/e2e/project-context.mjs, Theorem's
+// catalog also lists fixture/scripted, served by scripts/e2e/scripted-model.mjs:
+// a model that follows a rule, so a scenario can say what a turn will do.
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import {
@@ -44,11 +57,23 @@ import {
   IDENTITY_MODE,
   NEON,
   NEON_ACCOUNTS,
+  OTHER_ACCOUNT,
+  SCRIPTED,
+  SCRIPTED_MODEL,
+  SCRIPTED_PORT,
   STANDIN,
   STANDIN_PORT,
   UI,
   UI_PORT,
 } from './config.mjs'
+import {
+  HOSTS_FILE,
+  hostUp,
+  ideHostEnabled,
+  prepareIdeHost,
+  startHost,
+  stopIdeHost,
+} from './ide-host.mjs'
 
 const CLIENT_ID = 'theorem-ui-e2e'
 const IDENTITY_CLIENT_ID = 'theorem-e2e'
@@ -119,6 +144,7 @@ function start(name, command, args, env) {
 }
 
 function stop(code) {
+  if (ideHostEnabled) stopIdeHost()
   for (const child of children) {
     child.removeAllListeners('exit')
     child.kill()
@@ -219,6 +245,50 @@ async function identity() {
 const signIn = await identity()
 
 const serverEnv = { ...process.env, ...providerKeys() }
+const catalogWriters = [
+  'E2E_KEY_STANDIN',
+  'E2E_SCRIPTED_MODEL',
+  'E2E_CONTEXT_STANDIN',
+].filter((name) => process.env[name])
+if (catalogWriters.length > 1) {
+  console.error(`${catalogWriters.join(' and ')} each write the catalog. Set one.`)
+  process.exit(1)
+}
+if (process.env.E2E_SCRIPTED_MODEL) {
+  start(
+    'scripted-model',
+    process.execPath,
+    ['scripts/e2e/scripted-model.mjs'],
+    {
+      ...process.env,
+      E2E_SCRIPTED_PORT: String(SCRIPTED_PORT),
+    },
+  )
+  await ready('scripted model', `${SCRIPTED}/__calls`)
+  serverEnv.THEOREM_MODELS_JSON = join(DATA_DIR, 'scripted-models.json')
+  writeFileSync(
+    serverEnv.THEOREM_MODELS_JSON,
+    JSON.stringify({
+      models: {
+        [SCRIPTED_MODEL.provider]: {
+          [SCRIPTED_MODEL.model]: {
+            provider: SCRIPTED_MODEL.provider,
+            model_id: SCRIPTED_MODEL.model,
+            request_shape: 'openai_chat_completions',
+            context_window: 262144,
+            max_output_tokens: 4096,
+            endpoint: SCRIPTED,
+            credential_ref: 'env:FIXTURE_API_KEY',
+            native_tools: true,
+            supports_streaming: false,
+          },
+        },
+      },
+    }),
+  )
+  // The scripted model checks no credential; the catalog wants one named.
+  serverEnv.FIXTURE_API_KEY = 'scripted-model-not-a-secret'
+}
 if (process.env.E2E_KEY_STANDIN) {
   start('standin', process.execPath, ['scripts/e2e/provider-standin.mjs'], {
     ...process.env,
@@ -242,13 +312,61 @@ if (process.env.E2E_KEY_STANDIN) {
   delete serverEnv.OPENROUTER_API_KEY
 }
 
+// For scripts/e2e/crm-context.mjs: every OpenRouter model answers from
+// scripts/e2e/context-standin.mjs, which keeps each request whole and replies
+// only from the saved records in it. The deployment's key is a generated test
+// key, so nothing reaches a real provider.
+if (process.env.E2E_CONTEXT_STANDIN) {
+  start('standin', process.execPath, ['scripts/e2e/context-standin.mjs'], {
+    ...process.env,
+    E2E_STANDIN_PORT: String(STANDIN_PORT),
+  })
+  await ready('standin', `${STANDIN}/__requests`)
+  const endpoint = { endpoint: `${STANDIN}/api/v1` }
+  // An override may only re-point a model the server's own catalog ships: one
+  // it does not know is read as a whole new entry, fails to parse, and takes
+  // the model list down with it. A server built from an older catalog names
+  // the ones it has in E2E_STANDIN_MODELS.
+  const models = process.env.E2E_STANDIN_MODELS
+    ? process.env.E2E_STANDIN_MODELS.split(',').map((model) => model.trim())
+    : STANDIN_MODELS
+  serverEnv.THEOREM_MODELS_JSON = join(DATA_DIR, 'context-models.json')
+  writeFileSync(
+    serverEnv.THEOREM_MODELS_JSON,
+    JSON.stringify({
+      models: {
+        openrouter: Object.fromEntries(
+          models.map((model) => [model, endpoint]),
+        ),
+      },
+    }),
+  )
+  serverEnv.OPENROUTER_API_KEY = secret.testProviderKey
+}
+
 // The server does not start without a web search provider. One named in
 // provider-keys.env wins; otherwise the offline provider answers from a local
 // manifest, so agent web searches in a scenario come back empty, not live.
 const searchManifest = join(DATA_DIR, 'offline-search.jsonl')
 if (!existsSync(searchManifest)) writeFileSync(searchManifest, '')
 
+const ideHostEnv = {}
+if (ideHostEnabled) {
+  prepareIdeHost()
+  startHost()
+  for (let attempt = 0; !(await hostUp()); attempt++) {
+    if (attempt === 60) {
+      console.error('The IDE host did not answer.')
+      stop(1)
+    }
+    await new Promise((settle) => setTimeout(settle, 500))
+  }
+  console.log('ide host ready')
+  ideHostEnv.THEOREM_ENVIRONMENT_HOSTS_FILE = HOSTS_FILE
+}
+
 start('server', server, [], {
+  ...ideHostEnv,
   RUSTYWEB_SEARCH_PROVIDERS: 'offline',
   RUSTYWEB_OFFLINE_SEARCH_MANIFEST: searchManifest,
   ...serverEnv,
@@ -260,7 +378,9 @@ start('server', server, [], {
   RUSTY_RED_MCP_DEFAULT_TENANT: ACCOUNT,
   RUSTY_RED_PREWARM_TENANTS: ACCOUNT,
   RUSTY_RED_TENANT_ADMISSION: 'allowlist',
-  RUSTY_RED_TENANT_ALLOWLIST: ACCOUNT,
+  RUSTY_RED_TENANT_ALLOWLIST: process.env.E2E_CONTEXT_STANDIN
+    ? `${ACCOUNT},${OTHER_ACCOUNT}`
+    : ACCOUNT,
   RUSTY_RED_SESSION_SIGNING_KEY_HEX: secret.sessionSigningKey,
   THEOREM_PUBLICATION_SIGNING_KEY_HEX: secret.publicationSigningKey,
   RUSTY_RED_OAUTH_ENABLED: 'true',
@@ -271,6 +391,9 @@ start('server', server, [], {
       client_id: CLIENT_ID,
       client_name: 'Theorem end to end',
       redirect_uris: [`${UI}/auth/callback`],
+      // A signed-in person reads and changes their workspace's records with
+      // graph:read and graph:write, which every client is granted; no
+      // per-type record scope is added here.
       extra_scopes: ['models:invoke', 'agency:approve'],
     },
   ]),

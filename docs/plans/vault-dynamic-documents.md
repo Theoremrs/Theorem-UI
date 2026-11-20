@@ -560,7 +560,7 @@ file paths and the graph is their home. See Backend changes.
   - folder trust (D9). Trust stays out of the folder so that a cloned or
     synced folder cannot arrive already trusted.
 
-### D9. Live blocks: format, runtime and sandbox
+### D9. Live blocks: format, runtime and frame
 
 **Format.** Live content stays readable Markdown everywhere else: git, other
 editors, an agent.
@@ -616,7 +616,7 @@ editors, an agent.
 - **Pure blocks** recompute when an input changes, like a spreadsheet.
 - **Effectful blocks** run only on an explicit trigger. These are:
   - agent blocks;
-  - scripts that write files or reach the network;
+  - scripts that declare they write files or reach the network;
   - anything that needs host execution.
 
   Each trigger becomes a run (D10).
@@ -638,24 +638,37 @@ editors, an agent.
 - The workspace service persists the document, and it follows the
   workspace's sync policy (D12).
 
-**Sandbox.**
-- **Isolation.**
-  - Each block runs in its own `sandbox="allow-scripts"` iframe, without
-    `allow-same-origin`, which gives it an opaque origin.
-  - Its document comes from a second loopback listener, so it is a different
-    origin from the app.
-  - CSP is `default-src 'none'`. Scripts may load only from that listener and
-    the pinned import-map hosts.
-  - `connect-src 'none'` applies unless the block declares network access.
-- **Capability bridge.** A typed RPC over `MessageChannel` serves only what
-  the block declares in its header. Example declarations:
-  - `files.read("Data/*.csv")`
-  - `state("habits")`
-  - `net("api.weather.gov")`
-  - `run("agent:#summary")`
-
-  The page checks every call against the declaration, and values must be
-  structured-clonable. Blocks never reach the host bridge (D5).
+**Frame.** (Revised 2026-11-18 by the owner: Apps and blocks are not
+sandboxed by default. A limit is a feature the person turns on, never a
+default the agent's work runs under.)
+- **Origin.** Each block runs in its own iframe without `allow-same-origin`,
+  so it has an origin of its own and is never signed in as the person. Its
+  document comes from a second loopback listener on the desktop.
+- **Open by default.** The frame may do what any page can: reach any host,
+  load remote scripts, images, fonts and styles, submit forms, open windows,
+  download, use pointer lock and fullscreen, and ask the person for the
+  camera, microphone, clipboard and location (`BLOCK_SANDBOX` and
+  `BLOCK_ALLOW` in `src/lib/blocks/executor.ts`). The host adds no
+  Content-Security-Policy; the desktop listener sends only
+  `frame-ancestors`, so nothing but the app frames a block.
+- **Bridge.** A typed RPC over `MessageChannel` serves the folder's files,
+  shared state, the App's databases and agent runs. Values must be
+  structured-clonable, and paths stay inside the folder and off hidden
+  files. Blocks never reach the host bridge (D5).
+- **Declarations** say what a block depends on, not what it may do:
+  - `files.read("Data/*.csv")`, which files re-run it;
+  - `state("habits")`, `db("crm", { historyDays: 365 })`, a database's
+    history window;
+  - `net("api.weather.gov")`, `files.write(…)`, `run("agent:#summary")`,
+    which make it effectful.
+- **A person's limit.** A sandboxed module (a page module the person
+  installed) runs under the limit they granted: `sandbox="allow-scripts"`, a
+  CSP of `default-src 'none'` with `connect-src` only for the hosts they
+  allowed, and a bridge that refuses files, state, databases and runs
+  outside their grant. This is the shape a later "sandbox this App" control
+  takes.
+- **Storage.** A frame on an origin of its own has no browser storage; the
+  bridge's state and databases persist for it.
 - **Trust.** A folder's tools run only after the person trusts that folder.
   Until then a block shows its source and a "Trust this folder" control.
   Folders that arrive from elsewhere start untrusted.
@@ -771,7 +784,7 @@ provides:
 - **`create`** (optional), for a new file of that type.
 
 The shape follows Patchwork's tools and datatypes. Third-party handlers load
-through the block sandbox (D9).
+through the block frame (D9).
 
 **Built-in handlers.**
 
@@ -781,7 +794,7 @@ through the block sandbox (D9).
 | `.canvas` | React Flow over JSON Canvas 1.0 | thumbnail |
 | executable graph | React Flow with run controls (D14) | thumbnail with last-run status |
 | `.js` `.ts` `.tsx` `.py` | CodeMirror 6 with a Run control and last-run values in the margin; "Open in native editor" on the desktop (D6) | file name and last-run status |
-| `.tsx` app, `.html`, folder with `index.html` | sandboxed iframe (D9) | live at high zoom, snapshot below |
+| `.tsx` app, `.html`, folder with `index.html` | iframe of its own origin (D9) | live at high zoom, snapshot below |
 | `.csv` `.json` | table or tree (library chosen at the sourcing gate) | first rows |
 | `.pdf` | `pdfjs-dist` | first page |
 | image, audio, video | native HTML elements | thumbnail |
@@ -848,7 +861,7 @@ This repo vendors 0.3.0 today. `packages/theorem-sdk` 0.4.0 lives only on
 Theorem's `claude/theia-sdk-live-session` branch and merges to Theorem main
 first.
 
-**The tool-author surface** is the block capability bridge (D9) plus
+**The tool-author surface** is the block bridge (D9) plus
 file-handler registration, with generated TypeScript declarations.
 
 **The host bridge (D5) is not public.** It belongs to the app.

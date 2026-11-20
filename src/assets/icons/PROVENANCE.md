@@ -19,11 +19,11 @@ the owner's attached SVG, copied byte for byte. The API reports
 states their paid license is royalty free. The shipped app uses only bundled
 bytes and never calls the API or includes credentials.
 
-| Destination | File | Term and creator | Style | SHA-256 |
-|---|---|---|---|---|
-| Chat | `rail/noun-chat-52762.svg` | chat (Noun asset 52762); creator not embedded in attachment | Owner-supplied rendition, 1200 view box, drawn solid | `ee96f0c5e4037f45333ef7a24238d9142fab4071926cde73b56da4c23d437540` |
-| Spaces | `rail/noun-penrose-triangle-881122.svg` | Penrose Triangle, Lluisa Iborra | Owner-supplied rendition | `495ff6ca11078ed418eda97490160eede32b42e1ef3f252885dcf3ea3c267241` |
-| Projects collection | `rail/noun-projects-8375031.svg` | Data, Reion | line 14 | `6211d378be4311d19dd02f05f581dba0fb8a457d8e1db7c25069b7d5f5d640fe` |
+| Destination         | File                                    | Term and creator                                            | Style                                                | SHA-256                                                            |
+| ------------------- | --------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------ |
+| Chat                | `rail/noun-chat-52762.svg`              | chat (Noun asset 52762); creator not embedded in attachment | Owner-supplied rendition, 1200 view box, drawn solid | `ee96f0c5e4037f45333ef7a24238d9142fab4071926cde73b56da4c23d437540` |
+| Spaces              | `rail/noun-penrose-triangle-881122.svg` | Penrose Triangle, Lluisa Iborra                             | Owner-supplied rendition                             | `495ff6ca11078ed418eda97490160eede32b42e1ef3f252885dcf3ea3c267241` |
+| Projects collection | `rail/noun-projects-8375031.svg`        | Data, Reion                                                 | line 14                                              | `6211d378be4311d19dd02f05f581dba0fb8a457d8e1db7c25069b7d5f5d640fe` |
 
 The contextual Projects tree uses the same retrieval and paint model. Its project
 rows use `tree/noun-data-8394841.svg` (Data by Mustofa Bayu, no style declared,
@@ -85,10 +85,10 @@ the licence notice written into each file. Every 2x2 grid Lucide offers stayed
 the conventional app-launcher mark, with its outer dots moved to the cell edge
 for extent.
 
-| Control | File | Derived from | Change | License | SHA-256 |
-|---|---|---|---|---|---|
-| Theme, under Paper | `rail/lucide-moon-rail.svg` | `gpui-component` `crates/assets/assets/icons/moon.svg` (`205b959e940d5841f0ce1d09c933153da9d9c94130a54d5cc0c68c2af1d403da`) at revision `b94c409f119ed11a785120925d14021fed3e9b69` | stroke-width 2 to 1.3 | ISC, "Copyright (c) 2026 Lucide Icons and Contributors" (`crates/assets/LICENSE-LUCIDE`); notice carried in the file | `40b4017a5eb01a49f5704305bfa752569ece9d07cc53c42b2fa7a60c36929af0` |
-| Theme, under Graphite | `rail/lucide-sun-rail.svg` | `sun.svg` (`a3955c8b0425fcc5c9ba12d2bdd77fe53b2cd5dd05e7742a56f342e996fb2ef8`), same revision | stroke-width 2 to 1.5 | ISC, as above | `43f936d61098aaf5640838ab48c19a8a1d5c85a0bb73cd9cb8829b196682604c` |
+| Control               | File                        | Derived from                                                                                                                                                                       | Change                | License                                                                                                              | SHA-256                                                            |
+| --------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Theme, under Paper    | `rail/lucide-moon-rail.svg` | `gpui-component` `crates/assets/assets/icons/moon.svg` (`205b959e940d5841f0ce1d09c933153da9d9c94130a54d5cc0c68c2af1d403da`) at revision `b94c409f119ed11a785120925d14021fed3e9b69` | stroke-width 2 to 1.3 | ISC, "Copyright (c) 2026 Lucide Icons and Contributors" (`crates/assets/LICENSE-LUCIDE`); notice carried in the file | `40b4017a5eb01a49f5704305bfa752569ece9d07cc53c42b2fa7a60c36929af0` |
+| Theme, under Graphite | `rail/lucide-sun-rail.svg`  | `sun.svg` (`a3955c8b0425fcc5c9ba12d2bdd77fe53b2cd5dd05e7742a56f342e996fb2ef8`), same revision                                                                                      | stroke-width 2 to 1.5 | ISC, as above                                                                                                        | `43f936d61098aaf5640838ab48c19a8a1d5c85a0bb73cd9cb8829b196682604c` |
 
 Each lands within 15% of the family's median ink and extent at 1x and 2x and
 needs no correction. They are corrected toward that family's uncorrected
@@ -102,11 +102,11 @@ a New conversation button with a compose glyph. Its neighbours in that header
 (More, Refresh) are the Lucide icons `gpui-component` bundles, and that bundle
 has no compose mark, so this one is Lucide's own rather than a drawing of one.
 
-| Control | File | Source | License | SHA-256 |
-|---|---|---|---|---|
-| New conversation | `square-pen.svg` | `lucide-static` 1.48.0, `icons/square-pen.svg`, retrieved from `https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/square-pen.svg` and committed byte for byte | ISC, "Copyright (c) 2026 Lucide Icons and Contributors"; the file carries its license comment | `8a6154592279423212d00525d3c5bb2618c149339e7089cb90b0d81ba15f42f9` |
-| Share (Chat workspace header, section 7.6) | `share.svg` | `lucide-static` 1.48.0, `icons/share.svg`, retrieved from `https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/share.svg` and committed byte for byte | ISC, as above | `65302d33c54142f18752bb170b366ab0f953b491f8e19e0709402ddc0964e075` |
-| Pin conversation (Chat workspace header, section 7.6) | `pin.svg` | `lucide-static` 1.48.0, `icons/pin.svg`, retrieved from `https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/pin.svg` and committed byte for byte | ISC, as above | `cdc7f4d7591ba6cbe0bcefe145e33a74e014283c3d711152c45ebfd4cd803acc` |
+| Control                                               | File             | Source                                                                                                                                                              | License                                                                                       | SHA-256                                                            |
+| ----------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| New conversation                                      | `square-pen.svg` | `lucide-static` 1.48.0, `icons/square-pen.svg`, retrieved from `https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/square-pen.svg` and committed byte for byte | ISC, "Copyright (c) 2026 Lucide Icons and Contributors"; the file carries its license comment | `8a6154592279423212d00525d3c5bb2618c149339e7089cb90b0d81ba15f42f9` |
+| Share (Chat workspace header, section 7.6)            | `share.svg`      | `lucide-static` 1.48.0, `icons/share.svg`, retrieved from `https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/share.svg` and committed byte for byte           | ISC, as above                                                                                 | `65302d33c54142f18752bb170b366ab0f953b491f8e19e0709402ddc0964e075` |
+| Pin conversation (Chat workspace header, section 7.6) | `pin.svg`        | `lucide-static` 1.48.0, `icons/pin.svg`, retrieved from `https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/pin.svg` and committed byte for byte               | ISC, as above                                                                                 | `cdc7f4d7591ba6cbe0bcefe145e33a74e014283c3d711152c45ebfd4cd803acc` |
 
 | Follow agent (thread header, DESIGN.md 4) | `crosshair.svg` | `gpui-component` `crates/assets/assets/icons/crosshair.svg` at revision `85b56f105961f9804b64b612ceff9a2e394e4936`, committed byte for byte; the kit's default icon list does not embed it | ISC, "Copyright (c) 2026 Lucide Icons and Contributors" (`crates/assets/LICENSE-LUCIDE`) | `ae9ed8583286ea03bffae85bb69aee5227540e588b0370cf185f2141ebe25e8d` |
 | Side chat (thread header, DESIGN.md 4) | `split.svg` | `gpui-component` `crates/assets/assets/icons/split.svg` at the same revision, committed byte for byte | ISC, as above | `7b8bebfea5419548e9fed898c8c8cfa7b4ddd910628eab44d3903ccce077dd73` |
@@ -155,15 +155,15 @@ draft marks are finer illustrations and read as texture at the toolbar's
 them. `kit/message_toolbar.rs` checks the grid, the paint model, and that the
 eight files are distinct.
 
-| Control | File | SHA-256 |
-|---|---|---|
-| Copied (the copy control, confirmed) | `message/theorem-copied.svg` | `a3ce189825238bfb82f1fea1818a1a7e9922a243b0bb724706c34e3a6696ad7e` |
-| Reload response | `message/theorem-reload.svg` | `a009e43b76324e70c95a729c0c2c8590bb9ce792725e37635c71bc39368257ae` |
-| Read aloud | `message/theorem-read-aloud.svg` | `a341881e02e0e7606b081f7ee04205e98b7e8e5b1ddb0c417f530fe9f78f71d2` |
-| Edit message | `message/theorem-edit.svg` | `195260bcbdd2b34fca8da6aadb4f41a47d7850483c41e31b871c756659f706bd` |
-| Message actions (the retained menu) | `message/theorem-more.svg` | `9da5f1b0cbfdc606fad89d5973668b1e9989e48d163cfd98e6cc0cf7b7106bd6` |
-| Previous branch | `message/theorem-previous.svg` | `22a4f7381ebccb849054ccc8f2dff36307f5ca0e794c1a2cf7bb7e1f6dc9f614` |
-| Next branch | `message/theorem-next.svg` | `c05e78d8aeba879d51647e9c6c33f33d768c599d708edce846e97051275a376e` |
+| Control                              | File                             | SHA-256                                                            |
+| ------------------------------------ | -------------------------------- | ------------------------------------------------------------------ |
+| Copied (the copy control, confirmed) | `message/theorem-copied.svg`     | `a3ce189825238bfb82f1fea1818a1a7e9922a243b0bb724706c34e3a6696ad7e` |
+| Reload response                      | `message/theorem-reload.svg`     | `a009e43b76324e70c95a729c0c2c8590bb9ce792725e37635c71bc39368257ae` |
+| Read aloud                           | `message/theorem-read-aloud.svg` | `a341881e02e0e7606b081f7ee04205e98b7e8e5b1ddb0c417f530fe9f78f71d2` |
+| Edit message                         | `message/theorem-edit.svg`       | `195260bcbdd2b34fca8da6aadb4f41a47d7850483c41e31b871c756659f706bd` |
+| Message actions (the retained menu)  | `message/theorem-more.svg`       | `9da5f1b0cbfdc606fad89d5973668b1e9989e48d163cfd98e6cc0cf7b7106bd6` |
+| Previous branch                      | `message/theorem-previous.svg`   | `22a4f7381ebccb849054ccc8f2dff36307f5ca0e794c1a2cf7bb7e1f6dc9f614` |
+| Next branch                          | `message/theorem-next.svg`       | `c05e78d8aeba879d51647e9c6c33f33d768c599d708edce846e97051275a376e` |
 
 ## Status band checkout marks
 
@@ -175,7 +175,7 @@ these bytes and never calls the API or includes credentials. The API reports
 style; the license basis is the one recorded under License below.
 
 | State | File | Term and creator | SHA-256 |
-|---|---|---|---|
+| ----- | ---- | ---------------- | ------- |
 
 `theoremweb-shell-gpui`'s `the_checkout_mark_follows_the_checkout` checks
 that the three are distinct files and declare no colour.
@@ -237,13 +237,13 @@ Six of these are the repository owner's own selections, named by icon URL. The
 other five fill the controls those six do not cover, and were chosen to match
 them: same style, same line weight, and where possible the same creator.
 
-| Control | File | Icon | Digest | Creator | Rendition | Chosen by |
-|---|---|---|---|---|---|---|
-| Microphone, idle and capturing | `composer/noun-microphone-8216254.svg` | Microphone (8216254) | `4e6cdaa318bf1d49ff204fa8834a491789fe651ca222091601edda9fc199be03` | Jagat Kreasi | line 8 | Travis |
-| Finish dictation, Stop generation | `composer/noun-stop-8086088.svg` | Stop (8086088) | `ef1f97b09c8f441bf3b98809f02b12601622883619ec3519c9e9334479aa220d` | Jagat Kreasi | line 8 | matched |
-| Remove | `composer/noun-close-8086061.svg` | Close (8086061) | `7222bb2f11dce56ef8c8b86b0be2b90b4afe7735265b8e973fd0dc8f8d4509b9` | Jagat Kreasi | line 8 | matched |
-| Retry | `composer/noun-refresh-8086048.svg` | Refresh (8086048) | `ec0b1e2d68207b399efed91bf3bfe227130941f4b04f6920603594e18a9260d8` | Jagat Kreasi | line 8 | matched |
-| Tools | `composer/noun-settings-8086044.svg` | Settings (8086044) | `2291920b3599e170edd1dbe441cd9191efca5dfd9f86dc9a334540980705446a` | Jagat Kreasi | line 8 | matched |
+| Control                           | File                                   | Icon                 | Digest                                                             | Creator      | Rendition | Chosen by |
+| --------------------------------- | -------------------------------------- | -------------------- | ------------------------------------------------------------------ | ------------ | --------- | --------- |
+| Microphone, idle and capturing    | `composer/noun-microphone-8216254.svg` | Microphone (8216254) | `4e6cdaa318bf1d49ff204fa8834a491789fe651ca222091601edda9fc199be03` | Jagat Kreasi | line 8    | Travis    |
+| Finish dictation, Stop generation | `composer/noun-stop-8086088.svg`       | Stop (8086088)       | `ef1f97b09c8f441bf3b98809f02b12601622883619ec3519c9e9334479aa220d` | Jagat Kreasi | line 8    | matched   |
+| Remove                            | `composer/noun-close-8086061.svg`      | Close (8086061)      | `7222bb2f11dce56ef8c8b86b0be2b90b4afe7735265b8e973fd0dc8f8d4509b9` | Jagat Kreasi | line 8    | matched   |
+| Retry                             | `composer/noun-refresh-8086048.svg`    | Refresh (8086048)    | `ec0b1e2d68207b399efed91bf3bfe227130941f4b04f6920603594e18a9260d8` | Jagat Kreasi | line 8    | matched   |
+| Tools                             | `composer/noun-settings-8086044.svg`   | Settings (8086044)   | `2291920b3599e170edd1dbe441cd9191efca5dfd9f86dc9a334540980705446a` | Jagat Kreasi | line 8    | matched   |
 
 Four creators, and two of the six carry no declared line weight. That is a
 weaker match than section 12's "match optical size, visual weight, view-box
@@ -256,7 +256,7 @@ what it draws. Think and Effort are `Power (8132697)`.
 ### Weight is not a parameter
 
 The v2 API cannot re-render a given icon at a different weight. `line_weight`
-is documented as *"filter results by line weight"* and comes back inside each
+is documented as _"filter results by line weight"_ and comes back inside each
 icon's `styles[]` as a read-only property of that drawing; there is no stroke
 or weight parameter on any endpoint. Weight is baked into the file, so asking
 for a heavier version of an id is asking for a different id. Any future
@@ -267,7 +267,7 @@ search that finds candidates is `GET /v2/icon?styles=line&line_weight=<n>`.
 
 The Noun API returns these at line weight 7 to 8 on a 100 box. That is
 nominally close to the 24-box stroke-2 files the kit bundles, and it does not
-render the same: these are outlines *of* line art, so each stroke is a pair of
+render the same: these are outlines _of_ line art, so each stroke is a pair of
 thin contours around a hollow centre, carrying roughly half the ink of a solid
 stroke of the same nominal width, plus interior detail a small control cannot
 resolve.
@@ -284,91 +284,91 @@ owner's selections are.
 
 ## Retired
 
-| File | Digest | Creator | License | Status |
-|---|---|---|---|---|
-| `rail/noun-database-8419544.svg` | `bf63c4cb1d75e29ac05c070e0a66d580856c3306b89189a52d8848cf299c9656` | Lordz / Noun Project, asset 8419544 | Subscription, as above | Database until the owner's 2026-10-11 rename to Data, drawn with `rail/noun-nodes-138240.svg`. |
-| `rail/noun-inbox-8216259.svg` | `e079f651db029a747be80cc48f61075ecf4c30808c3cf79b0801c19d8ee201af` | Jagat Kreasi / Noun Project, asset 8216259 | Subscription, as above | Index until the owner's 2026-10-11 swap to `rail/noun-database-8408864.svg`. |
-| `rail/noun-cube-8186312.svg` | `995f93448fec3623c988b52be67534f1bd959e0ec0a0640fe905e359af06fbf5` | sentya irma / Noun Project, asset 8186312 | Subscription, as above | Space until the owner's 2026-10-11 rename to Spaces, drawn with `rail/noun-penrose-triangle-881122.svg`. |
-| `rail/lucide-grip-rail.svg` | `18190f0d782bd1251a1aace6c87c54875f5facaba14bc8ca38d0f57f5bbb932f` | Lucide `grip.svg`, lightened (stroke 1.35, outer centres at the cell edge) | ISC | Apps until the owner's 2026-10-11 swap to `rail/noun-collection-8408872.svg`. |
-| `rail/noun-chat-8216252.svg` | `5d54cd67d6439c61fc9a68c6e09578e7fcee4a4bb4728b978cd3f8bd1bdeae5f` | Jagat Kreasi / Noun Project, asset 8216252 | Subscription, as above | Chat until the owner's 2026-10-23 swap to the attached `rail/noun-chat-52762.svg`, copied byte for byte. |
-| `rail/noun-chat-1747287.svg` | `140ba4aa90126f3a72c40004370058a71ce87630d22af9608bb42b9e859ec29d` | Kaleo / Noun Project, asset 1747287 | Subscription, as above | New chat until the owner's 2026-10-02 swap to `rail/noun-chat-8216252.svg`. |
-| `rail/noun-organize-7934045.svg` | `a01dbea69d2f63121d904a20ee2fede474758cccb5e4738b43a07aeba2be26da` | Koko Robert / Noun Project, asset 7934045 | Subscription, as above | Index until the owner's 2026-10-02 swap to `rail/noun-inbox-8216259.svg`. |
-| `rail/noun-document-1517606.svg` | `ae71c886d43bc7bb11d07b0361a4acce70f91ead19c0244302920a3df9b7a234` | Smashicons / Noun Project, asset 1517606 | Subscription, as above | Notebook until the owner's 2026-10-02 swap to `rail/noun-note-8327985.svg`. |
-| `rail/noun-writing-8390845.svg` | `9f05524b241083bddd6012de37d52ef4c1461321bd8947db928192b759a65914` | Nur Achmadi Yusuf / Noun Project, asset 8390845 | Subscription, as above | Previously New chat; removed when New chat adopted `rail/noun-chat-1747287.svg`. |
-| `noun-microphone-8420586.png` | `65c6b036a4f6b2fe64bfdb4d4ab604f8e74d4b8077f1948043f02176db53c2d5` | Dian Chandra Lesmono / Noun Project, asset 8420586 | CC BY 3.0 | Raster, drawn on a hardcoded white circle. Replaced by `composer/noun-microphone-8216254.svg`, which the theme tints. |
-| `composer/paperclip.svg` | `7c0096b20a0fab483bf30142f67b682b4958d1d40fdb3a9d7012c0e9a1639b51` | Theorem | MIT (this repository) | Interim original geometry. Replaced by the admitted Noun rendition. |
-| `composer/microphone.svg` | `68a6ec96c568b21b5fb05119fc96805e2367ebc181c96a92e26988af93ab928f` | Theorem | MIT (this repository) | Interim original geometry. Replaced by the admitted Noun rendition. |
-| `composer/microphone-off.svg` | `c7b63875ba59a0988d5859183c39d38e232ebda1246c0ba1b379fab76ece82c2` | Theorem | MIT (this repository) | Interim original geometry. Replaced by the admitted Noun rendition. |
-| `composer/square.svg` | `5f4de0686dc78967dd082e45d249e6580f5f4ba2f41bbb00f10daf76a0895414` | Theorem | MIT (this repository) | Interim original geometry. Replaced by the admitted Noun rendition. |
-| `composer/sparkle.svg` | `01763e61077e0a908e28103efad1ba4c8b9ce5236e20334596b44efae630b59f` | Theorem | MIT (this repository) | Interim original geometry. Replaced by the admitted Noun rendition. |
-| `composer/noun-attach-8216286.svg` | `16b422aaa8d86bfc4bb8af9e743a3ba72a1c25fe62dcfeb43cea16494e23f3cc` | Jagat Kreasi / Noun Project, asset 8216286 | Subscription, as above | Held Attach for one revision. Replaced when the owner moved their own `Attachment (8184735)` onto Attach, which left this with no control to draw. |
-| `rail/noun-home-1570519.svg` | `1b5ac6f9ad59f7856f7312cd70b1553e8171bec5b063d834b0d070c1c84a52a9` | Owner-supplied Home (1570519); creator not embedded in attachment | Subscription, as above | Drew Home. The digest is the cropped file's; the attachment's was `457e90f5a985278faf389b785ee20dd36fb78818675b4ff8f6e0cee5ed6f07b8` (see Home and Writing optical calibration). Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `rail/noun-writing-8280302.svg` | `9a9979145a0b2f7f875c2c166c3e458410bef66ab746b6991aeb03104ec65022` | Owner-supplied Writing (8280302); creator not embedded in attachment | Subscription, as above | Drew Writing (New chat's rail mark) until 2026-10-22; replaced by `streamline/streamline-pencil-write-2.png`. |
-| `rail/noun-geometry-152494.svg` | `24340840f7d715f7867e0304d3533dd0f6efaed3aee342bf43d970028bc06a4e` | Owner-supplied Geometry (152494); creator not embedded in attachment | Subscription, as above | Drew Search. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `rail/noun-database-8408864.svg` | `c393569094ac128fa35c9e2e236a19e28957e4bbef4591a302a90a3a63902f79` | database, Sofiah | Subscription, as above | Drew Index. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `rail/noun-note-8327985.svg` | `a4abf514a38f484a175edfddc4be2660785c46da3e1a54d187da1a5724b14f0c` | note, Bakunetsu Kaito | Subscription, as above | Drew Notebook. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `rail/noun-tasks-8481868.svg` | `8b439d56a97849678887d727750238b3088d9d42b707a9a5398f5dee7883cec4` | Checklist, Win Ningsih | Subscription, as above | Drew Tasks. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `rail/noun-nodes-138240.svg` | `3774603cc974587e3f70aadee0b693b5f3ee997c2d1333eb842283282589ef79` | nodes, Gregor Cresnar | Subscription, as above | Drew Data (Records authority). Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `rail/noun-collection-8408872.svg` | `379fd857a1ca8b35efc49f2ca8e7fcfc51b16d2966423c4e3732e76cf3f6a960` | collection, Sofiah | Subscription, as above | Drew Apps. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `message/theorem-copy.svg` | `689663ef892465cd80f38b270c82d73796f4837e2221952043e227392035c2c3` | Theorem | MIT (this repository) | Drew Copy until 2026-10-22; replaced by `streamline/streamline-copy-paste-1.png`. |
-| `status/noun-git-5940992.svg` | `732cae6f50acf32b537e8e521d3aea367118bcf44aa8fa1f93da7b4bdf5963fb` | git, Afianroc | Subscription, as above | Drew Clean branch (the default). Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `status/noun-git-3639045.svg` | `f9b47e6a83aff7e76cc9e5b9a660f6a28c999972cb33cee17ee741ffef6e3522` | git, Colourcreatype | Subscription, as above | Drew Uncommitted changes. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `status/noun-git-4782679.svg` | `f22aa309d9cb85431d895245e94bd57f24f37f219190b223763f5bdf621db44b` | git, Saepul Nahwan | Subscription, as above | Drew Detached HEAD. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `composer/noun-send-8216262.svg` | `9811da655d95a0017093dc6dcf150dac42df0c965cf5a736f4e8b2d6afe10ac9` | Jagat Kreasi, send (8216262) | Subscription, as above | Drew Send until 2026-10-22; replaced by `streamline/streamline-send-email-1.png`. |
-| `composer/noun-power-8132697.svg` | `ef80ce603792f1efa23902b7334b3e86a7182d61cf254d1360577ff0f0b3ce42` | AFYstudio, Power (8132697) | Subscription, as above | Drew Think, Effort. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `composer/noun-mute-8387591.svg` | `830633690b6a203928605a0eb26b6ecdba3a81203ae569463ab108f4dd5995c3` | Gendis Studio, Mute (8387591) | Subscription, as above | Drew Microphone, capture closed. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-abacus-8263966.svg` | `22a18d22be40e2a33ba5c7bae6f7d63483bbc21df28c474c8f1d8e0b22665a75` | Abacus, Dierys Design (asset 8263966) | Subscription, as above | Drew field Numeric. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-book-8263964.svg` | `e73bc505a0ded6b8742c65e4c228479fcc0e40cb36c8a312f0e16a3f0fe939b1` | Book, Dierys Design (asset 8263964) | Subscription, as above | Drew object Book. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-box-8269861.svg` | `55671b8e0e94e8ba6da2bdf2b3407a7d061a4c12580e04b50bff69c7f68214be` | Box, Dierys Design (asset 8269861) | Subscription, as above | Drew object Object. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-calculator-8263963.svg` | `686a772212c48545a1009b76e41b76cc30e356adf223f879adcef0e1fd93afcf` | Calculator, Dierys Design (asset 8263963) | Subscription, as above | Drew field Number. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-calendar-8086071.svg` | `20fddd8001fab68158d44be43d660db7a07b35fbf4110ef0ef58a9f130d5ba4a` | Calendar, Jagat Kreasi (asset 8086071) | Subscription, as above | Drew field Date, object Event. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-check-8265528.svg` | `600243b1867e2f2d85a413247571ac45686b376719b19e40ce1ebeecd8c5ce72` | Check, Dierys Design (asset 8265528) | Subscription, as above | Drew field Select. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-checklist-8265534.svg` | `99a10fe13a8ea002b0793ffd114a7b4cdc66f9d7b8ddbc85d5e11d54d9b2fb99` | Checklist, Dierys Design (asset 8265534) | Subscription, as above | Drew object Task. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-clock-8086073.svg` | `c6c669fa00f96d88782c61f11ce745bfe2258ec4befa313471382b83c323b800` | clock, Jagat Kreasi (asset 8086073) | Subscription, as above | Drew field DateTime, control Timeline. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-company-8265564.svg` | `0099513e303354f88b2ec1dda0d5450c993191cccefaea12c6fead2d295ea622` | company, Dierys Design (asset 8265564) | Subscription, as above | Drew object Company. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-copy-8086079.svg` | `0a545c647b61b3562698f204863697ff4ab84185fc0109f2c502f72145bf680c` | copy, Jagat Kreasi (asset 8086079) | Subscription, as above | Drew control Copy. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-database-8265520.svg` | `64c981601e1c2ef1fe78c1998ca6d3d351977b50fbc779e3c3daaa8dc0be7ce9` | database, Dierys Design (asset 8265520) | Subscription, as above | Drew object Table. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-diagram-8269845.svg` | `9fea842bd2bb0c61408ee5869ace453e3f0b68a238c78b13e930e1f3aa0799bb` | diagram, Dierys Design (asset 8269845) | Subscription, as above | Drew object Workflow, and diagram artifacts in Theorem UI until 2026-10-22; replaced there by `streamline/streamline-code-write-1.png`. |
-| `records/noun-edit-8086055.svg` | `eac9c4392bee4c9e4d1c325231757818b510d20e90b5ff74a93376a2d4ebb844` | edit, Jagat Kreasi (asset 8086055) | Subscription, as above | Drew field Text. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-filter-8086076.svg` | `b42b29e93b91d656ca3b1c64bd8dfc5727e085a9c222723794d0be04d8ea82eb` | filter, Jagat Kreasi (asset 8086076) | Subscription, as above | Drew control Filter. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-folder-8259864.svg` | `dbfe6059dc96eaff782ee7a8c6b0ef6fd6248f5b3e515782562df39155cfae0e` | Folder, Dierys Design (asset 8259864) | Subscription, as above | Drew object Folder. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-hierarchy-8259865.svg` | `a2a68e0d488ca270621fcc2c9ce906a9b7e37bd14be67a90e4f94ff6193d2d42` | hierarchy, Dierys Design (asset 8259865) | Subscription, as above | Drew field MorphRelation. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-home-8086043.svg` | `1d69d8740bc4ea81e37869e655fe1734d4be0c2a1f42f226f90b08107fad5a36` | Home, Jagat Kreasi (asset 8086043) | Subscription, as above | Drew control Home. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-image-8265516.svg` | `ce0e27b9ce6ce74658b5ddcbb5df2cabd00ef1b9a65e0c9863a10cb8a9959f13` | Image, Dierys Design (asset 8265516) | Subscription, as above | Drew object Image. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-key-8266498.svg` | `4d114bba60339507a503df08dfe9c4ed65fc3e435d9ffc77ff350ea751bddf55` | Key, Dierys Design (asset 8266498) | Subscription, as above | Drew field Uuid. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-map-8265522.svg` | `87e3354c21cca6bde7913e63b15e07b7a011a308fc99af870890f51b9ef7f839` | Map, Dierys Design (asset 8265522) | Subscription, as above | Drew field Address. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-message-8086072.svg` | `7eed394b098c270e3b7103821376d8814024064124aec85a0bb5714aa654556b` | message, Jagat Kreasi (asset 8086072) | Subscription, as above | Drew field Emails. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-money-8268583.svg` | `1827bfa84a02cba779e94ba785a1face5000ebaccc0e23d31568c4b814f93665` | Money, Dierys Design (asset 8268583) | Subscription, as above | Drew field Currency. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-networking-8265531.svg` | `6555ae527a3dab3a916caa2a040f7888d567da3232d7e9ec88d0c2eecbf885d4` | networking, Dierys Design (asset 8265531) | Subscription, as above | Drew field Relation, control Graph. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-phone-8216256.svg` | `c60c1c8a000a68de610b932671e717ccd30a2a2101149da581b2cafde93cfe39` | Phone, Jagat Kreasi (asset 8216256) | Subscription, as above | Drew field Phones. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-pie-chart-8266514.svg` | `a55c9f56ee7c5b2227f4ec4a726f152331ace8acaf94ee2a1f27585249994dda` | Pie Chart, Dierys Design (asset 8266514) | Subscription, as above | Drew object Dashboard. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-profile-8086051.svg` | `7b0e022a49069e33bbd020f78df4f72d6ce37672818b2459280e78c56e7df74c` | profile, Jagat Kreasi (asset 8086051) | Subscription, as above | Drew field Actor, object Person. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-search-8086046.svg` | `55b83fc7be7e645f9c8f7ad0208ccfc144c57413410b4f3b91579ddcd666254f` | Search, Jagat Kreasi (asset 8086046) | Subscription, as above | Drew field TsVector until 2026-10-22; replaced by `streamline/streamline-search-square.png`. |
-| `records/noun-sort-8086080.svg` | `0db2adcf0393c8c25f9f74509508288ffc04ac4bbf54530ae31a39cb0ee004a3` | Sort, Jagat Kreasi (asset 8086080) | Subscription, as above | Drew field Position, control Sort. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-star-8086065.svg` | `2a757f397f0c50ea4c021b2605af40c9620ec2b36bb68e164dc329cff68ac586` | Star, Jagat Kreasi (asset 8086065) | Subscription, as above | Drew field Rating. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-tag-8135485.svg` | `27436b2110209fcd0719e91d26a8793facdae82a31e1b3025397d8ce84c4f60b` | Tag, Dierys Design (asset 8135485) | Subscription, as above | Drew field MultiSelect, object Tag. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-target-8138418.svg` | `74cf675dbdda01ac106e6469cf946220639a54cacccbc52b8ff0ff04b4b7e46e` | Target, Dierys Design (asset 8138418) | Subscription, as above | Drew object Opportunity. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-user-8265523.svg` | `deb2f0b6a7ab4f41d2d3666d82aaca766e94849d4174a28d38a43513fc08f5e1` | User, Dierys Design (asset 8265523) | Subscription, as above | Drew field FullName. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-bookmark-8086052.svg` | `5ee161e932f87e0d1deaf0f72f5d8137f3ec9b5d6c6ea1e74dd49501d45fe21e` | bookmark, Jagat Kreasi (asset 8086052) | Subscription, as above | Drew control Highlight. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-gallery-8176259.svg` | `1b61f10108f4c002b1e29def325a0d539adb838ed7a51961e6e448d1748d71c6` | gallery, Dierys Design (asset 8176259) | Subscription, as above | Drew control CardsView. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-list-8130845.svg` | `a47746019c217c628c7309e6d112bb84c00b5e7bbfc4261ec87ac47259f5c3d6` | List, Jagat Kreasi (asset 8130845) | Subscription, as above | Drew control AddToList. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-menu-bar-8176279.svg` | `5b15ee60b18a22d1f573fccbaea3d336864a584012e0be52458bbd720a887cc1` | menu bar, Dierys Design (asset 8176279) | Subscription, as above | Drew control Split. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-reading-7143292.svg` | `27e134d0b3c9378e6c6638d32fa0368cf01bceea357fe295394a447137931347` | Reading, Dierys Design (asset 7143292) | Subscription, as above | Drew control Reader. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `records/noun-share-8086062.svg` | `cb31dfec3d9dfe315d09e7247cb9f4f4777c45316628a50e1b166c4a1f8fed11` | Share, Jagat Kreasi (asset 8086062) | Subscription, as above | Drew control Share until 2026-10-22; replaced by `streamline/streamline-share-1.png`. |
-| `rail/noun-page-7936682.svg` | `f14a86ea7e4ede437e4a42ee81db4bf5ae3df8e999b47ea65b3365a27e44c19c` | Not recorded | Subscription, as above | Never recorded here. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `rail/noun-pages-8285393.svg` | `387d4d95fa53ed650caade86d4fe5f7c8f63c48e4966b14c8e37ab6b773001f9` | Not recorded | Subscription, as above | Never recorded here. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `tree/noun-file-8434068.svg` | `1e6655aa7a4755809bc860867e533dcce5a51cc73b45c476ad020beb5824f6be` | El Hikami / Noun Project, asset 8434068 | Subscription, as above | Drew the Projects tree's child rows. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
-| `composer/noun-web-8223212.svg` | `3286f48751a00c75407f02c1691729a6980717825fb9fdbea4f0b3a9ac763372` | Dierys Design, web (8223212) | Subscription, as above | Drew Search until 2026-10-22; replaced by `streamline/streamline-cross-region-data-delivery-2.png`. |
-| `records/noun-add-8086054.svg` | `f21760efeeb1a5769100af2a85c7a922932c3bd1bfd1764f6e8bda9c57494cee` | Noun Project asset 8086054; creator as recorded above | Subscription, as above | Drew Add until 2026-11-05; replaced by Lucide Plus. |
-| `records/noun-file-8259863.svg` | `b254f092adcd62e50b828024ef216f30ae97a24b52857eb489a755977d30ab5d` | Noun Project asset 8259863; creator as recorded above | Subscription, as above | Drew File until 2026-11-05; replaced by `streamline/streamline-common-file-double.png`. |
-| `composer/noun-draft-8216278.svg` | `336d36918969f8504ace8d9677f677f5cfc519624e1e8be5ce273b64c0d5879f` | Jagat Kreasi / Noun Project, asset 8216278 | Subscription, as above | Drew Draft (the goal card) until 2026-11-06; replaced by `streamline/streamline-common-file-text-edit.png`. |
-| `records/noun-article-8259879.svg` | `a9dfb8e8dde770060cca7f135801c30a5b93ab028da23d7e66cf33e7d116300b` | article, Dierys Design (asset 8259879) | Subscription, as above | Drew Article (documents, notes, skills, the slash menu's Embed note) until 2026-11-06; replaced by `streamline/streamline-office-file-text.png`. |
-| `records/noun-layout-8176268.svg` | `75fd929a467cd32dad81c264f8185d70a516740c5b1b6911b847a7d646827990` | Layout, Dierys Design (asset 8176268) | Subscription, as above | Drew Layout (the sidebar toggle, Colors) until 2026-11-06; replaced by `streamline/streamline-browser-page-layout.png`. |
-| `composer/noun-attachment-8184735.svg` | `f2ecf1c68efa226f5747cb07605b979dd0396b7d8258ed939d4ca10c3a50d566` | Angel Yuta / Noun Project, asset 8184735 | Subscription, as above | Drew Attach and an uploaded file until 2026-11-10; replaced by the colored `streamline/control/source/streamline-folder-image-1.png` on the composer and `streamline-common-file-upload.png` for uploads. |
-| `streamline/streamline-send-email-1.png` | `f8f28286ecb00457a400fb6dfd2bc15d0c66c71f2fd4e58d37c0bc5b03e32d17` | Streamline Ultimate Light, Send Email 1 | The owner's Streamline plan | Drew Send until 2026-11-10; replaced by the colored style of the same mark, `streamline/control/source/streamline-send-email-1.png`. |
-| `streamline/streamline-ui-webpage-bullets.png` | `b2672570fdbe15028a0f18287e63ac33dd6e2f5a8ae303557f0d496cc1d15d2d` | Streamline Ultimate Light, Ui Webpage Bullets | The owner's Streamline plan | Drew Plan until 2026-11-10; replaced by the colored `streamline/control/source/streamline-task-list-quill.png`. |
-| `streamline/streamline-file-open.png` | `e62ed40466af24caa37dc1b970e9e24d3f76073ebc877701ddda7c8ecf6a637a` | Streamline Ultimate Light, File Open | The owner's Streamline plan | Drew an open folder (an open project, the Files panel) until 2026-11-10; folders now draw Lucide's Folder as the notes tree does, with no open state. |
-| `streamline/streamline-pencil-write-2.png` | `c6a0c709cb22bb6c5e1d4f5fd75494a6546461196d7b368cf7fbc0526f761bf8` | Streamline Ultimate Light, Pencil Write 2 | The owner's Streamline plan | Drew NewChat until 2026-11-10; replaced by the colored `streamline/control/source/streamline-pencil-write.png`. |
+| File                                           | Digest                                                             | Creator                                                                    | License                     | Status                                                                                                                                                                                                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `rail/noun-database-8419544.svg`               | `bf63c4cb1d75e29ac05c070e0a66d580856c3306b89189a52d8848cf299c9656` | Lordz / Noun Project, asset 8419544                                        | Subscription, as above      | Database until the owner's 2026-10-11 rename to Data, drawn with `rail/noun-nodes-138240.svg`.                                                                                                                                                               |
+| `rail/noun-inbox-8216259.svg`                  | `e079f651db029a747be80cc48f61075ecf4c30808c3cf79b0801c19d8ee201af` | Jagat Kreasi / Noun Project, asset 8216259                                 | Subscription, as above      | Index until the owner's 2026-10-11 swap to `rail/noun-database-8408864.svg`.                                                                                                                                                                                 |
+| `rail/noun-cube-8186312.svg`                   | `995f93448fec3623c988b52be67534f1bd959e0ec0a0640fe905e359af06fbf5` | sentya irma / Noun Project, asset 8186312                                  | Subscription, as above      | Space until the owner's 2026-10-11 rename to Spaces, drawn with `rail/noun-penrose-triangle-881122.svg`.                                                                                                                                                     |
+| `rail/lucide-grip-rail.svg`                    | `18190f0d782bd1251a1aace6c87c54875f5facaba14bc8ca38d0f57f5bbb932f` | Lucide `grip.svg`, lightened (stroke 1.35, outer centres at the cell edge) | ISC                         | Apps until the owner's 2026-10-11 swap to `rail/noun-collection-8408872.svg`.                                                                                                                                                                                |
+| `rail/noun-chat-8216252.svg`                   | `5d54cd67d6439c61fc9a68c6e09578e7fcee4a4bb4728b978cd3f8bd1bdeae5f` | Jagat Kreasi / Noun Project, asset 8216252                                 | Subscription, as above      | Chat until the owner's 2026-10-23 swap to the attached `rail/noun-chat-52762.svg`, copied byte for byte.                                                                                                                                                     |
+| `rail/noun-chat-1747287.svg`                   | `140ba4aa90126f3a72c40004370058a71ce87630d22af9608bb42b9e859ec29d` | Kaleo / Noun Project, asset 1747287                                        | Subscription, as above      | New chat until the owner's 2026-10-02 swap to `rail/noun-chat-8216252.svg`.                                                                                                                                                                                  |
+| `rail/noun-organize-7934045.svg`               | `a01dbea69d2f63121d904a20ee2fede474758cccb5e4738b43a07aeba2be26da` | Koko Robert / Noun Project, asset 7934045                                  | Subscription, as above      | Index until the owner's 2026-10-02 swap to `rail/noun-inbox-8216259.svg`.                                                                                                                                                                                    |
+| `rail/noun-document-1517606.svg`               | `ae71c886d43bc7bb11d07b0361a4acce70f91ead19c0244302920a3df9b7a234` | Smashicons / Noun Project, asset 1517606                                   | Subscription, as above      | Notebook until the owner's 2026-10-02 swap to `rail/noun-note-8327985.svg`.                                                                                                                                                                                  |
+| `rail/noun-writing-8390845.svg`                | `9f05524b241083bddd6012de37d52ef4c1461321bd8947db928192b759a65914` | Nur Achmadi Yusuf / Noun Project, asset 8390845                            | Subscription, as above      | Previously New chat; removed when New chat adopted `rail/noun-chat-1747287.svg`.                                                                                                                                                                             |
+| `noun-microphone-8420586.png`                  | `65c6b036a4f6b2fe64bfdb4d4ab604f8e74d4b8077f1948043f02176db53c2d5` | Dian Chandra Lesmono / Noun Project, asset 8420586                         | CC BY 3.0                   | Raster, drawn on a hardcoded white circle. Replaced by `composer/noun-microphone-8216254.svg`, which the theme tints.                                                                                                                                        |
+| `composer/paperclip.svg`                       | `7c0096b20a0fab483bf30142f67b682b4958d1d40fdb3a9d7012c0e9a1639b51` | Theorem                                                                    | MIT (this repository)       | Interim original geometry. Replaced by the admitted Noun rendition.                                                                                                                                                                                          |
+| `composer/microphone.svg`                      | `68a6ec96c568b21b5fb05119fc96805e2367ebc181c96a92e26988af93ab928f` | Theorem                                                                    | MIT (this repository)       | Interim original geometry. Replaced by the admitted Noun rendition.                                                                                                                                                                                          |
+| `composer/microphone-off.svg`                  | `c7b63875ba59a0988d5859183c39d38e232ebda1246c0ba1b379fab76ece82c2` | Theorem                                                                    | MIT (this repository)       | Interim original geometry. Replaced by the admitted Noun rendition.                                                                                                                                                                                          |
+| `composer/square.svg`                          | `5f4de0686dc78967dd082e45d249e6580f5f4ba2f41bbb00f10daf76a0895414` | Theorem                                                                    | MIT (this repository)       | Interim original geometry. Replaced by the admitted Noun rendition.                                                                                                                                                                                          |
+| `composer/sparkle.svg`                         | `01763e61077e0a908e28103efad1ba4c8b9ce5236e20334596b44efae630b59f` | Theorem                                                                    | MIT (this repository)       | Interim original geometry. Replaced by the admitted Noun rendition.                                                                                                                                                                                          |
+| `composer/noun-attach-8216286.svg`             | `16b422aaa8d86bfc4bb8af9e743a3ba72a1c25fe62dcfeb43cea16494e23f3cc` | Jagat Kreasi / Noun Project, asset 8216286                                 | Subscription, as above      | Held Attach for one revision. Replaced when the owner moved their own `Attachment (8184735)` onto Attach, which left this with no control to draw.                                                                                                           |
+| `rail/noun-home-1570519.svg`                   | `1b5ac6f9ad59f7856f7312cd70b1553e8171bec5b063d834b0d070c1c84a52a9` | Owner-supplied Home (1570519); creator not embedded in attachment          | Subscription, as above      | Drew Home. The digest is the cropped file's; the attachment's was `457e90f5a985278faf389b785ee20dd36fb78818675b4ff8f6e0cee5ed6f07b8` (see Home and Writing optical calibration). Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports. |
+| `rail/noun-writing-8280302.svg`                | `9a9979145a0b2f7f875c2c166c3e458410bef66ab746b6991aeb03104ec65022` | Owner-supplied Writing (8280302); creator not embedded in attachment       | Subscription, as above      | Drew Writing (New chat's rail mark) until 2026-10-22; replaced by `streamline/streamline-pencil-write-2.png`.                                                                                                                                                |
+| `rail/noun-geometry-152494.svg`                | `24340840f7d715f7867e0304d3533dd0f6efaed3aee342bf43d970028bc06a4e` | Owner-supplied Geometry (152494); creator not embedded in attachment       | Subscription, as above      | Drew Search. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                                     |
+| `rail/noun-database-8408864.svg`               | `c393569094ac128fa35c9e2e236a19e28957e4bbef4591a302a90a3a63902f79` | database, Sofiah                                                           | Subscription, as above      | Drew Index. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                                      |
+| `rail/noun-note-8327985.svg`                   | `a4abf514a38f484a175edfddc4be2660785c46da3e1a54d187da1a5724b14f0c` | note, Bakunetsu Kaito                                                      | Subscription, as above      | Drew Notebook. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                                   |
+| `rail/noun-tasks-8481868.svg`                  | `8b439d56a97849678887d727750238b3088d9d42b707a9a5398f5dee7883cec4` | Checklist, Win Ningsih                                                     | Subscription, as above      | Drew Tasks. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                                      |
+| `rail/noun-nodes-138240.svg`                   | `3774603cc974587e3f70aadee0b693b5f3ee997c2d1333eb842283282589ef79` | nodes, Gregor Cresnar                                                      | Subscription, as above      | Drew Data (Records authority). Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                   |
+| `rail/noun-collection-8408872.svg`             | `379fd857a1ca8b35efc49f2ca8e7fcfc51b16d2966423c4e3732e76cf3f6a960` | collection, Sofiah                                                         | Subscription, as above      | Drew Apps. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                                       |
+| `message/theorem-copy.svg`                     | `689663ef892465cd80f38b270c82d73796f4837e2221952043e227392035c2c3` | Theorem                                                                    | MIT (this repository)       | Drew Copy until 2026-10-22; replaced by `streamline/streamline-copy-paste-1.png`.                                                                                                                                                                            |
+| `status/noun-git-5940992.svg`                  | `732cae6f50acf32b537e8e521d3aea367118bcf44aa8fa1f93da7b4bdf5963fb` | git, Afianroc                                                              | Subscription, as above      | Drew Clean branch (the default). Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                 |
+| `status/noun-git-3639045.svg`                  | `f9b47e6a83aff7e76cc9e5b9a660f6a28c999972cb33cee17ee741ffef6e3522` | git, Colourcreatype                                                        | Subscription, as above      | Drew Uncommitted changes. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                        |
+| `status/noun-git-4782679.svg`                  | `f22aa309d9cb85431d895245e94bd57f24f37f219190b223763f5bdf621db44b` | git, Saepul Nahwan                                                         | Subscription, as above      | Drew Detached HEAD. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                              |
+| `composer/noun-send-8216262.svg`               | `9811da655d95a0017093dc6dcf150dac42df0c965cf5a736f4e8b2d6afe10ac9` | Jagat Kreasi, send (8216262)                                               | Subscription, as above      | Drew Send until 2026-10-22; replaced by `streamline/streamline-send-email-1.png`.                                                                                                                                                                            |
+| `composer/noun-power-8132697.svg`              | `ef80ce603792f1efa23902b7334b3e86a7182d61cf254d1360577ff0f0b3ce42` | AFYstudio, Power (8132697)                                                 | Subscription, as above      | Drew Think, Effort. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                              |
+| `composer/noun-mute-8387591.svg`               | `830633690b6a203928605a0eb26b6ecdba3a81203ae569463ab108f4dd5995c3` | Gendis Studio, Mute (8387591)                                              | Subscription, as above      | Drew Microphone, capture closed. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                 |
+| `records/noun-abacus-8263966.svg`              | `22a18d22be40e2a33ba5c7bae6f7d63483bbc21df28c474c8f1d8e0b22665a75` | Abacus, Dierys Design (asset 8263966)                                      | Subscription, as above      | Drew field Numeric. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                              |
+| `records/noun-book-8263964.svg`                | `e73bc505a0ded6b8742c65e4c228479fcc0e40cb36c8a312f0e16a3f0fe939b1` | Book, Dierys Design (asset 8263964)                                        | Subscription, as above      | Drew object Book. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                                |
+| `records/noun-box-8269861.svg`                 | `55671b8e0e94e8ba6da2bdf2b3407a7d061a4c12580e04b50bff69c7f68214be` | Box, Dierys Design (asset 8269861)                                         | Subscription, as above      | Drew object Object. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                              |
+| `records/noun-calculator-8263963.svg`          | `686a772212c48545a1009b76e41b76cc30e356adf223f879adcef0e1fd93afcf` | Calculator, Dierys Design (asset 8263963)                                  | Subscription, as above      | Drew field Number. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                               |
+| `records/noun-calendar-8086071.svg`            | `20fddd8001fab68158d44be43d660db7a07b35fbf4110ef0ef58a9f130d5ba4a` | Calendar, Jagat Kreasi (asset 8086071)                                     | Subscription, as above      | Drew field Date, object Event. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                   |
+| `records/noun-check-8265528.svg`               | `600243b1867e2f2d85a413247571ac45686b376719b19e40ce1ebeecd8c5ce72` | Check, Dierys Design (asset 8265528)                                       | Subscription, as above      | Drew field Select. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                               |
+| `records/noun-checklist-8265534.svg`           | `99a10fe13a8ea002b0793ffd114a7b4cdc66f9d7b8ddbc85d5e11d54d9b2fb99` | Checklist, Dierys Design (asset 8265534)                                   | Subscription, as above      | Drew object Task. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                                |
+| `records/noun-clock-8086073.svg`               | `c6c669fa00f96d88782c61f11ce745bfe2258ec4befa313471382b83c323b800` | clock, Jagat Kreasi (asset 8086073)                                        | Subscription, as above      | Drew field DateTime, control Timeline. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                           |
+| `records/noun-company-8265564.svg`             | `0099513e303354f88b2ec1dda0d5450c993191cccefaea12c6fead2d295ea622` | company, Dierys Design (asset 8265564)                                     | Subscription, as above      | Drew object Company. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                             |
+| `records/noun-copy-8086079.svg`                | `0a545c647b61b3562698f204863697ff4ab84185fc0109f2c502f72145bf680c` | copy, Jagat Kreasi (asset 8086079)                                         | Subscription, as above      | Drew control Copy. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                               |
+| `records/noun-database-8265520.svg`            | `64c981601e1c2ef1fe78c1998ca6d3d351977b50fbc779e3c3daaa8dc0be7ce9` | database, Dierys Design (asset 8265520)                                    | Subscription, as above      | Drew object Table. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                               |
+| `records/noun-diagram-8269845.svg`             | `9fea842bd2bb0c61408ee5869ace453e3f0b68a238c78b13e930e1f3aa0799bb` | diagram, Dierys Design (asset 8269845)                                     | Subscription, as above      | Drew object Workflow, and diagram artifacts in Theorem UI until 2026-10-22; replaced there by `streamline/streamline-code-write-1.png`.                                                                                                                      |
+| `records/noun-edit-8086055.svg`                | `eac9c4392bee4c9e4d1c325231757818b510d20e90b5ff74a93376a2d4ebb844` | edit, Jagat Kreasi (asset 8086055)                                         | Subscription, as above      | Drew field Text. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                                 |
+| `records/noun-filter-8086076.svg`              | `b42b29e93b91d656ca3b1c64bd8dfc5727e085a9c222723794d0be04d8ea82eb` | filter, Jagat Kreasi (asset 8086076)                                       | Subscription, as above      | Drew control Filter. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                             |
+| `records/noun-folder-8259864.svg`              | `dbfe6059dc96eaff782ee7a8c6b0ef6fd6248f5b3e515782562df39155cfae0e` | Folder, Dierys Design (asset 8259864)                                      | Subscription, as above      | Drew object Folder. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                              |
+| `records/noun-hierarchy-8259865.svg`           | `a2a68e0d488ca270621fcc2c9ce906a9b7e37bd14be67a90e4f94ff6193d2d42` | hierarchy, Dierys Design (asset 8259865)                                   | Subscription, as above      | Drew field MorphRelation. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                        |
+| `records/noun-home-8086043.svg`                | `1d69d8740bc4ea81e37869e655fe1734d4be0c2a1f42f226f90b08107fad5a36` | Home, Jagat Kreasi (asset 8086043)                                         | Subscription, as above      | Drew control Home. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                               |
+| `records/noun-image-8265516.svg`               | `ce0e27b9ce6ce74658b5ddcbb5df2cabd00ef1b9a65e0c9863a10cb8a9959f13` | Image, Dierys Design (asset 8265516)                                       | Subscription, as above      | Drew object Image. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                               |
+| `records/noun-key-8266498.svg`                 | `4d114bba60339507a503df08dfe9c4ed65fc3e435d9ffc77ff350ea751bddf55` | Key, Dierys Design (asset 8266498)                                         | Subscription, as above      | Drew field Uuid. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                                 |
+| `records/noun-map-8265522.svg`                 | `87e3354c21cca6bde7913e63b15e07b7a011a308fc99af870890f51b9ef7f839` | Map, Dierys Design (asset 8265522)                                         | Subscription, as above      | Drew field Address. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                              |
+| `records/noun-message-8086072.svg`             | `7eed394b098c270e3b7103821376d8814024064124aec85a0bb5714aa654556b` | message, Jagat Kreasi (asset 8086072)                                      | Subscription, as above      | Drew field Emails. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                               |
+| `records/noun-money-8268583.svg`               | `1827bfa84a02cba779e94ba785a1face5000ebaccc0e23d31568c4b814f93665` | Money, Dierys Design (asset 8268583)                                       | Subscription, as above      | Drew field Currency. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                             |
+| `records/noun-networking-8265531.svg`          | `6555ae527a3dab3a916caa2a040f7888d567da3232d7e9ec88d0c2eecbf885d4` | networking, Dierys Design (asset 8265531)                                  | Subscription, as above      | Drew field Relation, control Graph. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                              |
+| `records/noun-phone-8216256.svg`               | `c60c1c8a000a68de610b932671e717ccd30a2a2101149da581b2cafde93cfe39` | Phone, Jagat Kreasi (asset 8216256)                                        | Subscription, as above      | Drew field Phones. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                               |
+| `records/noun-pie-chart-8266514.svg`           | `a55c9f56ee7c5b2227f4ec4a726f152331ace8acaf94ee2a1f27585249994dda` | Pie Chart, Dierys Design (asset 8266514)                                   | Subscription, as above      | Drew object Dashboard. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                           |
+| `records/noun-profile-8086051.svg`             | `7b0e022a49069e33bbd020f78df4f72d6ce37672818b2459280e78c56e7df74c` | profile, Jagat Kreasi (asset 8086051)                                      | Subscription, as above      | Drew field Actor, object Person. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                 |
+| `records/noun-search-8086046.svg`              | `55b83fc7be7e645f9c8f7ad0208ccfc144c57413410b4f3b91579ddcd666254f` | Search, Jagat Kreasi (asset 8086046)                                       | Subscription, as above      | Drew field TsVector until 2026-10-22; replaced by `streamline/streamline-search-square.png`.                                                                                                                                                                 |
+| `records/noun-sort-8086080.svg`                | `0db2adcf0393c8c25f9f74509508288ffc04ac4bbf54530ae31a39cb0ee004a3` | Sort, Jagat Kreasi (asset 8086080)                                         | Subscription, as above      | Drew field Position, control Sort. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                               |
+| `records/noun-star-8086065.svg`                | `2a757f397f0c50ea4c021b2605af40c9620ec2b36bb68e164dc329cff68ac586` | Star, Jagat Kreasi (asset 8086065)                                         | Subscription, as above      | Drew field Rating. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                               |
+| `records/noun-tag-8135485.svg`                 | `27436b2110209fcd0719e91d26a8793facdae82a31e1b3025397d8ce84c4f60b` | Tag, Dierys Design (asset 8135485)                                         | Subscription, as above      | Drew field MultiSelect, object Tag. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                              |
+| `records/noun-target-8138418.svg`              | `74cf675dbdda01ac106e6469cf946220639a54cacccbc52b8ff0ff04b4b7e46e` | Target, Dierys Design (asset 8138418)                                      | Subscription, as above      | Drew object Opportunity. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                         |
+| `records/noun-user-8265523.svg`                | `deb2f0b6a7ab4f41d2d3666d82aaca766e94849d4174a28d38a43513fc08f5e1` | User, Dierys Design (asset 8265523)                                        | Subscription, as above      | Drew field FullName. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                             |
+| `records/noun-bookmark-8086052.svg`            | `5ee161e932f87e0d1deaf0f72f5d8137f3ec9b5d6c6ea1e74dd49501d45fe21e` | bookmark, Jagat Kreasi (asset 8086052)                                     | Subscription, as above      | Drew control Highlight. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                          |
+| `records/noun-gallery-8176259.svg`             | `1b61f10108f4c002b1e29def325a0d539adb838ed7a51961e6e448d1748d71c6` | gallery, Dierys Design (asset 8176259)                                     | Subscription, as above      | Drew control CardsView. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                          |
+| `records/noun-list-8130845.svg`                | `a47746019c217c628c7309e6d112bb84c00b5e7bbfc4261ec87ac47259f5c3d6` | List, Jagat Kreasi (asset 8130845)                                         | Subscription, as above      | Drew control AddToList. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                          |
+| `records/noun-menu-bar-8176279.svg`            | `5b15ee60b18a22d1f573fccbaea3d336864a584012e0be52458bbd720a887cc1` | menu bar, Dierys Design (asset 8176279)                                    | Subscription, as above      | Drew control Split. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                              |
+| `records/noun-reading-7143292.svg`             | `27e134d0b3c9378e6c6638d32fa0368cf01bceea357fe295394a447137931347` | Reading, Dierys Design (asset 7143292)                                     | Subscription, as above      | Drew control Reader. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                             |
+| `records/noun-share-8086062.svg`               | `cb31dfec3d9dfe315d09e7247cb9f4f4777c45316628a50e1b166c4a1f8fed11` | Share, Jagat Kreasi (asset 8086062)                                        | Subscription, as above      | Drew control Share until 2026-10-22; replaced by `streamline/streamline-share-1.png`.                                                                                                                                                                        |
+| `rail/noun-page-7936682.svg`                   | `f14a86ea7e4ede437e4a42ee81db4bf5ae3df8e999b47ea65b3365a27e44c19c` | Not recorded                                                               | Subscription, as above      | Never recorded here. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                             |
+| `rail/noun-pages-8285393.svg`                  | `387d4d95fa53ed650caade86d4fe5f7c8f63c48e4966b14c8e37ab6b773001f9` | Not recorded                                                               | Subscription, as above      | Never recorded here. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                                             |
+| `tree/noun-file-8434068.svg`                   | `1e6655aa7a4755809bc860867e533dcce5a51cc73b45c476ad020beb5824f6be` | El Hikami / Noun Project, asset 8434068                                    | Subscription, as above      | Drew the Projects tree's child rows. Removed 2026-10-22 with the other Noun files nothing in Theorem UI imports.                                                                                                                                             |
+| `composer/noun-web-8223212.svg`                | `3286f48751a00c75407f02c1691729a6980717825fb9fdbea4f0b3a9ac763372` | Dierys Design, web (8223212)                                               | Subscription, as above      | Drew Search until 2026-10-22; replaced by `streamline/streamline-cross-region-data-delivery-2.png`.                                                                                                                                                          |
+| `records/noun-add-8086054.svg`                 | `f21760efeeb1a5769100af2a85c7a922932c3bd1bfd1764f6e8bda9c57494cee` | Noun Project asset 8086054; creator as recorded above                      | Subscription, as above      | Drew Add until 2026-11-05; replaced by Lucide Plus.                                                                                                                                                                                                          |
+| `records/noun-file-8259863.svg`                | `b254f092adcd62e50b828024ef216f30ae97a24b52857eb489a755977d30ab5d` | Noun Project asset 8259863; creator as recorded above                      | Subscription, as above      | Drew File until 2026-11-05; replaced by `streamline/streamline-common-file-double.png`.                                                                                                                                                                      |
+| `composer/noun-draft-8216278.svg`              | `336d36918969f8504ace8d9677f677f5cfc519624e1e8be5ce273b64c0d5879f` | Jagat Kreasi / Noun Project, asset 8216278                                 | Subscription, as above      | Drew Draft (the goal card) until 2026-11-06; replaced by `streamline/streamline-common-file-text-edit.png`.                                                                                                                                                  |
+| `records/noun-article-8259879.svg`             | `a9dfb8e8dde770060cca7f135801c30a5b93ab028da23d7e66cf33e7d116300b` | article, Dierys Design (asset 8259879)                                     | Subscription, as above      | Drew Article (documents, notes, skills, the slash menu's Embed note) until 2026-11-06; replaced by `streamline/streamline-office-file-text.png`.                                                                                                             |
+| `records/noun-layout-8176268.svg`              | `75fd929a467cd32dad81c264f8185d70a516740c5b1b6911b847a7d646827990` | Layout, Dierys Design (asset 8176268)                                      | Subscription, as above      | Drew Layout (the sidebar toggle, Colors) until 2026-11-06; replaced by `streamline/streamline-browser-page-layout.png`.                                                                                                                                      |
+| `composer/noun-attachment-8184735.svg`         | `f2ecf1c68efa226f5747cb07605b979dd0396b7d8258ed939d4ca10c3a50d566` | Angel Yuta / Noun Project, asset 8184735                                   | Subscription, as above      | Drew Attach and an uploaded file until 2026-11-10; replaced by the colored `streamline/control/source/streamline-folder-image-1.png` on the composer and `streamline-common-file-upload.png` for uploads.                                                    |
+| `streamline/streamline-send-email-1.png`       | `f8f28286ecb00457a400fb6dfd2bc15d0c66c71f2fd4e58d37c0bc5b03e32d17` | Streamline Ultimate Light, Send Email 1                                    | The owner's Streamline plan | Drew Send until 2026-11-10; replaced by the colored style of the same mark, `streamline/control/source/streamline-send-email-1.png`.                                                                                                                         |
+| `streamline/streamline-ui-webpage-bullets.png` | `b2672570fdbe15028a0f18287e63ac33dd6e2f5a8ae303557f0d496cc1d15d2d` | Streamline Ultimate Light, Ui Webpage Bullets                              | The owner's Streamline plan | Drew Plan until 2026-11-10; replaced by the colored `streamline/control/source/streamline-task-list-quill.png`.                                                                                                                                              |
+| `streamline/streamline-file-open.png`          | `e62ed40466af24caa37dc1b970e9e24d3f76073ebc877701ddda7c8ecf6a637a` | Streamline Ultimate Light, File Open                                       | The owner's Streamline plan | Drew an open folder (an open project, the Files panel) until 2026-11-10; folders now draw Lucide's Folder as the notes tree does, with no open state.                                                                                                        |
+| `streamline/streamline-pencil-write-2.png`     | `c6a0c709cb22bb6c5e1d4f5fd75494a6546461196d7b368cf7fbc0526f761bf8` | Streamline Ultimate Light, Pencil Write 2                                  | The owner's Streamline plan | Drew NewChat until 2026-11-10; replaced by the colored `streamline/control/source/streamline-pencil-write.png`.                                                                                                                                              |
 
 The Lucide files the kit bundles are no longer reached from this surface. They
 remain in `gpui-component`'s own asset bundle for every other surface that
@@ -399,17 +399,17 @@ The license basis is the one recorded under License above.
 
 Reused from the families already admitted, with no new file: `composer/noun-attachment-8184735.svg` (field Files, retired 2026-11-10); `composer/noun-close-8086061.svg` (control Close); `composer/noun-settings-8086044.svg` (control Options); `rail/noun-chat-8216252.svg` (control Discuss, retired 2026-10-23); `rail/noun-nodes-138240.svg` (control Data); `rail/noun-note-8327985.svg` (object Note).
 
-| File | Draws | Term, creator and asset | Style | SHA-256 |
-| --- | --- | --- | --- | --- |
-| `records/noun-add-8086054.svg` | control Add | add, Jagat Kreasi (asset 8086054) | line 9 | `f21760efeeb1a5769100af2a85c7a922932c3bd1bfd1764f6e8bda9c57494cee` |
-| `records/noun-checkmark-8086058.svg` | field Boolean | checkmark, Jagat Kreasi (asset 8086058) | line 8 | `e8862eada7d2b77515052928c431114bf2054f78902f9d066631cea4e0313e08` |
-| `records/noun-coding-8259870.svg` | field RawJson | coding, Dierys Design (asset 8259870) | line 8 | `33e0a160465156606072a83287ad90ebdc2c3895500add65574dd9a4742c05a9` |
-| `records/noun-expand-8086092.svg` | control Expand | expand, Jagat Kreasi (asset 8086092) | line 9 | `ea84fb04d755d2779822ad12e05e486b07fa07b57987642a08a2a5b05d18f65f` |
-| `records/noun-file-8259863.svg` | object Document | File, Dierys Design (asset 8259863) | line 8 | `b254f092adcd62e50b828024ef216f30ae97a24b52857eb489a755977d30ab5d` |
-| `records/noun-link-8086078.svg` | field Links, object Link | link, Jagat Kreasi (asset 8086078) | line 8 | `224dbfbb1129c46d5d15233d5dc361716d217a10c5061986a63f176f775a283a` |
-| `records/noun-menu-8086045.svg` | field Array, control List | menu, Jagat Kreasi (asset 8086045) | line 8 | `3778c1de67f89fb06c00dd446d37d6f52f33b07af5315d404913063bf00d3e47` |
-| `records/noun-archive-8315826.svg` | control Archive | archive, Dierys Design (asset 8315826) | line 8 | `360f451f05cf79f01886688f5db93f8f92f58a7ab688cf6fe9d28af98ffc642d` |
-| `records/noun-eye-8086063.svg` | control Unread | Eye, Jagat Kreasi (asset 8086063) | line 8 | `34f002e915ec846d0892446e012c1d05db82d366008a677204bde5db2853c873` |
+| File                                 | Draws                     | Term, creator and asset                 | Style  | SHA-256                                                            |
+| ------------------------------------ | ------------------------- | --------------------------------------- | ------ | ------------------------------------------------------------------ |
+| `records/noun-add-8086054.svg`       | control Add               | add, Jagat Kreasi (asset 8086054)       | line 9 | `f21760efeeb1a5769100af2a85c7a922932c3bd1bfd1764f6e8bda9c57494cee` |
+| `records/noun-checkmark-8086058.svg` | field Boolean             | checkmark, Jagat Kreasi (asset 8086058) | line 8 | `e8862eada7d2b77515052928c431114bf2054f78902f9d066631cea4e0313e08` |
+| `records/noun-coding-8259870.svg`    | field RawJson             | coding, Dierys Design (asset 8259870)   | line 8 | `33e0a160465156606072a83287ad90ebdc2c3895500add65574dd9a4742c05a9` |
+| `records/noun-expand-8086092.svg`    | control Expand            | expand, Jagat Kreasi (asset 8086092)    | line 9 | `ea84fb04d755d2779822ad12e05e486b07fa07b57987642a08a2a5b05d18f65f` |
+| `records/noun-file-8259863.svg`      | object Document           | File, Dierys Design (asset 8259863)     | line 8 | `b254f092adcd62e50b828024ef216f30ae97a24b52857eb489a755977d30ab5d` |
+| `records/noun-link-8086078.svg`      | field Links, object Link  | link, Jagat Kreasi (asset 8086078)      | line 8 | `224dbfbb1129c46d5d15233d5dc361716d217a10c5061986a63f176f775a283a` |
+| `records/noun-menu-8086045.svg`      | field Array, control List | menu, Jagat Kreasi (asset 8086045)      | line 8 | `3778c1de67f89fb06c00dd446d37d6f52f33b07af5315d404913063bf00d3e47` |
+| `records/noun-archive-8315826.svg`   | control Archive           | archive, Dierys Design (asset 8315826)  | line 8 | `360f451f05cf79f01886688f5db93f8f92f58a7ab688cf6fe9d28af98ffc642d` |
+| `records/noun-eye-8086063.svg`       | control Unread            | Eye, Jagat Kreasi (asset 8086063)       | line 8 | `34f002e915ec846d0892446e012c1d05db82d366008a677204bde5db2853c873` |
 
 The record sheet folds its sections without a disclosure mark. Neither the
 Jagat Kreasi set nor Dierys Design draws a chevron, and a chevron from a
@@ -478,41 +478,41 @@ covers the owner's Streamline plan. Streamline's free tier requires attribution;
 a paid plan does not.
 Ten remain; Send Email 1, File Open and Pencil Write 2 are under Retired.
 
-| Registry name | File | Streamline name | SHA-256 |
-|---|---|---|---|
-| Copy | `streamline/streamline-copy-paste-1.png` | Copy Paste 1 | `9700385580df9e3fe93d3e16bc22a54d029ed999d28528c0f00ee073473da8fc` |
-| Search | `streamline/streamline-search-square.png` | Search Square | `df992de155819ffba277e44c678ef72058103fe1dbb1b1918c797108a15379f2` |
-| Share | `streamline/streamline-share-1.png` | Share 1 | `6dce180df4d355ff4a0597747ac74474aeadc7355ae08c0f312f0ec762586776` |
-| Web | `streamline/streamline-cross-region-data-delivery-2.png` | Amazon Web Service Cross Region Data Delivery 2 | `bf2af3fedbfe2ef27e2326eefa76bc188a32bd7b2f02fb483e1e412cc0fdaeb5` |
-| Diagram, Canvas | `streamline/streamline-code-write-1.png` | Code Write 1 | `7108b54d95e8fd3989dfa09beabab4801dcb5413090db1919eed87a89a70289f` |
-| Speaker (the mark beside Theorem's replies; a folder until 2026-11-10, when folders took Lucide's as the notes tree draws it) | `streamline/streamline-folder.png` | Folder | `f2c5c9fd0f6f8ad25bf7ef6c61879d89ad68211c06734c68bd4bdc613c8d926e` |
-| Artifact | `streamline/streamline-square-wireframe-3d.png` | Square Wireframe 3d | `5313347162b22d924dcefd3d9a981385da0b4f2a26448563fc315f0c0ddab4b7` |
-| Open | `streamline/streamline-shipment-upload.png` | Shipment Upload (drawn as two masks, lid and body, so the lid can open) | `b0f971ba54602d9521a4a4dda64aaa75f088b6330aef9c31f101b076db25a006` |
-| Download | `streamline/streamline-download-box.png` | Download Box | `883be4b139f91501a74541687e04b8dc8ca85b46aa5ffe7ae501c24046beda97` |
-| Exit | `streamline/streamline-x.png` | X (from a later download, "streamline-ultimate-light--48x48-PNG(10).zip") | `221832f33e28248257d4e619beabb5153b91c8b23a8475c1c2ded08b5284f52b` |
+| Registry name                                                                                                                 | File                                                     | Streamline name                                                           | SHA-256                                                            |
+| ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Copy                                                                                                                          | `streamline/streamline-copy-paste-1.png`                 | Copy Paste 1                                                              | `9700385580df9e3fe93d3e16bc22a54d029ed999d28528c0f00ee073473da8fc` |
+| Search                                                                                                                        | `streamline/streamline-search-square.png`                | Search Square                                                             | `df992de155819ffba277e44c678ef72058103fe1dbb1b1918c797108a15379f2` |
+| Share                                                                                                                         | `streamline/streamline-share-1.png`                      | Share 1                                                                   | `6dce180df4d355ff4a0597747ac74474aeadc7355ae08c0f312f0ec762586776` |
+| Web                                                                                                                           | `streamline/streamline-cross-region-data-delivery-2.png` | Amazon Web Service Cross Region Data Delivery 2                           | `bf2af3fedbfe2ef27e2326eefa76bc188a32bd7b2f02fb483e1e412cc0fdaeb5` |
+| Diagram, Canvas                                                                                                               | `streamline/streamline-code-write-1.png`                 | Code Write 1                                                              | `7108b54d95e8fd3989dfa09beabab4801dcb5413090db1919eed87a89a70289f` |
+| Speaker (the mark beside Theorem's replies; a folder until 2026-11-10, when folders took Lucide's as the notes tree draws it) | `streamline/streamline-folder.png`                       | Folder                                                                    | `f2c5c9fd0f6f8ad25bf7ef6c61879d89ad68211c06734c68bd4bdc613c8d926e` |
+| Artifact                                                                                                                      | `streamline/streamline-square-wireframe-3d.png`          | Square Wireframe 3d                                                       | `5313347162b22d924dcefd3d9a981385da0b4f2a26448563fc315f0c0ddab4b7` |
+| Open                                                                                                                          | `streamline/streamline-shipment-upload.png`              | Shipment Upload (drawn as two masks, lid and body, so the lid can open)   | `b0f971ba54602d9521a4a4dda64aaa75f088b6330aef9c31f101b076db25a006` |
+| Download                                                                                                                      | `streamline/streamline-download-box.png`                 | Download Box                                                              | `883be4b139f91501a74541687e04b8dc8ca85b46aa5ffe7ae501c24046beda97` |
+| Exit                                                                                                                          | `streamline/streamline-x.png`                            | X (from a later download, "streamline-ultimate-light--48x48-PNG(10).zip") | `221832f33e28248257d4e619beabb5153b91c8b23a8475c1c2ded08b5284f52b` |
 
 Seven more came from a second download of the same set,
 "streamline-ultimate-light--48x48-PNG(11).zip", copied and renamed the same
 way, for the Vault view.
 
-| Registry name | File | Streamline name | SHA-256 |
-|---|---|---|---|
-| Vault | `streamline/streamline-drawer-file.png` | Drawer File | `b62f3a4540b13b92650c088e7bf6df0f260627999be058aa2172f09fcdb53f81` |
-| Files | `streamline/streamline-folder-file-1.png` | Folder File 1 | `4240bc4dd5ffe1f41f0780d5dd14c80aa3870544ee7696c5fff0b12d20486678` |
-| OpenFolder | `streamline/streamline-file-open-1.png` | File Open 1 | `34474520539779686074d77b42268c53eb51fbfe463f0979f31d622130044413` |
-| Notes | `streamline/streamline-common-file-stack.png` | Common File Stack | `bf5297bf079553db6542d828cba373800566f3b735c11d831db1085e364e0dde` |
-| Attachments | `streamline/streamline-common-file-double.png` | Common File Double | `af123c37654db4734759ef6e8fd2e723822789cb614cf2e5b5d6997176f48865` |
-| Trusted | `streamline/streamline-zip-file-lock.png` | Zip File Lock | `d52444fa4c197a78539428b736187268e8cc512fd9656529ccbb87f87e5072c1` |
-| Untrusted | `streamline/streamline-zip-file-warning.png` | Zip File Warning | `12f856713874d0409829cee132357eacf3b4b2f53ef34b47a6630dd9d963020d` |
+| Registry name | File                                           | Streamline name    | SHA-256                                                            |
+| ------------- | ---------------------------------------------- | ------------------ | ------------------------------------------------------------------ |
+| Vault         | `streamline/streamline-drawer-file.png`        | Drawer File        | `b62f3a4540b13b92650c088e7bf6df0f260627999be058aa2172f09fcdb53f81` |
+| Files         | `streamline/streamline-folder-file-1.png`      | Folder File 1      | `4240bc4dd5ffe1f41f0780d5dd14c80aa3870544ee7696c5fff0b12d20486678` |
+| OpenFolder    | `streamline/streamline-file-open-1.png`        | File Open 1        | `34474520539779686074d77b42268c53eb51fbfe463f0979f31d622130044413` |
+| Notes         | `streamline/streamline-common-file-stack.png`  | Common File Stack  | `bf5297bf079553db6542d828cba373800566f3b735c11d831db1085e364e0dde` |
+| Attachments   | `streamline/streamline-common-file-double.png` | Common File Double | `af123c37654db4734759ef6e8fd2e723822789cb614cf2e5b5d6997176f48865` |
+| Trusted       | `streamline/streamline-zip-file-lock.png`      | Zip File Lock      | `d52444fa4c197a78539428b736187268e8cc512fd9656529ccbb87f87e5072c1` |
+| Untrusted     | `streamline/streamline-zip-file-warning.png`   | Zip File Warning   | `12f856713874d0409829cee132357eacf3b4b2f53ef34b47a6630dd9d963020d` |
 
 Two more came from the downloads "streamline-ultimate-light--48x48-PNG(3).zip"
 and "(5).zip", copied and renamed the same way, to mark what comes from Theorem
 in the Vault. One remains; Ui Webpage Bullets, which also drew Plan, is under
 Retired.
 
-| Registry name | File | Streamline name | SHA-256 |
-|---|---|---|---|
-| TheoremVault | `streamline/streamline-square-wireframe-3d.png` | Square Wireframe 3d | `5313347162b22d924dcefd3d9a981385da0b4f2a26448563fc315f0c0ddab4b7` |
+| Registry name | File                                            | Streamline name     | SHA-256                                                            |
+| ------------- | ----------------------------------------------- | ------------------- | ------------------------------------------------------------------ |
+| TheoremVault  | `streamline/streamline-square-wireframe-3d.png` | Square Wireframe 3d | `5313347162b22d924dcefd3d9a981385da0b4f2a26448563fc315f0c0ddab4b7` |
 
 Twenty more came from the owner's downloads of 2026-11-05,
 "streamline-ultimate-light--graphs and git.zip", "streamline-ultimate-light-notes.zip",
@@ -520,30 +520,30 @@ Twenty more came from the owner's downloads of 2026-11-05,
 copied and renamed the same way. Common File Double and Pencil Write 2 were in
 those downloads too, byte-identical to the files listed above at the time.
 
-| Registry name | File | Streamline name | SHA-256 |
-|---|---|---|---|
-| Organize | `streamline/streamline-hierarchy-5-organize.png` | Hierarchy 5 Organize | `6ab526d41fd2dbba1cfc107ddcad2e233653ccde15a7491f10fcf6aa679c9bae` |
-| compound node kind | `streamline/streamline-hierarchy-6.png` | Hierarchy 6 | `9813ab25dbd8fb36c9877e8be6a99100242b9e3138be0deb164241b92b8328bc` |
-| Graph | `streamline/streamline-astronomy-constellation.png` | Astronomy Constellation | `f3052892c7d375a4cd5d5cc3ed7a9aab301adef981e258dc8cfc13053794d83b` |
-| Fork | `streamline/streamline-workflow-branch.png` | Workflow Branch | `0de93aaa3827eaf1f17744817975f82cf0d16ffe9c0814e781c2b18b0a4d529f` |
-| Proposal | `streamline/streamline-workflow-pull-request.png` | Workflow Pull Request | `df6abce092d33f5726bda4015a33db49e95087161716610b96136b38bb6d1f01` |
-| Draft | `streamline/streamline-common-file-text-edit.png` | Common File Text Edit | `29e8a30b59d9542763f7a37ca7ea0560402890f2c8e97d536ee38f1ffbcc9b00` |
-| Article | `streamline/streamline-office-file-text.png` | Office File Text | `fedbb8d674c68477946e8ed9f5d551c8857366306303dfe1db0904c79378906f` |
-| Note | `streamline/streamline-pencil-write-1.png` | Pencil Write 1 | `efcdfbb43332464cae8e66bb92c9fdfd98c2bf3ab734ac7f268acbee1fe1bde3` |
-| Agent | `streamline/streamline-ai-file-robot.png` | Ai File Robot | `4526790a1bff823de8c9e32d1ce60c1190b370a6f6360751ec1a275fb98329aa` |
-| Skill, stochastic node kind | `streamline/streamline-ai-science-spark.png` | Ai Science Spark | `ab6c4ffcecdb3329cf714d923cbc7b2f1394217e506a677d7720e2c071af8bfb` |
-| Sink, sink node kind | `streamline/streamline-travel-paper-plane.png` | Travel Paper Plane | `a38d362623d1a982edb9b1bc37b5abf36db941a95cc4f85f38fc12f15ec270ac` |
-| Panels | `streamline/streamline-browser-page-layout.png` (from "graph and layout.zip") | Browser Page Layout | `7dccfde413cb043f8d0ff7e1745a657afb5e9e813b96d3edd430d7e7ed76425a` |
-| Follow | `streamline/streamline-agent-software-cursor-bot-2.png` | Agent Software Cursor Bot 2 | `1b8d517f16c6fa3c97715a4c15450d3e42f8173d4730dfc3815e9a9a46c7788a` |
-| AddNode | `streamline/streamline-hierarchy-5.png` | Hierarchy 5 | `4fd570f8b7aeae87fb02840c8bdd4c868e5f990813ac934c7bd9b5c10ca02053` |
-| NewGraph | `streamline/streamline-design-file-select.png` | Design File Select | `2d59eeb844b160ffc211c87bb773531224e10614856dc315d4a5114634243659` |
-| Outline | `streamline/streamline-hierarchy-2.png` | Hierarchy 2 | `39089aabb50f744069c7cae7ed01f1c915fbb594561584453ef2d2c617520f4e` |
-| Model | `streamline/streamline-ai-generate-variation-robot.png` | Ai Generate Variation Robot | `0680b8bfe17c5bc960c4bffade845e1b0c50ea72d1fadc10cc0c84ee30744465` |
-| Mail | `streamline/streamline-paginate-filter-mail.png` | Paginate Filter Mail | `bf97bc644288a2bf074560d3586bd74df90ca92b88aac30d7519a325c8e02cbb` |
-| Reject | `streamline/streamline-workflow-request-closed.png` | Workflow Request Closed | `5a70587c8f65d678f39597a21419bf8460a1a49ba11d689b9ce6c69e346b7917` |
-| Route | `streamline/streamline-ai-routing-agent-direction-1.png` | Ai Routing Agent Direction 1 | `85166ab56762760f2165ef7fe65bc0d41f2ec91c278375b766ab6933698131a9` |
-| Layout | `streamline/streamline-browser-page-layout.png` | Browser Page Layout | `7dccfde413cb043f8d0ff7e1745a657afb5e9e813b96d3edd430d7e7ed76425a` |
-| Delegate | `streamline/streamline-ai-routing-agent-direction-1.png` | Ai Routing Agent Direction 1 | `85166ab56762760f2165ef7fe65bc0d41f2ec91c278375b766ab6933698131a9` |
+| Registry name               | File                                                                          | Streamline name              | SHA-256                                                            |
+| --------------------------- | ----------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------ |
+| Organize                    | `streamline/streamline-hierarchy-5-organize.png`                              | Hierarchy 5 Organize         | `6ab526d41fd2dbba1cfc107ddcad2e233653ccde15a7491f10fcf6aa679c9bae` |
+| compound node kind          | `streamline/streamline-hierarchy-6.png`                                       | Hierarchy 6                  | `9813ab25dbd8fb36c9877e8be6a99100242b9e3138be0deb164241b92b8328bc` |
+| Graph                       | `streamline/streamline-astronomy-constellation.png`                           | Astronomy Constellation      | `f3052892c7d375a4cd5d5cc3ed7a9aab301adef981e258dc8cfc13053794d83b` |
+| Fork                        | `streamline/streamline-workflow-branch.png`                                   | Workflow Branch              | `0de93aaa3827eaf1f17744817975f82cf0d16ffe9c0814e781c2b18b0a4d529f` |
+| Proposal                    | `streamline/streamline-workflow-pull-request.png`                             | Workflow Pull Request        | `df6abce092d33f5726bda4015a33db49e95087161716610b96136b38bb6d1f01` |
+| Draft                       | `streamline/streamline-common-file-text-edit.png`                             | Common File Text Edit        | `29e8a30b59d9542763f7a37ca7ea0560402890f2c8e97d536ee38f1ffbcc9b00` |
+| Article                     | `streamline/streamline-office-file-text.png`                                  | Office File Text             | `fedbb8d674c68477946e8ed9f5d551c8857366306303dfe1db0904c79378906f` |
+| Note                        | `streamline/streamline-pencil-write-1.png`                                    | Pencil Write 1               | `efcdfbb43332464cae8e66bb92c9fdfd98c2bf3ab734ac7f268acbee1fe1bde3` |
+| Agent                       | `streamline/streamline-ai-file-robot.png`                                     | Ai File Robot                | `4526790a1bff823de8c9e32d1ce60c1190b370a6f6360751ec1a275fb98329aa` |
+| Skill, stochastic node kind | `streamline/streamline-ai-science-spark.png`                                  | Ai Science Spark             | `ab6c4ffcecdb3329cf714d923cbc7b2f1394217e506a677d7720e2c071af8bfb` |
+| Sink, sink node kind        | `streamline/streamline-travel-paper-plane.png`                                | Travel Paper Plane           | `a38d362623d1a982edb9b1bc37b5abf36db941a95cc4f85f38fc12f15ec270ac` |
+| Panels                      | `streamline/streamline-browser-page-layout.png` (from "graph and layout.zip") | Browser Page Layout          | `7dccfde413cb043f8d0ff7e1745a657afb5e9e813b96d3edd430d7e7ed76425a` |
+| Follow                      | `streamline/streamline-agent-software-cursor-bot-2.png`                       | Agent Software Cursor Bot 2  | `1b8d517f16c6fa3c97715a4c15450d3e42f8173d4730dfc3815e9a9a46c7788a` |
+| AddNode                     | `streamline/streamline-hierarchy-5.png`                                       | Hierarchy 5                  | `4fd570f8b7aeae87fb02840c8bdd4c868e5f990813ac934c7bd9b5c10ca02053` |
+| NewGraph                    | `streamline/streamline-design-file-select.png`                                | Design File Select           | `2d59eeb844b160ffc211c87bb773531224e10614856dc315d4a5114634243659` |
+| Outline                     | `streamline/streamline-hierarchy-2.png`                                       | Hierarchy 2                  | `39089aabb50f744069c7cae7ed01f1c915fbb594561584453ef2d2c617520f4e` |
+| Model                       | `streamline/streamline-ai-generate-variation-robot.png`                       | Ai Generate Variation Robot  | `0680b8bfe17c5bc960c4bffade845e1b0c50ea72d1fadc10cc0c84ee30744465` |
+| Mail                        | `streamline/streamline-paginate-filter-mail.png`                              | Paginate Filter Mail         | `bf97bc644288a2bf074560d3586bd74df90ca92b88aac30d7519a325c8e02cbb` |
+| Reject                      | `streamline/streamline-workflow-request-closed.png`                           | Workflow Request Closed      | `5a70587c8f65d678f39597a21419bf8460a1a49ba11d689b9ce6c69e346b7917` |
+| Route                       | `streamline/streamline-ai-routing-agent-direction-1.png`                      | Ai Routing Agent Direction 1 | `85166ab56762760f2165ef7fe65bc0d41f2ec91c278375b766ab6933698131a9` |
+| Layout                      | `streamline/streamline-browser-page-layout.png`                               | Browser Page Layout          | `7dccfde413cb043f8d0ff7e1745a657afb5e9e813b96d3edd430d7e7ed76425a` |
+| Delegate                    | `streamline/streamline-ai-routing-agent-direction-1.png`                      | Ai Routing Agent Direction 1 | `85166ab56762760f2165ef7fe65bc0d41f2ec91c278375b766ab6933698131a9` |
 
 One more came on 2026-11-06 as a PNG the owner attached in conversation (48 x
 48, black ink on a transparent ground, the same Light style), copied byte for
@@ -553,17 +553,17 @@ attachment itself carried no name. It marks Theorem's own model choice in the
 composer's model switch, the command palette and AI settings, where Spaces's
 Penrose triangle stood in before.
 
-| Registry name | File | Streamline name | SHA-256 |
-|---|---|---|---|
-| Theorem | `streamline/streamline-ai-robot-generate-variation.png` | Ai Robot Generate Variation (by shape) | `0680b8bfe17c5bc960c4bffade845e1b0c50ea72d1fadc10cc0c84ee30744465` |
+| Registry name | File                                                    | Streamline name                        | SHA-256                                                            |
+| ------------- | ------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------ |
+| Theorem       | `streamline/streamline-ai-robot-generate-variation.png` | Ai Robot Generate Variation (by shape) | `0680b8bfe17c5bc960c4bffade845e1b0c50ea72d1fadc10cc0c84ee30744465` |
 
 One more came on 2026-11-08 as a loose download in the same Light style,
 "Descending-Sort-Filter-2--Streamline-Ultimate.png" (48 x 48), copied byte for
 byte and renamed the same way. It opens the Notes panel's sort menu.
 
-| Registry name | File | Streamline name | SHA-256 |
-|---|---|---|---|
-| Sort | `streamline/streamline-descending-sort-filter-2.png` | Descending Sort Filter 2 | `a5097120a673269d387f8017df4a0a4dd70a6b52bbf7887a85fe76cd1dedab18` |
+| Registry name | File                                                 | Streamline name          | SHA-256                                                            |
+| ------------- | ---------------------------------------------------- | ------------------------ | ------------------------------------------------------------------ |
+| Sort          | `streamline/streamline-descending-sort-filter-2.png` | Descending Sort Filter 2 | `a5097120a673269d387f8017df4a0a4dd70a6b52bbf7887a85fe76cd1dedab18` |
 
 Two more came the same day. Common File Add is from
 "streamline-ultimate-light--48x48-PNG (3).zip". The AI file is a PNG the owner
@@ -571,28 +571,28 @@ attached in conversation (48 x 48, the same Light style); it carried no name and
 none was matched, so its file name describes the shape. Both were copied byte
 for byte.
 
-| Registry name | File | Streamline name | SHA-256 |
-|---|---|---|---|
-| NewNote | `streamline/streamline-common-file-add.png` | Common File Add | `9a25b0adc52b53bd08017f59930028c4a10c06d8b889c55c4291f32872695816` |
-| AgentNote | `streamline/streamline-ai-file-sparkle.png` | (owner attachment, unnamed: a file with a four-point sparkle) | `184dc83fc9f69ed94c92ea7d03ece38f546f0968381af5bf5b8b29ed160450f1` |
+| Registry name | File                                        | Streamline name                                               | SHA-256                                                            |
+| ------------- | ------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------ |
+| NewNote       | `streamline/streamline-common-file-add.png` | Common File Add                                               | `9a25b0adc52b53bd08017f59930028c4a10c06d8b889c55c4291f32872695816` |
+| AgentNote     | `streamline/streamline-ai-file-sparkle.png` | (owner attachment, unnamed: a file with a four-point sparkle) | `184dc83fc9f69ed94c92ea7d03ece38f546f0968381af5bf5b8b29ed160450f1` |
 
 The rest of those downloads is kept in `streamline/library/`. Nothing imports
 those files, so they do not ship; they are there to reach for. Dzone Logo and
 Tripit Logo draw real companies' marks, so check before using either as an
 interface glyph. Share is a different drawing from the Share 1 the registry uses.
 
-| File | Streamline name | SHA-256 |
-|---|---|---|
-| `streamline/library/streamline-hierarchy-9.png` | Hierarchy 9 | `c368623653bd006579eb8a7e2e15fbeb65a12e8829a09d30aea18ddecb842517` |
-| `streamline/library/streamline-dzone-logo.png` | Dzone Logo | `71012ba44e63309339d57d40ab6fb2bff508da391739f5cac2033b1122b6b709` |
-| `streamline/library/streamline-hierarchy-files.png` | Hierarchy Files | `26d15f7cffd146df723d2e5a02dfa886aa13b9eff3ee28de9e7acc26669624b6` |
-| `streamline/library/streamline-rotate-3d.png` | Rotate 3d | `e655ce10aeb6e81d0b36846a6ffe5ebce175beef521141237e8c498cae8c3119` |
-| `streamline/library/streamline-scale-3d.png` | Scale 3d | `1123f94ff8bf46dad98d151e6a40e96234841f841444077ad302f09ccf95de2f` |
-| `streamline/library/streamline-share.png` | Share | `ff7948a797a0e3bcf074c9e66cfdbd29f15e4bf928675c4429edc27a7ea1bb0b` |
-| `streamline/library/streamline-tripit-logo.png` | Tripit Logo | `ef8a4fc89fdcf6bd93ac46fb5fd3de6b4f89f27ed7374b30ef8b09cc3d65bebd` |
-| `streamline/library/streamline-workflow-exit-door.png` | Workflow Exit Door | `bad924ee9a0e88036e14e49add8dc7cc78885f71a97ea0d66b0417e2c0d2d227` |
+| File                                                       | Streamline name        | SHA-256                                                            |
+| ---------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------ |
+| `streamline/library/streamline-hierarchy-9.png`            | Hierarchy 9            | `c368623653bd006579eb8a7e2e15fbeb65a12e8829a09d30aea18ddecb842517` |
+| `streamline/library/streamline-dzone-logo.png`             | Dzone Logo             | `71012ba44e63309339d57d40ab6fb2bff508da391739f5cac2033b1122b6b709` |
+| `streamline/library/streamline-hierarchy-files.png`        | Hierarchy Files        | `26d15f7cffd146df723d2e5a02dfa886aa13b9eff3ee28de9e7acc26669624b6` |
+| `streamline/library/streamline-rotate-3d.png`              | Rotate 3d              | `e655ce10aeb6e81d0b36846a6ffe5ebce175beef521141237e8c498cae8c3119` |
+| `streamline/library/streamline-scale-3d.png`               | Scale 3d               | `1123f94ff8bf46dad98d151e6a40e96234841f841444077ad302f09ccf95de2f` |
+| `streamline/library/streamline-share.png`                  | Share                  | `ff7948a797a0e3bcf074c9e66cfdbd29f15e4bf928675c4429edc27a7ea1bb0b` |
+| `streamline/library/streamline-tripit-logo.png`            | Tripit Logo            | `ef8a4fc89fdcf6bd93ac46fb5fd3de6b4f89f27ed7374b30ef8b09cc3d65bebd` |
+| `streamline/library/streamline-workflow-exit-door.png`     | Workflow Exit Door     | `bad924ee9a0e88036e14e49add8dc7cc78885f71a97ea0d66b0417e2c0d2d227` |
 | `streamline/library/streamline-workflow-request-draft.png` | Workflow Request Draft | `c3b14b30f117989226f49c29e7d154cbb28a9679470ff5b28bb5df22e1807ea0` |
-| `streamline/library/streamline-ai-folder-spark.png` | Ai Folder Spark | `ae9fcb01649b48af25b34cec8cfc1623e9419179ddcd91b0bacab1f6a428459e` |
+| `streamline/library/streamline-ai-folder-spark.png`        | Ai Folder Spark        | `ae9fcb01649b48af25b34cec8cfc1623e9419179ddcd91b0bacab1f6a428459e` |
 
 None of those downloads draws a plus, so Lucide's stands in for Add, as Lucide's
 trash does for Delete and Lucide's BellOff for muting a link suggestion. File
@@ -607,10 +607,10 @@ renamed the same way. App Window Code replaced the Shellfile rendition as
 coloured rail marks below, the rail draws the IDE with File Code, and `Icon.Ide`
 draws the IDE's glyph in chat cards and the code handler.
 
-| Registry name | File | Streamline name | SHA-256 |
-|---|---|---|---|
-| Ide | `streamline/streamline-app-window-code.png` | App Window Code | `fac43b13b5cad8cb4c84a43a1f0b7f63190d156fb13d95dd74741f664a1f3f8b` |
-| Todo (the `todo` section glyph) | `streamline/streamline-list-edit.png` | List Edit | `1ffaf8ff236e8e122027931d17ae736e8d3b8c45aad90912b8c4d28162fe8a9c` |
+| Registry name                   | File                                        | Streamline name | SHA-256                                                            |
+| ------------------------------- | ------------------------------------------- | --------------- | ------------------------------------------------------------------ |
+| Ide                             | `streamline/streamline-app-window-code.png` | App Window Code | `fac43b13b5cad8cb4c84a43a1f0b7f63190d156fb13d95dd74741f664a1f3f8b` |
+| Todo (the `todo` section glyph) | `streamline/streamline-list-edit.png`       | List Edit       | `1ffaf8ff236e8e122027931d17ae736e8d3b8c45aad90912b8c4d28162fe8a9c` |
 
 ## Rail marks in colour (Streamline Ultimate, colored style)
 
@@ -622,15 +622,15 @@ Each was copied byte for byte and renamed in lowercase with a
 covers the owner's Streamline plan. Dzone Logo draws a real company's mark;
 the owner chose it for Spaces.
 
-| Rail role | File | Streamline name | SHA-256 |
-|---|---|---|---|
-| Home (the chat mode) | `streamline/rail/source/streamline-house-1.png` | House 1 | `bd37c1ab27ccbd703475a1f44ca9412f7bfc2964d271eb5120562b7766709c4e` |
-| Index | `streamline/rail/source/streamline-drawer-file.png` | Drawer File (colored) | `f479a5a678b58c4bf83200e2bd1eacdaab92ee6158fbd7e82408caf679ac4f34` |
-| Canvas | `streamline/rail/source/streamline-design-file-vector.png` | Design File Vector | `6dd5a2f2cdf27dd744d1061019f101448aa8994823e3a34d47ce3ff8933f1e42` |
-| Spaces | `streamline/rail/source/streamline-dzone-logo.png` | Dzone Logo | `34ebf6a16486df7d10d222ef39e9168178e6babe0540263838dc57b51556097c` |
-| IDE | `streamline/rail/source/streamline-file-code.png` | File Code | `504bc7985dc8207cdbabf266ac008edf3b5470f890d7931c43499d822032ddb8` |
-| Vault | `streamline/rail/source/streamline-folder-zip.png` | Folder Zip (colored; name inferred from the image) | `09a2592d12b09cceb6a241a673c8a1b361b792331931848a5d6973f8fc97eeb7` |
-| Files control at the rail's foot | `streamline/rail/source/streamline-hierarchy-files-1.png` | Hierarchy Files 1 | `88dd557e71a8a6eca831706aa9cd5105a9415eb93d53db20cf636690fab0aad1` |
+| Rail role                        | File                                                       | Streamline name                                    | SHA-256                                                            |
+| -------------------------------- | ---------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------ |
+| Home (the chat mode)             | `streamline/rail/source/streamline-house-1.png`            | House 1                                            | `bd37c1ab27ccbd703475a1f44ca9412f7bfc2964d271eb5120562b7766709c4e` |
+| Index                            | `streamline/rail/source/streamline-drawer-file.png`        | Drawer File (colored)                              | `f479a5a678b58c4bf83200e2bd1eacdaab92ee6158fbd7e82408caf679ac4f34` |
+| Canvas                           | `streamline/rail/source/streamline-design-file-vector.png` | Design File Vector                                 | `6dd5a2f2cdf27dd744d1061019f101448aa8994823e3a34d47ce3ff8933f1e42` |
+| Spaces                           | `streamline/rail/source/streamline-dzone-logo.png`         | Dzone Logo                                         | `34ebf6a16486df7d10d222ef39e9168178e6babe0540263838dc57b51556097c` |
+| IDE                              | `streamline/rail/source/streamline-file-code.png`          | File Code                                          | `504bc7985dc8207cdbabf266ac008edf3b5470f890d7931c43499d822032ddb8` |
+| Vault                            | `streamline/rail/source/streamline-folder-zip.png`         | Folder Zip (colored; name inferred from the image) | `09a2592d12b09cceb6a241a673c8a1b361b792331931848a5d6973f8fc97eeb7` |
+| Files control at the rail's foot | `streamline/rail/source/streamline-hierarchy-files-1.png`  | Hierarchy Files 1                                  | `88dd557e71a8a6eca831706aa9cd5105a9415eb93d53db20cf636690fab0aad1` |
 
 Pages reuses the Light-style Browser Page Layout PNG, and Notes the Light-style
 Common File Stack PNG listed above. Both are black ink on transparent, so the
@@ -659,20 +659,22 @@ renamed in lowercase with a `streamline-` prefix, into
 `streamline/control/source/`. The license is whatever covers the owner's
 Streamline plan.
 
-| Registry name | Draws | File | Streamline name | SHA-256 |
-|---|---|---|---|---|
-| Thread | A chat in the sidebar with no icon from the Librarian | `streamline/control/source/streamline-messages-bubble-text-1.png` | Messages Bubble Text 1 | `ec4d1ecc5ca3d42792e86cdb6f903e49b36f66b14a3fc9c49bab1cfb57dd442b` |
-| ChatSearch | The sidebar's search button | `streamline/control/source/streamline-messages-bubble-search.png` | Messages Bubble Search | `c0738f5c056f36d120f912b1a1b0291939fe4137a10d2f9c39726a30cd22c881` |
-| Send | The composer's send button | `streamline/control/source/streamline-send-email-1.png` | Send Email 1 | `e6a579771d9cddb57779139ddd1f9ca5bfdd0bd8c4a06b63570bd9e789005470` |
-| Attachment | An uploaded file: the sidebar's outputs, a message's attachment, Import | `streamline/control/source/streamline-common-file-upload.png` | Common File Upload | `4a6466ea74e63671f226aecb0b04c21bcd2c495677362d54071f26259ea59ff2` |
-| AttachFolder | The composer's attach button | `streamline/control/source/streamline-folder-image-1.png` | Folder Image 1 | `74d71e79c46fb27cd299b26114b7e0681892ded3d45d3864bc434235aa67a694` |
-| Plan | The composer's Plan toggle, a plan card, a workspace's plan entry | `streamline/control/source/streamline-task-list-quill.png` | Not carried by the file ("plans.png"); a task list with a quill, so the file name describes the shape | `02346fd5f38dc7aece311047950d9abfb19fca5bf557cf00c06961510c272960` |
-| WebSearch | The composer's Web toggle | `streamline/control/source/streamline-network-search.png` | Network Search | `58fccf0874e5c6fc45b0735d8e10d4f5727496669f19dd926ec0cbd2d3806968` |
-| NewChat | New thread and new chat, wherever they are offered | `streamline/control/source/streamline-pencil-write.png` | Pencil Write | `db2e92915632cfc26b574bc0eea63fa530d0cd211955663cc707aa50ab6d8e3c` |
-| ToolRunning | A tool call in progress | `streamline/control/source/streamline-list-edit.png` | List Edit | `1b15161b5a241c1a7da50c572ea7cb28e676adb920f5d4a0c79503aa042bae3f` |
-| ToolDone | A finished tool call | `streamline/control/source/streamline-task-list-multiple.png` | Task List Multiple | `142f46f61810fa491aa90b40f084f74f059fffa6d8700255b6010eb988de5288` |
-| Memory | A memory tool call's row (`search_memory`, `recall`, `encode`) | `streamline/control/source/streamline-sd-card-question.png` | Sd Card Question | `7ae4a822c3d51572b9cad35276b5632997e7db76ed2b49205d8cfc792aabc65c` |
-| Approval | The permission prompt | `streamline/control/source/streamline-file-question.png` | Not carried by the file (pasted into chat without a name); a file with a question badge, so the file name describes the shape | `f7ef034d07b1fe3d43da076ca62a41da33fb0203ccd022fce58d076d6b6d9027` |
+| Registry name | Draws                                                                   | File                                                              | Streamline name                                                                                                               | SHA-256                                                            |
+| ------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Thread        | A chat in the sidebar with no icon from the Librarian                   | `streamline/control/source/streamline-messages-bubble-text-1.png` | Messages Bubble Text 1                                                                                                        | `ec4d1ecc5ca3d42792e86cdb6f903e49b36f66b14a3fc9c49bab1cfb57dd442b` |
+| ChatSearch    | The sidebar's search button                                             | `streamline/control/source/streamline-messages-bubble-search.png` | Messages Bubble Search                                                                                                        | `c0738f5c056f36d120f912b1a1b0291939fe4137a10d2f9c39726a30cd22c881` |
+| Send          | The composer's send button                                              | `streamline/control/source/streamline-send-email-1.png`           | Send Email 1                                                                                                                  | `e6a579771d9cddb57779139ddd1f9ca5bfdd0bd8c4a06b63570bd9e789005470` |
+| Attachment    | An uploaded file: the sidebar's outputs, a message's attachment, Import | `streamline/control/source/streamline-common-file-upload.png`     | Common File Upload                                                                                                            | `4a6466ea74e63671f226aecb0b04c21bcd2c495677362d54071f26259ea59ff2` |
+| AttachFolder  | The composer's attach button                                            | `streamline/control/source/streamline-folder-image-1.png`         | Folder Image 1                                                                                                                | `74d71e79c46fb27cd299b26114b7e0681892ded3d45d3864bc434235aa67a694` |
+| Plan          | The composer's Plan toggle, a plan card, a workspace's plan entry       | `streamline/control/source/streamline-task-list-quill.png`        | Not carried by the file ("plans.png"); a task list with a quill, so the file name describes the shape                         | `02346fd5f38dc7aece311047950d9abfb19fca5bf557cf00c06961510c272960` |
+| WebSearch     | The + menu's Web search                                                 | `streamline/control/source/streamline-app-window.png`             | App Window (owner's "streamline-ultimate-colors--48x48-PNG(13).zip", 2026-11-16); drew Network Search until then              | `bf2af3fedbfe2ef27e2326eefa76bc188a32bd7b2f02fb483e1e412cc0fdaeb5` |
+| Plugins       | The + menu's Plugins (the MCP servers), in place of Connectors          | `streamline/control/source/streamline-toys-lego.png`              | A Lego brick, the owner's 24 x 24 attachment of 2026-11-16, copied byte for byte; the vector trace enlarges it               | `2cb8247877e910dd240423f73421ece4b3e2262f8fff7cf49705df502ba75865` |
+| CodeMode      | The + menu's Code mode                                                  | `streamline/control/source/streamline-file-code.png`              | File Code, the same bytes as SessionCode (the 2026-11-16 zip's copy is identical)                                             | `504bc7985dc8207cdbabf266ac008edf3b5470f890d7931c43499d822032ddb8` |
+| NewChat       | New thread and new chat, wherever they are offered                      | `streamline/control/source/streamline-pencil-write.png`           | Pencil Write                                                                                                                  | `db2e92915632cfc26b574bc0eea63fa530d0cd211955663cc707aa50ab6d8e3c` |
+| ToolRunning   | A tool call in progress                                                 | `streamline/control/source/streamline-list-edit.png`              | List Edit                                                                                                                     | `1b15161b5a241c1a7da50c572ea7cb28e676adb920f5d4a0c79503aa042bae3f` |
+| ToolDone      | A finished tool call                                                    | `streamline/control/source/streamline-task-list-multiple.png`     | Task List Multiple                                                                                                            | `142f46f61810fa491aa90b40f084f74f059fffa6d8700255b6010eb988de5288` |
+| Memory        | A memory tool call's row (`search_memory`, `recall`, `encode`)          | `streamline/control/source/streamline-sd-card-question.png`       | Sd Card Question                                                                                                              | `7ae4a822c3d51572b9cad35276b5632997e7db76ed2b49205d8cfc792aabc65c` |
+| Approval      | The permission prompt                                                   | `streamline/control/source/streamline-file-question.png`          | Not carried by the file (pasted into chat without a name); a file with a question badge, so the file name describes the shape | `f7ef034d07b1fe3d43da076ca62a41da33fb0203ccd022fce58d076d6b6d9027` |
 
 "Plan icon.zip" also held Hierarchy 2, Data File Bars Edit and Performance
 Presentation Graph, and "new chat.zip" held Common File Edit. The owner chose
@@ -697,3 +699,98 @@ detail the 48px source did not. The rail's layers are still PNG alpha.
 
 A failed tool call and one waiting on the user keep the Noun close mark; no
 replacement came with these downloads.
+
+## Row and drop-down icons (Streamline Ultimate, colored style)
+
+The Theo workbench draws a folder for every drop-down (closed or open) and a
+file under it, in place of the arrow marks it had. The five folder sources are
+from the owner's downloads of 2026-11-15, "streamline-ultimate-colors--48x48-PNG (1).zip"
+and "streamline-ultimate-colors--48x48-PNG (2).zip". Each was copied byte for
+byte and renamed in lowercase with a `streamline-` prefix, into
+`streamline/control/source/`. The license is whatever covers the owner's
+Streamline plan (Webalys LLC, Streamline 3.0 licence). The icons remain the
+property of Webalys LLC and are used here only in the context of this
+open-source project. The repository holds fewer than 100 distinct Streamline
+icons (81 distinct names at this date).
+
+| Registry name | Draws | File | Streamline name | SHA-256 |
+|---|---|---|---|---|
+| FolderEmpty | A closed drop-down; a project with nothing in it | `streamline/control/source/streamline-folder-empty.png` | Folder Empty | `7dac8ce5d43de0d6ea86808c2c313fc5248c67393a2c8d31c14c0a98dee6d43b` |
+| FolderFile | An open drop-down; a group or thread with rows under it | `streamline/control/source/streamline-folder-file-1.png` | Folder File 1 | `7aa32aecba9012671ab5dfbfa3f87efd81607487f169ef942f73bb841517aff7` |
+| FolderEdit | A changed folder in Changes | `streamline/control/source/streamline-folder-edit.png` | Folder Edit | `78e3a52183dbca54f24647fadbf972929fc4e65531ed90109b50283f9c8bbbe5` |
+| FolderCheck | In the registry, not yet placed on a row | `streamline/control/source/streamline-folder-check.png` | Folder Check | `03d157b4ef2b08cd06c40787a13ffe94d2c9fe11a3f5ff35758ced7297e4691e` |
+| FolderHome | In the registry, not yet placed on a row | `streamline/control/source/streamline-folder-home-1.png` | Folder Home 1 | `9a4841f9459274c0aeeb20c951c2165316b298d940e870612e8ae240753d09df` |
+
+The file marks under them were already in `streamline/control/source/` since
+2026-11-14 and had no table here. Their hashes, checked on 2026-11-15:
+
+| Registry name | Draws | File | Streamline name | SHA-256 |
+|---|---|---|---|---|
+| FileCode | A code file | `streamline/control/source/streamline-file-code.png` | File Code | `504bc7985dc8207cdbabf266ac008edf3b5470f890d7931c43499d822032ddb8` |
+| ImageFileEdit | An image file | `streamline/control/source/streamline-image-file-edit.png` | Image File Edit | `13a3338053cda92edc847af330d9609b88b200c2b21fd4d6e3b4b820ed0771ac` |
+| FileText | A text file, a thread, a delegation | `streamline/control/source/streamline-common-file-text.png` | Common File Text | `2a1abfc95d2febc1901d970b21d347206bfa795befae941aa90070b0a690d1be` |
+| FileEmpty | Any other file | `streamline/control/source/streamline-common-file-empty.png` | Common File Empty | `137efab4f8e3130b6852103feda8fce5f095df06a35929651d1388e263898821` |
+| FileAdd | An added file; a session not yet in the workspace | `streamline/control/source/streamline-common-file-add.png` | Common File Add | `d59d1dacdf6d35c1df21ed478e139c7ba500cbc88774d84ff14587f024226ff1` |
+| FileEdit | A modified file in Changes | `streamline/control/source/streamline-common-file-edit.png` | Common File Edit | `454ca451830b9e01debe564d77f1aede64f6e745d7dfdee4d991742846de6e9b` |
+
+They are split into layers by `scripts/rail-icons.mjs` and painted by
+`.rail-mark` like the control marks above. The workbench places them from the
+frame (`terminal/crates/workbench-core/src/icons.rs`, laid over the grid by
+`components/workbench/icon-layer.tsx`).
+## Noun marks replaced by Streamline (2026-11-15)
+
+The owner's downloads of 2026-11-15 ("streamline-ultimate-colors--48x48-PNG1-10" and
+"streamline-ultimate-light--48x48-PNG19-20") replace the Noun marks below and the
+Lucide stand-ins for the same ideas. The Light marks are one-colour masks
+(`masked`); the colored ones are split into layers by `scripts/rail-icons.mjs`
+like the other control marks. Away from the rail a coloured mark rests as a
+one-colour mark in its control's text colour and takes its palette colours
+when its control is pressed, current, selected or checked (`styles.css`).
+Microphone Off came as a 24px PNG, so its traced outline is coarser than the
+others until a 48px copy replaces it.
+
+| Mark           | Where                                                                  | Source                                                     | Streamline name                | Style   | SHA-256                                                            |
+| -------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------ | ------- | ------------------------------------------------------------------ |
+| Close, X       | Dismiss and remove, everywhere; replaces the Noun close and Lucide `X` | `streamline/streamline-close.png`                          | Close                          | Light   | `f90c823fda609ebd7381388940538b8148b9d7dd8fbf005b6486461947e1acee` |
+| Expand         | Expand to full view                                                    | `streamline/streamline-expand-5.png`                       | Expand 5                       | Light   | `3cf4bbbc3401ea4c26abbc863649af42323cd02757990568cc86aa99fc47cf60` |
+| Settings       | Settings and options                                                   | `streamline/control/source/streamline-cog.png`             | Cog                            | colored | `7f3c95e071b53bc88c2412b32ee772aa788e6a6751253f4ec654e7dbe19b998b` |
+| Archive, Index | Archive a thread or record; the sessions panel Index mark              | `streamline/control/source/streamline-archive.png`         | Archive                        | colored | `212a4d2c5881bf18105e07eddb48e658edb74373c54fe2fd1b80f7196a949f70` |
+| Link           | Links, link fields, embeds                                             | `streamline/control/source/streamline-hyperlink-3.png`     | Hyperlink 3                    | colored | `3d89e3fa07d1da241d7e21f410b358dd45df0cece031616d3c6caff5886eb3f4` |
+| Eye            | Show, preview, Visualize                                               | `streamline/control/source/streamline-glasses-retro-1.png` | Glasses Retro 1                | colored | `7cc69d3d78de847922de049c67168765f59ef224f2e32672cd3adaf4be60504a` |
+| Hide           | Hide; replaces Lucide `EyeOff`                                         | `streamline/control/source/streamline-glasses-sun.png`     | Glasses Sun                    | colored | `3ff9ebff266f053e2e407ae260676fcf1d58a46251936839dd40c8a4f5503e4f` |
+| Stop           | Stop generating, stop dictation, stop reading aloud, a closed tool call | `streamline/control/source/streamline-button-stop-1.png`   | Button Stop 1                  | colored | `f961c9311e27902c7353b4ef897cd343593a9ca5cb46698726d974e73f1292a6` |
+| Detach         | Open in its own window; replaces Lucide `SquareArrowOutUpRight`        | `streamline/control/source/streamline-expand-6.png`        | Expand 6                       | colored | `fd8a26b9e0dd4aa8464eb80e893454eae3bfd9dc2b6050574ca1662856440996` |
+| MicOff         | Unused since the stop mark took over stop dictation (2026-11-19); kept as a licensed asset | `streamline/control/source/streamline-microphone-off.png`  | Microphone Off (24px download) | colored | `a32b50578a081e6cff7e7c2cb1f48d607e522aa1bfcf10c7cee3b53973831524` |
+
+Retired with this change, and removed from the tree:
+
+| File                                 | Digest                                                             | Was               |
+| ------------------------------------ | ------------------------------------------------------------------ | ----------------- |
+| `composer/noun-close-8086061.svg`    | `7222bb2f11dce56ef8c8b86b0be2b90b4afe7735265b8e973fd0dc8f8d4509b9` | Close, X (Lucide) |
+| `composer/noun-settings-8086044.svg` | `2291920b3599e170edd1dbe441cd9191efca5dfd9f86dc9a334540980705446a` | Settings          |
+| `composer/noun-stop-8086088.svg`     | `ef1f97b09c8f441bf3b98809f02b12601622883619ec3519c9e9334479aa220d` | Stop              |
+| `records/noun-archive-8315826.svg`   | `360f451f05cf79f01886688f5db93f8f92f58a7ab688cf6fe9d28af98ffc642d` | Archive, Index    |
+| `records/noun-expand-8086092.svg`    | `ea84fb04d755d2779822ad12e05e486b07fa07b57987642a08a2a5b05d18f65f` | Expand            |
+| `records/noun-eye-8086063.svg`       | `34f002e915ec846d0892446e012c1d05db82d366008a677204bde5db2853c873` | Eye               |
+| `records/noun-link-8086078.svg`      | `224dbfbb1129c46d5d15233d5dc361716d217a10c5061986a63f176f775a283a` | Link              |
+
+Added from the owner's later downloads of 2026-11-15 ("PNG11", "PNG12" and
+"PNG2"). Approved is a state, so it keeps its colours at rest
+(`painted(..., state)` sets `data-mark-state`).
+
+| Mark       | Where                                                                 | Source                                                           | Streamline name            | Style   | SHA-256                                                            |
+| ---------- | --------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------- | ------- | ------------------------------------------------------------------ |
+| Microphone | Start dictation                                                       | `streamline/control/source/streamline-microphone.png`            | Microphone (24px download) | colored | `d2df3c8e8f888d8dab44fd9c70150cfe8c138826fabcab70dc2d213b1c1c76b1` |
+| Refresh    | Refresh, retry, resume, and the spinning wait                         | `streamline/control/source/streamline-button-refresh-arrows.png` | Button Refresh Arrows      | colored | `e4adcffe226c257e0e174395ef30ad34e43ded7e0e44c853b749dd391022ebc5` |
+| Approved   | An allowed tool call and a finished approval; a menu tick stays Check | `streamline/control/source/streamline-check-2.png`               | Check 2                    | colored | `dfe447a93b4528e390d36b29b6cd28d1a524350158d9dd165ff716d7de4061a3` |
+
+Retired with them, and removed from the tree:
+
+| File                                   | Digest                                                             | Was        |
+| -------------------------------------- | ------------------------------------------------------------------ | ---------- |
+| `composer/noun-microphone-8216254.svg` | `4e6cdaa318bf1d49ff204fa8834a491789fe651ca222091601edda9fc199be03` | Microphone |
+| `composer/noun-refresh-8086048.svg`    | `ec0b1e2d68207b399efed91bf3bfe227130941f4b04f6920603594e18a9260d8` | Refresh    |
+
+Expand 2 was placed first and replaced by Expand 5 the same day: its two
+crossed arrows read as a close mark at 14px, beside the real close in the
+plan card's and the Compare pane's headers.

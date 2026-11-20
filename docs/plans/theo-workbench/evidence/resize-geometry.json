@@ -1,0 +1,1358 @@
+{
+  "chromium": {
+    "engine": "chromium",
+    "how": "cell width: the first cell span of the grid (getBoundingClientRect); row pitch: distance between the tops of rows 0 and 1; cell box height: that span's own height; dock area: the semantic tree's application node, in cells",
+    "1440x900": {
+      "fontSizePx": 12.5,
+      "cellWidthPx": 7.484375,
+      "rowPitchPx": 17,
+      "cellBoxHeightPx": 17,
+      "columns": 192,
+      "rows": 52,
+      "host": {
+        "width": 1440,
+        "height": 900,
+        "clientWidth": 1440,
+        "clientHeight": 900,
+        "scrollWidth": 1440,
+        "scrollHeight": 900
+      },
+      "leftoverWidthPx": 3,
+      "leftoverHeightPx": 16,
+      "dockCells": {
+        "x": 0,
+        "y": 0,
+        "width": 192,
+        "height": 52
+      },
+      "paneRects": [
+        {
+          "name": "Files",
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 52,
+          "visible": true
+        },
+        {
+          "name": "Main",
+          "x": 31,
+          "y": 0,
+          "width": 107,
+          "height": 52,
+          "visible": true
+        },
+        {
+          "name": "Tools",
+          "x": 139,
+          "y": 0,
+          "width": 53,
+          "height": 52,
+          "visible": true
+        }
+      ],
+      "separatorRects": [
+        {
+          "name": "Resize",
+          "x": 30,
+          "y": 0,
+          "width": 1,
+          "height": 52
+        },
+        {
+          "name": "Resize",
+          "x": 138,
+          "y": 0,
+          "width": 1,
+          "height": 52
+        }
+      ],
+      "visiblePanes": [
+        "Files",
+        "Main",
+        "Tools"
+      ],
+      "tabs": [
+        {
+          "name": "Theo",
+          "visible": true
+        },
+        {
+          "name": "Changes",
+          "visible": true
+        },
+        {
+          "name": "Files",
+          "visible": true
+        },
+        {
+          "name": "notes.txt",
+          "visible": true
+        }
+      ],
+      "coverage": {
+        "shownAreaCells": 9984,
+        "dockAreaCells": 9984,
+        "overlapping": []
+      }
+    },
+    "1024x768": {
+      "fontSizePx": 12.5,
+      "cellWidthPx": 7.484375,
+      "rowPitchPx": 17,
+      "cellBoxHeightPx": 17,
+      "columns": 136,
+      "rows": 45,
+      "host": {
+        "width": 1024,
+        "height": 768,
+        "clientWidth": 1024,
+        "clientHeight": 768,
+        "scrollWidth": 1024,
+        "scrollHeight": 768
+      },
+      "leftoverWidthPx": 6.125,
+      "leftoverHeightPx": 3,
+      "dockCells": {
+        "x": 0,
+        "y": 0,
+        "width": 136,
+        "height": 45
+      },
+      "paneRects": [
+        {
+          "name": "Main",
+          "x": 0,
+          "y": 0,
+          "width": 90,
+          "height": 45,
+          "visible": true
+        },
+        {
+          "name": "Tools",
+          "x": 91,
+          "y": 0,
+          "width": 45,
+          "height": 45,
+          "visible": true
+        },
+        {
+          "name": "Files",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "visible": false
+        }
+      ],
+      "separatorRects": [
+        {
+          "name": "Resize",
+          "x": 90,
+          "y": 0,
+          "width": 1,
+          "height": 45
+        }
+      ],
+      "visiblePanes": [
+        "Main",
+        "Tools"
+      ],
+      "tabs": [
+        {
+          "name": "Theo",
+          "visible": true
+        },
+        {
+          "name": "Changes",
+          "visible": true
+        },
+        {
+          "name": "Files",
+          "visible": true
+        },
+        {
+          "name": "notes.txt",
+          "visible": true
+        }
+      ],
+      "coverage": {
+        "shownAreaCells": 6120,
+        "dockAreaCells": 6120,
+        "overlapping": []
+      }
+    },
+    "390x844": {
+      "fontSizePx": 12.5,
+      "cellWidthPx": 7.484375,
+      "rowPitchPx": 17,
+      "cellBoxHeightPx": 17,
+      "columns": 52,
+      "rows": 49,
+      "host": {
+        "width": 390,
+        "height": 844,
+        "clientWidth": 390,
+        "clientHeight": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 844
+      },
+      "leftoverWidthPx": 0.8125,
+      "leftoverHeightPx": 11,
+      "dockCells": {
+        "x": 0,
+        "y": 0,
+        "width": 52,
+        "height": 49
+      },
+      "paneRects": [
+        {
+          "name": "Tools",
+          "x": 0,
+          "y": 0,
+          "width": 52,
+          "height": 49,
+          "visible": true
+        },
+        {
+          "name": "Main",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "visible": false
+        },
+        {
+          "name": "Files",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "visible": false
+        }
+      ],
+      "separatorRects": [],
+      "visiblePanes": [
+        "Tools"
+      ],
+      "tabs": [
+        {
+          "name": "Changes",
+          "visible": true
+        },
+        {
+          "name": "Files",
+          "visible": true
+        },
+        {
+          "name": "notes.txt",
+          "visible": true
+        },
+        {
+          "name": "Theo",
+          "visible": false
+        }
+      ],
+      "coverage": {
+        "shownAreaCells": 2548,
+        "dockAreaCells": 2548,
+        "overlapping": []
+      }
+    },
+    "sideBySide": {
+      "1440x900": 3,
+      "1024x768": 2,
+      "390x844": 1
+    },
+    "narrowStrip": " Changes ×  Files ×  notes.txt ×              1 more",
+    "filesChordAlone": {
+      "filesTreeOnScreen": true,
+      "theoOnScreen": true
+    },
+    "textSize": {
+      "before": {
+        "fontSizePx": 12.5,
+        "cellWidthPx": 7.484375,
+        "rowPitchPx": 17,
+        "cellBoxHeightPx": 17,
+        "columns": 192,
+        "rows": 52,
+        "host": {
+          "width": 1440,
+          "height": 900,
+          "clientWidth": 1440,
+          "clientHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "leftoverWidthPx": 3,
+        "leftoverHeightPx": 16,
+        "dockCells": {
+          "x": 0,
+          "y": 0,
+          "width": 192,
+          "height": 52
+        },
+        "paneRects": [
+          {
+            "name": "Files",
+            "x": 0,
+            "y": 0,
+            "width": 30,
+            "height": 52,
+            "visible": true
+          },
+          {
+            "name": "Main",
+            "x": 31,
+            "y": 0,
+            "width": 107,
+            "height": 52,
+            "visible": true
+          },
+          {
+            "name": "Tools",
+            "x": 139,
+            "y": 0,
+            "width": 53,
+            "height": 52,
+            "visible": true
+          }
+        ],
+        "separatorRects": [
+          {
+            "name": "Resize",
+            "x": 30,
+            "y": 0,
+            "width": 1,
+            "height": 52
+          },
+          {
+            "name": "Resize",
+            "x": 138,
+            "y": 0,
+            "width": 1,
+            "height": 52
+          }
+        ],
+        "visiblePanes": [
+          "Files",
+          "Main",
+          "Tools"
+        ],
+        "tabs": [
+          {
+            "name": "Theo",
+            "visible": true
+          },
+          {
+            "name": "Changes",
+            "visible": true
+          },
+          {
+            "name": "Files",
+            "visible": true
+          },
+          {
+            "name": "notes.txt",
+            "visible": true
+          }
+        ]
+      },
+      "after": {
+        "fontSizePx": 18.75,
+        "cellWidthPx": 11.234375,
+        "rowPitchPx": 25,
+        "cellBoxHeightPx": 25,
+        "columns": 128,
+        "rows": 36,
+        "host": {
+          "width": 1440,
+          "height": 900,
+          "clientWidth": 1440,
+          "clientHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "leftoverWidthPx": 2,
+        "leftoverHeightPx": 0,
+        "dockCells": {
+          "x": 0,
+          "y": 0,
+          "width": 128,
+          "height": 36
+        },
+        "paneRects": [
+          {
+            "name": "Files",
+            "x": 0,
+            "y": 0,
+            "width": 20,
+            "height": 36,
+            "visible": true
+          },
+          {
+            "name": "Main",
+            "x": 21,
+            "y": 0,
+            "width": 71,
+            "height": 36,
+            "visible": true
+          },
+          {
+            "name": "Tools",
+            "x": 93,
+            "y": 0,
+            "width": 35,
+            "height": 36,
+            "visible": true
+          }
+        ],
+        "separatorRects": [
+          {
+            "name": "Resize",
+            "x": 20,
+            "y": 0,
+            "width": 1,
+            "height": 36
+          },
+          {
+            "name": "Resize",
+            "x": 92,
+            "y": 0,
+            "width": 1,
+            "height": 36
+          }
+        ],
+        "visiblePanes": [
+          "Files",
+          "Main",
+          "Tools"
+        ],
+        "tabs": [
+          {
+            "name": "Theo",
+            "visible": true
+          },
+          {
+            "name": "Changes",
+            "visible": true
+          },
+          {
+            "name": "Files",
+            "visible": true
+          },
+          {
+            "name": "notes.txt",
+            "visible": true
+          }
+        ]
+      },
+      "scaleVariableAfter": "1.5"
+    }
+  },
+  "firefox": {
+    "engine": "firefox",
+    "how": "cell width: the first cell span of the grid (getBoundingClientRect); row pitch: distance between the tops of rows 0 and 1; cell box height: that span's own height; dock area: the semantic tree's application node, in cells",
+    "1440x900": {
+      "fontSizePx": 12.5,
+      "cellWidthPx": 7.5,
+      "rowPitchPx": 17,
+      "cellBoxHeightPx": 17,
+      "columns": 192,
+      "rows": 52,
+      "host": {
+        "width": 1440,
+        "height": 900,
+        "clientWidth": 1440,
+        "clientHeight": 900,
+        "scrollWidth": 1440,
+        "scrollHeight": 900
+      },
+      "leftoverWidthPx": 0,
+      "leftoverHeightPx": 16,
+      "dockCells": {
+        "x": 0,
+        "y": 0,
+        "width": 192,
+        "height": 52
+      },
+      "paneRects": [
+        {
+          "name": "Files",
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 52,
+          "visible": true
+        },
+        {
+          "name": "Main",
+          "x": 31,
+          "y": 0,
+          "width": 107,
+          "height": 52,
+          "visible": true
+        },
+        {
+          "name": "Tools",
+          "x": 139,
+          "y": 0,
+          "width": 53,
+          "height": 52,
+          "visible": true
+        }
+      ],
+      "separatorRects": [
+        {
+          "name": "Resize",
+          "x": 30,
+          "y": 0,
+          "width": 1,
+          "height": 52
+        },
+        {
+          "name": "Resize",
+          "x": 138,
+          "y": 0,
+          "width": 1,
+          "height": 52
+        }
+      ],
+      "visiblePanes": [
+        "Files",
+        "Main",
+        "Tools"
+      ],
+      "tabs": [
+        {
+          "name": "Files",
+          "visible": true
+        },
+        {
+          "name": "Theo",
+          "visible": true
+        },
+        {
+          "name": "Add tool",
+          "visible": true
+        },
+        {
+          "name": "notes.txt",
+          "visible": true
+        }
+      ],
+      "coverage": {
+        "shownAreaCells": 9984,
+        "dockAreaCells": 9984,
+        "overlapping": []
+      }
+    },
+    "1024x768": {
+      "fontSizePx": 12.5,
+      "cellWidthPx": 7.5,
+      "rowPitchPx": 17,
+      "cellBoxHeightPx": 17,
+      "columns": 136,
+      "rows": 45,
+      "host": {
+        "width": 1024,
+        "height": 768,
+        "clientWidth": 1024,
+        "clientHeight": 768,
+        "scrollWidth": 1024,
+        "scrollHeight": 768
+      },
+      "leftoverWidthPx": 4,
+      "leftoverHeightPx": 3,
+      "dockCells": {
+        "x": 0,
+        "y": 0,
+        "width": 136,
+        "height": 45
+      },
+      "paneRects": [
+        {
+          "name": "Main",
+          "x": 0,
+          "y": 0,
+          "width": 90,
+          "height": 45,
+          "visible": true
+        },
+        {
+          "name": "Tools",
+          "x": 91,
+          "y": 0,
+          "width": 45,
+          "height": 45,
+          "visible": true
+        },
+        {
+          "name": "Files",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "visible": false
+        }
+      ],
+      "separatorRects": [
+        {
+          "name": "Resize",
+          "x": 90,
+          "y": 0,
+          "width": 1,
+          "height": 45
+        }
+      ],
+      "visiblePanes": [
+        "Main",
+        "Tools"
+      ],
+      "tabs": [
+        {
+          "name": "Theo",
+          "visible": true
+        },
+        {
+          "name": "Add tool",
+          "visible": true
+        },
+        {
+          "name": "notes.txt",
+          "visible": true
+        },
+        {
+          "name": "Files",
+          "visible": false
+        }
+      ],
+      "coverage": {
+        "shownAreaCells": 6120,
+        "dockAreaCells": 6120,
+        "overlapping": []
+      }
+    },
+    "390x844": {
+      "fontSizePx": 12.5,
+      "cellWidthPx": 7.5,
+      "rowPitchPx": 17,
+      "cellBoxHeightPx": 17,
+      "columns": 52,
+      "rows": 49,
+      "host": {
+        "width": 390,
+        "height": 844,
+        "clientWidth": 390,
+        "clientHeight": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 844
+      },
+      "leftoverWidthPx": 0,
+      "leftoverHeightPx": 11,
+      "dockCells": {
+        "x": 0,
+        "y": 0,
+        "width": 52,
+        "height": 49
+      },
+      "paneRects": [
+        {
+          "name": "Tools",
+          "x": 0,
+          "y": 0,
+          "width": 52,
+          "height": 49,
+          "visible": true
+        },
+        {
+          "name": "Main",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "visible": false
+        },
+        {
+          "name": "Files",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "visible": false
+        }
+      ],
+      "separatorRects": [],
+      "visiblePanes": [
+        "Tools"
+      ],
+      "tabs": [
+        {
+          "name": "Add tool",
+          "visible": true
+        },
+        {
+          "name": "notes.txt",
+          "visible": true
+        },
+        {
+          "name": "Theo",
+          "visible": false
+        },
+        {
+          "name": "Files",
+          "visible": false
+        }
+      ],
+      "coverage": {
+        "shownAreaCells": 2548,
+        "dockAreaCells": 2548,
+        "overlapping": []
+      }
+    },
+    "sideBySide": {
+      "1440x900": 3,
+      "1024x768": 2,
+      "390x844": 1
+    },
+    "narrowStrip": " Add tool ×  notes.txt ×                      1 more",
+    "filesChordAlone": {
+      "filesTreeOnScreen": true,
+      "theoOnScreen": true
+    },
+    "textSize": {
+      "before": {
+        "fontSizePx": 12.5,
+        "cellWidthPx": 7.5,
+        "rowPitchPx": 17,
+        "cellBoxHeightPx": 17,
+        "columns": 192,
+        "rows": 52,
+        "host": {
+          "width": 1440,
+          "height": 900,
+          "clientWidth": 1440,
+          "clientHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "leftoverWidthPx": 0,
+        "leftoverHeightPx": 16,
+        "dockCells": {
+          "x": 0,
+          "y": 0,
+          "width": 192,
+          "height": 52
+        },
+        "paneRects": [
+          {
+            "name": "Files",
+            "x": 0,
+            "y": 0,
+            "width": 30,
+            "height": 52,
+            "visible": true
+          },
+          {
+            "name": "Main",
+            "x": 31,
+            "y": 0,
+            "width": 107,
+            "height": 52,
+            "visible": true
+          },
+          {
+            "name": "Tools",
+            "x": 139,
+            "y": 0,
+            "width": 53,
+            "height": 52,
+            "visible": true
+          }
+        ],
+        "separatorRects": [
+          {
+            "name": "Resize",
+            "x": 30,
+            "y": 0,
+            "width": 1,
+            "height": 52
+          },
+          {
+            "name": "Resize",
+            "x": 138,
+            "y": 0,
+            "width": 1,
+            "height": 52
+          }
+        ],
+        "visiblePanes": [
+          "Files",
+          "Main",
+          "Tools"
+        ],
+        "tabs": [
+          {
+            "name": "Files",
+            "visible": true
+          },
+          {
+            "name": "Theo",
+            "visible": true
+          },
+          {
+            "name": "Add tool",
+            "visible": true
+          },
+          {
+            "name": "notes.txt",
+            "visible": true
+          }
+        ]
+      },
+      "after": {
+        "fontSizePx": 18.75,
+        "cellWidthPx": 11.25,
+        "rowPitchPx": 26,
+        "cellBoxHeightPx": 26,
+        "columns": 128,
+        "rows": 34,
+        "host": {
+          "width": 1440,
+          "height": 900,
+          "clientWidth": 1440,
+          "clientHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "leftoverWidthPx": 0,
+        "leftoverHeightPx": 16,
+        "dockCells": {
+          "x": 0,
+          "y": 0,
+          "width": 128,
+          "height": 34
+        },
+        "paneRects": [
+          {
+            "name": "Files",
+            "x": 0,
+            "y": 0,
+            "width": 20,
+            "height": 34,
+            "visible": true
+          },
+          {
+            "name": "Main",
+            "x": 21,
+            "y": 0,
+            "width": 71,
+            "height": 34,
+            "visible": true
+          },
+          {
+            "name": "Tools",
+            "x": 93,
+            "y": 0,
+            "width": 35,
+            "height": 34,
+            "visible": true
+          }
+        ],
+        "separatorRects": [
+          {
+            "name": "Resize",
+            "x": 20,
+            "y": 0,
+            "width": 1,
+            "height": 34
+          },
+          {
+            "name": "Resize",
+            "x": 92,
+            "y": 0,
+            "width": 1,
+            "height": 34
+          }
+        ],
+        "visiblePanes": [
+          "Files",
+          "Main",
+          "Tools"
+        ],
+        "tabs": [
+          {
+            "name": "Files",
+            "visible": true
+          },
+          {
+            "name": "Theo",
+            "visible": true
+          },
+          {
+            "name": "Add tool",
+            "visible": true
+          },
+          {
+            "name": "notes.txt",
+            "visible": true
+          }
+        ]
+      },
+      "scaleVariableAfter": "1.5"
+    }
+  },
+  "webkit": {
+    "engine": "webkit",
+    "how": "cell width: the first cell span of the grid (getBoundingClientRect); row pitch: distance between the tops of rows 0 and 1; cell box height: that span's own height; dock area: the semantic tree's application node, in cells",
+    "1440x900": {
+      "fontSizePx": 12.5,
+      "cellWidthPx": 7.484375,
+      "rowPitchPx": 17,
+      "cellBoxHeightPx": 17,
+      "columns": 192,
+      "rows": 52,
+      "host": {
+        "width": 1440,
+        "height": 900,
+        "clientWidth": 1440,
+        "clientHeight": 900,
+        "scrollWidth": 1440,
+        "scrollHeight": 900
+      },
+      "leftoverWidthPx": 3,
+      "leftoverHeightPx": 16,
+      "dockCells": {
+        "x": 0,
+        "y": 0,
+        "width": 192,
+        "height": 52
+      },
+      "paneRects": [
+        {
+          "name": "Files",
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 52,
+          "visible": true
+        },
+        {
+          "name": "Main",
+          "x": 31,
+          "y": 0,
+          "width": 107,
+          "height": 52,
+          "visible": true
+        },
+        {
+          "name": "Tools",
+          "x": 139,
+          "y": 0,
+          "width": 53,
+          "height": 52,
+          "visible": true
+        }
+      ],
+      "separatorRects": [
+        {
+          "name": "Resize",
+          "x": 30,
+          "y": 0,
+          "width": 1,
+          "height": 52
+        },
+        {
+          "name": "Resize",
+          "x": 138,
+          "y": 0,
+          "width": 1,
+          "height": 52
+        }
+      ],
+      "visiblePanes": [
+        "Files",
+        "Main",
+        "Tools"
+      ],
+      "tabs": [
+        {
+          "name": "Files",
+          "visible": true
+        },
+        {
+          "name": "Theo",
+          "visible": true
+        },
+        {
+          "name": "Add tool",
+          "visible": true
+        },
+        {
+          "name": "notes.txt",
+          "visible": true
+        }
+      ],
+      "coverage": {
+        "shownAreaCells": 9984,
+        "dockAreaCells": 9984,
+        "overlapping": []
+      }
+    },
+    "1024x768": {
+      "fontSizePx": 12.5,
+      "cellWidthPx": 7.484375,
+      "rowPitchPx": 17,
+      "cellBoxHeightPx": 17,
+      "columns": 136,
+      "rows": 45,
+      "host": {
+        "width": 1024,
+        "height": 768,
+        "clientWidth": 1024,
+        "clientHeight": 768,
+        "scrollWidth": 1024,
+        "scrollHeight": 768
+      },
+      "leftoverWidthPx": 6.125,
+      "leftoverHeightPx": 3,
+      "dockCells": {
+        "x": 0,
+        "y": 0,
+        "width": 136,
+        "height": 45
+      },
+      "paneRects": [
+        {
+          "name": "Main",
+          "x": 0,
+          "y": 0,
+          "width": 90,
+          "height": 45,
+          "visible": true
+        },
+        {
+          "name": "Tools",
+          "x": 91,
+          "y": 0,
+          "width": 45,
+          "height": 45,
+          "visible": true
+        },
+        {
+          "name": "Files",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "visible": false
+        }
+      ],
+      "separatorRects": [
+        {
+          "name": "Resize",
+          "x": 90,
+          "y": 0,
+          "width": 1,
+          "height": 45
+        }
+      ],
+      "visiblePanes": [
+        "Main",
+        "Tools"
+      ],
+      "tabs": [
+        {
+          "name": "Theo",
+          "visible": true
+        },
+        {
+          "name": "Add tool",
+          "visible": true
+        },
+        {
+          "name": "notes.txt",
+          "visible": true
+        },
+        {
+          "name": "Files",
+          "visible": false
+        }
+      ],
+      "coverage": {
+        "shownAreaCells": 6120,
+        "dockAreaCells": 6120,
+        "overlapping": []
+      }
+    },
+    "390x844": {
+      "fontSizePx": 12.5,
+      "cellWidthPx": 7.484375,
+      "rowPitchPx": 17,
+      "cellBoxHeightPx": 17,
+      "columns": 52,
+      "rows": 49,
+      "host": {
+        "width": 390,
+        "height": 844,
+        "clientWidth": 390,
+        "clientHeight": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 844
+      },
+      "leftoverWidthPx": 0.8125,
+      "leftoverHeightPx": 11,
+      "dockCells": {
+        "x": 0,
+        "y": 0,
+        "width": 52,
+        "height": 49
+      },
+      "paneRects": [
+        {
+          "name": "Tools",
+          "x": 0,
+          "y": 0,
+          "width": 52,
+          "height": 49,
+          "visible": true
+        },
+        {
+          "name": "Main",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "visible": false
+        },
+        {
+          "name": "Files",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "visible": false
+        }
+      ],
+      "separatorRects": [],
+      "visiblePanes": [
+        "Tools"
+      ],
+      "tabs": [
+        {
+          "name": "Add tool",
+          "visible": true
+        },
+        {
+          "name": "notes.txt",
+          "visible": true
+        },
+        {
+          "name": "Theo",
+          "visible": false
+        },
+        {
+          "name": "Files",
+          "visible": false
+        }
+      ],
+      "coverage": {
+        "shownAreaCells": 2548,
+        "dockAreaCells": 2548,
+        "overlapping": []
+      }
+    },
+    "sideBySide": {
+      "1440x900": 3,
+      "1024x768": 2,
+      "390x844": 1
+    },
+    "narrowStrip": " Add tool ×  notes.txt ×                      1 more",
+    "filesChordAlone": {
+      "filesTreeOnScreen": true,
+      "theoOnScreen": true
+    },
+    "textSize": {
+      "before": {
+        "fontSizePx": 12.5,
+        "cellWidthPx": 7.484375,
+        "rowPitchPx": 17,
+        "cellBoxHeightPx": 17,
+        "columns": 192,
+        "rows": 52,
+        "host": {
+          "width": 1440,
+          "height": 900,
+          "clientWidth": 1440,
+          "clientHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "leftoverWidthPx": 3,
+        "leftoverHeightPx": 16,
+        "dockCells": {
+          "x": 0,
+          "y": 0,
+          "width": 192,
+          "height": 52
+        },
+        "paneRects": [
+          {
+            "name": "Files",
+            "x": 0,
+            "y": 0,
+            "width": 30,
+            "height": 52,
+            "visible": true
+          },
+          {
+            "name": "Main",
+            "x": 31,
+            "y": 0,
+            "width": 107,
+            "height": 52,
+            "visible": true
+          },
+          {
+            "name": "Tools",
+            "x": 139,
+            "y": 0,
+            "width": 53,
+            "height": 52,
+            "visible": true
+          }
+        ],
+        "separatorRects": [
+          {
+            "name": "Resize",
+            "x": 30,
+            "y": 0,
+            "width": 1,
+            "height": 52
+          },
+          {
+            "name": "Resize",
+            "x": 138,
+            "y": 0,
+            "width": 1,
+            "height": 52
+          }
+        ],
+        "visiblePanes": [
+          "Files",
+          "Main",
+          "Tools"
+        ],
+        "tabs": [
+          {
+            "name": "Files",
+            "visible": true
+          },
+          {
+            "name": "Theo",
+            "visible": true
+          },
+          {
+            "name": "Add tool",
+            "visible": true
+          },
+          {
+            "name": "notes.txt",
+            "visible": true
+          }
+        ]
+      },
+      "after": {
+        "fontSizePx": 18.75,
+        "cellWidthPx": 11.234375,
+        "rowPitchPx": 25,
+        "cellBoxHeightPx": 25,
+        "columns": 128,
+        "rows": 36,
+        "host": {
+          "width": 1440,
+          "height": 900,
+          "clientWidth": 1440,
+          "clientHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "leftoverWidthPx": 2,
+        "leftoverHeightPx": 0,
+        "dockCells": {
+          "x": 0,
+          "y": 0,
+          "width": 128,
+          "height": 36
+        },
+        "paneRects": [
+          {
+            "name": "Files",
+            "x": 0,
+            "y": 0,
+            "width": 20,
+            "height": 36,
+            "visible": true
+          },
+          {
+            "name": "Main",
+            "x": 21,
+            "y": 0,
+            "width": 71,
+            "height": 36,
+            "visible": true
+          },
+          {
+            "name": "Tools",
+            "x": 93,
+            "y": 0,
+            "width": 35,
+            "height": 36,
+            "visible": true
+          }
+        ],
+        "separatorRects": [
+          {
+            "name": "Resize",
+            "x": 20,
+            "y": 0,
+            "width": 1,
+            "height": 36
+          },
+          {
+            "name": "Resize",
+            "x": 92,
+            "y": 0,
+            "width": 1,
+            "height": 36
+          }
+        ],
+        "visiblePanes": [
+          "Files",
+          "Main",
+          "Tools"
+        ],
+        "tabs": [
+          {
+            "name": "Files",
+            "visible": true
+          },
+          {
+            "name": "Theo",
+            "visible": true
+          },
+          {
+            "name": "Add tool",
+            "visible": true
+          },
+          {
+            "name": "notes.txt",
+            "visible": true
+          }
+        ]
+      },
+      "scaleVariableAfter": "1.5"
+    }
+  }
+}

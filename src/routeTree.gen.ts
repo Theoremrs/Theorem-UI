@@ -33,15 +33,20 @@ import { Route as LoginCodeRouteImport } from './routes/login_.code'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsAiRouteImport } from './routes/settings/ai'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
+import { Route as SettingsCompanionsRouteImport } from './routes/settings/companions'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings/connections'
 import { Route as SettingsImportRouteImport } from './routes/settings/import'
 import { Route as SettingsKeysRouteImport } from './routes/settings/keys'
+import { Route as SettingsPluginsRouteImport } from './routes/settings/plugins'
+import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
+import { Route as SettingsResponsesRouteImport } from './routes/settings/responses'
 import { Route as SettingsWorkRouteImport } from './routes/settings/work'
 import { Route as StoryIdRouteImport } from './routes/story.$id'
 import { Route as TheiaSplatRouteImport } from './routes/theia/$'
 import { Route as ChatCThreadIdRouteImport } from './routes/_chat/c.$threadId'
 import { Route as ChatNotesDocumentIdRouteImport } from './routes/_chat/notes.$documentId'
 import { Route as ChatPagesPageIdRouteImport } from './routes/_chat/pages.$pageId'
+import { Route as ChatProjectsProjectIdRouteImport } from './routes/_chat/projects.$projectId'
 import { Route as ApiArtifactsSplatRouteImport } from './routes/api/artifacts/$'
 import { Route as ApiConnectionsSplatRouteImport } from './routes/api/connections/$'
 import { Route as ApiIndexSplatRouteImport } from './routes/api/index/$'
@@ -50,15 +55,19 @@ import { Route as AuthNeonSplatRouteImport } from './routes/auth/neon.$'
 import { Route as DesktopBlocksIndexRouteImport } from './routes/desktop/blocks/index'
 import { Route as DesktopBlocksAppTokenRouteImport } from './routes/desktop/blocks/app-token'
 import { Route as DesktopWorkspaceIndexRouteImport } from './routes/desktop/workspace/index'
+import { Route as SettingsObserveIndexRouteImport } from './routes/settings/observe/index'
+import { Route as ApiAppsV1SplatRouteImport } from './routes/api/apps/v1/$'
 import { Route as ApiArtifactsV1SplatRouteImport } from './routes/api/artifacts/v1/$'
 import { Route as ApiCapabilitiesV1SplatRouteImport } from './routes/api/capabilities/v1/$'
 import { Route as ApiChatV1SplatRouteImport } from './routes/api/chat/v1/$'
 import { Route as ApiDocumentsV2SplatRouteImport } from './routes/api/documents/v2/$'
 import { Route as ApiEnvironmentV1SplatRouteImport } from './routes/api/environment/v1/$'
 import { Route as ApiFilesV1SplatRouteImport } from './routes/api/files/v1/$'
+import { Route as ApiObserveV1SplatRouteImport } from './routes/api/observe/v1/$'
 import { Route as ApiProjectFilesV1SplatRouteImport } from './routes/api/project-files/v1/$'
 import { Route as ApiSceneV1SplatRouteImport } from './routes/api/scene/v1/$'
 import { Route as ApiSpacesV1SplatRouteImport } from './routes/api/spaces/v1/$'
+import { Route as ApiWorkbenchV1SplatRouteImport } from './routes/api/workbench/v1/$'
 import { Route as DesktopWorkspaceWorkspaceIdIndexRouteImport } from './routes/desktop/workspace/$workspaceId/index'
 import { Route as DesktopWorkspaceWorkspaceIdBacklinksRouteImport } from './routes/desktop/workspace/$workspaceId/backlinks'
 import { Route as DesktopWorkspaceWorkspaceIdCompiledRouteImport } from './routes/desktop/workspace/$workspaceId/compiled'
@@ -78,6 +87,7 @@ import { Route as DesktopWorkspaceWorkspaceIdStateEventsRouteImport } from './ro
 import { Route as DesktopWorkspaceWorkspaceIdTagsRouteImport } from './routes/desktop/workspace/$workspaceId/tags'
 import { Route as DesktopWorkspaceWorkspaceIdTreeRouteImport } from './routes/desktop/workspace/$workspaceId/tree'
 import { Route as DesktopWorkspaceWorkspaceIdTrustRouteImport } from './routes/desktop/workspace/$workspaceId/trust'
+import { Route as SettingsObserveRunsRunIdRouteImport } from './routes/settings/observe/runs.$runId'
 import { Route as V1TheoremAgentStreamSplatRouteImport } from './routes/v1/theorem/agent/stream/$'
 
 const ChatRoute = ChatRouteImport.update({
@@ -200,6 +210,11 @@ const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
   path: '/appearance',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsCompanionsRoute = SettingsCompanionsRouteImport.update({
+  id: '/companions',
+  path: '/companions',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
@@ -213,6 +228,21 @@ const SettingsImportRoute = SettingsImportRouteImport.update({
 const SettingsKeysRoute = SettingsKeysRouteImport.update({
   id: '/keys',
   path: '/keys',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsPluginsRoute = SettingsPluginsRouteImport.update({
+  id: '/plugins',
+  path: '/plugins',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsProfileRoute = SettingsProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsResponsesRoute = SettingsResponsesRouteImport.update({
+  id: '/responses',
+  path: '/responses',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsWorkRoute = SettingsWorkRouteImport.update({
@@ -244,6 +274,11 @@ const ChatPagesPageIdRoute = ChatPagesPageIdRouteImport.update({
   id: '/$pageId',
   path: '/$pageId',
   getParentRoute: () => ChatPagesRoute,
+} as any)
+const ChatProjectsProjectIdRoute = ChatProjectsProjectIdRouteImport.update({
+  id: '/projects/$projectId',
+  path: '/projects/$projectId',
+  getParentRoute: () => ChatRoute,
 } as any)
 const ApiArtifactsSplatRoute = ApiArtifactsSplatRouteImport.update({
   id: '/api/artifacts/$',
@@ -285,6 +320,16 @@ const DesktopWorkspaceIndexRoute = DesktopWorkspaceIndexRouteImport.update({
   path: '/desktop/workspace/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsObserveIndexRoute = SettingsObserveIndexRouteImport.update({
+  id: '/observe/',
+  path: '/observe/',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const ApiAppsV1SplatRoute = ApiAppsV1SplatRouteImport.update({
+  id: '/api/apps/v1/$',
+  path: '/api/apps/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiArtifactsV1SplatRoute = ApiArtifactsV1SplatRouteImport.update({
   id: '/api/artifacts/v1/$',
   path: '/api/artifacts/v1/$',
@@ -315,6 +360,11 @@ const ApiFilesV1SplatRoute = ApiFilesV1SplatRouteImport.update({
   path: '/api/files/v1/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiObserveV1SplatRoute = ApiObserveV1SplatRouteImport.update({
+  id: '/api/observe/v1/$',
+  path: '/api/observe/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiProjectFilesV1SplatRoute = ApiProjectFilesV1SplatRouteImport.update({
   id: '/api/project-files/v1/$',
   path: '/api/project-files/v1/$',
@@ -328,6 +378,11 @@ const ApiSceneV1SplatRoute = ApiSceneV1SplatRouteImport.update({
 const ApiSpacesV1SplatRoute = ApiSpacesV1SplatRouteImport.update({
   id: '/api/spaces/v1/$',
   path: '/api/spaces/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWorkbenchV1SplatRoute = ApiWorkbenchV1SplatRouteImport.update({
+  id: '/api/workbench/v1/$',
+  path: '/api/workbench/v1/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesktopWorkspaceWorkspaceIdIndexRoute =
@@ -444,6 +499,12 @@ const DesktopWorkspaceWorkspaceIdTrustRoute =
     path: '/desktop/workspace/$workspaceId/trust',
     getParentRoute: () => rootRouteImport,
   } as any)
+const SettingsObserveRunsRunIdRoute =
+  SettingsObserveRunsRunIdRouteImport.update({
+    id: '/observe/runs/$runId',
+    path: '/observe/runs/$runId',
+    getParentRoute: () => SettingsRoute,
+  } as any)
 const V1TheoremAgentStreamSplatRoute =
   V1TheoremAgentStreamSplatRouteImport.update({
     id: '/v1/theorem/agent/stream/$',
@@ -474,9 +535,13 @@ export interface FileRoutesByFullPath {
   '/login/code': typeof LoginCodeRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
@@ -484,6 +549,7 @@ export interface FileRoutesByFullPath {
   '/c/$threadId': typeof ChatCThreadIdRoute
   '/notes/$documentId': typeof ChatNotesDocumentIdRoute
   '/pages/$pageId': typeof ChatPagesPageIdRoute
+  '/projects/$projectId': typeof ChatProjectsProjectIdRoute
   '/api/artifacts/$': typeof ApiArtifactsSplatRoute
   '/api/connections/$': typeof ApiConnectionsSplatRoute
   '/api/index/$': typeof ApiIndexSplatRoute
@@ -492,15 +558,19 @@ export interface FileRoutesByFullPath {
   '/desktop/blocks/app-token': typeof DesktopBlocksAppTokenRoute
   '/desktop/blocks/': typeof DesktopBlocksIndexRoute
   '/desktop/workspace/': typeof DesktopWorkspaceIndexRoute
+  '/settings/observe/': typeof SettingsObserveIndexRoute
+  '/api/apps/v1/$': typeof ApiAppsV1SplatRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
+  '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
+  '/api/workbench/v1/$': typeof ApiWorkbenchV1SplatRoute
   '/desktop/workspace/$workspaceId/backlinks': typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   '/desktop/workspace/$workspaceId/compiled': typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   '/desktop/workspace/$workspaceId/events': typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -519,6 +589,7 @@ export interface FileRoutesByFullPath {
   '/desktop/workspace/$workspaceId/tags': typeof DesktopWorkspaceWorkspaceIdTagsRoute
   '/desktop/workspace/$workspaceId/tree': typeof DesktopWorkspaceWorkspaceIdTreeRoute
   '/desktop/workspace/$workspaceId/trust': typeof DesktopWorkspaceWorkspaceIdTrustRoute
+  '/settings/observe/runs/$runId': typeof SettingsObserveRunsRunIdRoute
   '/desktop/workspace/$workspaceId/': typeof DesktopWorkspaceWorkspaceIdIndexRoute
   '/v1/theorem/agent/stream/$': typeof V1TheoremAgentStreamSplatRoute
 }
@@ -543,9 +614,13 @@ export interface FileRoutesByTo {
   '/login/code': typeof LoginCodeRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
@@ -554,6 +629,7 @@ export interface FileRoutesByTo {
   '/c/$threadId': typeof ChatCThreadIdRoute
   '/notes/$documentId': typeof ChatNotesDocumentIdRoute
   '/pages/$pageId': typeof ChatPagesPageIdRoute
+  '/projects/$projectId': typeof ChatProjectsProjectIdRoute
   '/api/artifacts/$': typeof ApiArtifactsSplatRoute
   '/api/connections/$': typeof ApiConnectionsSplatRoute
   '/api/index/$': typeof ApiIndexSplatRoute
@@ -562,15 +638,19 @@ export interface FileRoutesByTo {
   '/desktop/blocks/app-token': typeof DesktopBlocksAppTokenRoute
   '/desktop/blocks': typeof DesktopBlocksIndexRoute
   '/desktop/workspace': typeof DesktopWorkspaceIndexRoute
+  '/settings/observe': typeof SettingsObserveIndexRoute
+  '/api/apps/v1/$': typeof ApiAppsV1SplatRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
+  '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
+  '/api/workbench/v1/$': typeof ApiWorkbenchV1SplatRoute
   '/desktop/workspace/$workspaceId/backlinks': typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   '/desktop/workspace/$workspaceId/compiled': typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   '/desktop/workspace/$workspaceId/events': typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -589,6 +669,7 @@ export interface FileRoutesByTo {
   '/desktop/workspace/$workspaceId/tags': typeof DesktopWorkspaceWorkspaceIdTagsRoute
   '/desktop/workspace/$workspaceId/tree': typeof DesktopWorkspaceWorkspaceIdTreeRoute
   '/desktop/workspace/$workspaceId/trust': typeof DesktopWorkspaceWorkspaceIdTrustRoute
+  '/settings/observe/runs/$runId': typeof SettingsObserveRunsRunIdRoute
   '/desktop/workspace/$workspaceId': typeof DesktopWorkspaceWorkspaceIdIndexRoute
   '/v1/theorem/agent/stream/$': typeof V1TheoremAgentStreamSplatRoute
 }
@@ -616,9 +697,13 @@ export interface FileRoutesById {
   '/login_/code': typeof LoginCodeRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
@@ -627,6 +712,7 @@ export interface FileRoutesById {
   '/_chat/c/$threadId': typeof ChatCThreadIdRoute
   '/_chat/notes/$documentId': typeof ChatNotesDocumentIdRoute
   '/_chat/pages/$pageId': typeof ChatPagesPageIdRoute
+  '/_chat/projects/$projectId': typeof ChatProjectsProjectIdRoute
   '/api/artifacts/$': typeof ApiArtifactsSplatRoute
   '/api/connections/$': typeof ApiConnectionsSplatRoute
   '/api/index/$': typeof ApiIndexSplatRoute
@@ -635,15 +721,19 @@ export interface FileRoutesById {
   '/desktop/blocks/app-token': typeof DesktopBlocksAppTokenRoute
   '/desktop/blocks/': typeof DesktopBlocksIndexRoute
   '/desktop/workspace/': typeof DesktopWorkspaceIndexRoute
+  '/settings/observe/': typeof SettingsObserveIndexRoute
+  '/api/apps/v1/$': typeof ApiAppsV1SplatRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
+  '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
+  '/api/workbench/v1/$': typeof ApiWorkbenchV1SplatRoute
   '/desktop/workspace/$workspaceId/backlinks': typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   '/desktop/workspace/$workspaceId/compiled': typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   '/desktop/workspace/$workspaceId/events': typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -662,6 +752,7 @@ export interface FileRoutesById {
   '/desktop/workspace/$workspaceId/tags': typeof DesktopWorkspaceWorkspaceIdTagsRoute
   '/desktop/workspace/$workspaceId/tree': typeof DesktopWorkspaceWorkspaceIdTreeRoute
   '/desktop/workspace/$workspaceId/trust': typeof DesktopWorkspaceWorkspaceIdTrustRoute
+  '/settings/observe/runs/$runId': typeof SettingsObserveRunsRunIdRoute
   '/desktop/workspace/$workspaceId/': typeof DesktopWorkspaceWorkspaceIdIndexRoute
   '/v1/theorem/agent/stream/$': typeof V1TheoremAgentStreamSplatRoute
 }
@@ -690,9 +781,13 @@ export interface FileRouteTypes {
     | '/login/code'
     | '/settings/ai'
     | '/settings/appearance'
+    | '/settings/companions'
     | '/settings/connections'
     | '/settings/import'
     | '/settings/keys'
+    | '/settings/plugins'
+    | '/settings/profile'
+    | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
     | '/theia/$'
@@ -700,6 +795,7 @@ export interface FileRouteTypes {
     | '/c/$threadId'
     | '/notes/$documentId'
     | '/pages/$pageId'
+    | '/projects/$projectId'
     | '/api/artifacts/$'
     | '/api/connections/$'
     | '/api/index/$'
@@ -708,15 +804,19 @@ export interface FileRouteTypes {
     | '/desktop/blocks/app-token'
     | '/desktop/blocks/'
     | '/desktop/workspace/'
+    | '/settings/observe/'
+    | '/api/apps/v1/$'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
+    | '/api/observe/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
+    | '/api/workbench/v1/$'
     | '/desktop/workspace/$workspaceId/backlinks'
     | '/desktop/workspace/$workspaceId/compiled'
     | '/desktop/workspace/$workspaceId/events'
@@ -735,6 +835,7 @@ export interface FileRouteTypes {
     | '/desktop/workspace/$workspaceId/tags'
     | '/desktop/workspace/$workspaceId/tree'
     | '/desktop/workspace/$workspaceId/trust'
+    | '/settings/observe/runs/$runId'
     | '/desktop/workspace/$workspaceId/'
     | '/v1/theorem/agent/stream/$'
   fileRoutesByTo: FileRoutesByTo
@@ -759,9 +860,13 @@ export interface FileRouteTypes {
     | '/login/code'
     | '/settings/ai'
     | '/settings/appearance'
+    | '/settings/companions'
     | '/settings/connections'
     | '/settings/import'
     | '/settings/keys'
+    | '/settings/plugins'
+    | '/settings/profile'
+    | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
     | '/theia/$'
@@ -770,6 +875,7 @@ export interface FileRouteTypes {
     | '/c/$threadId'
     | '/notes/$documentId'
     | '/pages/$pageId'
+    | '/projects/$projectId'
     | '/api/artifacts/$'
     | '/api/connections/$'
     | '/api/index/$'
@@ -778,15 +884,19 @@ export interface FileRouteTypes {
     | '/desktop/blocks/app-token'
     | '/desktop/blocks'
     | '/desktop/workspace'
+    | '/settings/observe'
+    | '/api/apps/v1/$'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
+    | '/api/observe/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
+    | '/api/workbench/v1/$'
     | '/desktop/workspace/$workspaceId/backlinks'
     | '/desktop/workspace/$workspaceId/compiled'
     | '/desktop/workspace/$workspaceId/events'
@@ -805,6 +915,7 @@ export interface FileRouteTypes {
     | '/desktop/workspace/$workspaceId/tags'
     | '/desktop/workspace/$workspaceId/tree'
     | '/desktop/workspace/$workspaceId/trust'
+    | '/settings/observe/runs/$runId'
     | '/desktop/workspace/$workspaceId'
     | '/v1/theorem/agent/stream/$'
   id:
@@ -831,9 +942,13 @@ export interface FileRouteTypes {
     | '/login_/code'
     | '/settings/ai'
     | '/settings/appearance'
+    | '/settings/companions'
     | '/settings/connections'
     | '/settings/import'
     | '/settings/keys'
+    | '/settings/plugins'
+    | '/settings/profile'
+    | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
     | '/theia/$'
@@ -842,6 +957,7 @@ export interface FileRouteTypes {
     | '/_chat/c/$threadId'
     | '/_chat/notes/$documentId'
     | '/_chat/pages/$pageId'
+    | '/_chat/projects/$projectId'
     | '/api/artifacts/$'
     | '/api/connections/$'
     | '/api/index/$'
@@ -850,15 +966,19 @@ export interface FileRouteTypes {
     | '/desktop/blocks/app-token'
     | '/desktop/blocks/'
     | '/desktop/workspace/'
+    | '/settings/observe/'
+    | '/api/apps/v1/$'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
+    | '/api/observe/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
+    | '/api/workbench/v1/$'
     | '/desktop/workspace/$workspaceId/backlinks'
     | '/desktop/workspace/$workspaceId/compiled'
     | '/desktop/workspace/$workspaceId/events'
@@ -877,6 +997,7 @@ export interface FileRouteTypes {
     | '/desktop/workspace/$workspaceId/tags'
     | '/desktop/workspace/$workspaceId/tree'
     | '/desktop/workspace/$workspaceId/trust'
+    | '/settings/observe/runs/$runId'
     | '/desktop/workspace/$workspaceId/'
     | '/v1/theorem/agent/stream/$'
   fileRoutesById: FileRoutesById
@@ -905,15 +1026,18 @@ export interface RootRouteChildren {
   DesktopBlocksAppTokenRoute: typeof DesktopBlocksAppTokenRoute
   DesktopBlocksIndexRoute: typeof DesktopBlocksIndexRoute
   DesktopWorkspaceIndexRoute: typeof DesktopWorkspaceIndexRoute
+  ApiAppsV1SplatRoute: typeof ApiAppsV1SplatRoute
   ApiArtifactsV1SplatRoute: typeof ApiArtifactsV1SplatRoute
   ApiCapabilitiesV1SplatRoute: typeof ApiCapabilitiesV1SplatRoute
   ApiChatV1SplatRoute: typeof ApiChatV1SplatRoute
   ApiDocumentsV2SplatRoute: typeof ApiDocumentsV2SplatRoute
   ApiEnvironmentV1SplatRoute: typeof ApiEnvironmentV1SplatRoute
   ApiFilesV1SplatRoute: typeof ApiFilesV1SplatRoute
+  ApiObserveV1SplatRoute: typeof ApiObserveV1SplatRoute
   ApiProjectFilesV1SplatRoute: typeof ApiProjectFilesV1SplatRoute
   ApiSceneV1SplatRoute: typeof ApiSceneV1SplatRoute
   ApiSpacesV1SplatRoute: typeof ApiSpacesV1SplatRoute
+  ApiWorkbenchV1SplatRoute: typeof ApiWorkbenchV1SplatRoute
   DesktopWorkspaceWorkspaceIdBacklinksRoute: typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   DesktopWorkspaceWorkspaceIdCompiledRoute: typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   DesktopWorkspaceWorkspaceIdEventsRoute: typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -1106,6 +1230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAppearanceRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/companions': {
+      id: '/settings/companions'
+      path: '/companions'
+      fullPath: '/settings/companions'
+      preLoaderRoute: typeof SettingsCompanionsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/connections': {
       id: '/settings/connections'
       path: '/connections'
@@ -1125,6 +1256,27 @@ declare module '@tanstack/react-router' {
       path: '/keys'
       fullPath: '/settings/keys'
       preLoaderRoute: typeof SettingsKeysRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/plugins': {
+      id: '/settings/plugins'
+      path: '/plugins'
+      fullPath: '/settings/plugins'
+      preLoaderRoute: typeof SettingsPluginsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/profile': {
+      id: '/settings/profile'
+      path: '/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof SettingsProfileRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/responses': {
+      id: '/settings/responses'
+      path: '/responses'
+      fullPath: '/settings/responses'
+      preLoaderRoute: typeof SettingsResponsesRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/work': {
@@ -1168,6 +1320,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/pages/$pageId'
       preLoaderRoute: typeof ChatPagesPageIdRouteImport
       parentRoute: typeof ChatPagesRoute
+    }
+    '/_chat/projects/$projectId': {
+      id: '/_chat/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof ChatProjectsProjectIdRouteImport
+      parentRoute: typeof ChatRoute
     }
     '/api/artifacts/$': {
       id: '/api/artifacts/$'
@@ -1225,6 +1384,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesktopWorkspaceIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/observe/': {
+      id: '/settings/observe/'
+      path: '/observe'
+      fullPath: '/settings/observe/'
+      preLoaderRoute: typeof SettingsObserveIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/api/apps/v1/$': {
+      id: '/api/apps/v1/$'
+      path: '/api/apps/v1/$'
+      fullPath: '/api/apps/v1/$'
+      preLoaderRoute: typeof ApiAppsV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/artifacts/v1/$': {
       id: '/api/artifacts/v1/$'
       path: '/api/artifacts/v1/$'
@@ -1267,6 +1440,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFilesV1SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/observe/v1/$': {
+      id: '/api/observe/v1/$'
+      path: '/api/observe/v1/$'
+      fullPath: '/api/observe/v1/$'
+      preLoaderRoute: typeof ApiObserveV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/project-files/v1/$': {
       id: '/api/project-files/v1/$'
       path: '/api/project-files/v1/$'
@@ -1286,6 +1466,13 @@ declare module '@tanstack/react-router' {
       path: '/api/spaces/v1/$'
       fullPath: '/api/spaces/v1/$'
       preLoaderRoute: typeof ApiSpacesV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/workbench/v1/$': {
+      id: '/api/workbench/v1/$'
+      path: '/api/workbench/v1/$'
+      fullPath: '/api/workbench/v1/$'
+      preLoaderRoute: typeof ApiWorkbenchV1SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/desktop/workspace/$workspaceId/': {
@@ -1421,6 +1608,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesktopWorkspaceWorkspaceIdTrustRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/observe/runs/$runId': {
+      id: '/settings/observe/runs/$runId'
+      path: '/observe/runs/$runId'
+      fullPath: '/settings/observe/runs/$runId'
+      preLoaderRoute: typeof SettingsObserveRunsRunIdRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/v1/theorem/agent/stream/$': {
       id: '/v1/theorem/agent/stream/$'
       path: '/v1/theorem/agent/stream/$'
@@ -1465,6 +1659,7 @@ interface ChatRouteChildren {
   ChatVaultRoute: typeof ChatVaultRoute
   ChatIndexRoute: typeof ChatIndexRoute
   ChatCThreadIdRoute: typeof ChatCThreadIdRoute
+  ChatProjectsProjectIdRoute: typeof ChatProjectsProjectIdRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
@@ -1477,6 +1672,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatVaultRoute: ChatVaultRoute,
   ChatIndexRoute: ChatIndexRoute,
   ChatCThreadIdRoute: ChatCThreadIdRoute,
+  ChatProjectsProjectIdRoute: ChatProjectsProjectIdRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
@@ -1484,21 +1680,33 @@ const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 interface SettingsRouteChildren {
   SettingsAiRoute: typeof SettingsAiRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
+  SettingsCompanionsRoute: typeof SettingsCompanionsRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsImportRoute: typeof SettingsImportRoute
   SettingsKeysRoute: typeof SettingsKeysRoute
+  SettingsPluginsRoute: typeof SettingsPluginsRoute
+  SettingsProfileRoute: typeof SettingsProfileRoute
+  SettingsResponsesRoute: typeof SettingsResponsesRoute
   SettingsWorkRoute: typeof SettingsWorkRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
+  SettingsObserveIndexRoute: typeof SettingsObserveIndexRoute
+  SettingsObserveRunsRunIdRoute: typeof SettingsObserveRunsRunIdRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAiRoute: SettingsAiRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
+  SettingsCompanionsRoute: SettingsCompanionsRoute,
   SettingsConnectionsRoute: SettingsConnectionsRoute,
   SettingsImportRoute: SettingsImportRoute,
   SettingsKeysRoute: SettingsKeysRoute,
+  SettingsPluginsRoute: SettingsPluginsRoute,
+  SettingsProfileRoute: SettingsProfileRoute,
+  SettingsResponsesRoute: SettingsResponsesRoute,
   SettingsWorkRoute: SettingsWorkRoute,
   SettingsIndexRoute: SettingsIndexRoute,
+  SettingsObserveIndexRoute: SettingsObserveIndexRoute,
+  SettingsObserveRunsRunIdRoute: SettingsObserveRunsRunIdRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
@@ -1530,15 +1738,18 @@ const rootRouteChildren: RootRouteChildren = {
   DesktopBlocksAppTokenRoute: DesktopBlocksAppTokenRoute,
   DesktopBlocksIndexRoute: DesktopBlocksIndexRoute,
   DesktopWorkspaceIndexRoute: DesktopWorkspaceIndexRoute,
+  ApiAppsV1SplatRoute: ApiAppsV1SplatRoute,
   ApiArtifactsV1SplatRoute: ApiArtifactsV1SplatRoute,
   ApiCapabilitiesV1SplatRoute: ApiCapabilitiesV1SplatRoute,
   ApiChatV1SplatRoute: ApiChatV1SplatRoute,
   ApiDocumentsV2SplatRoute: ApiDocumentsV2SplatRoute,
   ApiEnvironmentV1SplatRoute: ApiEnvironmentV1SplatRoute,
   ApiFilesV1SplatRoute: ApiFilesV1SplatRoute,
+  ApiObserveV1SplatRoute: ApiObserveV1SplatRoute,
   ApiProjectFilesV1SplatRoute: ApiProjectFilesV1SplatRoute,
   ApiSceneV1SplatRoute: ApiSceneV1SplatRoute,
   ApiSpacesV1SplatRoute: ApiSpacesV1SplatRoute,
+  ApiWorkbenchV1SplatRoute: ApiWorkbenchV1SplatRoute,
   DesktopWorkspaceWorkspaceIdBacklinksRoute:
     DesktopWorkspaceWorkspaceIdBacklinksRoute,
   DesktopWorkspaceWorkspaceIdCompiledRoute:

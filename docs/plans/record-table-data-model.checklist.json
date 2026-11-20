@@ -15,40 +15,91 @@
     {
       "id": "record-writes",
       "requirement": "Create, edit and delete records through the register's record verbs",
-      "status": "blocked",
+      "status": "done",
       "evidence": [
-        "UI side done: api.ts invokeRecordVerb, optimistic writes with rollback in queries.ts",
-        "Blocked on Theorem: rustyred-thg-mcp GraphQL has no invokeRecordVerb mutation; until then the table shows that writes are unavailable"
+        "src/components/crm/queries.ts (useCrmWrites): invokeRecordVerb with expected_revision on update and delete; a stale write is refused and shown",
+        "Theorem: invokeRecordVerb on /graphql, with a signed-in person's read and write default (Theorem docs/plans/theorem-crm-life-context/README.md)"
       ]
     },
     {
       "id": "table-core",
       "requirement": "Checkbox column, pinned identifier column, typed headers, resize, virtualized rows, sticky header, active row for the open record",
-      "status": "done",
+      "status": "partial",
       "evidence": [
-        "src/components/records/record-table.tsx",
-        "Verified against a local mock authority"
+        "Replaced: the Index's records table is now the CRM table (src/components/crm/crm-table.tsx), and record-table.tsx was removed. It has the checkbox column, the pinned identifier column, typed headers, a sticky header and the active row for the previewed record.",
+        "Column resize restored: the kit's ResizeHandle on each field's header edge (the identifier stays pinned, the checkbox column has no handle), minimum 104 px, double-click resets; src/components/crm/crm-table.tsx. src/components/crm/table-arrangement.test.tsx: dragging the header edge resizes the column, within its minimum, and the width is kept (a mousedown, mousemove and mouseup sequence on the handle)",
+        "Not in the CRM table: virtualized rows (it draws every loaded row, 200 at a time)"
       ]
     },
     {
       "id": "column-menu",
-      "requirement": "Filter, Sort, Move left, Move right, Hide; the identifier column only Filter and Sort",
+      "requirement": "Search, Sort, Move left, Move right, Hide; the identifier column only Search and Sort",
+      "status": "partial",
+      "evidence": [
+        "Restored in the CRM table: src/components/crm/column-menu.tsx HeaderMenu (opened by clicking the column's header): Search (was Filter), Sort ascending and descending, Move left, Move right, Hide; the identifier column offers only Search and Sort. Sort replaces the whole list of sort rules with its one rule, mirrored to the address (sort, desc, then); crm-table.tsx",
+        "src/components/crm/table-arrangement.test.tsx: Hide in a column's menu hides it; the identifier column's menu offers only Search and Sort; a column menu sorts through the one sort the address holds; Move left and Move right reorder the columns",
+        "Not as the generic table had it: Search on any column opens the view bar's search, which reads every shown field; there are no per-column filter rules. Clicking a header no longer sorts: the header is the menu's trigger (see header-click-menu)"
+      ]
+    },
+    {
+      "id": "header-click-menu",
+      "requirement": "Clicking a column's header opens its menu (Search, Sort ascending, Sort descending, Move left, Move right, Hide), as in Twenty",
       "status": "done",
-      "evidence": ["record-table.tsx HeaderMenu"]
+      "evidence": [
+        "src/components/crm/column-menu.tsx HeaderMenu: the header's button is the menu trigger and shows the field's icon, name and sort arrow; Enter or Space opens it from the keyboard. A pointer press opens nothing (it may begin a drag); the click that follows does",
+        "src/components/crm/index-records.test.tsx: a column header opens its menu, and sorting from it says which way (the old test, 'a column header sorts, and says which way', encoded click-to-sort and was changed on purpose)",
+        "src/components/crm/table-search-sort.test.tsx: a click on a header label opens the column menu, and Escape closes it"
+      ]
+    },
+    {
+      "id": "search-every-field",
+      "requirement": "The view bar's Search matches its text, case-insensitively, against the display text of every shown column (name, fields, related records' titles)",
+      "status": "done",
+      "evidence": [
+        "src/components/crm/crm-table.tsx: TanStack's globalFilter with a globalFilterFn over each shown column's sortValue text (hidden columns are not searched); q stays in the address and mirrored with useMirrored; magnifier icon, placeholder and aria-label 'Search <plural>'; the column menu's Search item opens it",
+        "src/components/crm/table-search-sort.test.tsx: the search finds a record by a field that is not its name; the search reads the title of a related record, in any case; a hidden column is not searched; a needle nothing holds shows the empty state",
+        "src/components/crm/index-records.test.tsx: the search narrows by name and the footer says so; the preview, the search and the sort are in the address"
+      ]
+    },
+    {
+      "id": "multi-sort",
+      "requirement": "A sort list: several rules (field and direction, removable), Add sort, Clear sorts; rows sort by rule 1, then rule 2",
+      "status": "done",
+      "evidence": [
+        "src/components/crm/crm-table.tsx: the Sort popover lists the rules (field, Ascending or Descending, remove), Add sort takes the first field not yet used, Clear sorts empties it; TanStack enableMultiSort with a sorting array; the button reads 'Sort: <first field>' and ' +N' for more. The header menu's Sort replaces the list",
+        "src/components/crm/table-sorts.ts: the address holds the first rule in sort and desc as before and the rest in then as key1:desc,key2 (a key with a comma or colon is skipped); src/components/index/search.ts and src/components/crm/navigation.ts carry then",
+        "src/components/crm/table-search-sort.test.tsx: two rules order the rows, the second breaking the first's ties; the rules are in the address as sort, desc and then, and a reload restores them; a column menu's sort replaces the whole list with its one rule; removing a rule and Clear sorts take rules off the list; the address reads then strictly",
+        "src/components/crm/index-records.test.tsx: the Sort list sorts by the field added to it (replaces the radio-menu test)"
+      ]
+    },
+    {
+      "id": "drag-reorder-columns",
+      "requirement": "Drag a column header to a new place among the movable columns (not the checkbox, not the pinned identifier); the drop lands in the saved arrangement",
+      "status": "done",
+      "evidence": [
+        "src/components/crm/header-drag.tsx: @dnd-kit horizontal sortable over the headers (pointer sensor with a 4 px activation distance so a click still opens the menu, a keyboard sensor started by Alt with Space or Enter because bare Space and Enter open the menu, restrictToHorizontalAxis); the drop calls table.setColumnOrder through reorderColumns, which is saved by the arrangement's columnOrder. The resize handle is outside the dragged button. Move left and Move right remain",
+        "src/components/crm/table-search-sort.test.tsx: Alt and Space picks a column up, the arrows move it and Space drops it (dnd-kit's keyboard sensor with the headers given places, as happy-dom lays nothing out); a drop moves a column to the place of the one it is dropped on, and never a pinned one; the movable headers are sortable items and the identifier is not",
+        "Not covered by a test: a pointer drag (happy-dom has no layout or pointer geometry)"
+      ]
     },
     {
       "id": "plus-column",
       "requirement": "\"+\" column lists hidden fields to show, with Customize fields",
       "status": "done",
-      "evidence": ["record-table.tsx AddFieldMenu"]
+      "evidence": [
+        "Restored in the CRM table: src/components/crm/column-menu.tsx AddFieldMenu, the trailing \"+\" column listing the hidden fields, and Customize fields, which opens the data model view default:data-model:<name> (useCrmNavigate().openDataModel in navigation.ts)",
+        "src/components/crm/table-arrangement.test.tsx: Hide in a column's menu hides it, and the \"+\" column shows it again"
+      ]
     },
     {
       "id": "focus-edit",
-      "requirement": "Cell focus with arrows, Enter edits, typing a character opens the editor with it, Enter saves and moves down, Tab across, Escape saves, Backspace clears, Cmd/Ctrl+Enter opens the record",
+      "requirement": "Cell focus with arrows, Enter edits, typing a character opens the editor with it, Enter saves and moves down, Tab across, Escape cancels the edit and leaves the saved value (changed from Twenty's Escape-saves when the CRM mode was added, so the two tables agree), Backspace clears, Cmd/Ctrl+Enter opens the record",
       "status": "done",
       "evidence": [
-        "record-table.tsx onGridKeyDown, fields.tsx commitKeys",
-        "Verified: type-to-edit, Enter moves down, Escape saves"
+        "src/components/crm/crm-table.tsx onCellKey: arrows, Enter edits, typing a character opens the editor with it, Escape, Cmd/Ctrl+Enter opens the record; fields.tsx commitKeys (Enter saves and moves down, Tab saves and moves across)",
+        "Restored: Tab and Shift+Tab move across the cells of a row and, at its ends, leave the grid; Backspace or Delete empties an editable cell by the revision-checked write the editor makes (useCrmWrites saveFrom), never the identifier, a required field or a switch, and a stale revision is refused as any edit is",
+        "fields.test.tsx: Escape cancels: nothing is saved, and the editor is asked to close; Escape in a text editor restores the value; Enter saves it",
+        "src/components/crm/table-arrangement.test.tsx: Tab and Shift+Tab move across the cells; Tab in an open editor saves and moves right; Backspace empties the cell by the revision-checked write; Backspace on a record changed elsewhere is refused; Backspace leaves the name, a required field and an empty cell alone"
       ]
     },
     {
@@ -64,24 +115,28 @@
       "id": "add-new",
       "requirement": "Add New row and empty states (Add your first {Object}, No {Object} found)",
       "status": "done",
-      "evidence": ["record-table.tsx draft row and EmptyState"]
+      "evidence": [
+        "src/components/crm/crm-table.tsx: the Add new row and the empty states"
+      ]
     },
     {
       "id": "selection-bulk",
       "requirement": "Select all, shift-range selection, N selected, delete and export the selection",
       "status": "partial",
       "evidence": [
-        "record-table.tsx",
-        "Not yet: rectangle drag-select, x hotkey, bulk Update records side panel"
+        "src/components/crm/crm-table.tsx: marked rows, Delete of the marked rows with a report of each refusal; bulk-update.tsx: Update records, one revision-checked write per marked record",
+        "Restored: Shift-click on a row's box marks every row from the last one marked (markRow), and Export beside Update and Delete writes the marked rows as CSV (src/components/crm/export-csv.ts, d3-dsv; the visible columns in order, named <plural>.csv). src/components/crm/table-arrangement.test.tsx: Shift-click marks every row between the last one marked and this one; Export writes the marked rows as CSV, with the columns shown, in order",
+        "Not in the CRM table: rectangle drag-select, x hotkey"
       ]
     },
     {
       "id": "calculate-footer",
       "requirement": "Per-column Calculate: Count, Percent, Date and More options, saved per view",
-      "status": "partial",
+      "status": "done",
       "evidence": [
-        "aggregate.ts with tests",
-        "Computed over loaded rows; server-side aggregates via the Aggregate verb are not wired"
+        "Restored in the CRM table behind a setting: src/components/crm/calculate-footer.tsx (Count, Percent, Date and More options per column, over components/records/aggregate.ts), saved per view with the arrangement. The row shows only when Settings, Appearance, Calculations under record tables is on (off by default; src/components/crm/calculations-setting.ts, per browser); off, the footer is the dataset count as before",
+        "It calculates over the records loaded and says \"of N loaded\" when the type holds more, as the count line does",
+        "src/components/crm/table-arrangement.test.tsx: the Calculate row is not there until the setting is on, then follows it; Settings, Appearance has the switch, off at first, kept on this device; a Count is calculated over the records loaded, and kept for the view; when not every record is loaded, the calculation says so"
       ]
     },
     {
@@ -89,16 +144,21 @@
       "requirement": "Search any field, filter list with and/or, sort list, fields visibility and order, export, reset",
       "status": "partial",
       "evidence": [
-        "Kit FilterList, SortList, ViewOptions",
-        "Not yet: saved named views per object, view picker, advanced filter rule groups"
+        "src/components/crm/crm-table.tsx: search over every shown field and a list of sort rules, kept in the address (q, sort, desc, then); hidden fields; Options now also has Export as CSV (the marked rows, else the rows the filter leaves) and Reset arrangement",
+        "src/components/crm/table-arrangement.test.tsx: with no rows marked, Export in Options writes the rows the filter leaves, in the sort order; nothing is saved until the arrangement is changed, and Reset arrangement forgets it",
+        "Not in the CRM table: and/or filter rules, field order from the Options list (a column moves by drag or with Move left and Move right), saved named views"
       ]
     },
     {
       "id": "view-persistence",
       "requirement": "A view's arrangement kept in Theorem so it follows the person",
-      "status": "not-started",
+      "status": "done",
       "evidence": [
-        "view-state.ts keeps it in localStorage; Theorem has dataViews/upsertDataView to build on"
+        "src/components/records/view-state.ts: useRecordViewState keeps each view's column order, widths, hidden fields and calculations in the useRecordLayouts store (localStorage theorem-ui:record-layouts; a legacy theorem.crm.view:<key> entry is read once), keyed <Index view id>:<type name> (a page's records module passes module:<its path>); search, sort and the previewed record stay in the address",
+        "src/lib/theorem/models.ts usePreferencesSync: the layouts travel in the person's Theorem preferences (/api/chat/v1/preferences, principal-scoped, If-Match) as recordLayouts, the 50 most recently changed within 32 KB; each write starts from Theorem's last copy so keys this client does not own survive the whole-object replace; Theorem's copy is applied on load without a write-back",
+        "src/components/records/record-layouts.test.tsx: a layout change is written as recordLayouts with If-Match; Theorem's layouts reach the table without a write-back; a write keeps keys it does not own; a legacy entry is picked up and Reset forgets it; malformed layouts are dropped; only the 50 most recent are sent; wide layouts give way oldest first under the size cap",
+        "src/components/crm/table-arrangement.test.tsx: the arrangement survives a remount, and is the view's own; a saved arrangement of the wrong shape is ignored, field by field; storage that cannot be used leaves the table working",
+        "Limit: two browsers changing layouts at once, the later write wins for the whole map. Not observed against a deployed Theorem"
       ]
     },
     {
@@ -106,8 +166,8 @@
       "requirement": "Record beside the table: editable title, every field inline, relations, records that point here (tasks, notes), delete",
       "status": "done",
       "evidence": [
-        "record-inspector.tsx",
-        "Verified: Anthropic opens with People, Opportunities and Tasks sections"
+        "src/components/crm/record-preview.tsx in the Index inspector (CrmRecordInspector in index-views.tsx) for the open item record:<name>/<id>; src/components/crm/record-page.tsx as the built-in view default:record:<name>/<id> with relations, records that point here, history and delete",
+        "record-inspector.tsx was removed"
       ]
     },
     {
@@ -115,7 +175,7 @@
       "requirement": "What records carry beyond their declaration: shown, promoted, or added as a field with a proposed type",
       "status": "partial",
       "evidence": [
-        "data-model.tsx Not in the schema yet, record-inspector.tsx Not in the schema",
+        "data-model.tsx Not in the schema yet, record-inspector.tsx Not in the schema (removed with the generic inspector)",
         "proposeFieldType in schema-edit.ts is left for the person to write"
       ]
     },

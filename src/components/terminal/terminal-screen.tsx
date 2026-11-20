@@ -26,6 +26,8 @@ import type { TerminalHandle } from '@/terminal-wasm/theorem_terminal'
 import { leftoversOf, snapshotOf } from './terminal-transcript'
 import type { Approval, Outgoing } from './terminal-transcript'
 import type * as TerminalWasm from '@/terminal-wasm/theorem_terminal'
+import type { TerminalRoles } from './terminal-roles'
+import './cell-grid.css'
 
 /** The terminal runs agent work: coding execution, not the front conversation. */
 const TURN_OPTIONS: TurnOptions = { executionMode: 'coding' }
@@ -429,14 +431,17 @@ export function TerminalAgent(props: AgentProps) {
  * works out from the workspace around it.
  */
 let wasmModule: Promise<typeof TerminalWasm> | undefined
-const loadWasm = () =>
+export const loadWasm = () =>
   (wasmModule ??= Promise.all([
     import('@/terminal-wasm/theorem_terminal'),
     import('./live-terminal-theme'),
-  ]).then(async ([wasm, { useTerminalTheme }]) => {
+    import('./terminal-ladder'),
+  ]).then(async ([wasm, { useTerminalTheme }, { ladderPalette }]) => {
     await wasm.default()
-    const paint = ({ theme }: { theme: object }) =>
-      wasm.set_palette(JSON.stringify(theme))
+    // One role contract for every terminal and the cabinet (terminal-roles.ts),
+    // with the surface ladder and registers derived from it (terminal-ladder.ts).
+    const paint = ({ roles }: { roles: TerminalRoles }) =>
+      wasm.set_palette(JSON.stringify(ladderPalette(roles)))
     paint(useTerminalTheme.getState())
     useTerminalTheme.subscribe(paint)
     return wasm
@@ -552,10 +557,10 @@ export function TerminalScreen({
         aria-label="Agent terminal"
         data-base-ui-swipe-ignore=""
         onKeyDown={(event) => {
-          if (event.metaKey) return
-          // Copy wins over stop while the person has text selected.
+          // Copying text selected on the page wins over the terminal's own copy and stop. The
+          // terminal answers false for a Command chord that is not its prompt's.
           if (
-            event.ctrlKey &&
+            (event.ctrlKey || event.metaKey) &&
             event.key === 'c' &&
             !window.getSelection()?.isCollapsed
           )
@@ -588,6 +593,7 @@ export function TerminalScreen({
         onWheel={(event) => handle.current?.scroll(event.deltaY > 0 ? 3 : -3)}
         onFocus={() => handle.current?.set_focused(true)}
         onBlur={() => handle.current?.set_focused(false)}
+        data-terminal-grid=""
         className="relative min-h-0 flex-1 cursor-default overflow-hidden bg-term font-mono text-[12.5px] whitespace-pre text-term-ink outline-none"
       />
       {/* Over the header bar's last columns, which the terminal leaves
@@ -604,28 +610,4 @@ export function TerminalScreen({
       )}
     </div>
   )
-}
-
-/**
- * Closes a drawer when the person double-clicks anywhere outside every
- * terminal drawer, while it is open.
- */
-export function useCloseOnOutsideDoubleClick(open: boolean, close: () => void) {
-  const latest = useRef(close)
-  useLayoutEffect(() => {
-    latest.current = close
-  })
-  useEffect(() => {
-    if (!open) return
-    const onDoubleClick = (event: MouseEvent) => {
-      if (
-        event.target instanceof Element &&
-        event.target.closest('[data-terminal-drawer]')
-      )
-        return
-      latest.current()
-    }
-    document.addEventListener('dblclick', onDoubleClick)
-    return () => document.removeEventListener('dblclick', onDoubleClick)
-  }, [open])
 }

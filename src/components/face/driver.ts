@@ -15,10 +15,13 @@ import { kitDriver } from '@/lib/kit/driver'
 import { KIT_SIZE, useKitStage } from '@/lib/kit/stage'
 import { prefersReducedMotion } from '@/lib/motion'
 import { theSound } from '@/lib/sound/graph'
+import { useMicLevel } from '@/lib/speech/dictation'
 import { enterWorld, leaveWorld, loadRapier, theWorld } from '@/lib/world'
 import { createPainter } from './painter'
 import type { Painter } from './painter'
 import { PlateMotion } from './plate'
+import { terminalFace } from './terminal-face'
+import type { TerminalFace } from './terminal-face'
 import { forget, locate, reveal, thingsOnPage } from './things'
 
 /** The canvas's own width in CSS pixels; the face is scaled from this. */
@@ -36,6 +39,8 @@ const MARGIN = 8
 const NEAR = 280
 /** Past this much movement a press is a carry, not a tap. */
 const CARRY_AFTER = 4
+/** A press held this long without moving is a listen, not a tap or a carry. */
+const LISTEN_AFTER = 380
 /** How long after a performance away from home before it goes back. */
 const LINGER_MS = 3_500
 /** Pointing at something, it stays longer: the person has to find it and read it. */
@@ -76,6 +81,7 @@ const SILENT = {
   'sound.mid': 0,
   'sound.high': 0,
   'sound.beat': 0,
+  'mic.level': 0,
 } as const
 
 /**
@@ -86,6 +92,14 @@ const SILENT = {
 export class FaceDriver {
   /** Whether the face has its plate, and whether matter with none under it is ink. The stage sets it. */
   look: FaceLook = { visor: true, ink: false, paper: false }
+  /**
+   * Starts and stops the composer's dictation, set by the stage (which has the
+   * runtime). Undefined where nothing can dictate; a held press then does
+   * nothing but poke.
+   */
+  dictate:
+    | { start: () => void; stop: () => void; active: () => boolean }
+    | undefined
   /** The plate, which draws in to a ball behind an orb. */
   private readonly plateMotion = new PlateMotion(THEO.width, THEO.height)
   private painter: Painter | undefined
@@ -103,6 +117,9 @@ export class FaceDriver {
   private pointer: Point = { x: -1e4, y: -1e4 }
   private press:
     { id: number; from: Point; grab: Point; carried: boolean } | undefined
+  /** The timer that turns a still press into a listen, and whether it fired. */
+  private listenTimer = 0
+  private listening = false
   private strokes: Array<number> = []
   private strokeDirection = 0
   private lastDraw = 0
@@ -124,6 +141,8 @@ export class FaceDriver {
   private samples: Array<Sample> = []
   /** When it got to the thing it points at; `undefined` while it is on its way or points at nothing. */
   private pointingSince: number | undefined
+  /** The terminal face last worked out, and for which colours. */
+  private dressed: { key: string; appearance: TerminalFace } | undefined
   /** What the mark last showed, so the page is written to only when it changes. */
   private marked = ''
   /** The form it has emits arcs past its sides, so it stands clear of the words by that much. */
@@ -194,6 +213,8 @@ export class FaceDriver {
   destroy() {
     this.destroyed = true
     cancelAnimationFrame(this.frameId)
+    this.cancelListenTimer()
+    this.endListen()
     for (const cleanup of this.cleanups) cleanup()
     this.face.attach(undefined)
     this.face.heading(undefined)
@@ -303,12 +324,45 @@ export class FaceDriver {
     return rect
   }
 
-  /** The live message's gutter slot, when it is on screen. */
+  /**
+   * The terminal's cells the workbench keeps for Theo, when it has any: an
+   * element the page lays over them (`data-face-perch="terminal"`) that says
+   * the terminal's surface and ink (`data-face-surface`, `data-face-ink`).
+   * Theo rests there, small enough for the cells, and is drawn for that surface.
+   */
+  private terminalPerch() {
+    if (this.place !== 'home' || this.free) return undefined
+    const element = document.querySelector<HTMLElement>(
+      '[data-face-perch="terminal"]',
+    )
+    if (!element) return undefined
+    const rect = element.getBoundingClientRect()
+    const { faceSurface: surface, faceInk: ink } = element.dataset
+    if ((rect.width === 0 && rect.height === 0) || !surface || !ink)
+      return undefined
+    // Read several times a frame: the colours are worked out once for a surface.
+    const key = `${surface}|${ink}|${this.face.hue}`
+    if (this.dressed?.key !== key) {
+      try {
+        this.dressed = {
+          key,
+          appearance: terminalFace(surface, ink, this.face.hue),
+        }
+      } catch {
+        return undefined
+      }
+    }
+    return { rect, appearance: this.dressed.appearance }
+  }
+
+  /** The live message's gutter slot, when it is on screen below the thread's header. */
   private livePerch() {
     const rect = this.rectOf('[data-face-perch="live"]')
     if (!rect) return undefined
-    if (rect.bottom < MARGIN || rect.top > window.innerHeight - 96)
-      return undefined
+    // The header lies over the conversation, so a slot scrolled up under it
+    // is hidden and Theo would sit on the breadcrumb.
+    const top = Math.max(MARGIN, this.rectOf('.appearance-thread-header')?.bottom ?? 0)
+    if (rect.top < top || rect.top > window.innerHeight - 96) return undefined
     return rect
   }
 
@@ -382,6 +436,12 @@ export class FaceDriver {
       return { x: window.innerWidth / 2, y: window.innerHeight / 2 }
     if (place === 'person')
       return { x: window.innerWidth / 2, y: window.innerHeight * 0.62 }
+    const terminal = place === 'home' ? this.terminalPerch() : undefined
+    if (terminal)
+      return {
+        x: terminal.rect.left + terminal.rect.width / 2,
+        y: terminal.rect.top + terminal.rect.height / 2,
+      }
     if (place === 'home' || place === 'text') {
       const perch = this.livePerch()
       if (perch) {
@@ -425,6 +485,8 @@ export class FaceDriver {
   private target(): Point {
     const { width, height } = this.dimensions()
     const raw = this.free ?? this.pointOf(this.place, width, height)
+    // The terminal's cells are on screen, and the face is the size of them: no clamp to the page's margin.
+    if (!this.free && this.terminalPerch()) return raw
     // Its arcs stay on the page with it.
     const side = MARGIN + width / 2 + this.spill(width)
     return {
@@ -460,8 +522,21 @@ export class FaceDriver {
     }
   }
 
-  /** How big it wants to be: as asked, or by what it is doing. */
+  /** How big it wants to be. In the terminal's cells it is as big as they hold and no bigger: a performance changes the matter, not the size, so no row grows or is covered. */
   private wantedSize() {
+    const terminal = this.terminalPerch()
+    if (!terminal) return this.chosenSize()
+    const height =
+      REST_PX * (this.face.identity.height / this.face.identity.width)
+    return Math.min(
+      1,
+      terminal.rect.width / REST_PX,
+      terminal.rect.height / height,
+    )
+  }
+
+  /** How big it wants to be: as asked, or by what it is doing. */
+  private chosenSize() {
     if (this.size !== undefined) return this.size
     // Thrown, it stays the size it was carried at until it lands.
     if (this.press?.carried || this.physical()?.state === 'coasting') return 2
@@ -485,6 +560,30 @@ export class FaceDriver {
 
   // Sound ---------------------------------------------------------------------
 
+  /** The press has held still long enough: the face listens. */
+  private beginListen() {
+    if (!this.dictate || this.listening || this.destroyed) return
+    this.listening = true
+    this.face.notice('person.listen')
+    this.dictate.start()
+  }
+
+  /** The press let go (or was cancelled): the face stops listening. */
+  private endListen() {
+    if (!this.listening) return
+    this.listening = false
+    this.dictate?.stop()
+    this.face.notice('person.listen.end')
+    this.face.feed({ 'mic.level': 0 })
+  }
+
+  private cancelListenTimer() {
+    if (this.listenTimer) {
+      clearTimeout(this.listenTimer)
+      this.listenTimer = 0
+    }
+  }
+
   /** Hands the face what the page's sound measures as now, and what happened in it. */
   private hear(now: number) {
     const { signals, events } = theSound().measure(now)
@@ -498,6 +597,14 @@ export class FaceDriver {
     for (const event of events) this.face.notice(event)
     // What the run is doing: how busy it is with tools and how hard it was asked to think.
     this.face.feed(theWork().measure(now, this.face.working))
+    // While it has the listening form, the person's voice moves it; otherwise
+    // the mic is silent. The form is held from the press that asks to listen
+    // until it lets go, so the level follows the form, not the press alone.
+    this.face.feed({
+      'mic.level': this.face.player.holding('form')
+        ? useMicLevel.getState().level
+        : 0,
+    })
   }
 
   /** Draws the arcs leaving each side: more of them, and further, the more the face emits. Still, they stand where they are. */
@@ -716,6 +823,18 @@ export class FaceDriver {
     })
   }
 
+  /** Gives the plate the body colour of the terminal surface it rests on, or gives it back to the stylesheet and the page's look. */
+  private dress(appearance: TerminalFace | undefined) {
+    if (appearance) {
+      if (this.plate.style.getPropertyValue('--face-plate') !== appearance.body)
+        this.plate.style.setProperty('--face-plate', appearance.body)
+      if (this.plate.dataset.visor !== 'on') this.plate.dataset.visor = 'on'
+    } else if (this.plate.style.getPropertyValue('--face-plate') !== '') {
+      this.plate.style.removeProperty('--face-plate')
+      this.plate.dataset.visor = this.look.visor ? 'on' : 'off'
+    }
+  }
+
   // Frames --------------------------------------------------------------------
 
   private readonly frame = (now: number) => {
@@ -775,8 +894,14 @@ export class FaceDriver {
 
     const grains = face.frame(now)
     // With a plate, an orb is the face's light on a ball of its dark: the plate draws in round it, and what is left outside is ink on a light page.
-    if (this.look.visor) this.plateMotion.step(face.ball(), dt, still)
-    const drawnIn = this.look.visor && !this.plateMotion.whole
+    const inverse = this.terminalPerch()?.appearance
+    this.dress(inverse)
+    const look = inverse?.look ?? this.look
+    const flat = inverse?.flat ?? false
+    // Ink over the whole body keeps the plate whole: an orb is ink on it, not light on a ball of dark.
+    if (look.visor)
+      this.plateMotion.step(flat ? undefined : face.ball(), dt, still || flat)
+    const drawnIn = look.visor && !flat && !this.plateMotion.whole
     this.plateMotion.lay(this.back, VISOR_PX / face.identity.width)
     this.painter?.draw(
       grains,
@@ -784,8 +909,8 @@ export class FaceDriver {
       face.identity.width,
       face.identity.height,
       drawnIn
-        ? { ink: this.look.paper, plate: this.plateMotion.plate }
-        : { ink: this.look.ink },
+        ? { ink: look.paper, plate: this.plateMotion.plate }
+        : { ink: look.ink },
     )
 
     const head = face.head()
@@ -849,6 +974,10 @@ export class FaceDriver {
         )
         if (!press.carried && moved > CARRY_AFTER) {
           press.carried = true
+          this.cancelListenTimer()
+          // A listen that becomes a carry lets go of the microphone: what was
+          // heard so far is committed, and the figure is carried, not held to.
+          this.endListen()
           face.grab()
         }
         if (press.carried) {
@@ -898,14 +1027,29 @@ export class FaceDriver {
         grab: { x: event.clientX - this.at.x, y: event.clientY - this.at.y },
         carried: false,
       }
+      // A press held still becomes a listen: the face turns into a microphone
+      // and the composer hears the person until the press lets go.
+      this.cancelListenTimer()
+      if (this.dictate && !this.dictate.active()) {
+        this.listenTimer = window.setTimeout(() => {
+          if (!this.press || this.press.carried || this.destroyed) return
+          this.beginListen()
+        }, LISTEN_AFTER)
+      }
       event.preventDefault()
     })
     const release = (event: PointerEvent) => {
       const press = this.press
       if (!press || event.pointerId !== press.id) return
       this.press = undefined
+      this.cancelListenTimer()
       if (holder.hasPointerCapture(event.pointerId))
         holder.releasePointerCapture(event.pointerId)
+      // A listen ends when the press lets go: what was heard is committed.
+      if (this.listening) {
+        this.endListen()
+        return
+      }
       if (press.carried) {
         const body = this.physical()
         const velocity = body

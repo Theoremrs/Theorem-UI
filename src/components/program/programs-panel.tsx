@@ -1,5 +1,6 @@
 // SOURCING: coss ui Sidebar (provider, group and menu parts) over @tanstack/react-query's
-// program list; the shell's ContextPanel mounts it in Canvas mode.
+// program list and the session graphs saved beside it (lib/program/api); the
+// shell's ContextPanel mounts it in Canvas mode.
 import { Link, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -16,9 +17,62 @@ import {
   SidebarProvider,
 } from '@/components/coss/sidebar'
 import { Icon } from '@/components/icons'
-import { listPrograms, programKeys } from '@/lib/program/api'
+import { listPrograms, listSessionGraphs, programKeys } from '@/lib/program/api'
+import type { SessionGraphSummary } from '@/lib/program/api'
+import { useOrganization } from '@/lib/theorem/organization'
 import { useNewGraph } from './new-graph'
 import { ToolError } from './section'
+
+/** The session and project graphs a person saved, each opening on the canvas with its sessions read fresh. */
+function SessionGraphsGroup() {
+  const open = useSearch({ strict: false }).view
+  const graphs = useQuery({
+    queryKey: programKeys.sessionGraphs(),
+    queryFn: listSessionGraphs,
+  })
+  const { data: organization } = useOrganization()
+  const describe = (graph: SessionGraphSummary) => {
+    if (graph.scope.kind === 'project') {
+      const title = organization?.projects.find(
+        (p) => p.projectId === graph.scope.id,
+      )?.title
+      return title ? `Project · ${title}` : 'Project graph'
+    }
+    const title = organization?.threads.find(
+      (t) => t.threadId === graph.scope.id,
+    )?.title
+    return title ? `Tree · ${title}` : 'Session tree'
+  }
+  // Listed once there is one: a project or session menu is where a graph starts.
+  if (!graphs.error && !graphs.data?.length) return null
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>Session graphs</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <ToolError error={graphs.error} />
+        <SidebarMenu>
+          {graphs.data?.map((graph) => (
+            <SidebarMenuItem key={graph.node_id}>
+              <SidebarMenuButton
+                size="lg"
+                className="data-[active=true]:bg-selected"
+                isActive={open === graph.node_id}
+                render={<Link to="/canvas" search={{ view: graph.node_id }} />}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm">{graph.name}</span>
+                  <span className="block truncate text-xs font-normal text-ink-faint-sheet">
+                    {describe(graph)}
+                  </span>
+                </span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  )
+}
 
 export function ProgramsPanel() {
   const open = useSearch({ strict: false }).program
@@ -80,6 +134,7 @@ export function ProgramsPanel() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+          <SessionGraphsGroup />
         </SidebarContent>
       </Sidebar>
     </SidebarProvider>

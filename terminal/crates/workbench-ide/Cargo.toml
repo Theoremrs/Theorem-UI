@@ -1,0 +1,34 @@
+[package]
+name = "theorem-workbench-ide"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The Search, Diagnostics and Run output panels of the Theo Web terminal workbench"
+
+[dependencies]
+# The text and caret a text-edit node publishes (escaped, UTF-16 offsets, bounded).
+theorem-workbench-panels = { path = "../workbench-panels" }
+theorem-workbench-core = { path = "../workbench-core" }
+# Untrusted text spelled out before it is shown (`visible`) and the line and UTF-16 coordinates
+# a replace is checked and placed with. The text crate depends on nothing of ours.
+theorem-workbench-text = { path = "../workbench-text" }
+ropey = { version = "1.6.1", default-features = false, features = ["cr_lines"] }
+ratatui = { version = "0.30.1", default-features = false }
+# The query, include and exclude fields and the run's name and command: a text buffer with a
+# cursor and word motions, as the Files and Changes panels use.
+unicode-width = "0.2"
+# The match highlight is placed by grapheme, so a ZWJ emoji or a combining mark is never cut.
+unicode-segmentation = "1"
+keybinds = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# A run's command line is typed as one string and the host takes an argv: shell word rules,
+# not a split on spaces.
+shlex = "1"
+textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }
+# A run's output keeps the colour the program wrote. Default features (simd) are off: the
+# plain parser is enough and builds for wasm32.
+ansi-to-tui = { version = "8.0.1", default-features = false }
+
+[dev-dependencies]
+theorem-workbench-dock = { path = "../workbench-dock" }

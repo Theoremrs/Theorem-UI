@@ -11,7 +11,7 @@ const record = (value: unknown): Record<string, unknown> =>
 /**
  * What a text part says about itself: whether it is commentary on the way or
  * the answer, which prose segment of the run it is, and whether it is still
- * being written. The patched SDK adapter carries it as
+ * being written. The SDK adapter carries it as
  * `providerMetadata.theorem`, because assistant-ui rewrites a part's own
  * `status`. A part from before purposes has none of it and is an answer.
  */
@@ -41,6 +41,7 @@ const SHOWN_STEP_DATA = new Set([
   'theorem-delegation',
   'theorem-review',
   'theorem-intent',
+  'theorem-skill_load',
 ])
 
 export const isStepDataPart = (part: { type: string; name?: string }) =>

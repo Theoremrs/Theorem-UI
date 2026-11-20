@@ -11,7 +11,6 @@ import type { Node as AcornNode } from 'acorn'
 import { compileCell } from '#/lib/blocks/compile'
 import { importMap } from '#/lib/blocks/vendor/manifest'
 import { runtimeModules } from './assets'
-import { scriptHash } from './csp'
 import { startBlockListener } from './listener'
 import type { BlockWorkspace } from './listener'
 import { BlockStore } from './store'
@@ -135,40 +134,19 @@ describe('the block listener', () => {
     }
   })
 
-  test('a cell document carries the block policy: no network, scripts from the listener only', async () => {
+  test('a cell document may be framed only by the app, and limits nothing else', async () => {
     const cell = await compiledIn(workspaces.ws_trusted!, 'const a = 1')
     const response = await get(`/cell/ws_trusted/${cell.key}`)
     expect(response.status).toBe(200)
     const html = await response.text()
     const policy = directives(response.headers.get('content-security-policy'))
-    expect(policy['default-src']).toBe("'none'")
-    expect(policy['connect-src']).toBe("'none'")
-    expect(policy['frame-ancestors']).toBe(APP_ORIGIN)
-    expect(policy['form-action']).toBe("'none'")
-    const inlineMap =
-      /<script type="importmap">([\s\S]*?)<\/script>/.exec(html)?.[1] ?? ''
-    expect(policy['script-src']).toBe(
-      `${listener.origin}/__runtime/ ${listener.origin}/vendor/ ${listener.origin}/compiled/ws_trusted/${cell.key}.js ${scriptHash(inlineMap)}`,
-    )
+    expect(policy).toEqual({ 'frame-ancestors': APP_ORIGIN })
     expect(html).toContain(`content="/compiled/ws_trusted/${cell.key}.js"`)
 
     const module = await get(`/compiled/ws_trusted/${cell.key}.js`)
     expect(module.status).toBe(200)
     expect(await module.text()).toBe(cell.code)
     expect(module.headers.get('cache-control')).toContain('immutable')
-  })
-
-  test('a block that declared net() may reach that host and no other', async () => {
-    const cell = await compiledIn(
-      workspaces.ws_trusted!,
-      '// uses: net("api.example.com")\nconst a = 1',
-    )
-    const response = await get(`/cell/ws_trusted/${cell.key}`)
-    expect(
-      directives(response.headers.get('content-security-policy'))[
-        'connect-src'
-      ],
-    ).toBe('https://api.example.com')
   })
 
   test('an untrusted folder gets no block documents and no compiled code', async () => {
@@ -190,9 +168,7 @@ describe('the block listener', () => {
     )
     expect(html).toContain('<script type="importmap">')
     const policy = directives(response.headers.get('content-security-policy'))
-    expect(policy['connect-src']).toBe('https://api.example.com')
-    expect(policy['script-src']).toContain(`${listener.origin}/app/${token}/`)
-    expect(policy['frame-ancestors']).toBe(APP_ORIGIN)
+    expect(policy).toEqual({ 'frame-ancestors': APP_ORIGIN })
 
     expect((await get(`/app/${token}/clock.js`)).status).toBe(200)
     expect((await get(`/app/${token}/.env`)).status).toBe(404)

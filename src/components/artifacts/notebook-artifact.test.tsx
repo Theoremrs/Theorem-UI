@@ -223,7 +223,7 @@ test('Download hands over a Notebook Kit file and a marimo .py', async () => {
   expect(await sourceOf(marimo(), true).load()).toBe(MARIMO_SOURCE)
 })
 
-test('an Observable notebook runs in the App sandbox with no network', async () => {
+test('an Observable notebook runs in an App frame with no policy of the host\'s', async () => {
   const capture = captureDocuments()
   try {
     const { container } = await render(
@@ -231,7 +231,7 @@ test('an Observable notebook runs in the App sandbox with no network', async () 
     )
     const frame = await waitFor(() => container.querySelector('iframe'), 10_000)
     expect(frame.getAttribute('sandbox')).toBe(BLOCK_SANDBOX)
-    expect(capture.documents[0]).toContain("connect-src 'none'")
+    expect(capture.documents[0]).not.toContain('Content-Security-Policy')
     expect(buttonNamed(container, 'Ask about this')).toBeDefined()
   } finally {
     capture.restore()
@@ -286,7 +286,6 @@ test('a GPU notebook reads its recorded outputs from the href its part names, na
     expect(buttonNamed(container, 'Run notebook')).toBeUndefined()
     expect(capture.documents).toHaveLength(1)
     expect(capture.documents[0]).toContain('<h1>Recorded timings</h1>')
-    expect(capture.documents[0]).toContain("connect-src 'none'")
     expect(capture.documents[0]).not.toContain('marimo-team/islands')
   } finally {
     capture.restore()
@@ -345,7 +344,7 @@ test('a run of an earlier source shows as that, not as the result of this source
   }
 }, 20_000)
 
-test('a browser notebook reaches the network only after Run notebook, keeping its recorded outputs', async () => {
+test('a browser notebook starts its runtime only after Run notebook, keeping its recorded outputs', async () => {
   serve({ runs: [RUN] })
   const capture = captureDocuments()
   try {
@@ -353,14 +352,13 @@ test('a browser notebook reaches the network only after Run notebook, keeping it
       <ArtifactView artifact={marimo()} distance="thing" latest />,
     )
     await waitFor(() => container.querySelector('iframe'), 10_000)
-    expect(capture.documents[0]).toContain("connect-src 'none'")
+    expect(capture.documents[0]).not.toContain('marimo-team/islands')
     const run = await waitFor(() => buttonNamed(container, 'Run notebook'))
     expect(run.title).toContain('no CUDA')
     await click(run)
     await waitFor(() => capture.documents.length === 2, 10_000)
     const live = capture.documents[1]!
-    const reaches = /connect-src ([^;]+)/.exec(live)![1]!
-    for (const host of BROWSER_RUN_HOSTS) expect(reaches).toContain(`https://${host}`)
+    expect(live).toContain(`https://${BROWSER_RUN_HOSTS[0]}/`)
     expect(live).toContain('marimo-team/islands@0.23.16/dist/main.js')
     expect(live).toContain('Recorded timings')
     expect(status(container)).toContain('Running in this page on Pyodide')

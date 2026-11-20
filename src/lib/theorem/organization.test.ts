@@ -8,6 +8,7 @@ import {
   organizedViews,
   planMove,
   primaryProjectId,
+  projectToOpenIn,
   rehome,
   sessionLists,
 } from './organization'
@@ -268,6 +269,23 @@ describe('primaryProjectId', () => {
   })
 })
 
+describe('projectToOpenIn', () => {
+  const shared = thread('t', {
+    homeProjectId: 'home',
+    memberships: [member('first', { atMs: 1 }), member('second', { atMs: 5 })],
+  })
+
+  test('a project the thread is placed in is the one it opens under when asked for', () => {
+    expect(projectToOpenIn(shared, 'second')).toBe('second')
+    expect(projectToOpenIn(shared, 'home')).toBe('home')
+  })
+
+  test('nothing asked for, or a project it is not in, opens it in its primary one', () => {
+    expect(projectToOpenIn(shared)).toBe('first')
+    expect(projectToOpenIn(shared, 'elsewhere')).toBe('first')
+  })
+})
+
 describe('nestByOrigin', () => {
   test('a fork sits under a source in the same list and stands alone otherwise', () => {
     const fork = thread('fork', {
@@ -284,6 +302,53 @@ describe('nestByOrigin', () => {
     const { roots, children } = nestByOrigin([thread('source'), fork, orphan])
     expect(roots.map((t) => t.threadId)).toEqual(['source', 'orphan'])
     expect(children.get('source')?.map((t) => t.threadId)).toEqual(['fork'])
+  })
+
+  test('a continuation is provenance, not ancestry: it stays at the top level', () => {
+    const continued = thread('continued', {
+      origin: { kind: 'continued', threadId: 'source' },
+    })
+    const { roots, children } = nestByOrigin([thread('source'), continued])
+    expect(roots.map((t) => t.threadId)).toEqual(['source', 'continued'])
+    expect(children.size).toBe(0)
+  })
+
+  test('a malformed cycle of forks hides no thread', () => {
+    const forkOf = (threadId: string, source: string, createdAtMs: number) =>
+      thread(threadId, {
+        createdAtMs,
+        origin: {
+          kind: 'forked',
+          threadId: source,
+          branchId: 'b',
+          messageId: 'm',
+        },
+      })
+    const threads = [
+      forkOf('a', 'b', 2),
+      forkOf('b', 'c', 1),
+      forkOf('c', 'a', 3),
+    ]
+    const { roots, children } = nestByOrigin(threads)
+    // Broken at its oldest member, b; the rest hang beneath it.
+    expect(roots.map((t) => t.threadId)).toEqual(['b'])
+    const shown = new Set(['b'])
+    for (const kids of children.values())
+      for (const kid of kids) shown.add(kid.threadId)
+    expect([...shown].sort()).toEqual(['a', 'b', 'c'])
+    expect(rootOf(threads, 'c')).toBe('b')
+  })
+
+  test('a self-referencing fork is a root', () => {
+    const self = thread('self', {
+      origin: {
+        kind: 'forked',
+        threadId: 'self',
+        branchId: 'b',
+        messageId: 'm',
+      },
+    })
+    expect(nestByOrigin([self]).roots.map((t) => t.threadId)).toEqual(['self'])
   })
 })
 
@@ -304,7 +369,9 @@ describe('rootOf', () => {
         origin: { kind: 'continued', threadId: 'elsewhere' },
       }),
     ]
-    expect(rootOf(threads, 'deep')).toBe('root')
+    // A continuation of a fork stands on its own: only forks nest.
+    expect(rootOf(threads, 'deep')).toBe('deep')
+    expect(rootOf(threads, 'fork')).toBe('root')
     expect(rootOf(threads, 'orphan')).toBe('orphan')
     expect(rootOf(threads, 'root')).toBe('root')
   })
@@ -362,6 +429,12 @@ describe('organizationFromThreads', () => {
     const views = organizedViews(read)
     expect(views.unsorted.map((t) => t.threadId)).toEqual(['here'])
     expect(views.projects[0]!.threads.map((t) => t.threadId)).toEqual(['there'])
+  })
+
+  test('a read says whether every page was read', () => {
+    const projects = [apiProject('p', 1)]
+    expect(organizationFromThreads(projects, []).complete).toBe(true)
+    expect(organizationFromThreads(projects, [], false).complete).toBe(false)
   })
 
   test('run state and failures are read from the thread', () => {

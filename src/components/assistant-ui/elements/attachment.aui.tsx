@@ -1,73 +1,68 @@
-"use client";
+'use client'
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  isValidElement
-} from "react";
-import type { PropsWithChildren, FC } from "react";
-import { Icon } from "@/components/icons";
+import { useEffect, useRef, useState, isValidElement } from 'react'
+import type { PropsWithChildren, FC } from 'react'
+import { Icon } from '@/components/icons'
 import {
   AttachmentPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
   useAuiState,
   useAui,
-} from "@assistant-ui/react";
+} from '@assistant-ui/react'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from '@/components/ui/tooltip'
 import {
   Dialog,
   DialogTitle,
   DialogContent,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
-import { COMPOSER_TOOLTIP_DELAY } from "@/components/chat/composer-tools";
-import { useIsomorphicLayoutEffect } from "@/components/assistant-ui/utils/useIsomorphicLayoutEffect";
-import { useAttachmentSrc } from "@/hooks/use-attachment-src";
-import { popIn } from "@/lib/motion";
-import { cn } from "@/lib/utils";
+} from '@/components/ui/dialog'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
+import { COMPOSER_TOOLTIP_DELAY } from '@/components/chat/composer-tools'
+import { useIsomorphicLayoutEffect } from '@/components/assistant-ui/utils/useIsomorphicLayoutEffect'
+import { useAttachmentSrc } from '@/hooks/use-attachment-src'
+import { popIn } from '@/lib/motion'
+import { cn } from '@/lib/utils'
 
 type AttachmentPreviewProps = {
-  src: string;
-  name: string;
-};
+  src: string
+  name: string
+}
 
 const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src, name }) => {
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false)
   return (
     <img
       src={src}
       alt={`Preview of ${name}`}
       className={cn(
-        "block h-auto max-h-[80vh] w-auto max-w-full rounded-sm object-contain transition-opacity duration-300 motion-reduce:transition-none",
+        'block h-auto max-h-[80vh] w-auto max-w-full rounded-sm object-contain transition-opacity duration-300 motion-reduce:transition-none',
         isLoaded
-          ? "aui-attachment-preview-image-loaded opacity-100"
-          : "aui-attachment-preview-image-loading opacity-0",
+          ? 'aui-attachment-preview-image-loaded opacity-100'
+          : 'aui-attachment-preview-image-loading opacity-0',
       )}
       onLoad={() => setIsLoaded(true)}
     />
-  );
-};
+  )
+}
 
 type AttachmentPreviewDialogProps = PropsWithChildren<{
-  src: string | undefined;
-  name: string;
-}>;
+  src: string | undefined
+  name: string
+}>
 
 const AttachmentPreviewDialog: FC<AttachmentPreviewDialogProps> = ({
   children,
   src,
   name,
 }) => {
-  if (!src) return children;
+  if (!src) return children
 
   return (
     <Dialog>
@@ -91,8 +86,8 @@ const AttachmentPreviewDialog: FC<AttachmentPreviewDialogProps> = ({
         </div>
       </DialogContent>
     </Dialog>
-  );
-};
+  )
+}
 
 const AttachmentThumb: FC<{ src: string | undefined }> = ({ src }) => {
   return (
@@ -106,63 +101,63 @@ const AttachmentThumb: FC<{ src: string | undefined }> = ({ src }) => {
         <Icon.File className="aui-attachment-tile-fallback-icon text-muted-foreground/80 size-6" />
       </AvatarFallback>
     </Avatar>
-  );
-};
+  )
+}
 
 const AttachmentUI: FC = () => {
-  const aui = useAui();
-  const isComposer = aui.attachment.source !== "message";
-  const src = useAttachmentSrc();
+  const aui = useAui()
+  const isComposer = aui.attachment.source !== 'message'
+  const src = useAttachmentSrc()
 
-  const isImage = useAuiState((s) => s.attachment.type === "image");
-  const name = useAuiState((s) => s.attachment.name);
+  const isImage = useAuiState((s) => s.attachment.type === 'image')
+  const name = useAuiState((s) => s.attachment.name)
   const typeLabel = useAuiState((s) => {
-    const type = s.attachment.type;
+    const type = s.attachment.type
     switch (type) {
-      case "image":
-        return "Image";
-      case "document":
-        return "Document";
-      case "file":
-        return "File";
+      case 'image':
+        return 'Image'
+      case 'document':
+        return 'Document'
+      case 'file':
+        return 'File'
       default:
-        return type;
+        return type
     }
-  });
+  })
 
   // An attachment on a submission is still being prepared, whether or not the
   // adapter reports progress while it uploads.
   const uploadState = useAuiState((s) =>
-    s.attachment.status.type === "incomplete" &&
-    s.attachment.status.reason === "error"
-      ? "error"
-      : s.attachment.status.type === "running" ||
+    s.attachment.status.type === 'incomplete' &&
+    s.attachment.status.reason === 'error'
+      ? 'error'
+      : s.attachment.status.type === 'running' ||
           (s.optional.message?.submission !== undefined &&
-            s.attachment.status.type !== "complete")
-        ? "uploading"
+            s.attachment.status.type !== 'complete')
+        ? 'uploading'
         : undefined,
-  );
-  const isUploading = uploadState === "uploading";
-  const isError = uploadState === "error";
+  )
+  const isUploading = uploadState === 'uploading'
+  const isError = uploadState === 'error'
 
   const errorMessage = useAuiState((s) =>
-    s.attachment.status.type === "incomplete" &&
-    s.attachment.status.reason === "error"
-      ? (s.attachment.status.message ?? "Upload failed")
+    s.attachment.status.type === 'incomplete' &&
+    s.attachment.status.reason === 'error'
+      ? (s.attachment.status.message ?? 'Upload failed')
       : undefined,
-  );
+  )
 
   return (
     <TooltipProvider>
       <Tooltip>
         <AttachmentPrimitive.Root
           className={cn(
-            "aui-attachment-root relative",
+            'aui-attachment-root relative',
             isComposer &&
-              "animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none",
+              'animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none',
             isImage &&
               !isComposer &&
-              "aui-attachment-root-message only:*:first:size-24",
+              'aui-attachment-root-message only:*:first:size-24',
           )}
         >
           <AttachmentPreviewDialog src={src} name={name}>
@@ -170,21 +165,19 @@ const AttachmentUI: FC = () => {
               render={
                 <div
                   className={cn(
-                    "aui-attachment-tile bg-muted hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative size-14 overflow-hidden rounded-[calc(var(--composer-radius,1rem)-var(--composer-padding,8px))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-1 motion-reduce:transition-none dark:after:ring-white/10",
-                    src
-                      ? "cursor-zoom-in"
-                      : "cursor-default",
+                    'aui-attachment-tile bg-muted hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative size-14 overflow-hidden rounded-[calc(var(--composer-radius,1rem)-var(--composer-padding,8px))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-1 motion-reduce:transition-none dark:after:ring-white/10',
+                    src ? 'cursor-zoom-in' : 'cursor-default',
                     isError &&
-                      "after:ring-destructive/60 dark:after:ring-destructive/60",
+                      'after:ring-destructive/60 dark:after:ring-destructive/60',
                   )}
-                  role={src ? "button" : "group"}
+                  role={src ? 'button' : 'group'}
                   tabIndex={0}
                   aria-label={`${src ? `Preview ${name}` : `${typeLabel} attachment ${name}`}${
                     isError
-                      ? ", upload failed"
+                      ? ', upload failed'
                       : isUploading
-                        ? ", uploading"
-                        : ""
+                        ? ', uploading'
+                        : ''
                   }`}
                 />
               }
@@ -218,8 +211,8 @@ const AttachmentUI: FC = () => {
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  );
-};
+  )
+}
 
 const AttachmentRemove: FC<{ name: string }> = ({ name }) => {
   return (
@@ -234,8 +227,8 @@ const AttachmentRemove: FC<{ name: string }> = ({ name }) => {
     >
       <Icon.Close className="aui-attachment-remove-icon size-3.5" />
     </AttachmentPrimitive.Remove>
-  );
-};
+  )
+}
 
 export const UserMessageAttachments: FC = () => {
   return (
@@ -244,46 +237,48 @@ export const UserMessageAttachments: FC = () => {
         {() => <AttachmentUI />}
       </MessagePrimitive.Attachments>
     </div>
-  );
-};
+  )
+}
 
 export const ComposerAttachments: FC = () => {
+  const empty = useAuiState((s) => s.composer.attachments.length === 0)
+  if (empty) return null
   return (
     <div className="aui-composer-attachments flex w-full flex-row items-center gap-2 overflow-x-auto empty:hidden">
       <ComposerPrimitive.Attachments>
         {() => <AttachmentUI />}
       </ComposerPrimitive.Attachments>
     </div>
-  );
-};
+  )
+}
 
 /** The folder lifts as the file picker comes up and settles when it goes. */
 const AttachMark: FC<{ open: boolean }> = ({ open }) => {
-  const ref = useRef<HTMLSpanElement>(null);
-  const shown = useRef(open);
+  const ref = useRef<HTMLSpanElement>(null)
+  const shown = useRef(open)
   useIsomorphicLayoutEffect(() => {
-    const mark = ref.current;
-    if (!mark || shown.current === open) return;
-    shown.current = open;
-    popIn(mark, { from: 0.7, rotate: open ? -10 : 8, ease: "lift" });
-  }, [open]);
+    const mark = ref.current
+    if (!mark || shown.current === open) return
+    shown.current = open
+    popIn(mark, { from: 0.7, rotate: open ? -10 : 8, ease: 'lift' })
+  }, [open])
   return (
     <span ref={ref} className="flex">
       <Icon.AttachFolder />
     </span>
-  );
-};
+  )
+}
 
 export const ComposerAddAttachment: FC = () => {
-  const [picking, setPicking] = useState(false);
+  const [picking, setPicking] = useState(false)
   // The window loses focus to the file picker and gets it back when the
   // picker closes, whether a file was chosen or not.
   useEffect(() => {
-    if (!picking) return;
-    const closed = () => setPicking(false);
-    window.addEventListener("focus", closed, { once: true });
-    return () => window.removeEventListener("focus", closed);
-  }, [picking]);
+    if (!picking) return
+    const closed = () => setPicking(false)
+    window.addEventListener('focus', closed, { once: true })
+    return () => window.removeEventListener('focus', closed)
+  }, [picking])
   return (
     <ComposerPrimitive.AddAttachment
       onClick={() => setPicking(true)}
@@ -294,12 +289,12 @@ export const ComposerAddAttachment: FC = () => {
           delay={COMPOSER_TOOLTIP_DELAY}
           variant="ghost"
           size="icon"
-          className="aui-composer-add-attachment bg-selected text-ink-muted hover:bg-hover hover:text-ink size-8 rounded-md p-2 motion-reduce:transition-none"
+          className="aui-composer-add-attachment text-ink-muted hover:bg-hover hover:text-ink size-8 rounded-md p-2 motion-reduce:transition-none"
           aria-label="Add Attachment"
         />
       }
     >
       <AttachMark open={picking} />
     </ComposerPrimitive.AddAttachment>
-  );
-};
+  )
+}

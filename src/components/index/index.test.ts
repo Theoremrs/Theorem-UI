@@ -1,7 +1,12 @@
 /// <reference types="bun" />
 import { describe, expect, test } from 'bun:test'
 import { mergeBinding } from './bindings'
-import type { Binding, ObservationEvent } from './contract'
+import type {
+  Binding,
+  IndexRecord,
+  ObservationEvent,
+  QueryResult,
+} from './contract'
 import { OPENUI_CALLABLES, OPENUI_COMPONENTS, indexLibrary } from './library'
 import { MAX_BATCH, createRecorder } from './observe'
 import {
@@ -267,5 +272,70 @@ filings_1 = Query("filings_1", {}, {receipts: []})`
         filings_1: { kind: 'filing_history', documentId: 'b' },
       }).problems,
     ).toEqual([])
+  })
+
+  test('the used-together template with records parses, with and without documents', () => {
+    const program = `root = IndexComparison(found, cols, [filings_0, filings_1], recs)
+found = Query("items", {}, {items: [], total: 0})
+cols = Query("collections", {}, {collections: []})
+filings_0 = Query("filings_0", {}, {receipts: []})
+filings_1 = Query("filings_1", {}, {receipts: []})
+recs = Query("records", {}, {records: []})`
+    const bindings: Record<string, Binding> = {
+      items: { kind: 'items', query: { ids: ['a', 'b'] } },
+      collections: { kind: 'collections' },
+      filings_0: { kind: 'filing_history', documentId: 'a' },
+      filings_1: { kind: 'filing_history', documentId: 'b' },
+      records: { kind: 'records', ids: ['record:Person/person:noor'] },
+    }
+    expect(checkProgram(program, bindings).problems).toEqual([])
+
+    // Every subject a record: no documents, no filings.
+    const only = `root = IndexComparison(found, cols, [], recs)
+found = Query("items", {}, {items: [], total: 0})
+cols = Query("collections", {}, {collections: []})
+recs = Query("records", {}, {records: []})`
+    expect(
+      checkProgram(only, {
+        items: { kind: 'items', query: { ids: [] } },
+        collections: { kind: 'collections' },
+        records: bindings.records!,
+      }).problems,
+    ).toEqual([])
+  })
+})
+
+describe('records in the contract', () => {
+  const noor: IndexRecord = {
+    itemId: 'record:Person/person:noor',
+    recordId: 'person:noor',
+    nameSingular: 'Person',
+    title: 'Noor',
+  }
+
+  test('a records binding merges its ids like any other argument', () => {
+    const binding: Binding = { kind: 'records', ids: [noor.itemId] }
+    expect(mergeBinding(binding, {})).toEqual(binding)
+    expect(
+      mergeBinding(binding, { ids: ['record:Person/person:avery'] }),
+    ).toEqual({ kind: 'records', ids: ['record:Person/person:avery'] })
+    expect(mergeBinding(binding, { ids: [3] })).toEqual(binding)
+  })
+
+  test('the records result and the additive used-together field type-check', () => {
+    const results: QueryResult[] = [
+      { kind: 'records', records: [noor] },
+      { kind: 'used_together', items: [], records: [{ ...noor, sessions: 2 }] },
+      // An older server sends no records.
+      { kind: 'used_together', items: [] },
+    ]
+    const names = results.map((r) =>
+      r.kind === 'records'
+        ? r.records.length
+        : r.kind === 'used_together'
+          ? (r.records ?? []).length
+          : -1,
+    )
+    expect(names).toEqual([1, 1, 0])
   })
 })

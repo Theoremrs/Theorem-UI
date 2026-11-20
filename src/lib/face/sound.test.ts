@@ -269,7 +269,7 @@ describe('forms', () => {
   test('sound starting gives the face a form, held until the sound stops', () => {
     const { face, run } = theo()
     const formed = face.notice('sound.start')
-    expect(['boombox', 'speak']).toContain(plain(formed?.name))
+    expect(plain(formed?.name)).toBe('boombox')
     expect(formed?.layer).toBe('form')
     // Long after the performance itself has run out, the form is still held.
     run(5_000)
@@ -285,7 +285,7 @@ describe('forms', () => {
     expect(features(face)).toEqual(['eye.left', 'eye.right'])
   })
 
-  test('a form is never left out by chance, and both forms turn up', () => {
+  test('a form is never left out by chance, and the loudspeaker is the only one', () => {
     const seen = new Set<string>()
     for (let seed = 1; seed <= 24; seed++) {
       const { face } = theo(seed)
@@ -296,16 +296,12 @@ describe('forms', () => {
         face.notice('sound.stop')
       }
     }
-    expect([...seen].sort()).toEqual(['boombox', 'speak'])
+    expect([...seen]).toEqual(['boombox'])
   })
 
   test('as a loudspeaker its eyes are mesh covers under a dial, and it sends out as much as is playing', () => {
     const { face, run } = theo()
-    // Draw until the loudspeaker is the form: which one is the face's to choose.
-    for (let tries = 0; tries < 20; tries++) {
-      if (plain(face.notice('sound.start')?.name) === 'boombox') break
-      face.notice('sound.stop')
-    }
+    face.notice('sound.start')
     expect(plain(face.player.holding('form')?.name)).toBe('boombox')
     run(1_500)
     expect(features(face)).toContain('dial')
@@ -334,10 +330,7 @@ describe('forms', () => {
   test('with motion reduced the loudspeaker does not pump, and still shows that something is sounding', () => {
     const { face, run } = theo()
     face.still = true
-    for (let tries = 0; tries < 20; tries++) {
-      if (plain(face.notice('sound.start')?.name) === 'boombox') break
-      face.notice('sound.stop')
-    }
+    face.notice('sound.start')
     run(1_500)
     const scale = face.rig.read('eye.left.scale')
     expect(face.emitting()).toEqual({ left: 0, right: 0 })
@@ -356,21 +349,8 @@ describe('forms', () => {
     expect(face.emitting()).toEqual({ left: 0, right: 0 })
   })
 
-  test('as a mouth it opens by how loud the sound is, and shuts when there is none', () => {
-    const { face, run } = theo()
-    for (let tries = 0; tries < 40; tries++) {
-      if (plain(face.notice('sound.start')?.name) === 'speak') break
-      face.notice('sound.stop')
-    }
-    expect(plain(face.player.holding('form')?.name)).toBe('speak')
-    run(1_500)
-    const shut = face.rig.read('mouth.h')
-    face.feed({ 'sound.level': 1 })
-    run(16)
-    expect(face.rig.read('mouth.h')).toBeGreaterThan(shut + 4)
-    face.feed(QUIET)
-    run(16)
-    expect(face.rig.read('mouth.h')).toBeCloseTo(shut, 2)
+  test('there is no talking mouth among the performances', () => {
+    expect(BUILT_IN.find((item) => item.name === 'speak')).toBeUndefined()
   })
 
   test('the face still reacts over a form, and the form is there after', () => {
@@ -422,7 +402,7 @@ describe('forms', () => {
   })
 
   test('the sound performances compile as they stand', () => {
-    for (const name of ['boombox', 'speak', 'thump']) {
+    for (const name of ['boombox', 'thump']) {
       const entry = BUILT_IN.find((item) => item.name === name)
       if (!entry) throw new Error(`No ${name}.`)
       const checked = compile(entry.program, context())

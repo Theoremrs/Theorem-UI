@@ -355,6 +355,7 @@ function ModuleFrameBody({
         host={host}
         title={definition.label}
         className="h-full [&>iframe]:min-h-full"
+        limited
         onConnection={(connection) => {
           let active = true
           const unfollow = followTheme(connection)

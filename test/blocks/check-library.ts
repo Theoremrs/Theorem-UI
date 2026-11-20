@@ -3,7 +3,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import type { CheckLibrary } from '@/lib/blocks/app-check'
-import { theoremAppDeclarations } from '@/lib/blocks/check/theorem-app.generated'
+import { libraryDeclarations, theoremAppDeclarations } from '@/lib/blocks/check/theorem-app.generated'
 
 const MODULES = path.resolve(import.meta.dirname, '../../node_modules')
 
@@ -22,5 +22,8 @@ export function checkLibraryFromDisk(): CheckLibrary {
     add(files, path.join(MODULES, name), `/node_modules/${name}`)
   for (const [name, text] of Object.entries(theoremAppDeclarations))
     files[`/node_modules/@theorem/app/${name}`] = text
+  for (const [pkg, declarations] of Object.entries(libraryDeclarations))
+    for (const [name, text] of Object.entries(declarations))
+      files[`/node_modules/${pkg}/${name}`] = text
   return files
 }

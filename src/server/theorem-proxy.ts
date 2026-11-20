@@ -8,6 +8,7 @@
 // buffered.
 import type { ServerRequest } from 'srvx'
 import { oauthConfigured, personBearer } from './theorem-auth'
+import type { SessionCookies } from './theorem-auth'
 
 const REQUEST_HEADERS_DROPPED = [
   'host',
@@ -36,9 +37,13 @@ const RESPONSE_HEADERS_DROPPED = [
  * End an event stream when its upstream drops (the authority restarting, say)
  * instead of erroring the response, which the dev server reports as an
  * internal error over the whole page. Clients lose nothing: the SDK already
- * treats a stream that ends before a terminal event as a disconnect.
+ * treats a stream that ends before a terminal event as a disconnect. The drop
+ * is logged, since nothing else on this side would show it happened.
  */
-function endOnUpstreamError<T>(body: ReadableStream<T>): ReadableStream<T> {
+function endOnUpstreamError<T>(
+  body: ReadableStream<T>,
+  path: string,
+): ReadableStream<T> {
   const reader = body.getReader()
   return new ReadableStream({
     async pull(controller) {
@@ -46,7 +51,17 @@ function endOnUpstreamError<T>(body: ReadableStream<T>): ReadableStream<T> {
         const { done, value } = await reader.read()
         if (done) controller.close()
         else controller.enqueue(value)
-      } catch {
+      } catch (error) {
+        // The browser sees an ordinary end of stream, so this line is the
+        // only record that the authority's side dropped. The path names the
+        // run; nothing of the stream's content is logged.
+        console.warn(
+          JSON.stringify({
+            event: 'theorem_proxy.stream_upstream_dropped',
+            path,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        )
         controller.close()
       }
     },
@@ -69,7 +84,7 @@ function problem(status: number, code: string, title: string, detail: string) {
 }
 
 /** The bearer for this request, or the response that refuses it. */
-async function bearer(): Promise<string | Response> {
+async function bearer(cookies?: SessionCookies): Promise<string | Response> {
   if (!oauthConfigured()) {
     return (
       process.env.THEOREM_API_TOKEN ||
@@ -83,7 +98,7 @@ async function bearer(): Promise<string | Response> {
   }
   try {
     return (
-      (await personBearer()) ??
+      (await personBearer(cookies)) ??
       problem(
         401,
         'theorem_signed_out',
@@ -101,7 +116,10 @@ async function bearer(): Promise<string | Response> {
   }
 }
 
-export async function proxyToTheorem(request: Request): Promise<Response> {
+export async function proxyToTheorem(
+  request: Request,
+  cookies?: SessionCookies,
+): Promise<Response> {
   const base = process.env.THEOREM_API_URL
   if (!base) {
     return problem(
@@ -111,7 +129,7 @@ export async function proxyToTheorem(request: Request): Promise<Response> {
       'Set THEOREM_API_URL in .env (see .env.example).',
     )
   }
-  const token = await bearer()
+  const token = await bearer(cookies)
   if (token instanceof Response) return token
 
   // Set on the base rather than resolved against it: a path starting `//`
@@ -161,7 +179,7 @@ export async function proxyToTheorem(request: Request): Promise<Response> {
     body &&
     responseHeaders.get('content-type')?.startsWith('text/event-stream')
   ) {
-    body = endOnUpstreamError(body)
+    body = endOnUpstreamError(body, incoming.pathname)
     responseHeaders.set('cache-control', 'no-cache, no-transform')
     responseHeaders.set('x-accel-buffering', 'no')
   }

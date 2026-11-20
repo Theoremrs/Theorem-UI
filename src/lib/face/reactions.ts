@@ -208,17 +208,19 @@ export const DEFAULT_RULES: ReadonlyArray<Rule> = [
     until: 'run.rest',
     note: 'While the agent works, the face is a thinking orb.',
   }),
-  // Sound the page plays. The first two are forms: held from the sound's start to its stop.
+  // Sound the page plays. The loudspeaker is a form: held from the sound's start to its stop.
+  // It is the only form for sound; the owner retired the talking mouth on 2026-11-16.
   rule('sound-boombox', 'sound.start', 'boombox', {
     until: 'sound.stop',
-    weight: 3,
     note: 'What plays aloud is shown as a loudspeaker.',
   }),
-  rule('sound-speak', 'sound.start', 'speak', {
-    until: 'sound.stop',
-    note: 'Or as a mouth, now and then.',
-  }),
   rule('sound-thump', 'sound.loud', 'thump', { cooldown: 3_000 }),
+  // Listening: the inverse of the boombox. Held from the press that asks to
+  // listen until the press lets go (or the session ends).
+  rule('listen-mic', 'person.listen', 'listen', {
+    until: 'person.listen.end',
+    note: 'While the person speaks to it, the face is a microphone.',
+  }),
   // The environment.
   rule('resize-startle', 'env.resize', 'startle', {
     when: { streak: [1, 1] },

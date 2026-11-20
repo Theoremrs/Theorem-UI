@@ -17,7 +17,6 @@ import {
   primaryProjectId,
   useOrganization,
   useOrganizedViews,
-  usePlacement,
   useThreadEdits,
 } from '@/lib/theorem/organization'
 import { useStartThreadFrom } from '@/lib/theorem/thread-tree'
@@ -25,17 +24,17 @@ import { ProjectGlyph } from './glyphs'
 import { ThreadMenuItems } from './thread-menu'
 
 const headerButton =
-  'flex size-7 shrink-0 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover'
+  'flex min-h-(--appearance-control-min) min-w-(--appearance-control-min) shrink-0 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover'
 
-/** Where the thread sits and what can be done to it; the dock's layout and follow buttons sit at its end. */
+/** Where the thread sits and what can be done to it; the dock's one layout menu sits at its end. */
 export function ThreadHeader({ actions }: { actions?: ReactNode }) {
-  const { threadId } = useParams({ strict: false })
+  // On a project's home there is no open thread: the header names the project.
+  const { threadId, projectId: home } = useParams({ strict: false })
   const title = useAuiState((s) => s.threadListItem.title)
   const running = useAuiState((s) => s.thread.isRunning)
   const { data: organization } = useOrganization()
   const views = useOrganizedViews()
   const navigate = useNavigate()
-  const placement = usePlacement()
   const edits = useThreadEdits()
   const startThread = useStartThreadFrom()
   const [renaming, setRenaming] = useState(false)
@@ -43,27 +42,28 @@ export function ThreadHeader({ actions }: { actions?: ReactNode }) {
   const thread = threadId ? views.byId.get(threadId) : undefined
   const primary = thread && primaryProjectId(thread)
   const project = organization?.projects.find((p) => p.projectId === primary)
-  const pin = thread?.memberships.find((m) => m.projectId === primary)
+  const homeProject =
+    home === undefined
+      ? undefined
+      : organization?.projects.find((p) => p.projectId === home)
   const served = organization?.served ?? false
-  const shownTitle = thread?.title || title || 'New chat'
+  const shownTitle = homeProject
+    ? homeProject.title
+    : thread?.title || title || 'New chat'
 
   return (
-    // The line is lighter than the sidebar's: it runs the full width over the
-    // darker page, where the same colour reads harder.
-    <header className="flex h-8 shrink-0 items-center gap-1 border-b border-separator/60 ps-3 pe-1 text-sm">
+    // No rule under it: the breadcrumb sits in the conversation's own space,
+    // and pinning lives in the "More" menu with everything else done to it.
+    <header className="appearance-thread-header flex shrink-0 items-center gap-1 px-3 text-sm">
       <Breadcrumb aria-label="Thread location" className="min-w-0">
         <BreadcrumbList className="flex-nowrap gap-1.5 text-ink-muted sm:gap-1.5">
-          {project && !project.isInbox && (
+          {!homeProject && project && !project.isInbox && (
             <>
               <BreadcrumbItem
                 title={project.state?.text}
                 className="max-w-48 shrink-0"
               >
-                <ProjectGlyph
-                  glyph={project.glyph}
-                  aria-hidden
-                  className="size-3.5 shrink-0"
-                />
+                <ProjectGlyph aria-hidden className="size-3.5 shrink-0" />
                 <span className="truncate">{project.title}</span>
               </BreadcrumbItem>
               <BreadcrumbSeparator className="text-ink-faint">
@@ -104,33 +104,6 @@ export function ThreadHeader({ actions }: { actions?: ReactNode }) {
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
-      {thread && served && pin && (
-        <button
-          type="button"
-          aria-pressed={pin.pinned}
-          aria-label={
-            pin.pinned
-              ? `Unpin from ${project?.title}`
-              : `Pin to ${project?.title}`
-          }
-          title={pin.pinned ? 'Pinned to this project' : 'Pin to this project'}
-          className={headerButton}
-          onClick={() =>
-            placement.mutate({
-              threadId: thread.threadId,
-              change: pin.pinned
-                ? { unpin: [pin.projectId] }
-                : { pin: [pin.projectId] },
-            })
-          }
-        >
-          {pin.pinned ? (
-            <Icon.Unpin className="size-4" />
-          ) : (
-            <Icon.Pin className="size-4" />
-          )}
-        </button>
-      )}
       {thread && (
         <Menu>
           <MenuTrigger aria-label="More" className={headerButton}>
@@ -187,17 +160,15 @@ export function ProjectContextChip() {
   const first = withBrief?.[0]
   if (!withBrief || !first) return null
   return (
-    <p className="mb-4 flex min-h-10.5 items-center gap-2.5 rounded-lg bg-hover px-3 py-1.5 text-sm">
-      <ProjectGlyph
-        glyph={first.glyph}
-        aria-hidden
-        className="size-4 shrink-0 text-ink-muted"
-      />
-      <span className="min-w-0 truncate">
+    // A quiet line above the first turn, not a banner: it says where the
+    // thread's context comes from without competing with the conversation.
+    <p className="mb-5 flex items-center gap-1.5 text-xs text-ink-muted">
+      <ProjectGlyph aria-hidden className="size-3.5 shrink-0" />
+      <span className="min-w-0 truncate font-medium text-ink">
         {withBrief.map((project) => project.title).join(', ')}
       </span>
-      <span aria-hidden className="h-4 w-px shrink-0 bg-separator" />
-      <span className="shrink-0 text-ink-muted">Project context attached</span>
+      <span aria-hidden>·</span>
+      <span className="shrink-0">Project context attached</span>
     </p>
   )
 }

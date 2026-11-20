@@ -15,6 +15,10 @@ import {
   useThreadViewportStore,
 } from '@assistant-ui/react'
 import type { TriggerItem } from '@assistant-ui/react'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { Prec } from '@codemirror/state'
+import { tags } from '@lezer/highlight'
+import { EditorView as CodeMirrorView } from '@codemirror/view'
 import { Crepe } from '@milkdown/crepe'
 import '@milkdown/crepe/theme/common/style.css'
 import {
@@ -37,6 +41,56 @@ import type { ClipboardEvent, FocusEvent, KeyboardEvent } from 'react'
 import { serializeComposerText } from './composer-markdown'
 import { useCrepeMarkdown } from '@/components/notes/crepe-markdown'
 import { cn } from '@/lib/utils'
+
+// Crepe defaults to One Dark even on light paper. Lezer tags keep syntax
+// distinctions while the editor inherits the validated appearance colors.
+// A single extension wrapper keeps Crepe's deep defaults from merging One Dark's array into it.
+const composerCodeTheme = Prec.highest([
+  syntaxHighlighting(
+    HighlightStyle.define([
+      {
+        tag: [tags.keyword, tags.modifier, tags.operatorKeyword],
+        color: 'var(--redwood-ink)',
+        fontWeight: '600',
+      },
+      {
+        tag: [tags.name, tags.propertyName, tags.typeName, tags.number],
+        color: 'var(--ink)',
+      },
+      {
+        tag: [tags.string, tags.regexp, tags.bool, tags.null],
+        color: 'var(--redwood-ink)',
+      },
+      {
+        tag: [tags.comment, tags.meta],
+        color: 'var(--ink-muted)',
+        fontStyle: 'italic',
+      },
+      {
+        tag: tags.invalid,
+        color: 'var(--redwood-ink)',
+        textDecoration: 'underline wavy',
+      },
+    ]),
+  ),
+  CodeMirrorView.theme({
+    '&': { color: 'var(--ink)' },
+    '.cm-content': { caretColor: 'var(--redwood-ink)' },
+    '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--redwood-ink)' },
+    '.cm-activeLine': {
+      boxShadow: 'inset 2px 0 var(--line-control)',
+      backgroundColor: 'transparent',
+    },
+    '.cm-gutters, .cm-activeLineGutter': {
+      color: 'var(--ink-muted)',
+      backgroundColor: 'var(--popover)',
+    },
+    '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection, .cm-searchMatch, .cm-selectionMatch, &.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket':
+      {
+        backgroundColor: 'var(--surface-selected)',
+      },
+  }),
+])
 
 type Popover = NonNullable<
   ReturnType<typeof unstable_useTriggerPopoverRootContextOptional>
@@ -63,6 +117,22 @@ const link: Handle = (node: Link, parent, state, info) => {
 
 /** Stands where the caret is while the document is written out; nobody types it. */
 const CARET = ''
+
+/**
+ * Whether any trigger could match this text at all.
+ *
+ * assistant-ui resolves every matcher's answer against the composer's text:
+ * `resolveTriggerMatch` rejects a match unless the text itself starts with the
+ * trigger character at the reported offset. A character the text does not
+ * contain therefore cannot open a menu, whatever the matcher returns or where
+ * the caret is. Asking that question of the text we already serialized is
+ * exact for every matcher, unlike asking it of the document's own text
+ * content, which omits the Markdown a link URL or an image address carries.
+ */
+function triggerPossible(text: string, chars: Iterable<string>) {
+  for (const char of chars) if (text.includes(char)) return true
+  return false
+}
 
 /**
  * Where the caret is in the composer's text. The document is written out with
@@ -106,7 +176,12 @@ function Editor({
     const serialize = serializeRef.current
     const triggers = popover?.getTriggers()
     if (!serialize || !triggers?.size) return
-    const at = caretOffset(view, serialize, aui.composer.getState().text)
+    const text = aui.composer.getState().text
+    // Writing the document out a second time to place the caret is only worth
+    // it when a menu could open. Ordinary prose carries no trigger character,
+    // so typing it costs one serialization, not two.
+    if (!triggerPossible(text, triggers.keys())) return
+    const at = caretOffset(view, serialize, text)
     for (const { resource } of triggers.values()) resource.setCursorPosition(at)
   }
 
@@ -141,6 +216,14 @@ function Editor({
         },
         featureConfigs: {
           [Crepe.Feature.Placeholder]: { text: placeholder ?? '', mode: 'doc' },
+          [Crepe.Feature.CodeMirror]: {
+            theme: composerCodeTheme,
+            extensions: [
+              CodeMirrorView.contentAttributes.of({
+                'data-appearance-recipe': 'code',
+              }),
+            ],
+          },
         },
       })
       crepe.editor
@@ -149,6 +232,14 @@ function Editor({
             ...options,
             attributes: () => ({
               role: 'textbox',
+              'data-appearance-part': 'editor-viewport',
+              'data-appearance-recipe': 'composer.content',
+              'data-placeholder-foreground-role': placeholder
+                ? 'placeholder'
+                : '',
+              'data-appearance-pair': 'primary/composer',
+              'data-foreground-role': 'primary',
+              'data-background-role': 'composer',
               'aria-multiline': 'true',
               'aria-label': label,
               ...(placeholder ? { 'aria-placeholder': placeholder } : {}),
@@ -182,7 +273,14 @@ function Editor({
                         asText(ctx.get(serializerCtx)(current.state.doc)),
                       )
                     if (current.composing) return
-                    if (edited || !before.selection.eq(current.state.selection))
+                    // The caret's Markdown offset only changes when the document
+                    // changes or the caret head moves; extending or collapsing a
+                    // selection around a fixed head leaves the / menu's position
+                    // unchanged, so it needs no new serialization.
+                    if (
+                      edited ||
+                      before.selection.head !== current.state.selection.head
+                    )
                       live.current.place(current)
                   },
                   destroy: () => {
@@ -327,6 +425,26 @@ function Editor({
     }
   }, [popover])
 
+  // Text another control puts in the draft (the + menu's Tools writes a
+  // slash), at the end and as if typed, so the / menu and undo follow it.
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+    const insert = (event: Event) => {
+      const view = viewRef.current
+      const text = (event as CustomEvent<string>).detail
+      if (!view || isDisabled || !text) return
+      const end = Selection.atEnd(view.state.doc)
+      const before = view.state.doc.textBetween(0, end.head, '\n')
+      const written = before && !/\s$/u.test(before) ? ` ${text}` : text
+      const tr = view.state.tr.setSelection(end).insertText(written)
+      view.dispatch(tr.scrollIntoView())
+      view.focus()
+    }
+    wrapper.addEventListener(COMPOSER_INSERT, insert)
+    return () => wrapper.removeEventListener(COMPOSER_INSERT, insert)
+  }, [isDisabled])
+
   // Ahead of the editor's own keys: the / menu's, then the composer's.
   const onKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
     const view = viewRef.current
@@ -416,6 +534,17 @@ function Editor({
       <Milkdown />
     </div>
   )
+}
+
+/** The event a control dispatches on the editor to write text at the end of the draft. */
+export const COMPOSER_INSERT = 'theorem:composer-insert'
+
+/** Writes `text` at the end of the draft in the composer around `from`, and puts the caret after it. */
+export function insertInComposer(from: Element | null, text: string) {
+  from
+    ?.closest('[data-slot="aui_composer-shell"]')
+    ?.querySelector('.theorem-composer')
+    ?.dispatchEvent(new CustomEvent(COMPOSER_INSERT, { detail: text }))
 }
 
 type ComposerEditorProps = {

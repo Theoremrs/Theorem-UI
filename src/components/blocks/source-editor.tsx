@@ -5,7 +5,7 @@
 import { html } from '@codemirror/lang-html'
 import { javascript } from '@codemirror/lang-javascript'
 import { yaml } from '@codemirror/lang-yaml'
-import CodeMirror from '@uiw/react-codemirror'
+import CodeMirror, { EditorView } from '@uiw/react-codemirror'
 import { useMemo } from 'react'
 import type { WorkspaceId } from '@/lib/workspace/types'
 import { useCodeMirrorTheme } from '@/lib/codemirror-theme'
@@ -34,6 +34,7 @@ export function SourceEditor({
   workspaceId,
   readOnly = false,
   label,
+  revealLine,
 }: {
   value: string
   onChange?: (value: string) => void
@@ -43,6 +44,8 @@ export function SourceEditor({
   workspaceId?: WorkspaceId
   readOnly?: boolean
   label: string
+  /** A line, one-based, the editor opens scrolled to with the cursor on it. */
+  revealLine?: number
 }) {
   const codeMirrorTheme = useCodeMirrorTheme()
   const extensions = useMemo(
@@ -63,6 +66,19 @@ export function SourceEditor({
       theme={codeMirrorTheme}
       aria-label={label}
       className="text-xs"
+      onCreateEditor={
+        revealLine === undefined
+          ? undefined
+          : (view) => {
+              const line = view.state.doc.line(
+                Math.min(Math.max(revealLine, 1), view.state.doc.lines),
+              )
+              view.dispatch({
+                selection: { anchor: line.from, head: line.to },
+                effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+              })
+            }
+      }
     />
   )
 }

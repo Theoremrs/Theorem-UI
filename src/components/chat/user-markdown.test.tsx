@@ -97,3 +97,14 @@ test('user Markdown does not execute HTML or automatically fetch embedded images
   ).toBe('diagram')
   expect(container.querySelector('a[href^="javascript:"]')).toBeNull()
 })
+
+test('a skill named from the + menu shows as a chip by its title', async () => {
+  const { container } = await render(
+    <UserMarkdown text={'Please :skill[Document review]{name=pack-7} this, then :skill[tidy].'} />,
+  )
+  const chips = [...container.querySelectorAll('[data-slot="directive-text-chip"]')]
+  expect(chips.map((chip) => chip.textContent)).toEqual(['Document review', 'tidy'])
+  expect(chips[0]!.getAttribute('data-directive-id')).toBe('pack-7')
+  expect(container.textContent).toContain('Please ')
+  expect(container.textContent).not.toContain('{name=')
+})

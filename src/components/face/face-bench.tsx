@@ -1,11 +1,13 @@
 // SOURCING: the study's bench (theorem-face-study src/app.js: a face beside the controls that drive it) rebuilt on lib/face: every button here calls the same engine the agent's operations and the reaction rules call. For stories only; the app mounts components/face/face-stage.
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Face, plainGaze } from '@/lib/face/engine'
 import { THEO } from '@/lib/face/identity'
 import { useFaceHue, useFaceLook } from './look'
 import { canvasPainter, createPainter } from './painter'
 import type { Painter } from './painter'
 import { PlateMotion } from './plate'
+import type { TerminalFace } from './terminal-face'
 
 const RATIO = THEO.height / THEO.width
 
@@ -16,6 +18,7 @@ export function FaceView({
   running,
   plain = false,
   onPainter,
+  appearance,
 }: {
   face: Face
   width: number
@@ -23,11 +26,15 @@ export function FaceView({
   /** Draw with Canvas2D whatever the browser has; a sheet of many faces would run out of WebGL contexts. */
   plain?: boolean
   onPainter?: (kind: Painter['kind']) => void
+  /** Draw as on a terminal surface (./terminal-face) instead of by the page's theme. */
+  appearance?: TerminalFace
 }) {
   const box = useRef<HTMLDivElement | null>(null)
   const plate = useRef<HTMLDivElement | null>(null)
   const back = useRef<HTMLDivElement | null>(null)
-  const { visor, ink, paper } = useFaceLook()
+  const themed = useFaceLook()
+  const { visor, ink, paper } = appearance?.look ?? themed
+  const flat = appearance?.flat ?? false
   const hue = useFaceHue()
 
   useEffect(() => {
@@ -47,8 +54,8 @@ export function FaceView({
     const draw = (now = 0) => {
       const dt = last ? Math.min(0.1, (now - last) / 1000) : 0
       last = now
-      if (visor) motion.step(face.ball(), dt, !running || face.still)
-      const drawnIn = visor && !motion.whole
+      if (visor && !flat) motion.step(face.ball(), dt, !running || face.still)
+      const drawnIn = visor && !flat && !motion.whole
       if (back.current) motion.lay(back.current, width / THEO.width)
       painter?.draw(
         face.buffer,
@@ -95,14 +102,21 @@ export function FaceView({
       cancelAnimationFrame(frame)
       painter?.destroy()
     }
-  }, [face, width, running, plain, onPainter, visor, ink, paper, hue])
+  }, [face, width, running, plain, onPainter, visor, ink, paper, flat, hue])
 
   return (
     <div
       ref={plate}
       data-visor={visor ? 'on' : 'off'}
       className="face-plate"
-      style={{ width, height: width * RATIO, borderRadius: width * 0.18 }}
+      style={{
+        width,
+        height: width * RATIO,
+        borderRadius: width * 0.18,
+        ...(appearance
+          ? ({ '--face-plate': appearance.body } as CSSProperties)
+          : {}),
+      }}
     >
       <div ref={back} className="face-plate-back" />
       <div ref={box} className="face-plate-screen size-full" />
