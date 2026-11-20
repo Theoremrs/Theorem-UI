@@ -1,12 +1,19 @@
-// SOURCING: none — a small server-side metadata reader over the platform
-// fetch/Response APIs. The link-preview element is props-only (it renders
-// metadata, it does not fetch), so this resolves Open Graph / meta tags for
-// the citation renderer, same-origin, with a bounded in-memory cache.
+// SOURCING: node:dns/promises + node:https/http to dial a resolved, approved
+// address directly (Bun's native fetch ignores undici's connect.lookup, so a
+// hostname check alone is not enough — a public name can resolve to a
+// private IP). The link-preview element is props-only; this resolves Open
+// Graph / meta tags for the citation renderer, same-origin, with a bounded
+// in-memory cache.
 //
-// Safety: only http(s) URLs with a public host are fetched (no localhost,
-// loopback, link-local or private ranges — this route must not become an
-// SSRF probe), redirects are followed manually and re-checked, the body is
-// capped, and nothing but the extracted fields is returned.
+// Safety: every hop resolves the host, refuses any non-public address, and
+// connects to the exact approved IP (Host header + SNI keep the name), so a
+// DNS rebinding between check and connect cannot reach an internal page.
+// Redirects are followed manually and re-checked the same way; the body is
+// capped; nothing but the extracted fields is returned.
+import dns from 'node:dns/promises'
+import https from 'node:https'
+import http from 'node:http'
+import net from 'node:net'
 
 export interface LinkMetadata {
   href: string
@@ -22,6 +29,7 @@ const FAILURE_MS = 5 * 60_000
 const MAX_BYTES = 512 * 1024
 const TIMEOUT_MS = 6_000
 const MAX_REDIRECTS = 3
+const MAX_ADDRESSES = 8
 
 const cache = new Map<string, { at: number; value: LinkMetadata | null }>()
 
@@ -77,6 +85,88 @@ export function publicHttpUrl(value: string): URL | undefined {
   } catch {
     return undefined
   }
+}
+
+/** Whether one resolved address is public (not loopback/private/link-local). */
+export function publicAddress(address: string): boolean {
+  const family = net.isIP(address)
+  if (family === 0) return false
+  // Reuse the literal guard by feeding the address as a URL host.
+  const host = family === 6 ? `[${address}]` : address
+  return !blockedHost(host)
+}
+
+/** Resolve a host and return its public addresses; throws if none are public. */
+async function approvedAddresses(hostname: string): Promise<string[]> {
+  // A literal IP needs no DNS; check it directly.
+  if (net.isIP(hostname)) {
+    if (!publicAddress(hostname)) throw new Error('address refused')
+    return [hostname]
+  }
+  const records = await dns.lookup(hostname, { all: true, verbatim: true })
+  const addresses = records
+    .map((record) => record.address)
+    .filter(publicAddress)
+    .slice(0, MAX_ADDRESSES)
+  if (addresses.length === 0) throw new Error('no public address')
+  return addresses
+}
+
+interface PinnedResponse {
+  status: number
+  headers: Record<string, string>
+  body: string
+  url: string
+}
+
+/** GET one URL by connecting to an approved IP, with the name kept for Host
+ *  and SNI. Reads at most MAX_BYTES. Redirects are not followed here. */
+function fetchPinned(url: URL, address: string): Promise<PinnedResponse> {
+  return new Promise((resolve, reject) => {
+    const secure = url.protocol === 'https:'
+    const mod = secure ? https : http
+    const request = mod.request(
+      {
+        host: address,
+        port: url.port || (secure ? 443 : 80),
+        servername: url.hostname,
+        path: `${url.pathname}${url.search}`,
+        method: 'GET',
+        headers: {
+          host: url.host,
+          accept: 'text/html,application/xhtml+xml',
+          'user-agent':
+            'Mozilla/5.0 (compatible; TheoremLinkPreview/1.0; +https://theorem.dev)',
+        },
+        timeout: TIMEOUT_MS,
+      },
+      (response) => {
+        const headers: Record<string, string> = {}
+        for (const [name, value] of Object.entries(response.headers))
+          if (typeof value === 'string') headers[name] = value
+        const chunks: Buffer[] = []
+        let bytes = 0
+        response.on('data', (chunk: Buffer) => {
+          bytes += chunk.byteLength
+          if (bytes <= MAX_BYTES) chunks.push(chunk)
+          if (bytes >= MAX_BYTES) response.destroy()
+        })
+        const finish = () =>
+          resolve({
+            status: response.statusCode ?? 0,
+            headers,
+            body: Buffer.concat(chunks).toString('utf8'),
+            url: url.href,
+          })
+        response.on('end', finish)
+        response.on('close', finish)
+        response.on('error', reject)
+      },
+    )
+    request.on('timeout', () => request.destroy(new Error('timeout')))
+    request.on('error', reject)
+    request.end()
+  })
 }
 
 const entity = (text: string): string =>
@@ -162,25 +252,31 @@ export function extractMetadata(html: string, base: URL): LinkMetadata {
   }
 }
 
-async function fetchChecked(url: URL): Promise<Response> {
+/** Fetch one URL, resolving and approving the address at every hop and
+ *  connecting to that exact IP. Redirects are followed manually (max
+ *  MAX_REDIRECTS) and re-approved the same way. */
+async function fetchChecked(url: URL): Promise<PinnedResponse> {
   let current = url
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const response = await fetch(current, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: {
-        accept: 'text/html,application/xhtml+xml',
-        'user-agent':
-          'Mozilla/5.0 (compatible; TheoremLinkPreview/1.0; +https://theorem.dev)',
-      },
-    })
+    const addresses = await approvedAddresses(current.hostname)
+    let response: PinnedResponse | undefined
+    let lastError: unknown
+    for (const address of addresses) {
+      try {
+        response = await fetchPinned(current, address)
+        break
+      } catch (error) {
+        lastError = error
+      }
+    }
+    if (!response) throw lastError ?? new Error('connect failed')
     if (
       response.status >= 300 &&
       response.status < 400 &&
-      response.headers.get('location')
+      response.headers.location
     ) {
       const next = publicHttpUrl(
-        new URL(response.headers.get('location')!, current).href,
+        new URL(response.headers.location, current).href,
       )
       if (!next) throw new Error('redirect refused')
       current = next
@@ -203,24 +299,10 @@ export async function resolveLinkMetadata(
   let value: LinkMetadata | null = null
   try {
     const response = await fetchChecked(url)
-    const type = response.headers.get('content-type') ?? ''
-    if (response.ok && type.includes('html')) {
-      const reader = response.body?.getReader()
-      let text = ''
-      if (reader) {
-        const decoder = new TextDecoder()
-        let bytes = 0
-        for (;;) {
-          const { done, value: chunk } = await reader.read()
-          if (done) break
-          bytes += chunk.byteLength
-          text += decoder.decode(chunk, { stream: true })
-          if (bytes >= MAX_BYTES) break
-        }
-        await reader.cancel().catch(() => {})
-      }
-      const finalUrl = publicHttpUrl(response.url || url.href) ?? url
-      const meta = extractMetadata(text, finalUrl)
+    const type = response.headers['content-type'] ?? ''
+    if (response.status >= 200 && response.status < 300 && type.includes('html')) {
+      const finalUrl = publicHttpUrl(response.url) ?? url
+      const meta = extractMetadata(response.body, finalUrl)
       // A page with no title at all is not a preview worth drawing.
       if (meta.title || meta.description || meta.image) value = meta
     }

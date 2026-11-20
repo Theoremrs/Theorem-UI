@@ -1,7 +1,7 @@
 // The metadata reader's pure parts: URL admission (the SSRF guard) and the
 // HTML extraction. The network path is exercised on the dev stack, not here.
 import { describe, expect, test } from 'bun:test'
-import { extractMetadata, publicHttpUrl } from './link-preview'
+import { extractMetadata, publicAddress, publicHttpUrl } from './link-preview'
 
 describe('publicHttpUrl', () => {
   test('admits public http(s) URLs', () => {
@@ -42,6 +42,33 @@ describe('publicHttpUrl', () => {
       'http://printer.local/x',
     ])
       expect(publicHttpUrl(value)).toBeUndefined()
+  })
+})
+
+describe('publicAddress', () => {
+  test('admits public IPv4 and IPv6', () => {
+    expect(publicAddress('93.184.215.14')).toBe(true)
+    expect(publicAddress('2606:4700:10::6814:179a')).toBe(true)
+  })
+
+  test('refuses loopback, private, link-local and mapped addresses', () => {
+    for (const address of [
+      '127.0.0.1',
+      '10.0.0.5',
+      '172.16.0.1',
+      '192.168.1.1',
+      '169.254.169.254',
+      '100.64.0.1',
+      '0.0.0.0',
+      '::1',
+      '::',
+      'fe80::1',
+      'fc00::1',
+      'fd00::1',
+      '::ffff:127.0.0.1',
+      'not-an-ip',
+    ])
+      expect(publicAddress(address)).toBe(false)
   })
 })
 

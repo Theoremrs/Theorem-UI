@@ -24,7 +24,11 @@ const TOKENS = [...new Set(Object.values(COLOR_ROLES))]
 /** The active palette's full token set in one mode: a custom palette being
  *  edited, or the built-in the person is looking at, as the page paints it. */
 function seedColors(mode: Mode, overrides: AppearanceOverrides): Colors {
-  const custom = overrides.customPalette?.[mode]
+  // Saved custom colours seed the editors only while the custom palette is
+  // the active one; choosing a built-in shows that built-in's colours, not a
+  // stale custom theme kept in overrides.
+  const custom =
+    overrides.palette === 'custom' ? overrides.customPalette?.[mode] : undefined
   const builtin = paletteTokens(
     overrides.palette && overrides.palette !== 'custom'
       ? overrides.palette

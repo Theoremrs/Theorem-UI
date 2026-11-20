@@ -5,7 +5,6 @@ import { useAuiState } from '@assistant-ui/react'
 import { LinkPreview } from '@/components/assistant-ui/elements/link-preview'
 import {
   Menu,
-  MenuItem,
   MenuLinkItem,
   MenuPopup,
   MenuTrigger,
@@ -112,22 +111,86 @@ const SourcesBody: FC<{ sources: CitationSource[] }> = ({ sources }) => {
 }
 
 /** One source: a full link preview once its metadata has resolved, nothing
- *  while it loads or after it fails (the Sources row carries those). */
+ *  while it loads or after it fails (the Sources row carries those). The
+ *  supporting passage and the source actions stay reachable beside the card
+ *  even when the page's own description leads the preview. */
 const SourceSlot: FC<{ source: CitationSource }> = ({ source }) => {
   const metadata = useLinkMetadata(source.url)
   if (!source.url || !metadata.data) return null
   return (
-    <LinkPreview
-      layout="compact"
-      href={source.url}
-      title={metadata.data.title ?? source.label}
-      description={metadata.data.description ?? source.passage}
-      image={metadata.data.image}
-      siteName={metadata.data.siteName}
-      favicon={metadata.data.favicon}
-      className="max-w-md"
-      data-source-id={source.sourceId}
-    />
+    <div className="flex max-w-md flex-col gap-1" data-source-id={source.sourceId}>
+      <LinkPreview
+        layout="compact"
+        href={source.url}
+        title={metadata.data.title ?? source.label}
+        description={metadata.data.description ?? source.passage}
+        image={metadata.data.image}
+        siteName={metadata.data.siteName}
+        favicon={metadata.data.favicon}
+      />
+      <SourceActions source={source} />
+    </div>
+  )
+}
+
+/** The supporting passage and the source's actions, reachable whether or not
+ *  the preview resolved. Shared by the card and the dropdown so the success
+ *  path never hides the passage or the actions. */
+const SourceActions: FC<{ source: CitationSource }> = ({ source }) => {
+  const threadId = useAuiState((s) => s.threadListItem.remoteId)
+  const messageId = useAuiState((s) => s.message.id)
+  const { isCopied, copyToClipboard } = useCopyToClipboard()
+  if (!source.passage && !threadId) return null
+  return (
+    <div data-slot="source-actions" className="flex flex-wrap items-center gap-1">
+      {source.passage && (
+        <Popover>
+          <PopoverTrigger
+            className="cursor-pointer text-start text-xs leading-relaxed text-ink-muted underline decoration-dotted underline-offset-2 hover:text-ink"
+            aria-label={`Read the supporting passage of ${source.label}`}
+          >
+            {source.passage.length > 140
+              ? `${source.passage.slice(0, 140)}…`
+              : source.passage}
+          </PopoverTrigger>
+          <PopoverPopup
+            side="right"
+            align="start"
+            className="w-80 max-w-[calc(100vw-2rem)]"
+          >
+            <blockquote className="max-h-64 overflow-y-auto px-1 text-sm leading-relaxed">
+              {source.passage}
+            </blockquote>
+          </PopoverPopup>
+        </Popover>
+      )}
+      {threadId && (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs text-ink-muted hover:bg-hover hover:text-ink"
+          onClick={() =>
+            askAbout({
+              label: source.label,
+              excerpt: source.passage ?? source.url,
+              location: { resource: { kind: 'message', threadId, messageId } },
+            })
+          }
+        >
+          <Icon.Chat className="size-3" />
+          Add to context
+        </button>
+      )}
+      {source.passage && (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs text-ink-muted hover:bg-hover hover:text-ink"
+          onClick={() => void copyToClipboard(source.passage!)}
+        >
+          {isCopied ? <Icon.Copied className="size-3" /> : <Icon.Copy className="size-3" />}
+          {isCopied ? 'Copied' : 'Copy passage'}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -205,9 +268,6 @@ const SourcesRow: FC<{ sources: CitationSource[] }> = ({ sources }) => {
 
 /** One source in the dropdown: its label and passage, then its actions. */
 const SourceEntry: FC<{ source: CitationSource }> = ({ source }) => {
-  const threadId = useAuiState((s) => s.threadListItem.remoteId)
-  const messageId = useAuiState((s) => s.message.id)
-  const { isCopied, copyToClipboard } = useCopyToClipboard()
   const host = source.url ? new URL(source.url).hostname : undefined
   return (
     <div data-slot="source-entry" className="flex flex-col gap-1 px-2 py-1.5">
@@ -219,70 +279,18 @@ const SourceEntry: FC<{ source: CitationSource }> = ({ source }) => {
           {host}
         </span>
       )}
-      {source.passage && (
-        <Popover>
-          <PopoverTrigger
-            className="cursor-pointer text-start text-xs leading-relaxed text-ink-muted underline decoration-dotted underline-offset-2 hover:text-ink"
-            aria-label={`Read the supporting passage of ${source.label}`}
-          >
-            {source.passage.length > 140
-              ? `${source.passage.slice(0, 140)}…`
-              : source.passage}
-          </PopoverTrigger>
-          <PopoverPopup
-            side="right"
-            align="start"
-            className="w-80 max-w-[calc(100vw-2rem)]"
-          >
-            <blockquote className="max-h-64 overflow-y-auto px-1 text-sm leading-relaxed">
-              {source.passage}
-            </blockquote>
-          </PopoverPopup>
-        </Popover>
+      {source.url && (
+        <MenuLinkItem
+          href={source.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs"
+        >
+          <Icon.Detach className="size-3" />
+          Open source
+        </MenuLinkItem>
       )}
-      <div className="flex flex-wrap items-center gap-1">
-        {source.url && (
-          <MenuLinkItem
-            href={source.url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs"
-          >
-            <Icon.Detach className="size-3" />
-            Open source
-          </MenuLinkItem>
-        )}
-        {threadId && (
-          <MenuItem
-            className="text-xs"
-            onClick={() =>
-              askAbout({
-                label: source.label,
-                excerpt: source.passage ?? source.url,
-                location: {
-                  resource: { kind: 'message', threadId, messageId },
-                },
-              })
-            }
-          >
-            <Icon.Chat className="size-3" />
-            Add to context
-          </MenuItem>
-        )}
-        {source.passage && (
-          <MenuItem
-            className="text-xs"
-            onClick={() => void copyToClipboard(source.passage!)}
-          >
-            {isCopied ? (
-              <Icon.Copied className="size-3" />
-            ) : (
-              <Icon.Copy className="size-3" />
-            )}
-            {isCopied ? 'Copied' : 'Copy passage'}
-          </MenuItem>
-        )}
-      </div>
+      <SourceActions source={source} />
     </div>
   )
 }

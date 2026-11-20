@@ -114,6 +114,28 @@ test('a resolved source draws a full link preview, not a chip', async () => {
   expect(container.querySelector('[data-slot="sources-row"]')).toBeNull()
 })
 
+test('a resolved preview keeps the passage and source actions reachable', async () => {
+  const client = new QueryClient()
+  client.setQueryData(['theorem', 'link-preview', 'http://example.com/source'], {
+    href: 'http://example.com/source',
+    title: 'Browser comparison — Example',
+    description: 'The page’s own description.',
+    siteName: 'Example',
+  })
+  const stored = storedCitation('http://example.com/source', 'document')
+  const { container } = await render(
+    <Harness messages={toAssistantMessages([stored])} client={client} />,
+  )
+  await waitFor(() => container.querySelector('[data-slot="link-preview"]'))
+  // The page description leads the card, but the supporting passage and the
+  // actions are still present beside it.
+  const actions = container.querySelector('[data-slot="source-actions"]')
+  expect(actions).not.toBeNull()
+  expect(actions?.textContent).toContain('A retrieved comparison excerpt.')
+  expect(actions?.textContent).toContain('Add to context')
+  expect(actions?.textContent).toContain('Copy passage')
+})
+
 test('GFM renders supplied Markdown URLs but does not guess URLs for plain source labels', async () => {
   const { container } = await render(<Harness messages={[{
     id: 'markdown', role: 'assistant', content: [{ type: 'text', text: '[PCMag] and [Mozilla](https://www.mozilla.org/)' }],

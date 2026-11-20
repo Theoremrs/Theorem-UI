@@ -5,6 +5,7 @@ import {
   APPEARANCE_VERSION,
   appearanceDocumentSchema,
   appearanceOverridesSchema,
+  appearanceSelectionSchema,
   customCssSchema,
   DEFAULT_APPEARANCE,
   migrateLegacyAppearance,
@@ -243,6 +244,43 @@ describe('appearance selection', () => {
         expect(parsed.data.customPalette?.light[slot]).toBe('#595959')
         expect(parsed.data.customPalette?.dark[slot]).toBe('#a6a6a6')
       }
+  })
+
+  test('an older custom palette missing the new tokens still loads, filled from the default', () => {
+    const valid = customPalette()
+    // Simulate a palette saved before action/insight/series existed.
+    const older = {
+      name: 'Old theme',
+      light: { ...valid.light },
+      dark: { ...valid.dark },
+    }
+    for (const token of [
+      'action-ink',
+      'action-container',
+      'insight-ink',
+      'insight-container',
+      'series-1',
+      'series-2',
+      'series-3',
+      'series-4',
+      'series-5',
+    ]) {
+      delete older.light[token]
+      delete older.dark[token]
+    }
+    const parsed = appearanceSelectionSchema.safeParse({
+      preset: 'calm',
+      overrides: { palette: 'custom', customPalette: older },
+    })
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    const resolved = resolveAppearance(parsed.data)
+    // The new tokens are filled from the default palette, not dropped.
+    expect(resolved.customPalette?.light['series-1']).toMatch(/^#[0-9a-f]{6}$/)
+    expect(resolved.customPalette?.dark['action-ink']).toMatch(/^#[0-9a-f]{6}$/)
+    // The person's own saved colours are preserved.
+    expect(resolved.customPalette?.light.ink).toBe(valid.light.ink)
+    expect(resolved.customPalette?.name).toBe('Old theme')
   })
 })
 

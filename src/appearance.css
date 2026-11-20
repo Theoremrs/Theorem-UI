@@ -119,8 +119,20 @@
   block-size: auto;
 }
 /* A switch keeps its own track geometry (twice as wide as tall, from
-   --thumb-size); stretching it to the control minimum drew a circle. Its
-   hit area is the row itself, which already meets the control minimum. */
+   --thumb-size); stretching it to the control minimum drew a circle. A
+   transparent pseudo-element grows the hit area to the control minimum
+   (44px on touch) without changing the drawn track. */
+[data-appearance-part='settings-row'] [role='switch'] {
+  position: relative;
+}
+[data-appearance-part='settings-row'] [role='switch']::after {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  inline-size: max(100%, var(--appearance-control-min));
+  block-size: max(100%, var(--appearance-control-min));
+}
 /* A data-management section: the compact steps for its own rows and heading.
    Touch keeps its larger steps, so a table never shrinks a target below it. */
 :root:not([data-density='touch'])

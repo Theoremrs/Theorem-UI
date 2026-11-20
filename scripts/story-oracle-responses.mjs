@@ -99,8 +99,9 @@ export function scenarios(h) {
         await page.waitForTimeout(600)
         await page.locator('button[aria-label="List sources"]').click()
         await page.waitForTimeout(500)
+        // The dropdown's source entry carries the actions as buttons.
         await page
-          .locator('[role="menuitem"]:has-text("Add to context")')
+          .locator('[data-slot="source-entry"] button:has-text("Add to context")')
           .click()
         await page.waitForTimeout(400)
         const reference = await page.evaluate(() => {

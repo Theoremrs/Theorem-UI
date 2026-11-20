@@ -12,6 +12,7 @@ import {
   TEXT_RECIPES,
 } from './appearance-policy'
 import type { Material, SurfaceRole } from './appearance-policy'
+import { paletteTokens } from '../../scripts/palettes'
 
 export const APPEARANCE_STORAGE_KEY = 'theorem-ui:appearance'
 export const APPEARANCE_VERSION = 1
@@ -62,7 +63,11 @@ export const customCssSchema = z
     'Custom CSS cannot use image-set(), image() or cross-fade(); use url() with a data: URL.',
   )
 const customColorRoles = z.enum([...new Set(Object.values(COLOR_ROLES))])
-const customColors = z.record(customColorRoles, opaqueHex)
+/** A saved palette's colours. New tokens (action/insight/series) are optional
+ *  on read so an older saved palette still loads; the contrast gate below
+ *  only checks pairs whose tokens are present, and the editor seeds missing
+ *  tokens from the active built-in before applying. */
+const customColors = z.partialRecord(customColorRoles, opaqueHex)
 
 /** The color roles a person edits in Settings, in the order they are shown:
  *  the surfaces first, then the inks, then the semantic accents. Each entry
@@ -308,10 +313,16 @@ export const DEFAULT_APPEARANCE: AppearanceSelection = {
 
 export function resolveAppearance({ preset, overrides }: AppearanceSelection) {
   const defaults = presetDefaults[preset]
+  // An older saved custom palette predates the action/insight/series tokens.
+  // Fill those from the default palette so the custom surface keeps a complete,
+  // contrast-checked set instead of dropping the whole saved appearance.
+  const customPalette = overrides.customPalette
+    ? completeCustomPalette(overrides.customPalette)
+    : undefined
   return {
     preset,
     palette: overrides.palette ?? 'github-sharp',
-    customPalette: overrides.customPalette,
+    customPalette,
     font: overrides.font,
     density: overrides.density ?? 'comfortable',
     reading: overrides.reading ?? 'comfortable',
@@ -329,6 +340,28 @@ export function resolveAppearance({ preset, overrides }: AppearanceSelection) {
     },
     life: defaults.life,
   }
+}
+
+/** The default palette's tokens, used to fill tokens an older custom palette
+ *  lacks. Read from the generated stylesheet's :root/.dark calm blocks. */
+const DEFAULT_TOKENS = paletteTokens('github-sharp')
+
+function completeCustomPalette(palette: {
+  name: string
+  light: Record<string, string | undefined>
+  dark: Record<string, string | undefined>
+}) {
+  const fill = (mode: 'light' | 'dark') => {
+    const saved = palette[mode]
+    const fallback = DEFAULT_TOKENS?.[mode] ?? {}
+    const complete: Record<string, string> = {}
+    for (const token of new Set(Object.values(COLOR_ROLES))) {
+      const value = saved[token] ?? fallback[token]
+      if (value) complete[token] = value
+    }
+    return complete
+  }
+  return { name: palette.name, light: fill('light'), dark: fill('dark') }
 }
 
 export type ResolvedAppearance = ReturnType<typeof resolveAppearance>
