@@ -5,16 +5,19 @@ type TheoremExtra = {
   authority: string
   oauthClientId: string
   oauthRedirectUri: string
+  /** The web page Apps run in (Theorem-UI routes/app-host.tsx). */
+  appHost: string
 }
 
 function read(): TheoremExtra {
   const extra = (Constants.expoConfig?.extra as { theorem?: Partial<TheoremExtra> })?.theorem
-  if (!extra?.authority || !extra.oauthClientId || !extra.oauthRedirectUri)
+  if (!extra?.authority || !extra.oauthClientId || !extra.oauthRedirectUri || !extra.appHost)
     throw new Error('app.config.ts did not provide extra.theorem')
   return {
     authority: extra.authority.replace(/\/+$/, ''),
     oauthClientId: extra.oauthClientId,
     oauthRedirectUri: extra.oauthRedirectUri,
+    appHost: extra.appHost,
   }
 }
 

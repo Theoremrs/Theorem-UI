@@ -12,6 +12,9 @@ const oauthClientId = process.env.THEOREM_OAUTH_CLIENT_ID ?? 'theorem-ios'
 // claimed HTTPS callback (ASWebAuthenticationSession, iOS 17.4+). The app
 // must be associated with this host: see docs/sign-in.md.
 const oauthRedirectUri = process.env.THEOREM_OAUTH_REDIRECT_URI ?? 'https://theorem.rs/auth/ios/callback'
+// The web app's App host (Theorem-UI src/routes/app-host.tsx): Apps run in it, in a WebView, as the web runs them.
+// A development build may point it at a local web server, e.g. http://<this Mac>:3000/app-host.
+const appHost = process.env.THEOREM_APP_HOST ?? 'https://theorem.rs/app-host'
 const bundleIdentifier = process.env.THEOREM_IOS_BUNDLE_ID ?? 'rs.theorem.app'
 // One App Group holds what the app and its extensions pass each other (shared
 // items today). The share extension's identifier is the app's with a suffix.
@@ -153,7 +156,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ],
   experiments: { typedRoutes: true, inlineModules: { watchedDirectories: ['app-intents'] } },
   extra: {
-    theorem: { authority, oauthClientId, oauthRedirectUri },
+    theorem: { authority, oauthClientId, oauthRedirectUri, appHost },
     eas: { projectId: easProjectId },
   },
 })

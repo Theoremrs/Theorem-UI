@@ -14,6 +14,9 @@ import { ApprovalCard } from './approval-card'
 import { LinkedText } from './linked-text'
 import { MarkdownText } from './markdown-text'
 import { citationOf, SILENT_PARTS, type Citation } from './parts'
+import { AppCheckRow } from '../apps/app-checks'
+import { AppFrame } from '../apps/app-frame'
+import { appRevisionOf, ARTIFACT_PART } from '../apps/operations'
 import { PROPOSE_EVENT } from '../phone-actions/calendar'
 import { EventProposalCard } from '../phone-actions/event-card'
 
@@ -79,7 +82,9 @@ function Disclosure({
         </Text>
       </Pressable>
       {open ? (
-        <View style={[styles.stepBody, { backgroundColor: palette.raised, borderColor: palette.lineSeparator }]}>
+        <View
+          style={[styles.stepBody, { backgroundColor: palette.raised, borderColor: palette.lineSeparator }]}
+        >
           {children}
         </View>
       ) : null}
@@ -98,10 +103,13 @@ const stepState = (part: Extract<Part, { type: 'tool-call' }>): { tone: Tone; la
 function stepTitleOf(part: Extract<Part, { type: 'tool-call' }>): string {
   const title = object(object(part.artifact).theoremStep).title
   if (typeof title === 'string' && title) return title
-  return part.toolName.replace(/^mcp__/, '').replace(/__/g, ' · ').replace(/_/g, ' ')
+  return part.toolName
+    .replace(/^mcp__/, '')
+    .replace(/__/g, ' · ')
+    .replace(/_/g, ' ')
 }
 
-function PartView({ part, runId }: { part: Part; runId: string | undefined }) {
+function PartView({ part, runId, running }: { part: Part; runId: string | undefined; running: boolean }) {
   switch (part.type) {
     case 'text':
       return <MarkdownText text={part.text} />
@@ -127,7 +135,9 @@ function PartView({ part, runId }: { part: Part; runId: string | undefined }) {
           ) : null}
           {part.result !== undefined ? (
             <Text variant="code" tone={part.isError ? 'error' : 'ink'} selectable numberOfLines={40}>
-              {typeof part.result === 'string' ? part.result || 'No output.' : stringifyJson(part.result, null, 2)}
+              {typeof part.result === 'string'
+                ? part.result || 'No output.'
+                : stringifyJson(part.result, null, 2)}
             </Text>
           ) : null}
         </Disclosure>
@@ -150,6 +160,30 @@ function PartView({ part, runId }: { part: Part; runId: string | undefined }) {
             }}
           />
         )
+      if (
+        part.name === 'theorem-client_operation' &&
+        typeof data.operation === 'string' &&
+        data.operation.startsWith('app.') &&
+        typeof data.requestRef === 'string'
+      )
+        return (
+          <AppCheckRow
+            runId={runId}
+            running={running}
+            data={part.data}
+            request={{
+              requestRef: data.requestRef,
+              operation: data.operation,
+              state: typeof data.state === 'string' ? data.state : 'pending',
+              args: object(data.args),
+              expectedRevision: typeof data.expectedRevision === 'number' ? data.expectedRevision : 0,
+            }}
+          />
+        )
+      if (part.name === ARTIFACT_PART) {
+        const app = appRevisionOf(part.data)
+        if (app) return <AppFrame app={app} />
+      }
       return (
         <Disclosure title={part.name.replace(/^theorem-/, '').replace(/_/g, ' ')}>
           <Text variant="code" selectable numberOfLines={40}>
@@ -222,6 +256,7 @@ export const MessageView = memo(function MessageView({ message }: { message: Mes
   const { palette } = useTheme()
   const status = statusOf(message)
   const runId = object(message.metadata?.custom).theoremRunId as string | undefined
+  const running = message.status?.type === 'running' || message.status?.type === 'requires-action'
   const copy = () => void Clipboard.setStringAsync(plainText(message))
   if (message.role === 'user')
     return (
@@ -260,7 +295,7 @@ export const MessageView = memo(function MessageView({ message }: { message: Mes
             ))}
           </View>
         ) : (
-          <PartView key={index} part={item} runId={runId} />
+          <PartView key={index} part={item} runId={runId} running={running} />
         ),
       )}
       {status ? <StatusLabel {...status} /> : null}
