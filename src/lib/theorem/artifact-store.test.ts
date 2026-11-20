@@ -19,7 +19,11 @@ import {
   bytesOf,
   chunkBytes,
 } from './artifact-store'
-import type { ArtifactStore, ChunkObservation, TraceChunk } from './artifact-store'
+import type {
+  ArtifactStore,
+  ChunkObservation,
+  TraceChunk,
+} from './artifact-store'
 import { backend } from '../../../test/blocks/artifact-backend'
 
 const run: RunRef = {
@@ -65,8 +69,7 @@ function replayable(fake: Fake): ArtifactStore {
     appendChunk: async (chunk: TraceChunk) => {
       const held = fake.chunks.find(
         (stored) =>
-          stored.runId === chunk.runId &&
-          stored.sequence === chunk.sequence,
+          stored.runId === chunk.runId && stored.sequence === chunk.sequence,
       )
       if (held === undefined) return fake.store.appendChunk(chunk)
       if (
@@ -236,7 +239,9 @@ test('an acknowledgment lost after the store accepted a chunk replays against st
     return stored
   })
   const writer = new RunWriter(store, run)
-  await expect(writer.append('settlement', observations(0, 2))).rejects.toBeInstanceOf(TypeError)
+  await expect(
+    writer.append('settlement', observations(0, 2)),
+  ).rejects.toBeInstanceOf(TypeError)
   // The writer is not poisoned by a lost answer.
   expect(writer.stopped).toBeUndefined()
   expect(writer.through).toBeUndefined()
@@ -265,15 +270,20 @@ test('an acknowledgment lost after the store accepted a chunk replays against st
 
 test('a 503 loses only its batch: stored progress stands and the next append continues the run', async () => {
   const fake = backend()
-  let down = true
+  let down = false
   const store = faulty(fake, (chunk, send) =>
     down
-      ? Promise.reject(new ArtifactRefused(503, 'http_503', 'the gateway is down'))
+      ? Promise.reject(
+          new ArtifactRefused(503, 'http_503', 'the gateway is down'),
+        )
       : send(chunk),
   )
   const writer = new RunWriter(store, run)
   await writer.append('settlement', observations(0, 2))
-  await expect(writer.append('settlement', observations(2, 2))).rejects.toMatchObject({
+  down = true
+  await expect(
+    writer.append('settlement', observations(2, 2)),
+  ).rejects.toMatchObject({
     status: 503,
   })
   expect(writer.stopped).toBeUndefined()
@@ -294,7 +304,9 @@ test('a batch queued behind a rolled-back write rejects instead of storing out o
   let down = true
   const store = faulty(fake, (chunk, send) =>
     down
-      ? Promise.reject(new ArtifactRefused(503, 'http_503', 'the gateway is down'))
+      ? Promise.reject(
+          new ArtifactRefused(503, 'http_503', 'the gateway is down'),
+        )
       : send(chunk),
   )
   const writer = new RunWriter(store, run)
@@ -317,20 +329,70 @@ test('a batch queued behind a rolled-back write rejects instead of storing out o
   expect(writer.stopped).toBeUndefined()
 })
 
+test("the backend's transient statuses all recover, and none of them stops the writer", async () => {
+  for (const status of [408, 429, 500, 503]) {
+    const fake = backend()
+    let down = false
+    const store = faulty(fake, (chunk, send) =>
+      down
+        ? Promise.reject(
+            new ArtifactRefused(status, `http_${status}`, 'transient'),
+          )
+        : send(chunk),
+    )
+    const writer = new RunWriter(store, run)
+    await writer.append('settlement', observations(0, 1))
+    down = true
+    await expect(
+      writer.append('settlement', observations(1, 1)),
+    ).rejects.toBeInstanceOf(ArtifactRefused)
+    expect(writer.stopped).toBeUndefined()
+    expect(writer.through).toBe(0n)
+    down = false
+    await writer.append('settlement', observations(1, 1))
+    expect(fake.chunks.map((chunk) => chunk.observations)).toEqual([
+      observations(0, 1),
+      observations(1, 1),
+    ])
+    expect(writer.through).toBe(1n)
+  }
+})
+
+test('settled reports a writer that rolled back as alive, at exactly what is stored', async () => {
+  const fake = backend()
+  const store = faulty(fake, () =>
+    Promise.reject(new TypeError('the response never arrived')),
+  )
+  const writer = new RunWriter(store, run)
+  const lost = writer.append('settlement', observations(0, 2))
+  await expect(lost).rejects.toBeInstanceOf(TypeError)
+  // Nothing was ever stored, so the writer claims nothing and waits cleanly.
+  await writer.settled()
+  expect(writer.stopped).toBeUndefined()
+  expect(writer.through).toBeUndefined()
+  expect(fake.chunks).toHaveLength(0)
+})
+
 test('a permanent refusal still stops the writer, keeping what is stored', async () => {
   const fake = backend()
   let poison = false
   const store = faulty(fake, (chunk, send) =>
     poison
       ? Promise.reject(
-          new ArtifactRefused(400, 'artifact_chunk_invalid', 'the store refuses this chunk'),
+          new ArtifactRefused(
+            400,
+            'artifact_chunk_invalid',
+            'the store refuses this chunk',
+          ),
         )
       : send(chunk),
   )
   const writer = new RunWriter(store, run)
   await writer.append('settlement', observations(0, 2))
   poison = true
-  await expect(writer.append('settlement', observations(2, 1))).rejects.toMatchObject({
+  await expect(
+    writer.append('settlement', observations(2, 1)),
+  ).rejects.toMatchObject({
     status: 400,
     code: 'artifact_chunk_invalid',
   })
@@ -360,7 +422,11 @@ test('a run record that only lost its answer is re-ensured before the next chunk
   await writer.append('settlement', observations(0, 1))
   expect(writer.stopped).toBeUndefined()
   expect(writer.through).toBe(0n)
-  expect(fake.log.filter((entry) => entry === 'POST runs')).toHaveLength(2)
+  // The lost attempt never reached the store; the writer asked again, and the
+  // store holds one run record with the chunk after it.
+  expect(attempts).toBe(2)
+  expect(fake.log.filter((entry) => entry === 'POST runs')).toHaveLength(1)
+  expect(fake.runs.get(run.id)).toBe(JSON.stringify(run))
   expect(fake.chunks.map((chunk) => chunk.observations)).toEqual([
     observations(0, 1),
   ])
