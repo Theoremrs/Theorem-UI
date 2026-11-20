@@ -88,6 +88,10 @@ export const Composer: FC<{
   slots?: ComposerSlots | undefined
 }> = ({ autoFocus, layout, slots }) => {
   const aui = useAui()
+  // While the mic listens the editor stays mounted (its draft, undo history,
+  // and the .theorem-composer target the Skills menu writes to all survive)
+  // but is hidden; the waveform takes the editor track instead.
+  const dictating = useAuiState((s) => s.composer.dictation != null)
   // While the composer answers a review, sending submits the review and the
   // chat's own send is left out.
   const review = useComposerReview()
@@ -183,16 +187,14 @@ export const Composer: FC<{
             className="appearance-composer-editor appearance-reading-plane"
             data-appearance-part="editor-track"
           >
-            <AuiIf condition={(s) => s.composer.dictation == null}>
-              <ComposerEditor
-                label="Message input"
-                placeholder="Write a message…"
-                className="aui-composer-input w-full"
-                autoFocus={autoFocus}
-                onFocus={() => attendKit(true)}
-                onBlur={() => attendKit(false)}
-              />
-            </AuiIf>
+            <ComposerEditor
+              label="Message input"
+              placeholder="Write a message…"
+              className={cn('aui-composer-input w-full', dictating && 'hidden')}
+              autoFocus={autoFocus}
+              onFocus={() => attendKit(true)}
+              onBlur={() => attendKit(false)}
+            />
             {/* While the mic listens the editor track becomes the waveform;
                 the transcript lands back in the editor when it commits. */}
             <ComposerVoice />

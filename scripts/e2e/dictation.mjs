@@ -73,7 +73,20 @@ console.log('dictation started; speaking the fixture…')
 // While the mic listens the editor track is the waveform, not the editor.
 await page.waitForTimeout(2_500)
 const voice = page.locator('[data-slot="composer-voice"][data-recording]').first()
-check('waveform shown while listening', (await voice.count()) === 1)
+// The waveform must actually be visible, and the editor hidden — a DOM node
+// that exists but is invisible would not be the affordance this names.
+check('waveform visible while listening', await voice.isVisible().catch(() => false))
+const editorHidden = await page
+  .locator('.aui-composer-input')
+  .first()
+  .isHidden()
+  .catch(() => false)
+check('editor hidden while listening', editorHidden)
+const barsMoving = await page.evaluate(() => {
+  const bars = [...document.querySelectorAll('[data-slot="composer-voice"] [aria-hidden] span')]
+  return bars.some((bar) => parseFloat(getComputedStyle(bar).height) > 3)
+})
+check('waveform bars rise above rest', barsMoving)
 await page.screenshot({ path: '/tmp/dictation-waveform.png' })
 
 // The fixture is ~8.3s; let it play through, then stop. The transcript is one

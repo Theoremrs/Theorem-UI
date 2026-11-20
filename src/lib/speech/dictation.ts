@@ -102,6 +102,7 @@ function theoremSession(): Session {
   let stopping = false
   let lastText = ''
   let done: (() => void) | undefined
+  let doneTimer: ReturnType<typeof setTimeout> | undefined
   const over = () => ended
   const halting = () => stopping
 
@@ -122,6 +123,7 @@ function theoremSession(): Session {
   const finish = (reason: 'stopped' | 'cancelled' | 'error') => {
     if (ended) return
     ended = true
+    if (doneTimer !== undefined) clearTimeout(doneTimer)
     teardown()
     socket?.close()
     socket = undefined
@@ -148,8 +150,11 @@ function theoremSession(): Session {
       socket.send(JSON.stringify({ command: 'stop' }))
       await new Promise<void>((resolve) => {
         done = resolve
-        // A server that never answers must not hang the composer.
-        setTimeout(resolve, 5_000)
+        // The cloud transcription is one batch request that can take up to
+        // OpenRouter's ~60s upstream timeout. Wait past it so a slow transcript
+        // still lands; the transcribing shimmer holds until then. A server that
+        // never answers must not hang the composer forever.
+        doneTimer = setTimeout(resolve, 70_000)
       })
     }
     if (!over()) finish('stopped')

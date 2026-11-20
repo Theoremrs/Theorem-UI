@@ -21,12 +21,17 @@ const WEIGHTS = BARS.map(
 
 function barHeight(bar: number, level: number, tick: number): number {
   const sway = 0.75 + 0.25 * Math.sin(bar * 1.35 + tick * 0.9)
-  return 3 + level * WEIGHTS[bar]! * sway * 17
+  // With a measured microphone level the bars follow the voice. On the
+  // browser-recognition fallback there is no level signal, so the bars hold a
+  // gentle ambient sway — a listening indicator, not a flat line pretending to
+  // be measured audio.
+  const drive = level > 0 ? level : 0.22 + 0.1 * Math.sin(tick * 0.7 + bar * 0.5)
+  return 3 + drive * WEIGHTS[bar]! * sway * 17
 }
 
 /** Elapsed listening time, ticking while the session runs. */
-function useElapsed(active: boolean): number {
-  const [elapsed, setElapsed] = useState({ active: false, seconds: 0 })
+function useElapsed(active: boolean): { seconds: number; tick: number } {
+  const [elapsed, setElapsed] = useState({ active: false, ms: 0 })
   useEffect(() => {
     if (!active) return
     const started = Date.now()
@@ -34,7 +39,7 @@ function useElapsed(active: boolean): number {
       () =>
         setElapsed({
           active: true,
-          seconds: Math.floor((Date.now() - started) / 1000),
+          ms: Date.now() - started,
         }),
       250,
     )
@@ -42,14 +47,15 @@ function useElapsed(active: boolean): number {
   }, [active])
   // A fresh session reads zero until its first tick; the reset is derived from
   // `active` rather than a synchronous setState in the effect.
-  return active && elapsed.active ? elapsed.seconds : 0
+  const ms = active && elapsed.active ? elapsed.ms : 0
+  return { seconds: Math.floor(ms / 1000), tick: ms / 250 }
 }
 
 export function ComposerVoice({ className, ...props }: ComponentProps<'div'>) {
   const dictation = useAuiState((state) => state.composer.dictation)
   const level = useMicLevel((state) => state.level)
   const recording = dictation?.status.type === 'running'
-  const seconds = useElapsed(recording)
+  const { seconds, tick } = useElapsed(recording)
   if (dictation == null) return null
   const minutes = Math.floor(seconds / 60)
   const rest = String(seconds % 60).padStart(2, '0')
@@ -75,7 +81,7 @@ export function ComposerVoice({ className, ...props }: ComponentProps<'div'>) {
               recording ? 'bg-ink/60' : 'bg-ink/25',
             )}
             style={{
-              height: recording ? barHeight(bar, level, seconds * 4) : 3,
+              height: recording ? barHeight(bar, level, tick) : 3,
             }}
           />
         ))}
