@@ -37,7 +37,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // multitasking windows collapse to the selected detail.
     supportsTablet: true,
     requireFullScreen: false,
-    associatedDomains: [`webcredentials:${new URL(oauthRedirectUri).host}`],
+    // The `mode=developer` entry lets a device in Developer Mode (with
+    // Associated Domains Development on) read the association straight from
+    // the host instead of Apple's CDN, which caches it for hours. Other
+    // devices ignore that entry and use the plain one.
+    associatedDomains: [
+      `webcredentials:${new URL(oauthRedirectUri).host}`,
+      `webcredentials:${new URL(oauthRedirectUri).host}?mode=developer`,
+    ],
     infoPlist: {
       // Standard TLS and SSH only, the same declaration Remux makes; review before App Store submission.
       ITSAppUsesNonExemptEncryption: false,
