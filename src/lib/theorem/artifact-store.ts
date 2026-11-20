@@ -68,6 +68,22 @@ export class ArtifactRefused extends Error {
   }
 }
 
+/**
+ * Whether asking again could get a different answer.
+ *
+ * A refusal the backend means literally — a 4xx other than a timeout or a
+ * rate limit — says the request itself is wrong (malformed, out of order,
+ * disagreeing with an immutable record), so repeating it only repeats the
+ * bug. Everything else is an answer we did not get: the backend's own
+ * transient status, or no status at all, because the transport failed before
+ * a response existed. Those are worth retrying, and a write the store may
+ * have accepted anyway is retried by re-sending, not by guessing.
+ */
+function retryable(error: unknown): boolean {
+  if (!(error instanceof ArtifactRefused)) return true
+  return error.status >= 500 || error.status === 408 || error.status === 429
+}
+
 type Request = (input: string, init: RequestInit) => Promise<Response>
 
 export interface ArtifactStoreOptions {
@@ -264,15 +280,30 @@ const referenceOf = ({
  * Repeating an observation the run already holds, with the same index, time and
  * state digest, is a no-op, so a caller may write the same observations again
  * after an uncertain response. A repeat that disagrees with what is held is
- * refused as `artifact_chunk_conflict` and does not stop the writer. A genuine
- * gap (an index past the next one) or a failed write does stop it: what is
- * stored stays exact, and `through` says how far it reaches.
+ * refused as `artifact_chunk_conflict` and does not stop the writer.
+ *
+ * A write that failed for a reason asking again could change — the transport
+ * dropped the answer, the backend was overloaded — does not stop the writer
+ * either, because the store may have taken the bytes while the answer was lost.
+ * The writer's optimistic claim is rolled back to what is known stored (its
+ * `through`), the batch's caller promise rejects, and the next append re-sends
+ * from there: a chunk the store already took is a no-op against its immutable
+ * record, so an ambiguous acknowledgement reconciles by replay rather than by
+ * guesswork. A batch queued behind one that rolled back is refused the same
+ * way, rather than writing from a claim no longer held. Only what a repeat
+ * cannot improve stops the writer: a genuine gap (an index past the next one),
+ * or a refusal that means it — malformed input, a bad digest, a permanent
+ * store refusal. What is stored stays exact either way, and `through` says how
+ * far it reaches.
  */
 export class RunWriter {
   private next = 0n
   private sequence = 0n
+  /** The writes in flight, always usable: a retryable failure is recovered in it. */
   private queue: Promise<void>
   private failure: Error | undefined
+  /** Whether the store has answered for the run record itself. */
+  private runAssured = false
   /**
    * What each observation the run holds was, at its index. Indexes are
    * contiguous from 0, so a repeat is recognized by position and answered with
@@ -285,8 +316,17 @@ export class RunWriter {
     private readonly store: ArtifactStore,
     readonly run: RunRef,
   ) {
-    this.queue = store.putRun(run).then(() => undefined)
-    this.queue.catch((error: unknown) => this.stop(error))
+    this.queue = this.store.putRun(this.run).then(
+      () => {
+        this.runAssured = true
+      },
+      (error: unknown) => {
+        // Losing the run record's answer stores nothing, so there is nothing to
+        // roll back; the next write asks for the run again, which the store
+        // treats as a no-op if it did take it.
+        if (!retryable(error)) this.stop(error)
+      },
+    )
   }
 
   /** The last index stored, or undefined before the first chunk. */
@@ -302,11 +342,30 @@ export class RunWriter {
   }
 
   /**
+   * Drops every claim past what the store is known to hold, so the next append
+   * re-sends from stored progress instead of from what a lost answer left us
+   * believing. `through` and `sequence` are only ever advanced by a write the
+   * store answered, so they are the progress this can trust.
+   */
+  private rollback() {
+    const stored = this.storedNext
+    this.next = stored
+    this.accepted.length = Number(stored)
+  }
+
+  /** How far the store is known to hold, as the next index it wants. */
+  private get storedNext(): bigint {
+    return this.through === undefined ? 0n : this.through + 1n
+  }
+
+  /**
    * Queues the new observations in `observations`, skipping the ones the run
    * already holds. A batch of nothing but repeats writes nothing and settles
    * with the writes already queued; a batch that disagrees with what is held is
-   * refused whole, leaving the run as it was. Only a gap, an index past the next
-   * one which no repeat can explain, stops the writer.
+   * refused whole, leaving the run as it was. A batch whose write failed for a
+   * reason asking again could change rejects its caller and rolls the writer
+   * back to what is stored, so the caller may re-send the same observations;
+   * one the store refused outright, and any genuine gap, stops the writer.
    */
   append(
     domain: string,
@@ -355,26 +414,59 @@ export class RunWriter {
     }
     this.next = expected
     if (fresh.length === 0) return this.queue
+    const claimedEnd = expected
     const chunks: Array<Array<RecordedObservation>> = []
     for (let start = 0; start < fresh.length; start += MAX_CHUNK_OBSERVATIONS)
       chunks.push(fresh.slice(start, start + MAX_CHUNK_OBSERVATIONS))
-    this.queue = this.queue.then(async () => {
+    const batch = this.queue.then(async () => {
       if (this.failure) throw this.failure
-      // A state is written only as what its digest names.
-      for (const { index, state, stateDigest } of fresh)
+      try {
+        // Another batch's retryable failure can roll this one's claims back
+        // while it waits its turn, so what this batch scanned may no longer be
+        // what the writer holds: either the run does not reach far enough to
+        // follow it, or the claim past it was dropped. Writing either would
+        // offer the store an index it does not follow, and its refusal for that
+        // is permanent. Refuse it here instead, as the lost answer it sits
+        // behind, so the caller re-sends from what is held.
         if (
-          state !== undefined &&
-          (await digestBytes(new TextEncoder().encode(state))) !== stateDigest
+          this.next < claimedEnd ||
+          BigInt(fresh[0]!.index) !== this.storedNext
         )
-          throw new ArtifactRefused(
-            400,
-            'artifact_state_mismatch',
-            `The state given for observation ${index} is not the state its digest names.`,
+          throw new Error(
+            `The run is held ${
+              this.through === undefined
+                ? 'nowhere yet'
+                : `through observation ${this.through}`
+            }, so these observations were queued behind a lost answer; re-send from observation ${this.storedNext}.`,
           )
-      for (const part of chunks) await this.writeChunk(domain, part)
+        // A state is written only as what its digest names.
+        for (const { index, state, stateDigest } of fresh)
+          if (
+            state !== undefined &&
+            (await digestBytes(new TextEncoder().encode(state))) !== stateDigest
+          )
+            throw new ArtifactRefused(
+              400,
+              'artifact_state_mismatch',
+              `The state given for observation ${index} is not the state its digest names.`,
+            )
+        // The run record's own answer may have been lost before any chunk.
+        if (!this.runAssured) {
+          await this.store.putRun(this.run)
+          this.runAssured = true
+        }
+        for (const part of chunks) await this.writeChunk(domain, part)
+      } catch (error) {
+        if (retryable(error)) this.rollback()
+        else this.stop(error)
+        throw error
+      }
     })
-    this.queue.catch((error: unknown) => this.stop(error))
-    return this.queue
+    // The queue carries on recovered; only the caller of this batch sees the
+    // failure. A rejected chain left here would refuse everything queued behind
+    // it instead of letting them reconcile against stored progress.
+    this.queue = batch.catch(() => undefined)
+    return batch
   }
 
   /** Waits for every queued write; rejects if the writer stopped. */
