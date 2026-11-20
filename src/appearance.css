@@ -29,6 +29,10 @@
   --appearance-editor-toolbar-gap: 0.5rem;
   --appearance-radius-control: 0.375rem;
   --appearance-radius-field: 0.5rem;
+  /* A bounded response block (chart, preview, file tree, terminal output):
+     tighter than a message, wider than a control (interactive-responses
+     plan §5, ~6px). */
+  --appearance-radius-response: 0.375rem;
   /* Messages, artifacts, code blocks and the composer share one wider corner
      (15px, owner's choice 2026-11-17). */
   --appearance-radius-message: 0.9375rem;
@@ -139,6 +143,12 @@
 [data-surface-role='artifact'],
 [data-appearance-part='artifact'] {
   --appearance-surface-fill: var(--surface-artifact);
+}
+/* The chart frame is chrome (glass by default); its plot is a reading
+   surface. The fill is the raised surface so the opaque fallback and the
+   stable data panel share one colour. */
+[data-surface-role='chart'] {
+  --appearance-surface-fill: var(--surface-raised);
 }
 /* The status note is a tint of the error container over what it sits on, so a
    failed reply reads as a margin note rather than a slab (owner review,
@@ -1043,5 +1053,117 @@
   .appearance-surface::before,
   .appearance-surface::after {
     display: none;
+  }
+}
+
+/* Bounded response blocks (interactive-responses plan §5): a compact frame
+   on the raised surface, one toolbar row that wraps, 12px of padding, and
+   the reading layer kept flat beneath values and labels. The material
+   policy still owns the perimeter: a frame is chrome, its body is reading. */
+.response-frame {
+  --response-frame-padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--popover);
+  border: var(--appearance-border) solid var(--line-separator);
+  border-radius: var(--appearance-radius-response);
+}
+.response-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--appearance-gap-related);
+  min-height: 2rem;
+  padding: 0.375rem var(--response-frame-padding, 0.75rem);
+  border-block-end: var(--appearance-border) solid var(--line-separator);
+}
+.response-frame-body {
+  padding: var(--response-frame-padding, 0.75rem);
+}
+.response-frame > figcaption {
+  padding-inline: var(--response-frame-padding, 0.75rem);
+}
+/* The evidence chart: a glass frame (the material resolver owns the
+   perimeter) around a stable, opaque reading panel that carries the plot,
+   its axes and labels. Refraction and blur never touch the data. */
+.evidence-chart {
+  position: relative;
+  isolation: isolate;
+}
+.evidence-chart-reading {
+  background: var(--surface-raised);
+  border-radius: calc(var(--appearance-radius-response) - 1px);
+  padding: 0.5rem 0.75rem 0.625rem;
+}
+.evidence-chart-plot {
+  display: block;
+  width: 100%;
+  height: 12.5rem;
+}
+.evidence-chart-plot text {
+  font: var(--recipe-metadata);
+  fill: var(--ink-muted);
+}
+.evidence-chart-grid {
+  stroke: var(--line-separator);
+  stroke-width: 1;
+}
+.evidence-chart-axis {
+  stroke: var(--line-control);
+  stroke-width: 1;
+}
+.evidence-chart-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.evidence-chart-area {
+  stroke: none;
+  opacity: 0.16;
+}
+.evidence-chart-endpoint {
+  font: var(--recipe-metadata);
+  fill: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.evidence-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-block-start: 0.5rem;
+}
+.evidence-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font: var(--recipe-metadata);
+  color: var(--ink-muted);
+}
+.evidence-chart-legend-swatch {
+  inline-size: 0.875rem;
+  block-size: 0.25rem;
+  border-radius: 1px;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .evidence-chart.surface-liquid {
+    background-color: var(--surface-raised);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (forced-colors: active) {
+  .response-frame {
+    border-color: CanvasText;
+  }
+  .evidence-chart-reading {
+    background: Canvas;
+  }
+  .evidence-chart-line,
+  .evidence-chart-grid,
+  .evidence-chart-axis {
+    stroke: CanvasText;
   }
 }

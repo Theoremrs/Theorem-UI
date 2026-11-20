@@ -23,6 +23,7 @@ import {
   isStandaloneToolCall,
   TheoremToolCall,
 } from '@/components/chat/theorem-parts'
+import { CitationSources } from '@/components/chat/citation-sources'
 import { ComposerEditor } from '@/components/chat/composer-editor'
 import { Composer, composerSurface } from '@/components/chat/composer'
 import type { ComposerLayout, ComposerSlots } from '@/components/chat/composer'
@@ -759,6 +760,7 @@ export const AssistantMessageContent: FC<{ speaker?: string }> = ({
         className="appearance-assistant-prose text-foreground wrap-break-word"
       >
         <MessageParts />
+        <CitationSources />
         <MessageError />
       </div>
     </div>

@@ -49,6 +49,7 @@ import type {
   AppearanceInput,
 } from '@/lib/appearance'
 import { LATIN_PROSE_V1_PARAGRAPHS } from '@/lib/appearance-corpus.mjs'
+import { PaletteColors } from '@/components/settings/palette-colors'
 
 export const Route = createFileRoute('/settings/appearance')({
   component: AppearanceSettings,
@@ -250,6 +251,7 @@ export function AppearanceSettings() {
           </SettingsRow>
         </SettingsBox>
       </SettingsSection>
+      <PaletteColors />
       <SettingsSection
         title="Background"
         description="What runs behind the conversation."

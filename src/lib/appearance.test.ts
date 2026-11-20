@@ -39,10 +39,10 @@ const customPalette = () => ({
 })
 
 describe('appearance selection', () => {
-  test('the Calm manifest keeps all surfaces flat and Life off', () => {
+  test('the Calm manifest keeps reading surfaces flat, the chart glass, Life off', () => {
     const appearance = resolveAppearance(DEFAULT_APPEARANCE)
     for (const role of SURFACE_ROLES)
-      expect(appearance.materials[role]).toBe('flat')
+      expect(appearance.materials[role]).toBe(role === 'chart' ? 'glass' : 'flat')
     expect(appearance.life).toBe(false)
     for (const mode of modes.slice(0, 2)) {
       const tokens = appearanceTokens(mode, true)
@@ -51,6 +51,20 @@ describe('appearance selection', () => {
       ))
         expect(tokens[role]).toBe(paint)
     }
+  })
+
+  test('the chart defaults to glass in both presets and an explicit override wins', () => {
+    for (const preset of ['calm', 'expressive'] as const)
+      expect(resolveAppearance({ preset, overrides: {} }).materials.chart).toBe(
+        'glass',
+      )
+    const overridden = resolveAppearance({
+      preset: 'expressive',
+      overrides: { materials: { chart: 'flat' } },
+    })
+    expect(overridden.materials.chart).toBe('flat')
+    // The chart default does not change the artifact surface.
+    expect(overridden.materials.artifact).toBe('flat')
   })
 
   test('overrides survive preset changes and do not couple materials', () => {
@@ -198,6 +212,37 @@ describe('appearance selection', () => {
         }
       }
     }
+  })
+
+  test('all five series slots are exposed and follow an explicit override', () => {
+    // The coverage defect: series 2 and 5 once read raw teal / graph-agent,
+    // which the custom schema did not expose, so a user edit left them behind.
+    const slots = [
+      'series-1',
+      'series-2',
+      'series-3',
+      'series-4',
+      'series-5',
+    ] as const
+    for (const slot of slots)
+      expect(Object.values(COLOR_ROLES)).toContain(slot)
+    const valid = customPalette()
+    // A neutral custom theme: every series set to one deliberate grey that
+    // still clears 3:1 on the candidate surfaces.
+    for (const slot of slots) {
+      valid.light[slot] = '#595959'
+      valid.dark[slot] = '#a6a6a6'
+    }
+    const parsed = appearanceOverridesSchema.safeParse({
+      palette: 'custom',
+      customPalette: valid,
+    })
+    expect(parsed.success).toBe(true)
+    if (parsed.success)
+      for (const slot of slots) {
+        expect(parsed.data.customPalette?.light[slot]).toBe('#595959')
+        expect(parsed.data.customPalette?.dark[slot]).toBe('#a6a6a6')
+      }
   })
 })
 

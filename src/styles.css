@@ -376,6 +376,13 @@
   --color-focus: var(--focus);
   /* The quiet action colour: the focus hue held back over a raised surface. */
   --color-action: color-mix(in oklab, var(--focus) 42%, var(--surface-raised));
+  /* The response system's semantic accents (interactive-responses plan):
+     an action available now or a pending decision, and a learned insight.
+     Every palette places their inks and containers (scripts/palettes.ts). */
+  --color-action-ink: var(--action-ink);
+  --color-action-container: var(--action-container);
+  --color-insight-ink: var(--insight-ink);
+  --color-insight-container: var(--insight-container);
   --color-separator: var(--line-separator);
   --color-control: var(--line-control);
   --color-redwood: var(--redwood);
@@ -395,6 +402,16 @@
   --color-error-container: var(--error-container);
   --color-error-ink: var(--error-ink);
   --color-link: var(--link);
+
+  /* The chart series palette: five categorical slots the person recolors in
+     Settings (series-1..5, placed by scripts/palettes.ts and exposed through
+     COLOR_ROLES). Every line, marker and legend swatch reads these, so no
+     inherited root hue survives a palette change. */
+  --chart-1: var(--series-1);
+  --chart-2: var(--series-2);
+  --chart-3: var(--series-3);
+  --chart-4: var(--series-4);
+  --chart-5: var(--series-5);
 
   /* The terminal surfaces (file explorer, agent terminal) relate to the
      palette around them as pi's slate relates to GitHub Sharp
@@ -1170,7 +1187,6 @@
     backdrop-filter: blur(var(--liquid-see-blur));
     border-color: transparent;
   }
-
 
   /* A file held over the composer shows the drop state, not the glass. */
   &[data-dragging='true'] > [data-liquid-canvas] {

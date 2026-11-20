@@ -1,6 +1,11 @@
 // SOURCING: theorem-appearance-v1 roles, recipes, and Calm manifest.
 export const PALETTES = [
   {
+    value: 'ember',
+    label: 'Ember',
+    code: { light: 'github-light-default', dark: 'github-dark-default' },
+  },
+  {
     value: 'github-sharp',
     label: 'GitHub Sharp',
     code: { light: 'github-light-default', dark: 'github-dark-default' },
@@ -28,6 +33,7 @@ export const SURFACE_ROLES = [
   'popover',
   'artifact',
   'status',
+  'chart',
 ] as const
 
 export const MATERIALS = ['flat', 'paper', 'glass', 'liquid'] as const
@@ -121,41 +127,46 @@ export const TEXT_RECIPES = {
   },
 } as const
 
+/**
+ * The Calm preset's fixed colours: the default (Ember) palette's own,
+ * held flat. Placed here from the generator's Ember modes so the manifest
+ * and the stylesheet cannot drift; scripts/palettes.ts owns the rules.
+ */
 export const CALM_COLORS = {
   light: {
-    'surface-neutral': '#ffffff',
-    'surface-sidebar': '#f2f3f5',
-    'surface-composer': '#ffffff',
-    'surface-raised': '#ffffff',
-    'surface-user-message': '#f2f3f5',
-    'surface-hover': '#edeff1',
-    'surface-selected': '#d2e1f0',
-    ink: '#24292d',
-    'ink-muted': '#586069',
-    'line-separator': '#e1e4e8',
-    'line-control': '#808892',
-    redwood: '#3379b3',
-    'on-redwood': '#ffffff',
-    'redwood-ink': '#286394',
-    focus: '#3379b3',
+    'surface-neutral': '#f7f7f5',
+    'surface-sidebar': '#f2f0ee',
+    'surface-composer': '#fcfbfb',
+    'surface-raised': '#eeece9',
+    'surface-user-message': '#fcfbfb',
+    'surface-hover': '#f1f0ed',
+    'surface-selected': '#e4daeb',
+    ink: '#2f2c27',
+    'ink-muted': '#635c54',
+    'line-separator': '#e2deda',
+    'line-control': '#8d857a',
+    redwood: '#8761a0',
+    'on-redwood': '#fffffe',
+    'redwood-ink': '#6f5084',
+    focus: '#8b5da8',
     'attention-ink': '#7b5100',
   },
   dark: {
-    'surface-neutral': '#1c1d1e',
-    'surface-sidebar': '#1c1d1e',
-    'surface-composer': '#262829',
-    'surface-raised': '#262829',
-    'surface-user-message': '#242627',
-    'surface-hover': '#242627',
-    'surface-selected': '#2d343a',
-    ink: '#c3c6c8',
-    'ink-muted': '#a2a5a8',
-    'line-separator': '#2c2d2f',
-    'line-control': '#85888b',
-    redwood: '#4490d0',
-    'on-redwood': '#101112',
-    'redwood-ink': '#7ebdf7',
-    focus: '#7ebdf7',
+    'surface-neutral': '#1e1c1f',
+    'surface-sidebar': '#1e1c1f',
+    'surface-composer': '#252327',
+    'surface-raised': '#272529',
+    'surface-user-message': '#252327',
+    'surface-hover': '#252327',
+    'surface-selected': '#352c3e',
+    ink: '#eae8eb',
+    'ink-muted': '#b0adb3',
+    'line-separator': '#2f2c30',
+    'line-control': '#747077',
+    redwood: '#9c7cbc',
+    'on-redwood': '#070708',
+    'redwood-ink': '#c7a9e6',
+    focus: '#a98cc8',
     'attention-ink': '#fac781',
   },
 } as const
@@ -191,6 +202,21 @@ export const COLOR_ROLES = {
   'success-fill': 'teal-container',
   'warning-ink': 'ochre-ink',
   'warning-fill': 'ochre-container',
+  // An action available now or a pending decision (the co-browse brief's
+  // oxblood); a learned relationship or capture confirmation (its gold).
+  // Each palette gives these meanings its own hues.
+  action: 'action-ink',
+  'action-fill': 'action-container',
+  insight: 'insight-ink',
+  'insight-fill': 'insight-container',
+  // The five categorical data-series slots. Categorical, not semantic: a
+  // person recolours each independently, and the chart reads them for every
+  // line, marker and legend swatch (no inherited root hue survives).
+  'series-1': 'series-1',
+  'series-2': 'series-2',
+  'series-3': 'series-3',
+  'series-4': 'series-4',
+  'series-5': 'series-5',
 } as const
 
 const readableSurfaces = [
@@ -236,6 +262,21 @@ export const COLOR_PAIRS: readonly ColorPair[] = [
   { foreground: 'error', background: 'status', minimum: 4.5 },
   { foreground: 'success-ink', background: 'success-fill', minimum: 4.5 },
   { foreground: 'warning-ink', background: 'warning-fill', minimum: 4.5 },
+  { foreground: 'action', background: 'action-fill', minimum: 4.5 },
+  { foreground: 'insight', background: 'insight-fill', minimum: 4.5 },
+  ...readableSurfaces.flatMap((background) =>
+    (['action', 'insight'] as const).map((foreground) => ({
+      foreground,
+      background,
+      minimum: 4.5,
+    })),
+  ),
+  // Series marks are graphics: 3:1 against the surfaces they plot on.
+  ...readableSurfaces.flatMap((background) =>
+    (['series-1', 'series-2', 'series-3', 'series-4', 'series-5'] as const).map(
+      (foreground) => ({ foreground, background, minimum: 3 }),
+    ),
+  ),
   ...(
     ['canvas', 'navigation', 'composer', 'popover', 'artifact'] as const
   ).flatMap((background) =>

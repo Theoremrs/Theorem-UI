@@ -114,6 +114,29 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
   }
   return {
     ...sessionGraphRoutes(now),
+    // Link-preview metadata for the response stories' fixture sources: the
+    // first resolves (a full preview), the second fails (the Sources row).
+    'GET /api/link-preview/v1/*': (_params, request) => {
+      const url = new URL(request.url).searchParams.get('url') ?? ''
+      if (url.includes('notes.example.com'))
+        return {
+          href: url,
+          title: 'Retrieval latency notes',
+          description: 'Weekly p50 measurements for the Search and Read paths.',
+          siteName: 'Example Notes',
+        }
+      if (url.includes('docs.example.com'))
+        return {
+          href: url,
+          title: 'Tile module layout',
+          description: 'Where the published tile helpers live in the package.',
+          siteName: 'Example Docs',
+        }
+      return new Response(JSON.stringify({ error: 'No preview metadata.' }), {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      })
+    },
     ...(options.populated && {
       'GET /api/connections/v1/tools': () => ({ groups: POPULATED_ROSTER }),
       [`GET ${BASE}/skills`]: () => POPULATED_SKILLS,

@@ -912,54 +912,13 @@ const ReasoningSummaryPart: DataMessagePartComponent = ({ data }) => {
   )
 }
 
-/** External evidence links must name an absolute web URL; never infer a destination. */
-function citationUrl(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined
-  try {
-    const url = new URL(value)
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : undefined
-  } catch {
-    return undefined
-  }
-}
-
 /**
- * Sources a web search or page read retrieved. Each result arrived as its own
- * citation and drew a tag, eight to a search, crowding the answer; the answer
- * links what it uses and the tool call keeps every result, so these draw none.
+ * Citations draw nothing in the part flow: the message's sources are drawn
+ * once after its parts (CitationSources in the thread) — full link previews
+ * where metadata resolved, one Sources hyperlink row with a dropdown for
+ * the rest. The part renderer stays registered so the data part is claimed.
  */
-const RETRIEVED_SOURCES = new Set<unknown>(['web_search', 'web_read'])
-
-const CitationPart: DataMessagePartComponent = ({ data }) => {
-  const part = object(data)
-  if (RETRIEVED_SOURCES.has(part.sourceKind)) return null
-  const provenance = object(part.provenance)
-  const url = citationUrl(provenance.url)
-  const label = str(part.label) ?? (url && new URL(url).hostname) ?? 'Source'
-  const title = str(provenance.excerpt) ?? url
-  const chip = cn(CHIP, 'me-1.5 mt-2 align-top')
-  const content = (
-    <>
-      <Icon.Link className="size-3 shrink-0" />
-      <span className="truncate">{label}</span>
-    </>
-  )
-  return url ? (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      title={title}
-      className={cn(chip, 'hover:text-ink')}
-    >
-      {content}
-    </a>
-  ) : (
-    <span title={title} className={chip}>
-      {content}
-    </span>
-  )
-}
+const CitationPart: DataMessagePartComponent = () => null
 
 const ErrorPart: DataMessagePartComponent = ({ data }) => {
   const part = object(data)

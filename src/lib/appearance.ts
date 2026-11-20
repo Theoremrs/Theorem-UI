@@ -64,6 +64,116 @@ export const customCssSchema = z
 const customColorRoles = z.enum([...new Set(Object.values(COLOR_ROLES))])
 const customColors = z.record(customColorRoles, opaqueHex)
 
+/** The color roles a person edits in Settings, in the order they are shown:
+ *  the surfaces first, then the inks, then the semantic accents. Each entry
+ *  names the CSS token it paints and what the colour means. */
+export const EDITABLE_COLOR_ROLES = [
+  {
+    token: 'surface-neutral',
+    label: 'Canvas',
+    hint: 'Reading and long-running work',
+  },
+  {
+    token: 'surface-raised',
+    label: 'Raised surface',
+    hint: 'Cards, previews and popovers',
+  },
+  {
+    token: 'surface-sidebar',
+    label: 'Navigation',
+    hint: 'The sidebar and rail',
+  },
+  { token: 'surface-composer', label: 'Composer', hint: 'Where you write' },
+  {
+    token: 'surface-selected',
+    label: 'Selection',
+    hint: 'The chosen row or item',
+  },
+  { token: 'ink', label: 'Primary ink', hint: 'Body text' },
+  { token: 'ink-muted', label: 'Secondary ink', hint: 'Labels and metadata' },
+  {
+    token: 'redwood',
+    label: 'Accent',
+    hint: 'Brand, active selection, emphasis',
+  },
+  { token: 'redwood-ink', label: 'Accent ink', hint: 'Links and accent text' },
+  { token: 'on-redwood', label: 'On accent', hint: 'Text on the accent fill' },
+  {
+    token: 'action-ink',
+    label: 'Action',
+    hint: 'An action available now or a pending decision',
+  },
+  {
+    token: 'action-container',
+    label: 'Action fill',
+    hint: 'The action accent as a background',
+  },
+  {
+    token: 'insight-ink',
+    label: 'Insight',
+    hint: 'A learned relationship or capture confirmation',
+  },
+  {
+    token: 'insight-container',
+    label: 'Insight fill',
+    hint: 'The insight accent as a background',
+  },
+  { token: 'teal-ink', label: 'Success', hint: 'A completed outcome' },
+  {
+    token: 'teal-container',
+    label: 'Success fill',
+    hint: 'Success as a background',
+  },
+  { token: 'ochre-ink', label: 'Warning', hint: 'Caution' },
+  {
+    token: 'ochre-container',
+    label: 'Warning fill',
+    hint: 'Warning as a background',
+  },
+  { token: 'error-ink', label: 'Error', hint: 'A failed outcome' },
+  {
+    token: 'error-container',
+    label: 'Error fill',
+    hint: 'Error as a background',
+  },
+  { token: 'focus', label: 'Focus ring', hint: 'Keyboard focus' },
+  {
+    token: 'line-separator',
+    label: 'Separator',
+    hint: 'Hairlines between rows',
+  },
+  {
+    token: 'line-control',
+    label: 'Control boundary',
+    hint: 'Borders of fields and controls',
+  },
+  {
+    token: 'series-1',
+    label: 'Data series 1',
+    hint: 'First chart series: line, markers and legend',
+  },
+  {
+    token: 'series-2',
+    label: 'Data series 2',
+    hint: 'Second chart series',
+  },
+  {
+    token: 'series-3',
+    label: 'Data series 3',
+    hint: 'Third chart series',
+  },
+  {
+    token: 'series-4',
+    label: 'Data series 4',
+    hint: 'Fourth chart series',
+  },
+  {
+    token: 'series-5',
+    label: 'Data series 5',
+    hint: 'Fifth chart series',
+  },
+] as const satisfies readonly { token: string; label: string; hint: string }[]
+
 export const customPaletteSchema = z
   .strictObject({
     name: z.string().trim().min(1).max(60),
@@ -200,7 +310,7 @@ export function resolveAppearance({ preset, overrides }: AppearanceSelection) {
   const defaults = presetDefaults[preset]
   return {
     preset,
-    palette: overrides.palette ?? 'github-sharp',
+    palette: overrides.palette ?? 'ember',
     customPalette: overrides.customPalette,
     font: overrides.font,
     density: overrides.density ?? 'comfortable',
@@ -213,6 +323,9 @@ export function resolveAppearance({ preset, overrides }: AppearanceSelection) {
       ...defaults.materials,
       ...overrides.materials,
       'assistant-reading': 'flat' as const,
+      // The chart frame is glass by default (owner, 2026-11-19); its plotted
+      // data stays on a stable reading surface. An explicit override wins.
+      chart: overrides.materials?.chart ?? ('glass' as const),
     },
     life: defaults.life,
   }

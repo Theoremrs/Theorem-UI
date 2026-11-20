@@ -28,6 +28,11 @@ import {
   ARTIFACT_PART,
   readArtifact,
 } from '@/components/artifacts/artifact-model'
+import {
+  codingMessages,
+  evidenceMessages,
+  writingMessages,
+} from './fixtures/responses'
 import { ArtifactPanel } from '@/components/artifacts/artifact-panel'
 import { useArtifactView } from '@/components/artifacts/artifact-view'
 import {
@@ -45,6 +50,7 @@ import { NoteNodeView } from '@/components/program/program-annotations'
 import { NoteEditor } from '@/components/notes/note-editor'
 import { NoteExcerpt } from '@/components/notes/note-excerpt'
 import { TheoremPartRenderers } from '@/components/chat/theorem-parts'
+import type { Theorem } from '@/lib/theorem/client'
 import { ComparePane } from '@/components/review/compare-pane'
 import { ReviewCard } from '@/components/review/review-card'
 import { LibrarianFooter } from '@/components/organize/librarian-footer'
@@ -1150,6 +1156,36 @@ function PresentStory() {
   )
 }
 
+/** One of the interactive-responses plan's representative replies, over its
+ *  committed fixture: the real thread and part renderers, the real
+ *  present bridge, a thread-list adapter so context references have a
+ *  durable thread to name. */
+function responseStory(stored: () => Theorem.Message[], id: string) {
+  const messages = toAssistantMessages(stored())
+  return function ResponseStory() {
+    const runtime = useExternalStoreRuntime({
+      messages,
+      isRunning: false,
+      onNew: async () => {},
+      convertMessage: (message: ThreadMessageLike) => message,
+      adapters: {
+        threadList: {
+          threadId: id,
+          threads: [{ status: 'regular', id, remoteId: 'thread-responses' }],
+        },
+      },
+    })
+    return (
+      <AssistantRuntimeProvider runtime={runtime}>
+        <TheoremPartRenderers />
+        <div className="h-dvh">
+          <Thread autoFocus={false} />
+        </div>
+      </AssistantRuntimeProvider>
+    )
+  }
+}
+
 /** A conversation whose last run reported its context occupancy, so the
  *  composer's context ring has real Theorem usage to draw. */
 function ContextUsageStory() {
@@ -1248,6 +1284,9 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'design-oracle-empty': () => <DesignOracleThreadStory empty />,
   'assistant-math': MathStory,
   'assistant-present': PresentStory,
+  'response-evidence': responseStory(evidenceMessages, 'story-response-evidence'),
+  'response-coding': responseStory(codingMessages, 'story-response-coding'),
+  'response-writing': responseStory(writingMessages, 'story-response-writing'),
   'assistant-context-usage': ContextUsageStory,
   'design-oracle-long': DesignOracleThreadStory,
   'design-oracle-reflow': () => <DesignOracleThreadStory fixtureId="F09" />,
@@ -1325,6 +1364,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'notes-workspace': NotesWorkspaceStory,
   'settings-ai': SettingsAiStory,
   'settings-responses': () => <SettingsAiStory path="/settings/responses" />,
+  'settings-appearance': () => <SettingsAiStory path="/settings/appearance" />,
   'glass-compare': () => (
     <WithRuntime>
       <GlassCompareStory />

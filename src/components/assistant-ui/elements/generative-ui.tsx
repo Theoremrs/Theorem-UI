@@ -5,6 +5,7 @@ import type { GenerativeUILibrary } from "@assistant-ui/generative-ui/react";
 import { defaultGenerativeUILibrary } from "@assistant-ui/generative-ui/react";
 import { GenerativeMarkdown } from "./generative-markdown";
 import { GeoMap, type GeoMapPlace } from "./geo-map";
+import { evidenceChartDefinition } from "./evidence-chart";
 
 // The diagram engine (beautiful-mermaid and elkjs) is large, so it loads only
 // when a Diagram actually renders. The fallback matches the diagram's own
@@ -79,6 +80,9 @@ class DiagramBoundary extends Component<
 /** `MarkdownTextPrimitive` cannot be reused here: it reads from message-part context, not a prop string. */
 export const styledGenerativeUILibrary: GenerativeUILibrary = {
   ...defaultGenerativeUILibrary,
+  // The chart carries its evidence: units, provenance, and a Data view of
+  // the same series (interactive-responses plan §6).
+  Chart: evidenceChartDefinition,
   Markdown: {
     properties: markdownBase.properties,
     streamProperties: markdownBase.streamProperties,
