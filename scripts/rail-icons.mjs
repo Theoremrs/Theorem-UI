@@ -120,8 +120,11 @@ export const CONTROLS = [
   { name: 'hide', source: 'control/source/streamline-glasses-sun.png' },
   { name: 'stop', source: 'control/source/streamline-button-stop-1.png' },
   { name: 'detach', source: 'control/source/streamline-expand-6.png' },
-  { name: 'micOff', source: 'control/source/streamline-microphone-off.png' },
-  { name: 'microphone', source: 'control/source/streamline-microphone.png' },
+  // The microphone sources are 24px exports whose domes touch the top edge
+  // (ink at y=0), so the traced outline reads as cut off. A transparent border
+  // gives the dome its round top back without moving the other marks.
+  { name: 'micOff', source: 'control/source/streamline-microphone-off.png', pad: 2 },
+  { name: 'microphone', source: 'control/source/streamline-microphone.png', pad: 2 },
   {
     name: 'refresh',
     source: 'control/source/streamline-button-refresh-arrows.png',
@@ -422,8 +425,13 @@ async function outline(mask, w, h, threshold) {
  * little under half coverage as covered, so it reaches under the outline drawn
  * over it and no ground shows between the two.
  */
-async function vectorLayersOf(source) {
-  const png = PNG.sync.read(source)
+async function vectorLayersOf(source, pad = 0) {
+  let png = PNG.sync.read(source)
+  if (pad > 0) {
+    const bordered = new PNG({ width: png.width + pad * 2, height: png.height + pad * 2 })
+    PNG.bitblt(png, bordered, 0, 0, png.width, png.height, pad, pad)
+    png = bordered
+  }
   const { width: w, height: h } = png
   const masks = unmix(png)
   const out = {}
@@ -451,7 +459,7 @@ export async function layerFiles(set) {
   for (const icon of set.icons) {
     const source = await readFile(new URL(icon.source, ROOT))
     const layers = set.vector
-      ? await vectorLayersOf(source)
+      ? await vectorLayersOf(source, icon.pad ?? 0)
       : Object.fromEntries(
           Object.entries(layersOf(source, icon.autofill ?? false)).map(
             ([layer, png]) => [layer, PNG.sync.write(png)],
