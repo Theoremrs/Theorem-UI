@@ -82,7 +82,8 @@ export function useCrmRecordSearch(
         })
       },
     }
-    // `stamp` changes when any type's records or their state do.
+    // Cached queries can share a timestamp and status; their text still
+    // identifies different results and must invalidate this projection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stamp, types, life])
+  }, [stamp, types, life, query])
 }

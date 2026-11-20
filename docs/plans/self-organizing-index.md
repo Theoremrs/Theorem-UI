@@ -94,7 +94,7 @@ The owner set the order in which records join the self-organizing loop:
    dismissed twice by name stops being linked by name. UI side done in
    source: the document inspector's "About" section (`index/record-links.tsx`)
    lists each linked record with why it was linked, opens the record page, and
-   offers "Not about <name>", "Change…" (another record of the same type) and
+   offers "Not about <name>", "Change…" (another declared record) and
    Undo for the latest correction, read from Theorem so it survives a reload;
    nothing shows when the document is about no record. A record's preview and
    page list "Documents about this" (`crm/documents-about.tsx`) from the
@@ -102,9 +102,13 @@ The owner set the order in which records join the self-organizing loop:
    answered as items), hidden while loading, when empty, or when an older
    Theorem refuses the kind. Tests: `index/record-links.test.tsx` and
    `crm/documents-about.test.tsx`. There is no way yet to link a document to a
-   record by hand when Theorem linked it to none; "Change…" offers only
-   records of the linked record's type. Nothing here is observed against a
-   deployed Theorem yet.
+   record by hand when Theorem linked it to none. "Change…" now selects a
+   declared type and searches only that type through the CRM's bounded search
+   hook, including custom research types. It keeps linked targets out, hides
+   earlier-query results while input settles, and preserves correction/undo.
+   This uses the existing record-filing correction contract in open Theorem
+   PR #1082; backend main does not yet provide that contract. Tests use the
+   CRM fixture and a record-filing stand-in, not a deployed Theorem.
 3. **Extraction from filed material.** A filed document can lead to a change
    to a record, made only as a proposal the person approves (the agent's
    record change proposals in Theorem are the model).
