@@ -1,8 +1,9 @@
-// SOURCING: @assistant-ui/react-native MessageState (each row of ThreadPrimitive.MessagesFlatList); parts as @theoremharness/sdk projects them
+// SOURCING: @assistant-ui/react-native MessageState (each row of ThreadPrimitive.MessagesFlatList); parts as @theoremharness/sdk projects them, printed with its stringifyJson (bigint-safe)
 import { memo, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import type { MessageState } from '@assistant-ui/react-native'
+import { stringifyJson } from '@theoremharness/sdk'
 import { radius, space } from '@/theme/tokens'
 import { StatusLabel, type Tone } from '@/ui/status'
 import { Text } from '@/ui/text'
@@ -123,7 +124,7 @@ function PartView({ part, runId }: { part: Part; runId: string | undefined }) {
           ) : null}
           {part.result !== undefined ? (
             <Text variant="code" tone={part.isError ? 'error' : 'ink'} selectable numberOfLines={40}>
-              {typeof part.result === 'string' ? part.result || 'No output.' : JSON.stringify(part.result, null, 2)}
+              {typeof part.result === 'string' ? part.result || 'No output.' : stringifyJson(part.result, null, 2)}
             </Text>
           ) : null}
         </Disclosure>
@@ -149,7 +150,7 @@ function PartView({ part, runId }: { part: Part; runId: string | undefined }) {
       return (
         <Disclosure title={part.name.replace(/^theorem-/, '').replace(/_/g, ' ')}>
           <Text variant="code" selectable numberOfLines={40}>
-            {JSON.stringify(part.data, null, 2)}
+            {stringifyJson(part.data, null, 2)}
           </Text>
         </Disclosure>
       )

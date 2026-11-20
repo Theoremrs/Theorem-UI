@@ -62,6 +62,17 @@ describe('journal store', () => {
     expect(db.rows()).toBe(0)
   })
 
+  test('keeps a wire integer beyond the safe range exactly', async () => {
+    // The SDK decodes such integers in run events as bigint, which
+    // JSON.stringify refuses ("Do not know how to serialize a BigInt").
+    const store = createJournalStore(database())
+    const large = 9007199254740993n
+    const events = [{ seq: 1, payload: { position: large } }] as unknown as ConversationJournal['events']
+    await store.save(journal({ runId: 'run-1', events }))
+    const loaded = (await store.load(identity))?.events[0] as unknown as { payload: { position: bigint } }
+    expect(loaded.payload.position).toBe(large)
+  })
+
   test('the key covers every identity field', () => {
     expect(JSON.parse(journalKey(identity))).toEqual([
       'https://theorem.example',
