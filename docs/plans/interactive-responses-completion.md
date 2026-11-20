@@ -48,6 +48,8 @@ Both independent color inventories now include all ten emitted palette modes, in
 
 The previous GitHub run completed the last touch-rhythm checks immediately before the job's 25-minute cap. GitHub explicitly annotated a maximum-execution-time cancellation. The bounded job budget is now 35 minutes; all existing checks remain, with the evidence-response and appearance story interactions added to the same running browser server.
 
+The first clean remote run passed all twelve existing appearance browser oracles, then exposed an ambiguous global Add-to-context selector in the new response story. The closing source popover still exposed its valid action during its exit animation. The story now targets each source's stable identity and waits for the fallback to become hidden before repeating the resolved source's action. The two-source and idempotence assertions remain intact.
+
 ## Verification record
 
 | Gate                                                       | Verified result                                                                             |
@@ -57,7 +59,7 @@ The previous GitHub run completed the last touch-rhythm checks immediately befor
 | Expanded appearance/settings suite                         | 152 tests, 14 files, 4,871 assertions, zero failures                                        |
 | Independent emitted-color audit                            | 10 modes, 1,090 predicates, zero failures                                                   |
 | Response-evidence browser oracle                           | 19/19 in Chromium 156.0.8078.4 and WebKit 27.2                                              |
-| Appearance editor browser oracle                           | 4/4 in WebKit 27.2                                                                          |
+| Appearance editor browser oracle                           | 4/4 in Chromium 156.0.8078.4 and WebKit 27.2                                                                          |
 | Narrow light-mode touch probe (390 × 844)                  | 9/9, including exact values, expansion, viewport fit, Data continuity and no runtime errors |
 | Full Workers application Vite build                        | Passed; generated flags contain both strictly-public fetch and Node compatibility           |
 | Live local workerd transport probe                         | Public metadata succeeds; private-address resolution/refetch is refused                     |

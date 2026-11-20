@@ -1,6 +1,6 @@
 {
   "schema": "theorem.interactive-response-completion.v1",
-  "recordedAt": "2026-11-20T22:49:41.975721+00:00",
+  "recordedAt": "2026-11-20T23:16:22.222934+00:00",
   "pullRequest": 146,
   "baseRevision": "02b9783d9415c8424dd9323ee18a6db678d536ac",
   "scope": "Phase1 evidence responses; local and fixture verification, no production deployment or human visual seal",
@@ -108,11 +108,34 @@
   },
   "workerBuild": {
     "status": "passed",
-    "compatibilityFlags": ["global_fetch_strictly_public", "nodejs_compat"]
+    "compatibilityFlags": [
+      "global_fetch_strictly_public",
+      "nodejs_compat"
+    ]
   },
   "workerRuntime": {
     "example.com": "Example Domain",
     "react.dev": "React metadata returned",
     "localtest.me": "private addresses resolved; platform fetch refused; preview null"
+  },
+  "browserAppearanceChromium": {
+    "id": "settings-appearance",
+    "engine": "chromium",
+    "version": "156.0.8078.4",
+    "checks": {
+      "editors seed from the active palette in both modes": true,
+      "a failing contrast pair is refused with its reason": true,
+      "a refused edit paints nothing": true,
+      "a valid edit applies as the custom palette": true
+    }
+  },
+  "ciSelectorFollowup": {
+    "run": "https://github.com/Travis-Gilbert/Theorem-UI/actions/runs/44832200270",
+    "headRevision": "ea749c5a16ef4827f157915faefddd8d8fdab405",
+    "establishedBrowserOraclesPassed": 12,
+    "failure": "The global repeated Add-to-context action also matched the closing source popover.",
+    "fix": "Scope resolved and fallback actions by stable source ID; wait for the fallback to become hidden after Escape.",
+    "originalAssertions": "retained",
+    "targetedRerun": "19/19 response checks in Chromium and WebKit; 4/4 appearance checks in Chromium"
   }
 }

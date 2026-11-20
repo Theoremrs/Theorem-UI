@@ -145,23 +145,26 @@ export function scenarios(h) {
       },
       // Two sources from one assistant message are independent references.
       async (page) => {
-        await page
+        const addResolved = page
+          .locator('[data-source-id="notes-latency"]')
           .getByRole('button', { name: 'Add to context', exact: true })
-          .click()
+        const fallback = page.locator(
+          '[data-slot="source-entry"][data-source-id="report-weekly"]',
+        )
+        await addResolved.click()
         await page
           .getByRole('button', { name: 'List sources', exact: true })
           .click()
-        await page
-          .locator('[data-slot="source-entry"]')
+        await fallback
           .getByRole('button', { name: 'Add to context', exact: true })
           .click()
         await page.keyboard.press('Escape')
+        // Closing controls remain mounted during the popover's exit animation.
+        await fallback.waitFor({ state: 'hidden' })
         const context = page.locator('ul[aria-label="Context"]')
         await context.waitFor({ state: 'visible' })
         const before = await context.innerText()
-        await page
-          .getByRole('button', { name: 'Add to context', exact: true })
-          .click()
+        await addResolved.click()
         const after = await context.innerText()
         return {
           'distinct sources in one message both reach the composer':
