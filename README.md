@@ -138,6 +138,12 @@ esm.sh; direct HTTPS modules must permit browser cross-origin fetches. Resolutio
 responses are shared by build and check during the page session. This cache is
 not a saved dependency lockfile.
 
+Direct and transitive imports in an npm-managed graph carry the same React
+external settings to package wrappers. Their declarations use the matching
+build advertised by the CDN, so a shared class keeps one runtime and type
+identity. Explicit HTTPS graphs retain their build choices; different versions
+and explicit build variants remain distinct.
+
 Dependency source, imported CSS and its font/image assets are fetched while
 building and bundled into the frame; this
 does not grant the running App additional network access. Packages requiring
@@ -147,11 +153,22 @@ dependencies. tsrs checks those declarations with the App's local code, React
 and `window.theorem`; missing or unavailable external types remain visible
 diagnostics. A successful JavaScript build can run while type problems are shown.
 
-Run the focused tests with `bun test src/lib/blocks/app-dependencies.test.ts
-src/lib/blocks/app-source.test.ts src/lib/blocks/app-check.test.ts`. The optional
-real CDN/Luma compile and type-check integration is
+Run the focused tests with `bun test src/lib/blocks/app-dependency-identity.test.ts
+src/lib/blocks/app-dependencies.test.ts src/lib/blocks/app-source.test.ts
+src/lib/blocks/app-check.test.ts`. They check shared runtime classes and nominal
+private-member types, late transitive headers, and intentionally distinct HTTPS
+builds. The optional real CDN/Luma compile and type-check integration is
 `THEOREM_TEST_REMOTE_DEPS=1 bun test src/lib/blocks/app-dependencies.live.test.ts`.
-That test proves compilation and checking, not browser GPU rendering.
+It checks that the bundle contains one core module and no declaration errors.
+
+`node scripts/e2e/app-luma.mjs` also runs the product builder, checker and sandbox
+in Chromium and verifies a rendered green pixel. Set `E2E_CHROMIUM` to a browser
+executable when Playwright's Chromium is not installed. The
+[Luma fixture](test/fixtures/app-luma.html) pins core, webgl and engine to 9.4.2,
+passes `webgl2Adapter` to `luma.createDevice`, and passes an active `RenderPass`
+to `Model.draw` before ending the pass and submitting the device. Those are
+required API steps; a resolver fix does not supply them. The smoke reports its
+renderer so a software WebGL result is distinguishable from hardware validation.
 
 ## Scenes
 

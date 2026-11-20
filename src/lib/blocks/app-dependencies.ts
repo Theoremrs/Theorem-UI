@@ -4,6 +4,7 @@
 import type { Loader } from 'esbuild-wasm'
 import type { AppSources } from './app-source'
 import { appLibrary, libraryDependencies } from './app-libraries'
+import { APP_DEPENDENCY_EXTERNALS, appDependencyURL, usesDefaultDependencyBuild } from './app-dependency-urls'
 import { importMap, vendorSources } from './vendor/manifest'
 
 const CDN = 'https://esm.sh/'
@@ -215,6 +216,7 @@ const loaderFor = (url: string, contentType: string | null): Loader => {
  */
 export class AppDependencies {
   private readonly modules = new Map<string, Promise<AppModule>>()
+  private readonly managed = new Set<string>()
 
   constructor(
     readonly versions: Record<string, string> = {},
@@ -225,8 +227,8 @@ export class AppDependencies {
     if (Object.hasOwn(vendorSources, specifier))
       return { kind: 'vendor', path: specifier }
     if (importer && /^(?:\.{0,2}\/)/.test(specifier))
-      return this.remote(new URL(specifier, importer).href)
-    if (/^https:\/\//.test(specifier)) return this.remote(specifier)
+      return this.remote(new URL(specifier, importer).href, importer)
+    if (/^https:\/\//.test(specifier)) return this.remote(specifier, importer)
     if (appLibrary(specifier)) return { kind: 'library', path: specifier }
     const parsed = packageImport(specifier)
     const peerVersion = parsed.name === 'react'
@@ -251,14 +253,19 @@ export class AppDependencies {
     const url = new URL(path, CDN)
     url.searchParams.set('target', 'es2022')
     // All npm builds use the App's chosen React, including its JSX runtime.
-    url.searchParams.set('external', 'react,react-dom')
+    url.searchParams.set('external', APP_DEPENDENCY_EXTERNALS)
+    this.managed.add(url.href)
     return { kind: 'url', path: url.href }
   }
 
-  private remote(value: string): AppDependency {
-    const url = new URL(value)
+  private remote(value: string, importer?: string): AppDependency {
+    // A user-supplied HTTPS graph owns its build choices. Only npm wrappers
+    // built by this resolver pass the App's React policy to their children.
+    const managed = importer !== undefined && this.managed.has(importer)
+    const url = new URL(managed ? appDependencyURL(value) : value)
     if (url.protocol !== 'https:')
       throw new Error(`App dependency "${value}" must use HTTPS`)
+    if (managed && url.origin === 'https://esm.sh') this.managed.add(url.href)
     const vendored = vendorUrls.get(url.href)
     return vendored ? { kind: 'vendor', path: vendored } : { kind: 'url', path: url.href }
   }
@@ -266,6 +273,7 @@ export class AppDependencies {
   load(url: string): Promise<AppModule> {
     if (!url.startsWith('https://'))
       return Promise.reject(new Error(`App dependency "${url}" must use HTTPS`))
+    if (usesDefaultDependencyBuild(url)) this.managed.add(url)
     const existing = this.modules.get(url)
     if (existing) return existing
     const pending = this.download(url)
@@ -293,6 +301,7 @@ export class AppDependencies {
     const finalUrl = response.url || url
     if (!finalUrl.startsWith('https://'))
       throw new Error(`App dependency redirected to a non-HTTPS URL: ${finalUrl}`)
+    if (this.managed.has(url)) this.managed.add(finalUrl)
     const contentType = response.headers.get('content-type')
     if (contentType?.includes('text/html'))
       throw new Error(`App dependency ${finalUrl} returned HTML instead of a module`)
