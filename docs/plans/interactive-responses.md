@@ -210,3 +210,8 @@ guided setup stream; plan approved in conversation, steps s1–s5).
   (`live-model-sources-row.png`). No page errors. The other session's e2e
   stack on 3102/8392/8398 was left untouched.
 - Fidelity seals remain HITL and open.
+
+
+## Completion follow-up (2026-11-20)
+
+[PR #146 completion record](interactive-responses-completion.md) documents the source identity/context, chart interaction/contract, transcript geometry, palette-validation, preview-runtime and CI gaps closed for the first evidence-response slice, with rendered and executable evidence. Later action, graph/terminal and writing-assessment phases remain separate.

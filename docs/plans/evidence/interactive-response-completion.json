@@ -1,0 +1,118 @@
+{
+  "schema": "theorem.interactive-response-completion.v1",
+  "recordedAt": "2026-11-20T22:49:41.975721+00:00",
+  "pullRequest": 146,
+  "baseRevision": "02b9783d9415c8424dd9323ee18a6db678d536ac",
+  "scope": "Phase1 evidence responses; local and fixture verification, no production deployment or human visual seal",
+  "unitSuites": {
+    "composer": {
+      "passed": 975,
+      "failed": 0,
+      "files": 98,
+      "assertions": 3213
+    },
+    "appearance": {
+      "passed": 152,
+      "failed": 0,
+      "files": 14,
+      "assertions": 4871
+    }
+  },
+  "typecheck": "passed",
+  "changedFileEslint": "passed",
+  "colorAudit": {
+    "modes": 10,
+    "predicates": 1090,
+    "failures": 0
+  },
+  "browserResponses": [
+    {
+      "id": "response-evidence",
+      "engine": "webkit",
+      "version": "27.2",
+      "checks": {
+        "one source cited twice draws one preview": true,
+        "the preview names the source": true,
+        "keyboard opens the Sources dropdown with the exact passage": true,
+        "the dropdown offers Open source and Add to context": true,
+        "Open source goes to the source itself": true,
+        "the composer carries the source as a reference": true,
+        "a resolved preview retains its exact supporting passage": true,
+        "Escape returns passage focus to its trigger": true,
+        "distinct sources in one message both reach the composer": true,
+        "adding the same source again is idempotent": true,
+        "chart navigation preserves the preceding message geometry": true,
+        "keyboard inspection reaches exact values with units": true,
+        "expansion retains the selected values": true,
+        "expanded Data retains original values and provenance": true,
+        "closing preserves Data mode and restores focus": true,
+        "returning to Chart retains point selection": true,
+        "the chart plots first": true,
+        "the Data view shows the plot's own values": true,
+        "units and provenance stay visible": true
+      }
+    },
+    {
+      "id": "response-evidence",
+      "engine": "chromium",
+      "version": "156.0.8078.4",
+      "checks": {
+        "one source cited twice draws one preview": true,
+        "the preview names the source": true,
+        "keyboard opens the Sources dropdown with the exact passage": true,
+        "the dropdown offers Open source and Add to context": true,
+        "Open source goes to the source itself": true,
+        "the composer carries the source as a reference": true,
+        "a resolved preview retains its exact supporting passage": true,
+        "Escape returns passage focus to its trigger": true,
+        "distinct sources in one message both reach the composer": true,
+        "adding the same source again is idempotent": true,
+        "chart navigation preserves the preceding message geometry": true,
+        "keyboard inspection reaches exact values with units": true,
+        "expansion retains the selected values": true,
+        "expanded Data retains original values and provenance": true,
+        "closing preserves Data mode and restores focus": true,
+        "returning to Chart retains point selection": true,
+        "the chart plots first": true,
+        "the Data view shows the plot's own values": true,
+        "units and provenance stay visible": true
+      }
+    }
+  ],
+  "browserAppearance": {
+    "id": "settings-appearance",
+    "engine": "webkit",
+    "version": "27.2",
+    "checks": {
+      "editors seed from the active palette in both modes": true,
+      "a failing contrast pair is refused with its reason": true,
+      "a refused edit paints nothing": true,
+      "a valid edit applies as the custom palette": true
+    }
+  },
+  "browserTouch": {
+    "engine": "webkit",
+    "version": "27.2",
+    "checks": {
+      "touch target outside the visible switch track toggles the real control": true,
+      "touch hit area is at least44px with compact track preserved": true,
+      "touch inspection shows exact values with units": true,
+      "touch expansion preserves selected values": true,
+      "narrow expanded chart stays inside viewport": true,
+      "expanded data retains original numbers": true,
+      "closing on touch keeps Data view": true,
+      "no horizontal page overflow": true,
+      "no browser runtime errors": true
+    },
+    "errors": []
+  },
+  "workerBuild": {
+    "status": "passed",
+    "compatibilityFlags": ["global_fetch_strictly_public", "nodejs_compat"]
+  },
+  "workerRuntime": {
+    "example.com": "Example Domain",
+    "react.dev": "React metadata returned",
+    "localtest.me": "private addresses resolved; platform fetch refused; preview null"
+  }
+}

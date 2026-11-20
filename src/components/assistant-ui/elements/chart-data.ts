@@ -14,6 +14,7 @@ export type ChartSeriesInput = {
 
 export interface NormalizedSeries {
   label: string | undefined
+  color: string | undefined
   values: number[]
   labels: string[]
 }
@@ -49,6 +50,7 @@ export function normalizeChart(input: {
     count,
     series: raw.map((entry) => ({
       label: typeof entry.label === 'string' ? entry.label : undefined,
+      color: typeof entry.color === 'string' ? entry.color : undefined,
       values: Array.from({ length: count }, (_, point) =>
         finite(entry.data?.[point]?.value),
       ),
@@ -67,7 +69,8 @@ function niceCeil(value: number): number {
   const base = 10 ** exponent
   for (const multiple of [1, 2, 5, 10]) {
     const candidate = multiple * base
-    if (candidate >= value - 1e-9) return candidate
+    if (candidate >= value || value - candidate <= value * Number.EPSILON * 4)
+      return candidate
   }
   return 10 * base
 }
@@ -107,7 +110,60 @@ export function tickValues(scale: ChartScale): number[] {
   )
 }
 
-/** A tick or endpoint value as text: rounded to 2dp, grouped. */
+/** Readable ticks without rounding an entire small-valued series to zero.
+ *  The inspector and Data view retain the exact underlying value. */
 export function formatValue(value: number): string {
+  const magnitude = Math.abs(value)
+  if (magnitude > 0 && (magnitude < 0.0001 || magnitude >= 1e9))
+    return value.toLocaleString('en-US', {
+      notation: 'scientific',
+      maximumFractionDigits: 2,
+    })
+  if (magnitude > 0 && magnitude < 1)
+    return value.toLocaleString('en-US', { maximumSignificantDigits: 3 })
   return (Math.round(value * 100) / 100).toLocaleString('en-US')
+}
+
+/** Stack positive and negative values independently around zero. The data
+ *  remains unchanged; only plot coordinates accumulate. */
+export function chartPositions(series: NormalizedSeries[], stacked: boolean) {
+  const positive: number[] = []
+  const negative: number[] = []
+  return series.map((entry) => {
+    const starts = entry.values.map((value, point) =>
+      stacked ? ((value < 0 ? negative : positive)[point] ?? 0) : 0,
+    )
+    const ends = entry.values.map((value, point) => {
+      const end = starts[point]! + value
+      if (stacked) (value < 0 ? negative : positive)[point] = end
+      return end
+    })
+    return { ...entry, starts, ends }
+  })
+}
+
+/** Preserve the vocabulary's named color contract; arbitrary CSS is ignored. */
+export function chartSeriesColor(
+  series: NormalizedSeries,
+  index: number,
+  seriesCount: number,
+  color?: string,
+): string {
+  const token = series.color ?? (seriesCount === 1 ? color : undefined)
+  switch (token) {
+    case 'emphasis':
+      return 'var(--foreground)'
+    case 'secondary':
+      return 'color-mix(in oklab, var(--foreground) 62%, transparent)'
+    case 'alpha-70':
+      return 'color-mix(in oklab, var(--foreground) 70%, transparent)'
+    case 'white':
+      return 'white'
+    case 'white-70':
+      return 'color-mix(in oklab, white 70%, transparent)'
+    case 'white-50':
+      return 'color-mix(in oklab, white 50%, transparent)'
+    default:
+      return `var(--chart-${(index % 5) + 1})`
+  }
 }

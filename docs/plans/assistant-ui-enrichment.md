@@ -196,3 +196,8 @@ message-kind; the composer's message refs live in the global
 (3) no initial-message param — seeding needs a follow-up send. This is a
 workbench-architecture task, not a toolbar button; it is named here as the
 next increment, not shipped.
+
+
+## Interactive evidence responses (2026-11-20)
+
+[PR #146 completion record](interactive-responses-completion.md) documents the source identity/context, chart interaction/contract, transcript geometry, palette-validation, preview-runtime and CI gaps closed for the first evidence-response slice, with rendered and executable evidence. Later action, graph/terminal and writing-assessment phases remain separate.

@@ -9,13 +9,17 @@ import { create } from 'zustand'
 import type { RecordReference } from '@/components/crm/reference'
 import { Icon } from '@/components/icons'
 import type { DelegationReference } from '@/lib/theorem/delegations'
+import { citationReferenceKey } from '@/lib/theorem/citations'
 
 export type ComposerReference =
-  | TheoremContextReference
-  | DelegationReference
-  | RecordReference
+  TheoremContextReference | DelegationReference | RecordReference
 
-export function referenceKey({ location }: ComposerReference): string {
+export function referenceKey(reference: ComposerReference): string {
+  const { location } = reference
+  if (location.resource.kind === 'message') {
+    const citation = citationReferenceKey(reference as TheoremContextReference)
+    if (citation) return citation
+  }
   const { resource, range } = location
   const at = range
     ? `#${range.start.line}:${range.start.character}-${range.end.line}:${range.end.character}`
@@ -45,10 +49,20 @@ export const useComposerReferences = create<ComposerReferencesState>()(
   (set, get) => ({
     references: [],
     add: (reference) =>
-      set((s) => ({references:[
-        ...s.references.filter(existing=>referenceKey(existing)!==referenceKey(reference)),
-        reference,
-      ]})),
+      set((s) => {
+        const key = referenceKey(reference)
+        const index = s.references.findIndex(
+          (entry) => referenceKey(entry) === key,
+        )
+        if (index < 0) return { references: [...s.references, reference] }
+        // Refresh evidence or revision in place so repeated additions keep
+        // the person's context in the same order.
+        return {
+          references: s.references.map((entry, i) =>
+            i === index ? reference : entry,
+          ),
+        }
+      }),
     remove: (key) =>
       set((s) => ({
         references: s.references.filter((r) => referenceKey(r) !== key),

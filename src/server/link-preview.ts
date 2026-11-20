@@ -1,15 +1,12 @@
-// SOURCING: node:dns/promises + node:https/http to dial a resolved, approved
-// address directly (Bun's native fetch ignores undici's connect.lookup, so a
-// hostname check alone is not enough — a public name can resolve to a
-// private IP). The link-preview element is props-only; this resolves Open
-// Graph / meta tags for the citation renderer, same-origin, with a bounded
-// in-memory cache.
+// SOURCING: Bun/Node resolve and dial an approved IP via node:http(s),
+// preserving Host and SNI. Bun's fetch ignores undici's connect.lookup, so
+// hostname checks alone cannot prevent DNS rebinding into a private network.
+// Workers instead use their strictly public platform egress boundary; their
+// node:http(s) shim cannot dial IP URLs with a separate SNI name.
 //
-// Safety: every hop resolves the host, refuses any non-public address, and
-// connects to the exact approved IP (Host header + SNI keep the name), so a
-// DNS rebinding between check and connect cannot reach an internal page.
-// Redirects are followed manually and re-checked the same way; the body is
-// capped; nothing but the extracted fields is returned.
+// Every redirect is manually re-approved, and DNS/connect/body work shares a
+// bounded deadline. Only bounded, extracted Open Graph fields are returned
+// to the citation renderer, with a bounded in-memory cache.
 import dns from 'node:dns/promises'
 import https from 'node:https'
 import http from 'node:http'
@@ -60,15 +57,25 @@ function blockedHost(host: string): boolean {
     )
       return true
   }
-  // IPv6 literals (URL hosts keep the brackets off here).
   if (name.includes(':')) {
-    const bare = name.replace(/^\[|\]$/g, '')
+    // Normalize expanded/mapped IPv6 and cover the whole link-local prefix,
+    // not just addresses whose first hextet happens to be exactly fe80.
+    let bare: string
+    try {
+      bare = new URL(
+        `http://[${name.replace(/^\[|\]$/g, '')}]/`,
+      ).hostname.replace(/^\[|\]$/g, '')
+    } catch {
+      return true
+    }
+    const first = parseInt(bare.split(':')[0] || '0', 16)
     if (
       bare === '::1' ||
       bare === '::' ||
-      bare.startsWith('fe80') ||
-      bare.startsWith('fc') ||
-      bare.startsWith('fd') ||
+      (first & 0xffc0) === 0xfe80 ||
+      (first & 0xffc0) === 0xfec0 ||
+      (first & 0xfe00) === 0xfc00 ||
+      (first & 0xff00) === 0xff00 ||
       bare.startsWith('::ffff:')
     )
       return true
@@ -96,14 +103,45 @@ export function publicAddress(address: string): boolean {
   return !blockedHost(host)
 }
 
+/** Stop waiting for DNS at the shared deadline. Native lookup cannot be
+ *  cancelled, so discard any late answer without opening a connection. */
+function abortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      signal.removeEventListener('abort', abort)
+      reject(signal.reason)
+    }
+    signal.addEventListener('abort', abort, { once: true })
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', abort)
+        resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', abort)
+        reject(error)
+      },
+    )
+    if (signal.aborted) abort()
+  })
+}
+
 /** Resolve a host and return its public addresses; throws if none are public. */
-async function approvedAddresses(hostname: string): Promise<string[]> {
-  // A literal IP needs no DNS; check it directly.
-  if (net.isIP(hostname)) {
-    if (!publicAddress(hostname)) throw new Error('address refused')
-    return [hostname]
+async function approvedAddresses(
+  hostname: string,
+  signal: AbortSignal,
+): Promise<string[]> {
+  signal.throwIfAborted()
+  // URL.hostname includes brackets around IPv6 literals; DNS does not.
+  const name = hostname.replace(/^\[|\]$/g, '')
+  if (net.isIP(name)) {
+    if (!publicAddress(name)) throw new Error('address refused')
+    return [name]
   }
-  const records = await dns.lookup(hostname, { all: true, verbatim: true })
+  const records = await abortable(
+    dns.lookup(name, { all: true, verbatim: true }),
+    signal,
+  )
   const addresses = records
     .map((record) => record.address)
     .filter(publicAddress)
@@ -121,52 +159,169 @@ interface PinnedResponse {
 
 /** GET one URL by connecting to an approved IP, with the name kept for Host
  *  and SNI. Reads at most MAX_BYTES. Redirects are not followed here. */
-function fetchPinned(url: URL, address: string): Promise<PinnedResponse> {
+function fetchPinned(
+  url: URL,
+  address: string,
+  signal: AbortSignal,
+): Promise<PinnedResponse> {
   return new Promise((resolve, reject) => {
+    signal.throwIfAborted()
     const secure = url.protocol === 'https:'
     const mod = secure ? https : http
-    const request = mod.request(
-      {
-        host: address,
-        port: url.port || (secure ? 443 : 80),
-        servername: url.hostname,
-        path: `${url.pathname}${url.search}`,
-        method: 'GET',
-        headers: {
-          host: url.host,
-          accept: 'text/html,application/xhtml+xml',
-          'user-agent':
-            'Mozilla/5.0 (compatible; TheoremLinkPreview/1.0; +https://theorem.dev)',
+    let request: http.ClientRequest | undefined
+    let response: http.IncomingMessage | undefined
+    let settled = false
+    let releaseResponseListeners: (() => void) | undefined
+    const cleanup = () => {
+      signal.removeEventListener('abort', abort)
+      releaseResponseListeners?.()
+      releaseResponseListeners = undefined
+    }
+    const fail = (error: unknown) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error)
+      // A deadline rejects the promise AND releases its active connection.
+      // Keep error handlers attached for errors emitted during destruction.
+      response?.destroy()
+      request?.destroy()
+    }
+    const abort = () => fail(signal.reason)
+    signal.addEventListener('abort', abort, { once: true })
+    try {
+      request = mod.request(
+        {
+          host: address,
+          port: url.port || (secure ? 443 : 80),
+          servername: net.isIP(url.hostname.replace(/^\[|\]$/g, ''))
+            ? undefined
+            : url.hostname,
+          path: `${url.pathname}${url.search}`,
+          method: 'GET',
+          headers: {
+            host: url.host,
+            accept: 'text/html,application/xhtml+xml',
+            'user-agent':
+              'Mozilla/5.0 (compatible; TheoremLinkPreview/1.0; +https://theorem.dev)',
+          },
         },
-        timeout: TIMEOUT_MS,
-      },
-      (response) => {
-        const headers: Record<string, string> = {}
-        for (const [name, value] of Object.entries(response.headers))
-          if (typeof value === 'string') headers[name] = value
-        const chunks: Buffer[] = []
-        let bytes = 0
-        response.on('data', (chunk: Buffer) => {
-          bytes += chunk.byteLength
-          if (bytes <= MAX_BYTES) chunks.push(chunk)
-          if (bytes >= MAX_BYTES) response.destroy()
-        })
-        const finish = () =>
-          resolve({
-            status: response.statusCode ?? 0,
-            headers,
-            body: Buffer.concat(chunks).toString('utf8'),
-            url: url.href,
-          })
-        response.on('end', finish)
-        response.on('close', finish)
-        response.on('error', reject)
-      },
-    )
-    request.on('timeout', () => request.destroy(new Error('timeout')))
-    request.on('error', reject)
-    request.end()
+        (incoming) => {
+          response = incoming
+          incoming.on('error', fail)
+          if (settled) {
+            incoming.destroy()
+            return
+          }
+          const headers: Record<string, string> = {}
+          for (const [name, value] of Object.entries(incoming.headers))
+            if (typeof value === 'string') headers[name] = value
+          const chunks: Buffer[] = []
+          let bytes = 0
+          const finish = () => {
+            if (settled) return
+            settled = true
+            cleanup()
+            resolve({
+              status: incoming.statusCode ?? 0,
+              headers,
+              body: Buffer.concat(chunks).toString('utf8'),
+              url: url.href,
+            })
+          }
+          const data = (chunk: Buffer) => {
+            const bounded = chunk.subarray(0, MAX_BYTES - bytes)
+            chunks.push(bounded)
+            bytes += bounded.byteLength
+            if (bytes >= MAX_BYTES) {
+              finish()
+              incoming.destroy()
+              request?.destroy()
+            }
+          }
+          const close = () =>
+            fail(new Error('response closed before completion'))
+          releaseResponseListeners = () => {
+            incoming.off('data', data)
+            incoming.off('end', finish)
+            incoming.off('close', close)
+          }
+          incoming.on('data', data)
+          incoming.on('end', finish)
+          incoming.on('close', close)
+        },
+      )
+      request.on('error', fail)
+      request.end()
+    } catch (error) {
+      fail(error)
+    }
   })
+}
+
+/** Workers cannot dial arbitrary IP URLs through node:http(s), and their
+ *  HTTPS shim does not support a separate SNI name. Use the platform's public
+ *  egress boundary instead: vite.config.ts enables global_fetch_strictly_public.
+ *  This is selected only by the documented Workers runtime identity, never as
+ *  a fallback when a pinned Bun/Node connection fails.
+ *
+ *  https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public
+ *  https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-navigator
+ */
+function workersRuntime(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    navigator.userAgent === 'Cloudflare-Workers'
+  )
+}
+
+async function fetchPublicWorker(
+  url: URL,
+  signal: AbortSignal,
+): Promise<PinnedResponse> {
+  signal.throwIfAborted()
+  const response = await fetch(url.href, {
+    redirect: 'manual',
+    credentials: 'omit',
+    signal,
+    headers: {
+      accept: 'text/html,application/xhtml+xml',
+      'user-agent':
+        'Mozilla/5.0 (compatible; TheoremLinkPreview/1.0; +https://theorem.dev)',
+    },
+  })
+  const reader = response.body?.getReader()
+  const cancel = () => {
+    // Cancelling a reader also releases the platform's active fetch connection.
+    // Do not let a slow cancellation extend the request deadline.
+    void reader?.cancel(signal.reason).catch(() => {})
+  }
+  signal.addEventListener('abort', cancel, { once: true })
+  try {
+    signal.throwIfAborted()
+    const chunks: Uint8Array[] = []
+    let bytes = 0
+    if (reader) {
+      while (bytes < MAX_BYTES) {
+        const { done, value } = await abortable(reader.read(), signal)
+        signal.throwIfAborted()
+        if (done) break
+        const bounded = value.subarray(0, MAX_BYTES - bytes)
+        chunks.push(bounded)
+        bytes += bounded.byteLength
+      }
+    }
+    return {
+      status: response.status,
+      headers: Object.fromEntries(response.headers),
+      body: Buffer.concat(chunks).toString('utf8'),
+      url: url.href,
+    }
+  } finally {
+    signal.removeEventListener('abort', cancel)
+    cancel()
+    reader?.releaseLock()
+  }
 }
 
 const entity = (text: string): string =>
@@ -252,39 +407,55 @@ export function extractMetadata(html: string, base: URL): LinkMetadata {
   }
 }
 
-/** Fetch one URL, resolving and approving the address at every hop and
- *  connecting to that exact IP. Redirects are followed manually (max
- *  MAX_REDIRECTS) and re-approved the same way. */
+/** Re-approve every redirect. Bun/Node pin each dial to an approved address;
+ *  Workers enforce public-only egress at the platform network boundary. */
 async function fetchChecked(url: URL): Promise<PinnedResponse> {
-  let current = url
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const addresses = await approvedAddresses(current.hostname)
-    let response: PinnedResponse | undefined
-    let lastError: unknown
-    for (const address of addresses) {
-      try {
-        response = await fetchPinned(current, address)
-        break
-      } catch (error) {
-        lastError = error
+  const controller = new AbortController()
+  // One elapsed-time budget includes DNS, address retries, every redirect,
+  // TLS connection and body. A socket idle timeout alone permits slow drips.
+  const deadline = setTimeout(
+    () => controller.abort(new Error('link preview timed out')),
+    TIMEOUT_MS,
+  )
+  const { signal } = controller
+  try {
+    let current = url
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      const addresses = await approvedAddresses(current.hostname, signal)
+      let response: PinnedResponse | undefined
+      let lastError: unknown
+      if (workersRuntime()) {
+        response = await fetchPublicWorker(current, signal)
+      } else {
+        for (const address of addresses) {
+          try {
+            response = await fetchPinned(current, address, signal)
+            break
+          } catch (error) {
+            signal.throwIfAborted()
+            lastError = error
+          }
+        }
       }
+      if (!response) throw lastError ?? new Error('connect failed')
+      if (
+        response.status >= 300 &&
+        response.status < 400 &&
+        response.headers.location
+      ) {
+        const next = publicHttpUrl(
+          new URL(response.headers.location, current).href,
+        )
+        if (!next) throw new Error('redirect refused')
+        current = next
+        continue
+      }
+      return response
     }
-    if (!response) throw lastError ?? new Error('connect failed')
-    if (
-      response.status >= 300 &&
-      response.status < 400 &&
-      response.headers.location
-    ) {
-      const next = publicHttpUrl(
-        new URL(response.headers.location, current).href,
-      )
-      if (!next) throw new Error('redirect refused')
-      current = next
-      continue
-    }
-    return response
+    throw new Error('too many redirects')
+  } finally {
+    clearTimeout(deadline)
   }
-  throw new Error('too many redirects')
 }
 
 /** Resolve one URL's preview metadata; null when it cannot be read. */
@@ -300,7 +471,11 @@ export async function resolveLinkMetadata(
   try {
     const response = await fetchChecked(url)
     const type = response.headers['content-type'] ?? ''
-    if (response.status >= 200 && response.status < 300 && type.includes('html')) {
+    if (
+      response.status >= 200 &&
+      response.status < 300 &&
+      type.includes('html')
+    ) {
       const finalUrl = publicHttpUrl(response.url) ?? url
       const meta = extractMetadata(response.body, finalUrl)
       // A page with no title at all is not a preview worth drawing.

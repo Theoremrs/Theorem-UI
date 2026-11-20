@@ -1,10 +1,6 @@
-// SOURCING: chart-data (the one normalized dataset + truthful axis the plot,
-// Data view and aria description share), the app's material resolver and
-// useLiquidGlass for the glass frame, coss ui SegmentedControl for the
-// Chart/Data switch, Icon for the marks, utils/href for a safe source link.
-// The plot is Theorem's own SVG (the vocabulary's chart math is not
-// exported); its series colors read the customizable --chart-1..5 slots.
-import { useMemo, useRef, useState } from 'react'
+// SOURCING: chart-data owns the shared dataset and plot coordinates. Theorem's
+// material resolver, coss controls and Base UI dialog own appearance and focus.
+import { useId, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 import type { GenerativeUILibrary } from '@assistant-ui/generative-ui/react'
 import { defaultGenerativeUILibrary } from '@assistant-ui/generative-ui/react'
@@ -12,6 +8,12 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/coss/segmented-control'
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { Icon } from '@/components/icons'
 import { useLiquidGlass } from '@/components/glass/liquid-glass/use-liquid-glass'
 import { useSurfaceMaterial } from '@/lib/appearance'
@@ -21,19 +23,22 @@ import { useIsomorphicLayoutEffect } from '../utils/useIsomorphicLayoutEffect'
 import { responseToolbar } from './surfaces'
 import {
   axisScale,
+  chartPositions,
+  chartSeriesColor,
   formatValue,
   normalizeChart,
   tickValues,
 } from './chart-data'
-import type { ChartSeriesInput, ChartPoint } from './chart-data'
-
-type Point = ChartPoint
-type Series = ChartSeriesInput
+import type {
+  ChartSeriesInput,
+  ChartPoint,
+  NormalizedChart,
+} from './chart-data'
 
 export type EvidenceChartProps = {
   variant?: 'bar' | 'line' | 'sparkline' | 'area'
-  data?: Point[]
-  series?: Series[]
+  data?: ChartPoint[]
+  series?: ChartSeriesInput[]
   stacked?: boolean
   showAxis?: boolean
   showLegend?: boolean
@@ -44,20 +49,14 @@ export type EvidenceChartProps = {
   source?: string
   /** A URL for the source, when one exists; only then is the caption a link. */
   sourceUrl?: string
-  /** A short name for what is plotted. */
   title?: string
   children?: React.ReactNode
 }
 
 const baseChart = defaultGenerativeUILibrary.Chart!
-const SERIES_SLOTS = 5
-const seriesColor = (index: number) =>
-  `var(--chart-${(index % SERIES_SLOTS) + 1})`
-
-/** The plot's geometry: a left gutter for y ticks, a bottom band for x
- *  labels, and the drawing box between. Width is measured, not a fixed
- *  desktop viewBox, so a narrow chart keeps readable text. */
-const PAD = { top: 12, right: 16, bottom: 22, left: 40 }
+type View = 'chart' | 'data'
+const labelOf = (chart: NormalizedChart, index: number) =>
+  chart.series[index]?.label ?? `Series ${index + 1}`
 
 function useWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null)
@@ -76,107 +75,160 @@ function useWidth<T extends HTMLElement>() {
   return { ref, width }
 }
 
-/**
- * The evidence chart: a glass frame (the material resolver owns the
- * perimeter) around a stable, opaque reading panel that carries the plot,
- * axes, labels and legend. The plot, the Data view and the aria description
- * all read one normalized dataset, so they cannot drift. Multiple series
- * always carry a legend and a dashed alternate line, so identity survives
- * even when two chosen hues are close.
- */
+/** Inline and expanded views share data, selection and view mode. Expanding
+ *  never requests data or runs the presentation operation again. */
 export function EvidenceChart(props: EvidenceChartProps) {
-  const [view, setView] = useState<'chart' | 'data'>('chart')
+  const [view, setView] = useState<View>('chart')
+  const [selected, setSelected] = useState<number | null>(null)
   const { data, series } = props
   const chart = useMemo(() => normalizeChart({ data, series }), [data, series])
-  const named = chart.series.length > 1 || chart.series[0]?.label !== undefined
-  const labelOf = (index: number) =>
-    chart.series[index]?.label ?? `Series ${index + 1}`
+  const state = {
+    props,
+    chart,
+    view,
+    setView,
+    selected:
+      selected === null || !chart.count
+        ? null
+        : Math.min(selected, chart.count - 1),
+    setSelected,
+  }
+  return (
+    <Dialog>
+      <ChartFrame
+        {...state}
+        expand={
+          <DialogTrigger
+            aria-label="Expand chart"
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm text-ink-muted outline-focus hover:bg-hover hover:text-ink focus-visible:outline-2"
+          >
+            <Icon.Expand className="size-3.5" />
+          </DialogTrigger>
+        }
+      />
+      <DialogContent
+        className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto rounded-md pt-10 sm:max-w-5xl"
+        aria-describedby={undefined}
+      >
+        <DialogTitle className="sr-only">{props.title ?? 'Chart'}</DialogTitle>
+        <ChartFrame {...state} expanded />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+type ChartFrameProps = {
+  props: EvidenceChartProps
+  chart: NormalizedChart
+  view: View
+  setView: (view: View) => void
+  selected: number | null
+  setSelected: (point: number) => void
+  expanded?: boolean
+  expand?: React.ReactNode
+}
+
+/** A material perimeter around an opaque, stable reading panel. */
+function ChartFrame({
+  props,
+  chart,
+  view,
+  setView,
+  selected,
+  setSelected,
+  expanded = false,
+  expand,
+}: ChartFrameProps) {
   const material = useSurfaceMaterial('chart')
   const liquid = material === 'glass' || material === 'liquid'
   const frameRef = useRef<HTMLElement>(null)
   useLiquidGlass(frameRef, liquid)
   const sourceHref = safeHref(props.sourceUrl)
-  const description = chart.series
-    .map(
-      (entry, index) =>
-        `${named ? labelOf(index) : 'Values'}: ${entry.values
-          .map((value, point) => `${entry.labels[point]} ${formatValue(value)}`)
-          .join(', ')}`,
-    )
-    .join('. ')
-
+  const named = chart.series.length > 1 || chart.series[0]?.label !== undefined
+  const legend = props.showLegend ?? (named && props.variant !== 'sparkline')
   return (
     <figure
       ref={frameRef}
       data-slot="evidence-chart"
       data-surface-role="chart"
+      data-expanded={expanded || undefined}
       className={cn(
         'response-frame evidence-chart my-2',
         liquid && 'surface-liquid',
       )}
     >
       <div className={responseToolbar}>
-        <span data-appearance-recipe="ui.section" className="min-w-0 truncate">
+        <span
+          data-appearance-recipe="ui.section"
+          className="min-w-0 flex-1 truncate"
+        >
           {props.title ?? 'Chart'}
         </span>
         {props.units && (
           <span
             data-appearance-recipe="metadata"
-            className="min-w-0 flex-1 truncate text-ink-muted"
+            className="min-w-0 truncate text-ink-muted"
           >
             {props.units}
           </span>
         )}
         <SegmentedControl size="sm" aria-label="Chart view">
-          <SegmentedControlItem
-            size="sm"
-            aria-pressed={view === 'chart'}
-            data-pressed={view === 'chart' ? '' : undefined}
-            onClick={() => setView('chart')}
-          >
-            Chart
-          </SegmentedControlItem>
-          <SegmentedControlItem
-            size="sm"
-            aria-pressed={view === 'data'}
-            data-pressed={view === 'data' ? '' : undefined}
-            onClick={() => setView('data')}
-          >
-            Data
-          </SegmentedControlItem>
+          {(['chart', 'data'] as const).map((mode) => (
+            <SegmentedControlItem
+              key={mode}
+              size="sm"
+              aria-pressed={view === mode}
+              data-pressed={view === mode ? '' : undefined}
+              onClick={() => setView(mode)}
+            >
+              {mode === 'chart' ? 'Chart' : 'Data'}
+            </SegmentedControlItem>
+          ))}
         </SegmentedControl>
+        {expand}
       </div>
       <div className="response-frame-body">
         <div className="evidence-chart-reading">
-          {view === 'chart' ? (
+          {chart.count === 0 ? (
+            <p className="py-4 text-sm text-ink-muted">No data points yet.</p>
+          ) : view === 'chart' ? (
             <>
               <ChartPlot
                 chart={chart}
-                variant={props.variant ?? 'line'}
-                units={props.units}
-                description={description}
+                props={props}
+                expanded={expanded}
+                selected={selected}
+                setSelected={setSelected}
               />
-              {named && (
-                <div className="evidence-chart-legend" aria-hidden>
-                  {chart.series.map((_, index) => (
-                    <span
-                      key={index}
-                      className="evidence-chart-legend-item"
-                      data-series={index}
-                    >
+              {legend && (
+                <div className="evidence-chart-legend" aria-label="Series">
+                  {chart.series.map((entry, index) => {
+                    const color = chartSeriesColor(
+                      entry,
+                      index,
+                      chart.series.length,
+                      props.color,
+                    )
+                    return (
                       <span
-                        className="evidence-chart-legend-swatch"
-                        style={{
-                          background:
-                            index % 2 === 1 ? 'transparent' : seriesColor(index),
-                          ...(index % 2 === 1 && {
-                            backgroundImage: `repeating-linear-gradient(90deg, ${seriesColor(index)} 0 3px, transparent 3px 6px)`,
-                          }),
-                        }}
-                      />
-                      {labelOf(index)}
-                    </span>
-                  ))}
+                        key={index}
+                        className="evidence-chart-legend-item"
+                        data-series={index}
+                      >
+                        <span
+                          className="evidence-chart-legend-swatch"
+                          aria-hidden="true"
+                          style={{
+                            background: index % 2 === 1 ? 'transparent' : color,
+                            ...(index % 2 === 1 && {
+                              backgroundImage: `repeating-linear-gradient(90deg, ${color} 0 3px, transparent 3px 6px)`,
+                            }),
+                          }}
+                        />
+                        {labelOf(chart, index)}
+                      </span>
+                    )
+                  })}
                 </div>
               )}
             </>
@@ -186,24 +238,40 @@ export function EvidenceChart(props: EvidenceChartProps) {
                 data-slot="evidence-chart-table"
                 className="w-full border-collapse text-sm"
               >
+                <caption className="sr-only">
+                  {props.title ?? 'Chart'}
+                  {props.units ? ` (${props.units})` : ''}
+                </caption>
                 <thead>
                   <tr className="border-b border-separator text-start">
-                    <th className="px-2 py-1 text-start font-medium text-ink-muted">
+                    <th
+                      scope="col"
+                      className="px-2 py-1 text-start font-medium text-ink-muted"
+                    >
                       Point
                     </th>
                     {chart.series.map((_, index) => (
                       <th
                         key={index}
+                        scope="col"
                         className="px-2 py-1 text-end font-medium text-ink-muted"
                       >
-                        {named ? labelOf(index) : (props.units ?? 'Value')}
+                        {named
+                          ? labelOf(chart, index)
+                          : (props.units ?? 'Value')}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {Array.from({ length: chart.count }, (_, point) => (
-                    <tr key={point} className="border-b border-separator/60">
+                    <tr
+                      key={point}
+                      className={cn(
+                        'border-b border-separator/60',
+                        selected === point && 'bg-hover',
+                      )}
+                    >
                       <td className="px-2 py-1 text-ink-muted">
                         {chart.series[0]?.labels[point]}
                       </td>
@@ -212,6 +280,12 @@ export function EvidenceChart(props: EvidenceChartProps) {
                           key={index}
                           className="px-2 py-1 text-end tabular-nums"
                         >
+                          {entry.labels[point] !==
+                            chart.series[0]?.labels[point] && (
+                            <span className="me-1 text-ink-muted">
+                              {entry.labels[point]}:
+                            </span>
+                          )}
                           {entry.values[point]}
                         </td>
                       ))}
@@ -223,181 +297,317 @@ export function EvidenceChart(props: EvidenceChartProps) {
           )}
         </div>
       </div>
-      {props.source && (
-        <figcaption
-          data-appearance-recipe="metadata"
-          className="flex items-center gap-1.5 border-t border-separator px-3 py-1.5 text-ink-muted"
-        >
-          <Icon.Link className="size-3 shrink-0" />
-          {sourceHref ? (
-            <a
-              href={sourceHref}
-              target="_blank"
-              rel="noreferrer"
-              className="min-w-0 truncate text-link underline underline-offset-2"
-            >
-              {props.source}
-            </a>
-          ) : (
-            <span className="min-w-0 truncate">{props.source}</span>
-          )}
-        </figcaption>
-      )}
+      <figcaption
+        data-appearance-recipe="metadata"
+        className="flex items-start gap-1.5 border-t border-separator px-3 py-1.5 text-ink-muted"
+      >
+        <Icon.Link className="mt-0.5 size-3 shrink-0" />
+        {sourceHref ? (
+          <a
+            href={sourceHref}
+            target="_blank"
+            rel="noreferrer"
+            className="min-w-0 break-words text-link underline underline-offset-2"
+          >
+            {props.source || 'View source'}
+          </a>
+        ) : (
+          <span className="min-w-0 break-words">
+            {props.source || 'Source not provided'}
+          </span>
+        )}
+      </figcaption>
     </figure>
   )
 }
 
-/** The plot: a measured-width SVG on the reading panel. Gridlines and ticks
- *  from the truthful axis; each series a line (alternate series dashed) with
- *  an endpoint value label; bars for the bar variant. Colors read the
- *  customizable --chart-N slots. */
+/** One focus stop inspects every point. Pointer/touch and keyboard selection
+ *  read the same values as Data, including unrounded small measurements. */
 function ChartPlot({
   chart,
-  variant,
-  units,
-  description,
+  props,
+  expanded,
+  selected,
+  setSelected,
 }: {
-  chart: ReturnType<typeof normalizeChart>
-  variant: NonNullable<EvidenceChartProps['variant']>
-  units: string | undefined
-  description: string
+  chart: NormalizedChart
+  props: EvidenceChartProps
+  expanded: boolean
+  selected: number | null
+  setSelected: (point: number) => void
 }) {
   const { ref, width } = useWidth<HTMLDivElement>()
-  // A compact plot for genuinely narrow frames; text keeps its size because
-  // the viewBox is the measured width, not a fixed desktop box.
-  const height = width < 480 ? 144 : 200
-  const scale = axisScale(chart.series)
-  const ticks = tickValues(scale)
-  const plotW = Math.max(1, width - PAD.left - PAD.right)
-  const plotH = height - PAD.top - PAD.bottom
-  const x = (point: number) =>
-    PAD.left +
-    (chart.count <= 1 ? plotW / 2 : (plotW * point) / (chart.count - 1))
-  const y = (value: number) =>
-    PAD.top + plotH - ((value - scale.min) / (scale.max - scale.min)) * plotH
-  const baseY = y(Math.max(scale.min, 0))
+  const readoutId = useId()
+  const variant = props.variant ?? 'line'
   const isBar = variant === 'bar'
-  const slot = chart.count > 0 ? plotW / chart.count : plotW
-  const barW = Math.max(2, (slot * 0.7) / chart.series.length)
-
+  const sparkline = variant === 'sparkline'
+  const showAxis = props.showAxis ?? !sparkline
+  const stacked = props.stacked === true && (isBar || variant === 'area')
+  const positioned = chartPositions(chart.series, stacked)
+  const scale = axisScale(
+    positioned.map((entry) => ({ ...entry, values: entry.ends })),
+  )
+  const height =
+    sparkline && !showAxis
+      ? 64
+      : expanded
+        ? width < 480
+          ? 240
+          : 320
+        : width < 480
+          ? 144
+          : 200
+  const ticks = tickValues(scale)
+  const axisGutter = Math.max(
+    40,
+    ...ticks.map((tick) => formatValue(tick).length * 7 + 10),
+  )
+  const pad = showAxis
+    ? { top: 16, right: 16, bottom: 24, left: axisGutter }
+    : { top: 16, right: 10, bottom: 12, left: 10 }
+  const plotW = Math.max(1, width - pad.left - pad.right)
+  const plotH = height - pad.top - pad.bottom
+  const slot = plotW / chart.count
+  const x = (point: number) =>
+    pad.left +
+    (isBar
+      ? slot * (point + 0.5)
+      : chart.count === 1
+        ? plotW / 2
+        : (plotW * point) / (chart.count - 1))
+  const y = (value: number) =>
+    pad.top + plotH - ((value - scale.min) / (scale.max - scale.min)) * plotH
+  const barW = (slot * 0.7) / (stacked ? 1 : chart.series.length)
+  const labelStep = Math.max(
+    1,
+    Math.ceil(chart.count / Math.max(1, Math.floor(plotW / 60))),
+  )
+  const pointText = (series: number, point: number) => {
+    const entry = chart.series[series]!
+    return `${labelOf(chart, series)}, ${entry.labels[point]}: ${entry.values[point]}${props.units ? ` ${props.units}` : ''}`
+  }
+  const inspectPointer = (clientX: number) => {
+    const box = ref.current?.getBoundingClientRect()
+    if (!box || box.width === 0) return
+    const position = ((clientX - box.left) * width) / box.width - pad.left
+    const point = isBar
+      ? Math.floor(position / slot)
+      : Math.round((position / plotW) * (chart.count - 1))
+    setSelected(Math.max(0, Math.min(chart.count - 1, point)))
+  }
   return (
-    <div ref={ref} className="w-full">
-      <svg
-        className="evidence-chart-plot"
-        viewBox={`0 0 ${width} ${height}`}
-        width={width}
-        height={height}
-        style={{ height }}
-        role="img"
-        aria-label={units ? `${description}. Units: ${units}.` : description}
-        data-variant={variant}
+    <div>
+      <div
+        ref={ref}
+        role="group"
+        tabIndex={0}
+        data-slot="chart-inspector"
+        aria-label="Inspect chart values"
+        aria-describedby={readoutId}
+        aria-keyshortcuts="ArrowLeft ArrowRight Home End"
+        className="w-full rounded-sm outline-focus focus-visible:outline-2 focus-visible:outline-offset-2"
+        onFocus={() => {
+          if (selected === null) setSelected(0)
+        }}
+        onKeyDown={(event) => {
+          const next =
+            event.key === 'Home'
+              ? 0
+              : event.key === 'End'
+                ? chart.count - 1
+                : event.key === 'ArrowRight'
+                  ? Math.min(chart.count - 1, (selected ?? -1) + 1)
+                  : event.key === 'ArrowLeft'
+                    ? Math.max(0, (selected ?? 1) - 1)
+                    : null
+          if (next === null) return
+          event.preventDefault()
+          setSelected(next)
+        }}
+        onPointerMove={(event) => {
+          if (event.pointerType !== 'touch' || event.buttons)
+            inspectPointer(event.clientX)
+        }}
+        onPointerDown={(event) => inspectPointer(event.clientX)}
       >
-        {ticks.map((tick, index) => (
-          <g key={index}>
-            <line
-              className="evidence-chart-grid"
-              x1={PAD.left}
-              x2={width - PAD.right}
-              y1={y(tick)}
-              y2={y(tick)}
-            />
-            <text x={PAD.left - 6} y={y(tick) + 3} textAnchor="end">
-              {formatValue(tick)}
-            </text>
-          </g>
-        ))}
-        <line
-          className="evidence-chart-axis"
-          x1={PAD.left}
-          x2={width - PAD.right}
-          y1={baseY}
-          y2={baseY}
-        />
-        {chart.series[0]?.labels.map((label, point) => (
-          <text
-            key={point}
-            x={isBar ? PAD.left + slot * (point + 0.5) : x(point)}
-            y={height - 6}
-            textAnchor="middle"
-          >
-            {label}
-          </text>
-        ))}
-        {chart.series.map((entry, index) => {
-          const color = seriesColor(index)
-          if (isBar) {
-            return entry.values.map((value, point) => {
-              const bx =
-                PAD.left +
-                slot * point +
-                slot * 0.15 +
-                index * barW
-              const by = y(Math.max(value, 0))
-              const bh = Math.abs(baseY - y(value))
-              return (
-                <rect
-                  key={`${index}-${point}`}
-                  x={bx}
-                  y={by}
-                  width={barW}
-                  height={Math.max(0, bh)}
-                  fill={color}
-                  data-series={index}
-                />
-              )
-            })
-          }
-          const points = entry.values.map((value, point) => `${x(point)},${y(value)}`)
-          const last = entry.values.length - 1
-          return (
-            <g key={index} data-series={index} style={{ color }}>
-              {variant === 'area' && (
-                <polygon
-                  className="evidence-chart-area"
-                  points={`${x(0)},${baseY} ${points.join(' ')} ${x(last)},${baseY}`}
-                  fill={color}
-                />
-              )}
-              <polyline
-                className="evidence-chart-line"
-                points={points.join(' ')}
-                stroke={color}
-                strokeDasharray={index % 2 === 1 ? '6 4' : undefined}
-              />
-              {entry.values.map((value, point) => (
-                <circle key={point} cx={x(point)} cy={y(value)} r={2.5} fill={color} />
+        <svg
+          className="evidence-chart-plot"
+          viewBox={`0 0 ${width} ${height}`}
+          width={width}
+          height={height}
+          style={{ height }}
+          role="img"
+          aria-label={`${props.title ?? 'Chart'}${props.units ? ` (${props.units})` : ''}. ${chart.count} points. ${chart.series.map((_, i) => labelOf(chart, i)).join(', ')}. Values are available in Data view.`}
+          data-variant={variant}
+          data-stacked={stacked || undefined}
+        >
+          {showAxis && (
+            <g data-slot="chart-axes">
+              {ticks.map((tick, index) => (
+                <g key={index}>
+                  <line
+                    className="evidence-chart-grid"
+                    x1={pad.left}
+                    x2={width - pad.right}
+                    y1={y(tick)}
+                    y2={y(tick)}
+                  />
+                  <text x={pad.left - 6} y={y(tick) + 3} textAnchor="end">
+                    {formatValue(tick)}
+                  </text>
+                </g>
               ))}
-              {last >= 0 && (
-                <text
-                  className="evidence-chart-endpoint"
-                  x={x(last)}
-                  y={y(entry.values[last]!) - 6}
-                  textAnchor="end"
-                >
-                  {formatValue(entry.values[last]!)}
-                </text>
+              <line
+                className="evidence-chart-axis"
+                x1={pad.left}
+                x2={width - pad.right}
+                y1={y(0)}
+                y2={y(0)}
+              />
+              {chart.series[0]?.labels.map((label, point) =>
+                point % labelStep === 0 || point === chart.count - 1 ? (
+                  <text
+                    key={point}
+                    x={x(point)}
+                    y={height - 6}
+                    textAnchor="middle"
+                  >
+                    {label}
+                  </text>
+                ) : null,
               )}
             </g>
-          )
-        })}
-      </svg>
+          )}
+          {selected !== null && (
+            <line
+              x1={x(selected)}
+              x2={x(selected)}
+              y1={pad.top}
+              y2={height - pad.bottom}
+              stroke="var(--ink-muted)"
+              strokeDasharray="2 3"
+            />
+          )}
+          {positioned.map((entry, index) => {
+            const color = chartSeriesColor(
+              entry,
+              index,
+              chart.series.length,
+              props.color,
+            )
+            if (isBar)
+              return entry.values.map((_, point) => (
+                <rect
+                  key={`${index}-${point}`}
+                  x={
+                    pad.left +
+                    slot * point +
+                    slot * 0.15 +
+                    (stacked ? 0 : index * barW)
+                  }
+                  y={Math.min(y(entry.starts[point]!), y(entry.ends[point]!))}
+                  width={barW}
+                  height={Math.abs(
+                    y(entry.starts[point]!) - y(entry.ends[point]!),
+                  )}
+                  fill={color}
+                  data-series={index}
+                  data-point={point}
+                >
+                  <title>{pointText(index, point)}</title>
+                </rect>
+              ))
+            const points = entry.ends.map(
+              (value, point) => `${x(point)},${y(value)}`,
+            )
+            const last = entry.values.length - 1
+            return (
+              <g key={index} data-series={index} style={{ color }}>
+                {variant === 'area' && chart.count > 1 && (
+                  <polygon
+                    className="evidence-chart-area"
+                    points={[
+                      ...points,
+                      ...entry.starts
+                        .map((value, point) => `${x(point)},${y(value)}`)
+                        .reverse(),
+                    ].join(' ')}
+                    fill={color}
+                  />
+                )}
+                <polyline
+                  className="evidence-chart-line"
+                  points={points.join(' ')}
+                  stroke={color}
+                  strokeDasharray={index % 2 === 1 ? '6 4' : undefined}
+                />
+                {entry.ends.map((value, point) => (
+                  <circle
+                    key={point}
+                    cx={x(point)}
+                    cy={y(value)}
+                    r={
+                      point === selected
+                        ? 4
+                        : sparkline && chart.count > 1
+                          ? 0
+                          : 2.5
+                    }
+                    fill={color}
+                    data-point={point}
+                  >
+                    <title>{pointText(index, point)}</title>
+                  </circle>
+                ))}
+                {!sparkline && last >= 0 && (
+                  <text
+                    className="evidence-chart-endpoint"
+                    x={x(last)}
+                    y={y(entry.ends[last]!) - 6}
+                    textAnchor="end"
+                  >
+                    {formatValue(entry.values[last]!)}
+                  </text>
+                )}
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+      <div
+        id={readoutId}
+        data-slot="chart-readout"
+        role="status"
+        aria-atomic="true"
+        className="min-h-9 pt-2 text-xs leading-relaxed text-ink-muted"
+      >
+        {selected === null ? (
+          'Point to a value, or focus the chart and use Left and Right to inspect.'
+        ) : (
+          <span className="flex flex-wrap gap-x-3 tabular-nums">
+            {chart.series.map((_, index) => (
+              <span key={index}>{pointText(index, selected)}</span>
+            ))}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
 
-/** The vocabulary's Chart definition, extended with evidence props. The
- *  additions are optional, so a tree that only plots keeps working. */
 export const evidenceChartDefinition: GenerativeUILibrary[string] = {
   ...baseChart,
   description:
-    'A chart with its evidence. `variant` selects bar, line, sparkline or area; `data` is one series of {label, value} points, `series` several named ones. Name `units` and `source` so the reader knows what the values measure and where they came from; the Data view shows the same values as a table.',
+    'A chart with its evidence. Inspect values, open Data or expand the same dataset. `variant` selects bar, line, sparkline or area; `data` is one series, `series` several. Name `units` and `source` so the reader knows what the values measure and where they came from.',
   properties: (baseChart.properties as z.ZodObject).extend({
     title: z.string().optional().describe('A short name for what is plotted.'),
     units: z.string().optional().describe('What the values measure.'),
     source: z
       .string()
       .optional()
-      .describe('Where the data came from and when (service, dataset, range).'),
+      .describe(
+        'Origin, date/range and transformations. Mark illustrative data explicitly.',
+      ),
     sourceUrl: z
       .string()
       .optional()

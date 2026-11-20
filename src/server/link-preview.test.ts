@@ -1,7 +1,26 @@
-// The metadata reader's pure parts: URL admission (the SSRF guard) and the
-// HTML extraction. The network path is exercised on the dev stack, not here.
-import { describe, expect, test } from 'bun:test'
-import { extractMetadata, publicAddress, publicHttpUrl } from './link-preview'
+// Pure metadata/SSRF checks plus deterministic DNS and stream lifecycle tests.
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  jest,
+  mock,
+  spyOn,
+  test,
+} from 'bun:test'
+import type { Mock } from 'bun:test'
+import type { LookupAddress, LookupAllOptions } from 'node:dns'
+import dns from 'node:dns/promises'
+import { EventEmitter } from 'node:events'
+import type { ClientRequest, IncomingMessage } from 'node:http'
+import https from 'node:https'
+import {
+  extractMetadata,
+  publicAddress,
+  publicHttpUrl,
+  resolveLinkMetadata,
+} from './link-preview'
 
 describe('publicHttpUrl', () => {
   test('admits public http(s) URLs', () => {
@@ -37,6 +56,10 @@ describe('publicHttpUrl', () => {
       'http://100.64.0.1/x',
       'http://[::1]/x',
       'http://[fe80::1]/x',
+      'http://[fe90::1]/x',
+      'http://[febf::1]/x',
+      'http://[fec0::1]/x',
+      'http://[ff02::1]/x',
       'http://[fd00::1]/x',
       'http://metadata.google.internal/x',
       'http://printer.local/x',
@@ -63,6 +86,12 @@ describe('publicAddress', () => {
       '::1',
       '::',
       'fe80::1',
+      'fe90::1',
+      'febf::1',
+      'fec0::1',
+      'ff02::1',
+      '0:0:0:0:0:0:0:1',
+      '0:0:0:0:0:ffff:7f00:1',
       'fc00::1',
       'fd00::1',
       '::ffff:127.0.0.1',
@@ -114,5 +143,426 @@ describe('extractMetadata', () => {
     const html =
       '<meta property="og:title" content="X"><meta property="og:image" content="javascript:alert(1)">'
     expect(extractMetadata(html, base).image).toBeUndefined()
+  })
+})
+
+// The resolver always uses lookup's all:true overload. Bind its mock to that
+// signature instead of TypeScript's last, single-address overload.
+type LookupAll = (
+  hostname: string,
+  options: LookupAllOptions,
+) => Promise<LookupAddress[]>
+
+function mockLookupAll(): Mock<LookupAll> {
+  return spyOn(dns, 'lookup')
+}
+
+// Mock the standard fetch call; Bun also attaches a preconnect property.
+type FetchCall = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>
+
+function mockPlatformFetch(): Mock<FetchCall> {
+  return spyOn(globalThis, 'fetch')
+}
+
+class PreviewResponse extends EventEmitter {
+  statusCode = 200
+  headers: Record<string, string> = { 'content-type': 'text/html' }
+  destroyed = false
+
+  destroy() {
+    this.destroyed = true
+    this.emit('close')
+    return this
+  }
+}
+
+class PreviewRequest extends EventEmitter {
+  destroyed = false
+
+  end() {
+    return this
+  }
+
+  destroy() {
+    this.destroyed = true
+    this.emit('close')
+    return this
+  }
+}
+
+interface PreviewConnection {
+  options: https.RequestOptions
+  request: PreviewRequest
+  response: PreviewResponse
+}
+
+// Run promise continuations without advancing the elapsed-time clock.
+async function flushPromises() {
+  for (let turn = 0; turn < 16; turn++) await Promise.resolve()
+}
+
+describe('resolveLinkMetadata request lifecycle', () => {
+  let abort: Mock<AbortController['abort']>
+  let connections: PreviewConnection[]
+  const connection = (index: number): PreviewConnection => {
+    const value = connections[index]
+    if (!value) throw new Error(`Missing preview connection ${index}`)
+    return value
+  }
+  let initialResponse:
+    { statusCode: number; headers: Record<string, string> } | undefined
+  let serial = 0
+  const href = () => `https://preview-${++serial}.example.test/article`
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+    abort = spyOn(AbortController.prototype, 'abort')
+    connections = []
+    initialResponse = undefined
+    mockLookupAll().mockResolvedValue([{ address: '93.184.215.14', family: 4 }])
+    spyOn(https, 'request').mockImplementation(((
+      options: https.RequestOptions,
+      receive: (response: IncomingMessage) => void,
+    ) => {
+      const request = new PreviewRequest()
+      const response = new PreviewResponse()
+      Object.assign(response, initialResponse)
+      initialResponse = undefined
+      connections.push({ options, request, response })
+      queueMicrotask(() => receive(response as unknown as IncomingMessage))
+      return request as unknown as ClientRequest
+    }) as typeof https.request)
+  })
+
+  afterEach(() => {
+    // Observe cancellation instead of getTimerCount: Bun counts cleared timer
+    // entries until their scheduled time is advanced.
+    const completedAborts = abort.mock.calls.length
+    jest.advanceTimersByTime(10_000)
+    expect(abort).toHaveBeenCalledTimes(completedAborts)
+    mock.restore()
+    jest.useRealTimers()
+  })
+
+  test('stops a continuously trickling body at the total deadline and destroys the connection', async () => {
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    const { request, response } = connection(0)
+    for (let second = 0; second < 5; second++) {
+      response.emit('data', Buffer.from('<title>Still arriving</title>'))
+      jest.advanceTimersByTime(1_000)
+      await flushPromises()
+    }
+    expect(request.destroyed).toBe(false)
+
+    jest.advanceTimersByTime(1_000)
+    await flushPromises()
+    expect(request.destroyed).toBe(true)
+    expect(response.destroyed).toBe(true)
+    expect(response.listenerCount('data')).toBe(0)
+    expect(await result).toBeNull()
+  })
+
+  test('includes DNS in the deadline and discards a late answer without dialing it', async () => {
+    let answer!: (records: LookupAddress[]) => void
+    mockLookupAll().mockImplementation(
+      () =>
+        new Promise<LookupAddress[]>((resolve) => {
+          answer = resolve
+        }),
+    )
+    let settled = false
+    const result = resolveLinkMetadata(href()).then((value) => {
+      settled = true
+      return value
+    })
+    jest.advanceTimersByTime(5_999)
+    await flushPromises()
+    expect(settled).toBe(false)
+    jest.advanceTimersByTime(1)
+    await flushPromises()
+    expect(settled).toBe(true)
+    expect(await result).toBeNull()
+
+    answer([{ address: '93.184.215.14', family: 4 }])
+    await flushPromises()
+    expect(connections).toHaveLength(0)
+  })
+
+  test('redirects share the original elapsed-time budget', async () => {
+    initialResponse = {
+      statusCode: 302,
+      headers: { location: 'https://redirect.example.test/final' },
+    }
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    jest.advanceTimersByTime(4_000)
+    connection(0).response.emit('end')
+    await flushPromises()
+    expect(connections).toHaveLength(2)
+
+    jest.advanceTimersByTime(1_999)
+    expect(connection(1).request.destroyed).toBe(false)
+    jest.advanceTimersByTime(1)
+    await flushPromises()
+    expect(connection(1).request.destroyed).toBe(true)
+    expect(connection(1).response.destroyed).toBe(true)
+    expect(await result).toBeNull()
+  })
+
+  test('address retries share the budget and stop retrying when it expires', async () => {
+    mockLookupAll().mockResolvedValue([
+      { address: '93.184.215.14', family: 4 },
+      { address: '93.184.215.15', family: 4 },
+      { address: '93.184.215.16', family: 4 },
+    ])
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    jest.advanceTimersByTime(4_000)
+    connection(0).request.emit('error', new Error('connection failed'))
+    await flushPromises()
+    expect(connections).toHaveLength(2)
+    expect(connection(0).request.destroyed).toBe(true)
+
+    jest.advanceTimersByTime(2_000)
+    await flushPromises()
+    expect(connection(1).request.destroyed).toBe(true)
+    expect(connections).toHaveLength(2)
+    expect(await result).toBeNull()
+  })
+
+  test('successful completion preserves the pinned address and clears the deadline', async () => {
+    const url = href()
+    const result = resolveLinkMetadata(url)
+    await flushPromises()
+    const { options, request, response } = connection(0)
+    expect(options.host).toBe('93.184.215.14')
+    expect(options.servername).toBe(new URL(url).hostname)
+    expect(options.headers).toMatchObject({ host: new URL(url).host })
+    response.emit('data', Buffer.from('<title>Ready</title>'))
+    response.emit('end')
+
+    expect((await result)?.title).toBe('Ready')
+    jest.advanceTimersByTime(10_000)
+    expect(request.destroyed).toBe(false)
+    expect(response.destroyed).toBe(false)
+    expect(response.listenerCount('data')).toBe(0)
+  })
+
+  test('retains the bounded prefix of an oversized chunk and closes the stream', async () => {
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    const { request, response } = connection(0)
+    response.emit(
+      'data',
+      Buffer.from('<title>Large page</title>' + 'x'.repeat(600 * 1024)),
+    )
+
+    expect((await result)?.title).toBe('Large page')
+    expect(request.destroyed).toBe(true)
+    expect(response.destroyed).toBe(true)
+  })
+
+  test('does not accept a response that closes before the body completes', async () => {
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    const { request, response } = connection(0)
+    response.emit('data', Buffer.from('<title>Truncated</title>'))
+    response.emit('close')
+
+    expect(await result).toBeNull()
+    expect(request.destroyed).toBe(true)
+    expect(response.destroyed).toBe(true)
+  })
+
+  test('rechecks DNS for a redirect and refuses its private address', async () => {
+    initialResponse = {
+      statusCode: 302,
+      headers: { location: 'https://private.example.test/' },
+    }
+    mockLookupAll()
+      .mockResolvedValueOnce([{ address: '93.184.215.14', family: 4 }])
+      .mockResolvedValueOnce([{ address: '127.0.0.1', family: 4 }])
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    connection(0).response.emit('end')
+
+    expect(await result).toBeNull()
+    expect(connections).toHaveLength(1)
+  })
+
+  test('dials a public IPv6 literal without a second hostname lookup', async () => {
+    const result = resolveLinkMetadata('https://[2606:4700:10::6814:179a]/')
+    await flushPromises()
+    expect(dns.lookup).not.toHaveBeenCalled()
+    expect(connection(0).options.host).toBe('2606:4700:10::6814:179a')
+    connection(0).response.emit('data', Buffer.from('<title>IPv6</title>'))
+    connection(0).response.emit('end')
+    expect((await result)?.title).toBe('IPv6')
+  })
+})
+
+describe('resolveLinkMetadata on Cloudflare Workers', () => {
+  let abort: Mock<AbortController['abort']>
+  let navigatorDescriptor: PropertyDescriptor | undefined
+  let serial = 0
+  const href = () => `https://worker-preview-${++serial}.example.test/article`
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+    abort = spyOn(AbortController.prototype, 'abort')
+    navigatorDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'navigator',
+    )
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { userAgent: 'Cloudflare-Workers' },
+      configurable: true,
+    })
+    mockLookupAll().mockResolvedValue([{ address: '93.184.215.14', family: 4 }])
+    spyOn(https, 'request').mockImplementation(() => {
+      throw new Error('Workers must not use the Node HTTPS shim')
+    })
+    mockPlatformFetch().mockResolvedValue(
+      new Response('<title>Worker preview</title>', {
+        headers: { 'content-type': 'text/html' },
+      }),
+    )
+  })
+
+  afterEach(() => {
+    // Observe cancellation instead of getTimerCount: Bun counts cleared timer
+    // entries until their scheduled time is advanced.
+    const completedAborts = abort.mock.calls.length
+    jest.advanceTimersByTime(10_000)
+    expect(abort).toHaveBeenCalledTimes(completedAborts)
+    mock.restore()
+    jest.useRealTimers()
+    if (navigatorDescriptor) {
+      Object.defineProperty(globalThis, 'navigator', navigatorDescriptor)
+    } else {
+      Reflect.deleteProperty(globalThis, 'navigator')
+    }
+  })
+
+  test('selects public platform fetch only in Workers and follows redirects manually', async () => {
+    const url = href()
+    expect((await resolveLinkMetadata(url))?.title).toBe('Worker preview')
+    expect(fetch).toHaveBeenCalledWith(
+      url,
+      expect.objectContaining({ redirect: 'manual', credentials: 'omit' }),
+    )
+    expect(https.request).not.toHaveBeenCalled()
+  })
+
+  test('refuses a hostname resolving only to private addresses before platform fetch', async () => {
+    mockLookupAll().mockResolvedValue([{ address: '127.0.0.1', family: 4 }])
+    expect(await resolveLinkMetadata(href())).toBeNull()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  test('rechecks redirected hostnames and refuses a private DNS result', async () => {
+    mockLookupAll()
+      .mockResolvedValueOnce([{ address: '93.184.215.14', family: 4 }])
+      .mockResolvedValueOnce([{ address: '192.168.1.1', family: 4 }])
+    mockPlatformFetch().mockResolvedValue(
+      new Response('', {
+        status: 302,
+        headers: { location: 'https://worker-private.example.test/' },
+      }),
+    )
+    expect(await resolveLinkMetadata(href())).toBeNull()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(dns.lookup).toHaveBeenCalledTimes(2)
+  })
+
+  test('cancels a trickling platform body at the shared deadline', async () => {
+    let body!: ReadableStreamDefaultController<Uint8Array>
+    // A slow cancellation must not delay the resolver's timeout response.
+    const cancel = mock(() => new Promise<void>(() => {}))
+    mockPlatformFetch().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            body = controller
+          },
+          cancel,
+        }),
+        { headers: { 'content-type': 'text/html' } },
+      ),
+    )
+    let settled = false
+    const result = resolveLinkMetadata(href()).then((value) => {
+      settled = true
+      return value
+    })
+    await flushPromises()
+    for (let second = 0; second < 5; second++) {
+      body.enqueue(Buffer.from('<title>Still arriving</title>'))
+      jest.advanceTimersByTime(1_000)
+      await flushPromises()
+    }
+    expect(settled).toBe(false)
+    jest.advanceTimersByTime(1_000)
+    await flushPromises()
+    expect(settled).toBe(true)
+    expect(await result).toBeNull()
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  test('cancels the platform reader as soon as the body limit is reached', async () => {
+    const cancel = mock(() => {})
+    mockPlatformFetch().mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              Buffer.from('<title>Bounded</title>' + 'x'.repeat(600 * 1024)),
+            )
+          },
+          cancel,
+        }),
+        { headers: { 'content-type': 'text/html' } },
+      ),
+    )
+    expect((await resolveLinkMetadata(href()))?.title).toBe('Bounded')
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  test('redirects consume the original platform-fetch deadline', async () => {
+    const cancel = mock(() => {})
+    mockPlatformFetch()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(
+              () =>
+                resolve(
+                  new Response('', {
+                    status: 302,
+                    headers: {
+                      location: 'https://worker-slow-redirect.example.test/',
+                    },
+                  }),
+                ),
+              4_000,
+            )
+          }),
+      )
+      .mockResolvedValueOnce(
+        new Response(new ReadableStream<Uint8Array>({ cancel }), {
+          headers: { 'content-type': 'text/html' },
+        }),
+      )
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    jest.advanceTimersByTime(4_000)
+    await flushPromises()
+    await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    jest.advanceTimersByTime(2_000)
+    await flushPromises()
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(await result).toBeNull()
   })
 })

@@ -101,7 +101,9 @@ export function scenarios(h) {
         await page.waitForTimeout(500)
         // The dropdown's source entry carries the actions as buttons.
         await page
-          .locator('[data-slot="source-entry"] button:has-text("Add to context")')
+          .locator(
+            '[data-slot="source-entry"] button:has-text("Add to context")',
+          )
           .click()
         await page.waitForTimeout(400)
         const reference = await page.evaluate(() => {
@@ -113,6 +115,132 @@ export function scenarios(h) {
           'the composer carries the source as a reference': reference.includes(
             'Weekly performance report',
           ),
+        }
+      },
+      // Exact passage inspection works on the successful preview path as well
+      // as fallback. Keyboard dismissal returns to the invoking control.
+      async (page) => {
+        const trigger = page
+          .getByRole('button', {
+            name: /Read the supporting passage of Retrieval latency notes/,
+          })
+          .first()
+        await trigger.focus()
+        await page.keyboard.press('Enter')
+        const passage = page
+          .locator('blockquote')
+          .filter({ hasText: 'Search p50 fell from 320ms' })
+        await passage.waitFor({ state: 'visible' })
+        const exact =
+          (await passage.textContent()) ===
+          'Search p50 fell from 320ms to 210ms between Tue and Mon; Read p50 fell from 180ms to 120ms over the same window. Ranking accounts for most of the difference.'
+        await page.keyboard.press('Escape')
+        await passage.waitFor({ state: 'hidden' })
+        return {
+          'a resolved preview retains its exact supporting passage': exact,
+          'Escape returns passage focus to its trigger': await trigger.evaluate(
+            (el) => el === document.activeElement,
+          ),
+        }
+      },
+      // Two sources from one assistant message are independent references.
+      async (page) => {
+        await page
+          .getByRole('button', { name: 'Add to context', exact: true })
+          .click()
+        await page
+          .getByRole('button', { name: 'List sources', exact: true })
+          .click()
+        await page
+          .locator('[data-slot="source-entry"]')
+          .getByRole('button', { name: 'Add to context', exact: true })
+          .click()
+        await page.keyboard.press('Escape')
+        const context = page.locator('ul[aria-label="Context"]')
+        await context.waitFor({ state: 'visible' })
+        const before = await context.innerText()
+        await page
+          .getByRole('button', { name: 'Add to context', exact: true })
+          .click()
+        const after = await context.innerText()
+        return {
+          'distinct sources in one message both reach the composer':
+            before.includes('Retrieval latency notes') &&
+            before.includes('Weekly performance report'),
+          'adding the same source again is idempotent': before === after,
+        }
+      },
+      // Inspect, expand, change views and close using the same data and
+      // selection. The dialog owns focus and restores the Expand trigger.
+      async (page) => {
+        // Rendering an earlier turn must not replace an estimated height
+        // while the user moves from the composer to a response control.
+        const prompt = page
+          .locator('[data-slot="aui_user-message-root"]')
+          .first()
+        const promptHeight = await prompt.evaluate(
+          (el) => el.getBoundingClientRect().height,
+        )
+        const chart = page.locator('[data-slot="evidence-chart"]').first()
+        const inspector = chart.locator('[data-slot="chart-inspector"]')
+        await inspector.focus()
+        await page.keyboard.press('Home')
+        await page.keyboard.press('ArrowRight')
+        const selected = await chart
+          .locator('[data-slot="chart-readout"]')
+          .innerText()
+        const expand = chart.getByRole('button', {
+          name: 'Expand chart',
+          exact: true,
+        })
+        await expand.click()
+        const dialog = page.getByRole('dialog')
+        await dialog.waitFor({ state: 'visible' })
+        const expanded = await dialog
+          .locator('[data-slot="chart-readout"]')
+          .innerText()
+        await dialog.getByRole('button', { name: 'Data', exact: true }).click()
+        const data = await dialog
+          .locator('[data-slot="evidence-chart-table"]')
+          .innerText()
+        const units = (await dialog.innerText()).includes('ms')
+        const provenance = (await dialog.innerText()).includes(
+          'Illustrative fixture data',
+        )
+        const viewport = page.viewportSize() ?? { width: 1024, height: 900 }
+        await snap(
+          page,
+          'response-evidence-expanded',
+          viewport.width,
+          viewport.height,
+        )
+        await page.keyboard.press('Escape')
+        await dialog.waitFor({ state: 'hidden' })
+        const restoredFocus = await expand.evaluate(
+          (el) => el === document.activeElement,
+        )
+        const retainedView = await chart
+          .locator('[data-slot="evidence-chart-table"]')
+          .isVisible()
+        await chart.getByRole('button', { name: 'Chart', exact: true }).click()
+        const returned = await chart
+          .locator('[data-slot="chart-readout"]')
+          .innerText()
+        const finalPromptHeight = await prompt.evaluate(
+          (el) => el.getBoundingClientRect().height,
+        )
+        return {
+          'chart navigation preserves the preceding message geometry':
+            promptHeight > 0 && Math.abs(finalPromptHeight - promptHeight) < 1,
+          'keyboard inspection reaches exact values with units':
+            selected.includes('Search, Wed: 290 ms') &&
+            selected.includes('Read, Wed: 170 ms'),
+          'expansion retains the selected values': expanded === selected,
+          'expanded Data retains original values and provenance':
+            data.includes('290') && data.includes('170') && units && provenance,
+          'closing preserves Data mode and restores focus':
+            retainedView && restoredFocus,
+          'returning to Chart retains point selection': returned === selected,
         }
       },
       // The chart's Data view: the same series as the plot, with units and provenance kept.

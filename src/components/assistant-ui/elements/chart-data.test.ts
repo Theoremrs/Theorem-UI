@@ -1,7 +1,12 @@
 // The chart's one data shape: normalization, a truthful axis policy, and the
 // values the plot, Data view, and aria description all read (ub-mode U1).
 import { describe, expect, test } from 'bun:test'
-import { axisScale, normalizeChart, tickValues } from './chart-data'
+import {
+  axisScale,
+  formatValue,
+  normalizeChart,
+  tickValues,
+} from './chart-data'
 
 const SEARCH_READ = {
   series: [
@@ -34,7 +39,9 @@ const SEARCH_READ = {
 
 describe('normalizeChart', () => {
   test('a single data array is one series; labels default to 1-based index', () => {
-    const chart = normalizeChart({ data: [{ value: 5 }, { label: 'B', value: 7 }] })
+    const chart = normalizeChart({
+      data: [{ value: 5 }, { label: 'B', value: 7 }],
+    })
     expect(chart.count).toBe(2)
     expect(chart.series).toHaveLength(1)
     expect(chart.series[0]!.values).toEqual([5, 7])
@@ -76,7 +83,9 @@ describe('axisScale', () => {
   })
 
   test('a small maximum does not inflate to a large round bound', () => {
-    const scale = axisScale(normalizeChart({ data: [{ value: 7 }, { value: 5 }] }).series)
+    const scale = axisScale(
+      normalizeChart({ data: [{ value: 7 }, { value: 5 }] }).series,
+    )
     expect(scale.max).toBe(8)
     expect(scale.min).toBe(0)
     expect(tickValues(scale)).toEqual([8, 6, 4, 2, 0])
@@ -96,4 +105,17 @@ describe('axisScale', () => {
     expect(scale.min).toBe(0)
     expect(scale.max).toBeGreaterThan(0)
   })
+})
+
+test('small measurements remain inside their scale and have distinct nonzero ticks', () => {
+  for (const value of [1e-10, 0.000123, 0.015]) {
+    const scale = axisScale(normalizeChart({ data: [{ value }] }).series)
+    expect(scale.max).toBeGreaterThanOrEqual(value)
+    expect(scale.min).toBe(0)
+    const labels = tickValues(scale).map(formatValue)
+    expect(new Set(labels).size).toBe(labels.length)
+    expect(labels.filter((label) => label === '0')).toHaveLength(1)
+  }
+  expect(formatValue(0.000123)).toBe('0.000123')
+  expect(formatValue(-0.015)).toBe('-0.015')
 })

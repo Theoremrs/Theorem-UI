@@ -64,9 +64,8 @@ export const customCssSchema = z
   )
 const customColorRoles = z.enum([...new Set(Object.values(COLOR_ROLES))])
 /** A saved palette's colours. New tokens (action/insight/series) are optional
- *  on read so an older saved palette still loads; the contrast gate below
- *  only checks pairs whose tokens are present, and the editor seeds missing
- *  tokens from the active built-in before applying. */
+ *  on read so an older saved palette still loads. The contrast gate completes
+ *  missing tokens with the same defaults used when the palette is applied. */
 const customColors = z.partialRecord(customColorRoles, opaqueHex)
 
 /** The color roles a person edits in Settings, in the order they are shown:
@@ -185,7 +184,8 @@ export const customPaletteSchema = z
     light: customColors,
     dark: customColors,
   })
-  .superRefine((colors, context) => {
+  .superRefine((palette, context) => {
+    const colors = completeCustomPalette(palette)
     for (const mode of ['light', 'dark'] as const) {
       for (const { foreground, background, minimum } of COLOR_PAIRS) {
         const ink = colors[mode][COLOR_ROLES[foreground]]

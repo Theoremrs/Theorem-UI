@@ -93,3 +93,8 @@ Stone's accent #85474f, not #0000ff.
   a failing test or live reproduction first.
 - Updated the response-evidence oracle's dropdown selector to the shared
   actions; refreshed evidence renders.
+
+
+## Follow-up completion
+
+The [PR #146 completion record](interactive-responses-completion.md) supersedes the transport and partial-palette validation details above: Workers now use verified public-only platform egress, all request stages share one elapsed deadline, and contrast validation completes missing colors before checking. It also records chart/source interaction fixes and current acceptance results.

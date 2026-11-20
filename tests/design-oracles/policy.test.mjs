@@ -44,12 +44,26 @@ describe('independent color predicates', () => {
     const css = await readFile(resolve(root, 'src/palettes.css'), 'utf8')
     const results = auditPaletteCss(css)
     const modes = results.filter((result) => result.id.startsWith('COL-04.emitted-colors.'))
-    expect(modes).toHaveLength(8)
+    // Keep this inventory independent of the generator: every built-in
+    // palette, including Ember, must be audited in both light and dark modes.
+    const expectedModes = [
+      ':root',
+      '.dark',
+      "[data-palette='ember']",
+      ".dark[data-palette='ember']",
+      "[data-palette='stone']",
+      ".dark[data-palette='stone']",
+      "[data-palette='vitesse']",
+      ".dark[data-palette='vitesse']",
+      ":root:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):where(:not([data-palette]), [data-palette='github-sharp'])",
+      ".dark:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):where(:not([data-palette]), [data-palette='github-sharp'])",
+    ]
+    expect(modes.map((result) => result.evidence.mode).sort()).toEqual(expectedModes.sort())
     expect(modes.every((result) => result.status === 'pass')).toBe(true)
     expect(REQUIRED_PALETTE_PAIRS).toHaveLength(54)
     expect(results.some((result) => result.id === 'COL-01.minimum.:root.primary/canvas' && result.status === 'pass')).toBe(true)
     const pairs = results.filter((result) => result.id.startsWith('COL-01.minimum.'))
-    expect(pairs).toHaveLength(54 * 8)
+    expect(pairs).toHaveLength(54 * expectedModes.length)
     expect(pairs.every((result) => result.status === 'pass')).toBe(true)
     const emittedBuiltInTokens = results.filter((result) => result.evidence?.concrete).flatMap((result) => result.evidence.concrete)
     expect(emittedBuiltInTokens.some((token) => token.raw.includes('--custom-'))).toBe(false)

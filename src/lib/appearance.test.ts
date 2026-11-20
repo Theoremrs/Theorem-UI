@@ -42,6 +42,7 @@ const customPalette = () => ({
 describe('appearance selection', () => {
   test('the Calm manifest keeps reading surfaces flat, the chart glass, Life off', () => {
     const appearance = resolveAppearance(DEFAULT_APPEARANCE)
+    expect(appearance.palette).toBe('github-sharp')
     for (const role of SURFACE_ROLES)
       expect(appearance.materials[role]).toBe(role === 'chart' ? 'glass' : 'flat')
     expect(appearance.life).toBe(false)
@@ -198,6 +199,79 @@ describe('appearance selection', () => {
       ).toBe(true)
   })
 
+  test.each([
+    ['light', { ink: '#ffffff' }],
+    ['dark', { ink: '#000000' }],
+    ['light', { 'surface-neutral': '#000000' }],
+    ['dark', { 'surface-neutral': '#ffffff' }],
+  ] as const)(
+    'a partial %s palette is checked against its completed colors (%j)',
+    (mode, colors) => {
+      const selection = {
+        preset: 'calm',
+        overrides: {
+          palette: 'custom',
+          customPalette: {
+            name: 'Incomplete contrast',
+            light: {},
+            dark: {},
+            [mode]: colors,
+          },
+        },
+      }
+      const imported = appearanceDocumentSchema.safeParse({
+        version: APPEARANCE_VERSION,
+        ...selection,
+      })
+      const saved = appearanceSelectionSchema.safeParse(selection)
+      for (const result of [imported, saved]) {
+        expect(result.success).toBe(false)
+        if (!result.success)
+          expect(
+            result.error.issues.some(
+              ({ path, message }) =>
+                path.join('.') === `overrides.customPalette.${mode}.primary` &&
+                message.includes('primary on canvas'),
+            ),
+          ).toBe(true)
+      }
+    },
+  )
+
+  test('a readable partial palette retains its colors and completes to a validated theme', () => {
+    const parsed = appearanceDocumentSchema.parse({
+      version: APPEARANCE_VERSION,
+      preset: 'calm',
+      overrides: {
+        palette: 'custom',
+        customPalette: {
+          name: 'Partial theme',
+          light: { ink: '#000000' },
+          dark: { ink: '#ffffff' },
+        },
+      },
+    })
+    const resolved = resolveAppearance(
+      appearanceSelectionSchema.parse({
+        preset: parsed.preset,
+        overrides: parsed.overrides,
+      }),
+    )
+    expect(resolved.customPalette?.light.ink).toBe('#000000')
+    expect(resolved.customPalette?.dark.ink).toBe('#ffffff')
+    expect(resolved.customPalette?.name).toBe('Partial theme')
+    for (const mode of ['light', 'dark'] as const)
+      for (const { foreground, background, minimum } of COLOR_PAIRS) {
+        const colors = resolved.customPalette![mode]
+        expect(
+          wcagContrast(
+            colors[COLOR_ROLES[foreground]]!,
+            colors[COLOR_ROLES[background]]!,
+          ),
+        ).toBeGreaterThanOrEqual(minimum)
+      }
+  })
+
   test('every emitted built-in set satisfies all registered role pairs after quantization', () => {
     for (const mode of modes) {
       const sets = [appearanceTokens(mode)]
@@ -269,8 +343,13 @@ describe('appearance selection', () => {
       delete older.dark[token]
     }
     const parsed = appearanceSelectionSchema.safeParse({
-      preset: 'calm',
-      overrides: { palette: 'custom', customPalette: older },
+      preset: 'expressive',
+      overrides: {
+        palette: 'custom',
+        customPalette: older,
+        density: 'touch',
+        scales: { ui: 1.25 },
+      },
     })
     expect(parsed.success).toBe(true)
     if (!parsed.success) return
@@ -281,6 +360,9 @@ describe('appearance selection', () => {
     // The person's own saved colours are preserved.
     expect(resolved.customPalette?.light.ink).toBe(valid.light.ink)
     expect(resolved.customPalette?.name).toBe('Old theme')
+    expect(resolved.preset).toBe('expressive')
+    expect(resolved.density).toBe('touch')
+    expect(resolved.scales.ui).toBe(1.25)
   })
 })
 
