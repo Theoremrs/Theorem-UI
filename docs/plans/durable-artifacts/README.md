@@ -183,6 +183,21 @@ src/components/blocks` 1093 pass / 1 skip / 0 fail; live-CDN Luma 1/1; browser
 22 for rolldown). Six stale `inline-app`/`app-revision` tests (removed
 "Interact" card flow) were re-grounded without weakening protected properties.
 
+## Broader Composer CI failures: classification (review §9)
+
+The review required every broader Composer failure be assigned a cause and a
+follow-up **from evidence**, not assumed unrelated. Three were established
+(reproduced at HEAD `b11cd812`; `origin/main` `96bdd1d4`):
+
+| Failure | Cause | Evidence | Disposition |
+| --- | --- | --- | --- |
+| `oracle:interactions` "mobile-nav" 30s timeout at 390/320px | Pre-existing **stale locator**: PR #126 removed the "Close navigation" button (SHELL-02); the oracle still clicked it. Deterministic, not timing. | Run `44179516055` (head `4b2680b9`, #128); ~30 of 37 failed Composer runs 2026-11-17→18; button absent in `src/` at `4b2680b9`. The artifact merge touched none of `scripts/design-oracles/` or the shell. | **Fixed** by `de500d60` (Escape-close; in main before the artifact merge). `oracle:interactions` exits 0 on HEAD. No action; optional hardening: oracles assert the controls they click still exist. |
+| `test:composer` `TypeError: …user.metadata.custom` in `alignWithDurableBranch` | **Artifact-related**: the quote-carrying read `user.metadata.custom` unguarded; turns/fixtures without metadata threw. | Run `44602914675` (head `5c38f97a`, in the artifact merge); the `options()` fixture carries no metadata. | **Fixed** by `6a6587ff` (defensive `.metadata?.custom`; in main, after the failing commit). Existing `runtime.test.ts` no-metadata tests cover it; HEAD `test:composer` 912/912. No action. |
+| `oracle:custom-background` "ink on sheet" assertion | **Flaky oracle-side timing race**: raw `dark`-class toggle + immediate computed-style read with no settle wait; multiple theme writers can re-apply the mode. Not a stale locator, not artifact. | Runs `44596425339` (`70f1da6d`) + `44619482128` (`ca076bb7`), both on #141's branch (merged `e8293c78`), in main. Reproduces intermittently on HEAD (passes and fails across runs with stale ink values). The artifact merge touched none of the oracle/appearance/shell paths. | **Open follow-up** (composable-appearance domain): wait for the settled state after each toggle (or drive the real theme control) before sampling; verify the `colors(true)`/`colors(false)` capture mapping; re-run 10× warm expecting zero failures. Leading explanation, not yet proven by a paint snapshot. |
+
+`test:composer` (912/912) and `oracle:interactions` (exit 0) pass on HEAD;
+`oracle:custom-background` is intermittently red pending the hardening above.
+
 ## Not done yet (dependency-ordered, per the 2026-11-19 review)
 
 The review's packages 1–12 map onto W0–W12; this is the delivery order, not a
@@ -209,9 +224,14 @@ second tracker. Status lives in [checklist.json](checklist.json).
   and re-ensures the run instead of stopping it; lost acknowledgements reconcile
   by re-sending against the store's sequence-idempotent chunks; a permanent 4xx
   refusal still stops (`artifact-store.ts`).
-- **Evidence hygiene (package 1).** Rewrite #139's template body with actual
-  behavior/verification/gaps; classify the broader Composer mobile-nav timeout
-  from evidence (do not assume unrelated).
+- **Evidence hygiene (package 1) — done.** #139's template body was replaced with
+  the actual behavior/verification/gaps; the plan/checklist were kept true (W1/W2
+  implemented-with-defects, W4 partially integrated with transport recovery now
+  done, evaluation/reuse primitives awaiting workflow proof, reference-fixture
+  honesty preserved). All three broader Composer failures are classified with
+  causes and follow-ups (see "Broader Composer CI failures" above); the
+  `custom-background` flaky-oracle hardening remains a tracked
+  composable-appearance follow-up.
 
 **Tier B — general usable artifact workflow (packages 4–6; 8 in parallel):**
 
