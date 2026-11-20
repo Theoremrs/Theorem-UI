@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, spyOn, test } from 'bun:test'
-import { useRef } from 'react'
+import { act, useRef } from 'react'
 import { cleanup, render } from '../../../../test/blocks/render'
 import { publishLifeFrame } from '@/components/life/frames'
 import type { Pane, Scene } from './renderer'
@@ -530,6 +530,52 @@ test('removing the last pane disconnects its observers and idle work', async () 
     layoutReads: 0,
     rafCalls: 0,
   })
+})
+
+test('reduced transparency turned on while mounted removes the live canvas', async () => {
+  instrument()
+  // A controllable media query: the pane mounts with transparency allowed.
+  const listeners = new Set<(event: { matches: boolean }) => void>()
+  let reduced = false
+  const nativeMatchMedia = window.matchMedia
+  window.matchMedia = (query: string) => {
+    if (query.includes('prefers-reduced-transparency')) {
+      return {
+        get matches() {
+          return reduced
+        },
+        media: query,
+        addEventListener: (_: string, cb: (event: { matches: boolean }) => void) =>
+          listeners.add(cb),
+        removeEventListener: (_: string, cb: (event: { matches: boolean }) => void) =>
+          listeners.delete(cb),
+        addListener: (cb: (event: { matches: boolean }) => void) => listeners.add(cb),
+        removeListener: (cb: (event: { matches: boolean }) => void) => listeners.delete(cb),
+        dispatchEvent: () => true,
+        onchange: null,
+      } as unknown as MediaQueryList
+    }
+    return nativeMatchMedia(query)
+  }
+  const previousRestore = restore
+  restore = () => {
+    window.matchMedia = nativeMatchMedia
+    listeners.clear()
+    previousRestore()
+  }
+
+  const { pane } = await mount()
+  expect(pane.dataset.liquid).toBe('live')
+  expect(pane.querySelector('[data-liquid-canvas]')).not.toBeNull()
+
+  // The person asks for less transparency while the chart is already mounted.
+  reduced = true
+  await act(async () => {
+    for (const cb of listeners) cb({ matches: true })
+  })
+
+  expect(pane.dataset.liquid).toBeUndefined()
+  expect(pane.querySelector('[data-liquid-canvas]')).toBeNull()
 })
 
 test('a pane moved by a sibling growing redraws without a scroll or resize', async () => {
