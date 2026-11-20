@@ -80,6 +80,70 @@
   --appearance-prose-measure: var(--appearance-measure-wide);
 }
 
+/* Settings: the page, its sections and their rows read the density contract
+   (models/settings/charts handoff section 6). One group step is the rhythm:
+   a row is padded by it, a section is set off by it, and the page by two, so
+   comfortable keeps the 24/32 inset the frame had and compact/touch move it.
+   A section holding a table takes the compact steps of its own. */
+[data-appearance-spacing-role='settings-page'] {
+  gap: calc(2 * var(--appearance-gap-group));
+  padding-block: calc(2 * var(--appearance-gap-group));
+  padding-inline: calc(1.5 * var(--appearance-gap-group));
+}
+[data-appearance-spacing-role='settings-section'] {
+  gap: var(--appearance-gap-group);
+}
+[data-appearance-part='settings-row'] {
+  gap: var(--appearance-gap-group);
+  min-block-size: var(--appearance-control-min);
+  padding-block: var(--appearance-gap-related);
+  padding-inline: var(--appearance-gap-group);
+}
+[data-appearance-part='settings-row'] > [data-appearance-part='settings-mark'] {
+  inline-size: calc(
+    var(--appearance-control-min) - var(--appearance-gap-within)
+  );
+  block-size: calc(
+    var(--appearance-control-min) - var(--appearance-gap-within)
+  );
+}
+/* A row's controls keep their own size but never fall below the control
+   minimum, as the composer toolbar's do. Height becomes a minimum so
+   enlarged type grows the control instead of clipping its label. */
+[data-appearance-part='settings-row']
+  :is(button, [role='button'], [role='switch'], [role='combobox']) {
+  min-block-size: var(--appearance-control-min);
+  min-inline-size: var(--appearance-control-min);
+  block-size: auto;
+}
+/* A data-management section: the compact steps for its own rows and heading.
+   Touch keeps its larger steps, so a table never shrinks a target below it. */
+:root:not([data-density='touch'])
+  [data-appearance-spacing-role='settings-section'][data-density='compact'] {
+  --appearance-gap-related: 0.375rem;
+  --appearance-gap-group: 0.75rem;
+}
+@media (pointer: coarse) {
+  :root[data-density]:not([data-density='compact'])
+    [data-appearance-spacing-role='settings-section'][data-density='compact'] {
+    --appearance-gap-related: 0.5rem;
+    --appearance-gap-group: 1rem;
+  }
+}
+/* The settings nav row is a navigation target: its minimum comes from the
+   role, so touch density and enlarged type grow it instead of clipping it. */
+[data-appearance-part='settings-nav'] {
+  gap: var(--appearance-gap-group);
+  padding-block: var(--appearance-gap-group);
+  padding-inline: var(--appearance-gap-related);
+}
+[data-appearance-part='settings-nav'] [data-appearance-part='navigation-row'] {
+  gap: var(--appearance-gap-related);
+  min-block-size: var(--appearance-navigation-min);
+  padding-block: var(--appearance-gap-within);
+  padding-inline: var(--appearance-gap-related);
+}
+
 [data-appearance-recipe='prose'] {
   font: var(--recipe-prose);
   letter-spacing: normal;
