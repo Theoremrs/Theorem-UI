@@ -14,6 +14,7 @@
 import { WebSpeechDictationAdapter } from '@assistant-ui/react'
 import type { DictationAdapter } from '@assistant-ui/react'
 import { create } from 'zustand'
+import { toastManager } from '@/components/coss/toast'
 
 /** What the microphone worklet posts: a chunk of 16 kHz mono audio, and how
  *  loud it was. `final` marks the flushed tail sent when a session stops. */
@@ -23,8 +24,14 @@ interface MicChunk {
   final?: boolean
 }
 
-/** How loud the microphone hears, 0..1, while a session listens; 0 otherwise. */
-export const useMicLevel = create<{ level: number }>()(() => ({ level: 0 }))
+/** How loud the microphone hears, 0..1, while a session listens; 0 otherwise.
+ *  `capturing` is true only while the microphone is live: it goes false when
+ *  the person stops or the server caps the recording, so the composer shows
+ *  the transcribing state rather than a live waveform while awaiting text. */
+export const useMicLevel = create<{ level: number; capturing: boolean }>()(() => ({
+  level: 0,
+  capturing: false,
+}))
 
 type Session = DictationAdapter.Session
 type Status = DictationAdapter.Status
@@ -102,6 +109,7 @@ function theoremSession(): Session {
   let stopping = false
   let lastText = ''
   let done: (() => void) | undefined
+  let doneTimer: ReturnType<typeof setTimeout> | undefined
   const over = () => ended
   const halting = () => stopping
 
@@ -116,12 +124,13 @@ function theoremSession(): Session {
     stream = undefined
     void context?.close().catch(() => {})
     context = undefined
-    useMicLevel.setState({ level: 0 })
+    useMicLevel.setState({ level: 0, capturing: false })
   }
 
   const finish = (reason: 'stopped' | 'cancelled' | 'error') => {
     if (ended) return
     ended = true
+    if (doneTimer !== undefined) clearTimeout(doneTimer)
     teardown()
     socket?.close()
     socket = undefined
@@ -143,13 +152,20 @@ function theoremSession(): Session {
     // before the stop so the person's last word is heard, not discarded.
     worklet?.port.postMessage({ command: 'flush' })
     await new Promise((resolve) => setTimeout(resolve, 40))
+    // The last chunk is sent: release the microphone and audio graph now, so
+    // they do not keep capturing and resampling while the server transcribes.
+    // The socket stays open for the transcript; finish() closes it.
+    teardown()
     // Ask the server to flush the decoder; the done event carries the final.
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ command: 'stop' }))
       await new Promise<void>((resolve) => {
         done = resolve
-        // A server that never answers must not hang the composer.
-        setTimeout(resolve, 5_000)
+        // The cloud transcription is one batch request that can take up to
+        // OpenRouter's ~60s upstream timeout. Wait past it so a slow transcript
+        // still lands; the transcribing shimmer holds until then. A server that
+        // never answers must not hang the composer forever.
+        doneTimer = setTimeout(resolve, 70_000)
       })
     }
     if (!over()) finish('stopped')
@@ -180,7 +196,7 @@ function theoremSession(): Session {
       }
       socket.onmessage = (event: MessageEvent) => {
         if (over() || typeof event.data !== 'string') return
-        let message: { event?: string; text?: string; transcript?: string }
+        let message: { event?: string; text?: string; transcript?: string; message?: string }
         try {
           message = JSON.parse(event.data)
         } catch {
@@ -194,6 +210,18 @@ function theoremSession(): Session {
         } else if (message.event === 'final' && message.text) {
           lastText = message.text
           speech.emit({ transcript: message.text, isFinal: true })
+        } else if (message.event === 'limit') {
+          // The server capped the recording: stop capturing and say so. The
+          // transcript of what was heard still lands via the done event.
+          stopping = true
+          teardown()
+          toastManager.add({
+            type: 'info',
+            title: 'Dictation length limit reached',
+            description:
+              message.message ??
+              'Transcribing what was heard; start a new dictation to continue.',
+          })
         } else if (message.event === 'done') {
           if (message.transcript) lastText = message.transcript
           finish('stopped')
@@ -233,6 +261,7 @@ function theoremSession(): Session {
       await context.resume()
       if (over()) return
       setStatus({ type: 'running' })
+      useMicLevel.setState({ capturing: true })
       speechStart.emit()
     } catch (error) {
       if (!over()) {

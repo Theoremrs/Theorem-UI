@@ -1,6 +1,7 @@
 // Live acceptance: the browser's microphone is the licensed LibriSpeech
 // fixture (Chromium's fake device), the person dictates through the composer's
-// mic, and the transcript must land in the composer via Theorem's burn engine.
+// mic, the editor track shows the live waveform while listening, and the
+// transcript lands in the composer via the product's cloud transcription.
 import { chromium } from 'playwright-core'
 import { ACCOUNT, DATA_DIR, UI } from './config.mjs'
 import { randomBytes } from 'node:crypto'
@@ -61,7 +62,7 @@ const status = await page.evaluate(async () => {
   return r.ok ? r.json() : { served: false, http: r.status }
 })
 check('dictation served', status.served === true, JSON.stringify(status))
-check('model files present', status.model_files_present === true)
+check('cloud engine', status.engine === 'cloud', status.engine)
 
 // Start dictation through the composer's mic button.
 const mic = page.locator('.aui-composer-dictate').first()
@@ -69,12 +70,31 @@ await mic.waitFor({ timeout: 60_000 })
 await mic.click()
 console.log('dictation started; speaking the fixture…')
 
-// The fixture is ~8.3s; the engine needs ~1s to fill its buffer, then decodes
-// faster than real time. Wait for interim text, then stop.
-await page.waitForTimeout(11_000)
+// While the mic listens the editor track is the waveform, not the editor.
+await page.waitForTimeout(2_500)
+const voice = page.locator('[data-slot="composer-voice"][data-recording]').first()
+// The waveform must actually be visible, and the editor hidden — a DOM node
+// that exists but is invisible would not be the affordance this names.
+check('waveform visible while listening', await voice.isVisible().catch(() => false))
+const editorHidden = await page
+  .locator('.aui-composer-input')
+  .first()
+  .isHidden()
+  .catch(() => false)
+check('editor hidden while listening', editorHidden)
+const barsMoving = await page.evaluate(() => {
+  const bars = [...document.querySelectorAll('[data-slot="composer-voice"] [aria-hidden] span')]
+  return bars.some((bar) => parseFloat(getComputedStyle(bar).height) > 3)
+})
+check('waveform bars rise above rest', barsMoving)
+await page.screenshot({ path: '/tmp/dictation-waveform.png' })
+
+// The fixture is ~8.3s; let it play through, then stop. The transcript is one
+// batch result: it lands after release, with a transcribing shimmer between.
+await page.waitForTimeout(7_000)
 const stop = page.locator('.aui-composer-stop-dictation').first()
 if (await stop.count()) await stop.click()
-await page.waitForTimeout(3_000)
+await page.waitForTimeout(6_000)
 
 // The transcript must be in the composer (interim or committed).
 const draft = await page.evaluate(() => {

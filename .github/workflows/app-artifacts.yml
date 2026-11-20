@@ -45,6 +45,7 @@ jobs:
         run: >-
           bun test
           src/lib/blocks/app-dependencies.test.ts
+          src/lib/blocks/app-dependency-identity.test.ts
           src/lib/blocks/app-source.test.ts
           src/lib/blocks/app-check.test.ts
           src/components/artifacts/inline-artifact.test.tsx

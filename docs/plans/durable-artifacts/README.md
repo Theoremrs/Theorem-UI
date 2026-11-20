@@ -17,8 +17,8 @@ them. The CPU is the first instance that will use every field.
 
 | Repository | Branch | Based on |
 | ---------- | ------ | -------- |
-| Theorem-UI | `main` `211a745c` | PRs #128 (`4b2680b9`), #129 (`8d84c688`) and #139 (`351ce552`) merged; synced with #137 and #140. #129 was the content superset; #139's history was tied in so all three marked merged. |
-| Theorem    | `main` `8526921` | Backend companions #1096 (authoring), #1099 (Rerun/construction handoff), #1102 (durable runs/results) are **still open** — the UI is fixture-validated, not product-live, until they reconcile. |
+| Theorem-UI | `main` `17d103b8` | PRs #128 (`4b2680b9`), #129 (`8d84c688`) and #139 (`351ce552`) merged (`211a745c`); review follow-ups #142 (cabinet single owner, writer transport recovery, this tracker) merged. #129 was the content superset; #139's history was tied in so all three marked merged. |
+| Theorem    | `main` `95ace474` | Backend reconciled in #1110: #1102 (durable runs/results/subjects) + #1099 (free authoring, Rerun traces, construction-only handoff) merged; #1096 ported (conversation authoring guidance + single-source contract) and closed. Network policy open-by-default with user-set limits, matching the UI sandbox. |
 
 ## What exists now
 
@@ -183,6 +183,21 @@ src/components/blocks` 1093 pass / 1 skip / 0 fail; live-CDN Luma 1/1; browser
 22 for rolldown). Six stale `inline-app`/`app-revision` tests (removed
 "Interact" card flow) were re-grounded without weakening protected properties.
 
+## Broader Composer CI failures: classification (review §9)
+
+The review required every broader Composer failure be assigned a cause and a
+follow-up **from evidence**, not assumed unrelated. Three were established
+(reproduced at HEAD `b11cd812`; `origin/main` `96bdd1d4`):
+
+| Failure | Cause | Evidence | Disposition |
+| --- | --- | --- | --- |
+| `oracle:interactions` "mobile-nav" 30s timeout at 390/320px | Pre-existing **stale locator**: PR #126 removed the "Close navigation" button (SHELL-02); the oracle still clicked it. Deterministic, not timing. | Run `44179516055` (head `4b2680b9`, #128); ~30 of 37 failed Composer runs 2026-11-17→18; button absent in `src/` at `4b2680b9`. The artifact merge touched none of `scripts/design-oracles/` or the shell. | **Fixed** by `de500d60` (Escape-close; in main before the artifact merge). `oracle:interactions` exits 0 on HEAD. No action; optional hardening: oracles assert the controls they click still exist. |
+| `test:composer` `TypeError: …user.metadata.custom` in `alignWithDurableBranch` | **Artifact-related**: the quote-carrying read `user.metadata.custom` unguarded; turns/fixtures without metadata threw. | Run `44602914675` (head `5c38f97a`, in the artifact merge); the `options()` fixture carries no metadata. | **Fixed** by `6a6587ff` (defensive `.metadata?.custom`; in main, after the failing commit). Existing `runtime.test.ts` no-metadata tests cover it; HEAD `test:composer` 912/912. No action. |
+| `oracle:custom-background` "ink on sheet" assertion | **Flaky oracle-side timing race**: raw `dark`-class toggle + immediate computed-style read with no settle wait; multiple theme writers can re-apply the mode. Not a stale locator, not artifact. | Runs `44596425339` (`70f1da6d`) + `44619482128` (`ca076bb7`), both on #141's branch (merged `e8293c78`), in main. Reproduces intermittently on HEAD (passes and fails across runs with stale ink values). The artifact merge touched none of the oracle/appearance/shell paths. | **Open follow-up** (composable-appearance domain): wait for the settled state after each toggle (or drive the real theme control) before sampling; verify the `colors(true)`/`colors(false)` capture mapping; re-run 10× warm expecting zero failures. Leading explanation, not yet proven by a paint snapshot. |
+
+`test:composer` (912/912) and `oracle:interactions` (exit 0) pass on HEAD;
+`oracle:custom-background` is intermittently red pending the hardening above.
+
 ## Not done yet (dependency-ordered, per the 2026-11-19 review)
 
 The review's packages 1–12 map onto W0–W12; this is the delivery order, not a
@@ -190,10 +205,15 @@ second tracker. Status lives in [checklist.json](checklist.json).
 
 **Tier A — finish the baseline gate (packages 1–3 leftovers):**
 
-- **Backend reconciliation (W0, package 1).** Theorem #1096/#1099/#1102 are open;
-  resolve their overlap by source+tests, record compatible frontend/backend
-  revisions. The true gate to product-live: the merged UI runs against a fixture
-  backend until these land.
+- **Backend reconciliation (W0, package 1) — done.** Theorem #1110 (main
+  `95ace474`) reconciled #1102 + #1099 and ported #1096's complementary authoring
+  pieces (the shared source contract is single-sourced in the agent crate as
+  `operations::conversation_app::AUTHORING_CONTRACT`; `write_app` guidance fires
+  on admission; `read_app`/`write_app` survive a construction handoff). Network
+  policy is open-by-default with user-set limits, matching the UI. Validated:
+  cargo check 3 crates; theorem-apps 260; server app_turn_flow 6, artifact 8,
+  conversation_work 161; clippy disallowed_methods 0; check-test-attributes 0.
+  Remaining for product-live: a signed-in real-agent journey (package 6).
 - **Cabinet runtime ownership (package 2 gap) — fixed.** The cabinet's
   "Open latest" on a live interactive App now renders `ArtifactReferrer`
   (`original-view.tsx`), the same single-owner pattern as the dock; the pinned
@@ -204,9 +224,14 @@ second tracker. Status lives in [checklist.json](checklist.json).
   and re-ensures the run instead of stopping it; lost acknowledgements reconcile
   by re-sending against the store's sequence-idempotent chunks; a permanent 4xx
   refusal still stops (`artifact-store.ts`).
-- **Evidence hygiene (package 1).** Rewrite #139's template body with actual
-  behavior/verification/gaps; classify the broader Composer mobile-nav timeout
-  from evidence (do not assume unrelated).
+- **Evidence hygiene (package 1) — done.** #139's template body was replaced with
+  the actual behavior/verification/gaps; the plan/checklist were kept true (W1/W2
+  implemented-with-defects, W4 partially integrated with transport recovery now
+  done, evaluation/reuse primitives awaiting workflow proof, reference-fixture
+  honesty preserved). All three broader Composer failures are classified with
+  causes and follow-ups (see "Broader Composer CI failures" above); the
+  `custom-background` flaky-oracle hardening remains a tracked
+  composable-appearance follow-up.
 
 **Tier B — general usable artifact workflow (packages 4–6; 8 in parallel):**
 

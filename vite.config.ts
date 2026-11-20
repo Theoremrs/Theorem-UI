@@ -84,6 +84,8 @@ export default ''
 const theoremVars = {
   THEOREM_API_URL: 'https://travis-theorem-personal.fly.dev',
   THEOREM_OAUTH_CLIENT_ID: 'theorem-ui',
+  // The iOS app's sign-in callback on theorem.rs (mobile/docs/sign-in.md).
+  THEOREM_IOS_APP_IDS: 'K5CTABMVHN.rs.theorem.app',
 }
 
 const config = defineConfig({
