@@ -67,3 +67,24 @@ docs/plans/evidence/models-settings/{models-table-dark,models-details-light,mode
 - Integrated: 42 tests pass, tsc/eslint clean, live render verified search /
   details / focus / density / narrow. Removed agents' transient .probe dir.
 - Fidelity seals remain HITL/open. Not committed to main.
+
+## Owner review fixes (2026-11-20)
+
+- Switch regression: the settings control-minimum rule forced block-size:auto
+  + equal min-width/height on [role='switch'], collapsing the track to a
+  circle. Switches are now excluded from that rule and keep their own
+  --thumb-size geometry (30x18 track); the row carries the hit area.
+- Default colors rolled back: GitHub Sharp is the default again (:root/.dark
+  + original CALM_COLORS); Ember stays a named, selectable palette. Editor
+  seeding/reset and the settings oracle updated to the restored values.
+- Color picker: the swatch was a dead span; it is now a real <input
+  type="color"> wired to the same draft edit as the hex field (56 pickers).
+- Models page: cut the filler descriptions (page, Default model, In the model
+  picker); kept the cached-OpenRouter notice as a small status line. All
+  columns centered (headers + cells). Twenty measurements applied: 32px
+  header, 36px rows, 13px text, vertical column separators.
+- Tests: 497 pass across the changed surfaces; tsc/eslint clean; story oracles
+  response-evidence 9/9 and settings-appearance 4/4. terminal-theme test
+  selectors updated to the restored :root/.dark GitHub Sharp modes.
+- Evidence: models-settings/models-centered-light.png, switch-restored.png;
+  refreshed response-evidence/settings-appearance renders.

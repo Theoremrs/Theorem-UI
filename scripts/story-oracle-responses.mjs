@@ -22,8 +22,8 @@ export function scenarios(h) {
           const value = (label) =>
             document.querySelector(`input[aria-label="${label}"]`)?.value
           return (
-            value('Canvas, light') === '#f7f7f5' &&
-            value('Action, light') === '#8a4854' &&
+            value('Canvas, light') === '#ffffff' &&
+            value('Action, light') === '#8e454f' &&
             value('Insight, dark') !== ''
           )
         })
@@ -35,10 +35,10 @@ export function scenarios(h) {
             document.querySelector('[role="alert"]')?.textContent ?? ''
           ).includes('4.5:1'),
         )
-        const stillEmber = await page.evaluate(
+        const stillDefault = await page.evaluate(
           () => document.documentElement.dataset.palette !== 'custom',
         )
-        await page.locator('input[aria-label="Action, light"]').fill('#8a4854')
+        await page.locator('input[aria-label="Action, light"]').fill('#8e454f')
         await page.locator('button:has-text("Apply colors")').click()
         await page.waitForTimeout(400)
         const applied = await page.evaluate(
@@ -48,7 +48,7 @@ export function scenarios(h) {
         return {
           'editors seed from the active palette in both modes': seeded,
           'a failing contrast pair is refused with its reason': refused,
-          'a refused edit paints nothing': stillEmber,
+          'a refused edit paints nothing': stillDefault,
           'a valid edit applies as the custom palette': applied,
         }
       },

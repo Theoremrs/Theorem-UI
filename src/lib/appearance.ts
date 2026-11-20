@@ -310,7 +310,7 @@ export function resolveAppearance({ preset, overrides }: AppearanceSelection) {
   const defaults = presetDefaults[preset]
   return {
     preset,
-    palette: overrides.palette ?? 'ember',
+    palette: overrides.palette ?? 'github-sharp',
     customPalette: overrides.customPalette,
     font: overrides.font,
     density: overrides.density ?? 'comfortable',

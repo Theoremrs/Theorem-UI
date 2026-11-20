@@ -28,7 +28,7 @@ function seedColors(mode: Mode, overrides: AppearanceOverrides): Colors {
   const builtin = paletteTokens(
     overrides.palette && overrides.palette !== 'custom'
       ? overrides.palette
-      : 'ember',
+      : 'github-sharp',
   )
   const tokens = builtin?.[mode] ?? {}
   return Object.fromEntries(
@@ -105,7 +105,7 @@ export function PaletteColors() {
     setMessage('')
     setInvalid(false)
     if (appearance.palette === 'custom')
-      setOverrides({ palette: 'ember', customPalette: undefined })
+      setOverrides({ palette: 'github-sharp', customPalette: undefined })
   }
   return (
     <SettingsSection
@@ -128,10 +128,12 @@ export function PaletteColors() {
             <div className="flex items-center gap-2">
               {(['light', 'dark'] as const).map((mode) => (
                 <label key={mode} className="flex items-center gap-1.5">
-                  <span
-                    aria-hidden
-                    className="size-5 shrink-0 rounded-sm border border-separator"
-                    style={{ background: shown(mode, token) }}
+                  <input
+                    type="color"
+                    aria-label={`${label} color picker, ${mode}`}
+                    className="size-6 shrink-0 cursor-pointer rounded-sm border border-separator bg-transparent p-0"
+                    value={/^#[0-9a-f]{6}$/i.test(shown(mode, token)) ? shown(mode, token) : '#000000'}
+                    onChange={(event) => edit(mode, token, event.currentTarget.value)}
                   />
                   <Input
                     size="sm"

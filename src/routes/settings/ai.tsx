@@ -20,10 +20,7 @@ export const Route = createFileRoute('/settings/ai')({
 
 function ModelsSettings() {
   return (
-    <SettingsPage
-      title="Models"
-      description="Every model powers Theorem with its tools and conversation context. Provider labels identify who supplies the model."
-    >
+    <SettingsPage title="Models">
       <ModelsSections />
     </SettingsPage>
   )
@@ -41,7 +38,7 @@ function DefaultModel({
   const model = catalog.find((m) => m.ref === selected)
   const fallback = defaultModelDescription(catalog, defaultRef)
   return (
-    <SettingsSection title="Default model" description="The model a new turn runs on until you pick another in the composer.">
+    <SettingsSection title="Default model">
       <SettingsBox>
         <SettingsRow
           Mark={Icon.Model}
@@ -73,12 +70,12 @@ function ModelsSections() {
         <Button variant="outline" size="sm" onClick={() => void refetch()}>Retry model list</Button>
       </div>}
       <DefaultModel catalog={catalog} defaultRef={list?.defaultRef} />
-      <SettingsSection
-        title="In the model picker"
-        description={`Star the models you want in the composer's model picker. ${starred.length} starred${
-          list?.openrouter === 'cached' ? '. OpenRouter did not answer, so this is the last list Theorem saw' : ''
-        }.`}
-      >
+      <SettingsSection title="In the model picker">
+        {list?.openrouter === 'cached' && (
+          <p className="text-xs text-ink-muted">
+            OpenRouter did not answer; this is the last list Theorem saw.
+          </p>
+        )}
         {error ? (
           <Empty className="rounded-lg border border-separator">
             <EmptyTitle>

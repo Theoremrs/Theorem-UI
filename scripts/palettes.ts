@@ -163,14 +163,50 @@ const STONE_HUE = 70
 const ATTENTION_HUE = 75
 
 const modes: Array<Mode & { hue: number }> = [
-  // Ember: the interactive-responses plan's candidate colors, placed by the
-  // same rules. Warm parchment in light (the canvas #f8f6f3's own hue), a
-  // violet-tinted graphite in dark (#1e1b22's); violet is the brand accent,
-  // oxblood the action family, gold the insight family, teal success. The
-  // neutral hue carries the ink's warmth in light and the canvas's violet in
-  // dark, as the plan draws them.
+  // GitHub Sharp is the default (the owner rolled the Ember experiment back,
+  // 2026-11-20): crisp white surfaces, GitHub ink and hairlines, the theme's
+  // blue for the accent. Ember stays a named, selectable palette below.
   {
     selector: ':root',
+    dark: false,
+    hue: GITHUB_HUE,
+    saturation: 0.1,
+    neutrals: githubNeutrals.light,
+    selected: 0.4,
+    hues: { redwood: 247, teal: 150, ochre: 95, error: 18, focus: 247, action: 13, insight: 85 },
+    tiers: {
+      strong: { l: 0.558, c: 0.132 },
+      ink: { l: 0.485, c: 0.108 },
+      container: { l: 0.936, c: 0.03 },
+      graph: { l: 0.534, c: 0.12 },
+      focus: { l: 0.558, c: 0.123 },
+    },
+    link: 'redwood',
+    attention: { strong: { l: 0.62, c: 0.145 }, ink: { l: 0.47, c: 0.105 } },
+  },
+  {
+    selector: '.dark',
+    dark: true,
+    hue: GITHUB_HUE,
+    saturation: 0.034,
+    neutrals: githubNeutrals.dark,
+    selected: 0.12,
+    hues: { redwood: 247, teal: 150, ochre: 95, error: 18, focus: 247, action: 13, insight: 85 },
+    tiers: {
+      strong: { l: 0.633, c: 0.123 },
+      ink: { l: 0.779, c: 0.105 },
+      container: { l: 0.324, c: 0.048 },
+      graph: { l: 0.745, c: 0.125 },
+      focus: { l: 0.558, c: 0.123 },
+    },
+    link: 'redwood',
+    attention: { strong: { l: 0.8, c: 0.14 }, ink: { l: 0.86, c: 0.105 } },
+  },
+  // Ember: the interactive-responses plan's candidate colors, kept as a named
+  // option. Warm parchment light, violet-tinted graphite dark; violet brand,
+  // oxblood action, gold insight, teal success.
+  {
+    selector: "[data-palette='ember']",
     dark: false,
     hue: 76,
     saturation: 0.1,
@@ -199,15 +235,7 @@ const modes: Array<Mode & { hue: number }> = [
       'graph-link': githubNeutrals.light['graph-link'],
     },
     selected: 0.35,
-    hues: {
-      redwood: 311,
-      teal: 177,
-      ochre: 95,
-      error: 18,
-      focus: 311,
-      action: 9,
-      insight: 80,
-    },
+    hues: { redwood: 311, teal: 177, ochre: 95, error: 18, focus: 311, action: 9, insight: 80 },
     tiers: {
       strong: { l: 0.558, c: 0.132 },
       ink: { l: 0.485, c: 0.108 },
@@ -219,7 +247,7 @@ const modes: Array<Mode & { hue: number }> = [
     attention: { strong: { l: 0.62, c: 0.145 }, ink: { l: 0.47, c: 0.105 } },
   },
   {
-    selector: '.dark',
+    selector: ".dark[data-palette='ember']",
     dark: true,
     hue: 312,
     saturation: 0.06,
@@ -249,57 +277,13 @@ const modes: Array<Mode & { hue: number }> = [
       'graph-label': githubNeutrals.dark['graph-label'],
     },
     selected: 0.25,
-    hues: {
-      redwood: 307,
-      teal: 169,
-      ochre: 95,
-      error: 18,
-      focus: 307,
-      action: 7,
-      insight: 84,
-    },
+    hues: { redwood: 307, teal: 169, ochre: 95, error: 18, focus: 307, action: 7, insight: 84 },
     tiers: {
       strong: { l: 0.633, c: 0.123 },
       ink: { l: 0.779, c: 0.105 },
       container: { l: 0.324, c: 0.048 },
       graph: { l: 0.745, c: 0.125 },
       focus: { l: 0.633, c: 0.1 },
-    },
-    link: 'redwood',
-    attention: { strong: { l: 0.8, c: 0.14 }, ink: { l: 0.86, c: 0.105 } },
-  },
-  {
-    selector: "[data-palette='github-sharp']",
-    dark: false,
-    hue: GITHUB_HUE,
-    saturation: 0.1,
-    neutrals: githubNeutrals.light,
-    selected: 0.4,
-    hues: { redwood: 247, teal: 150, ochre: 95, error: 18, focus: 247, action: 13, insight: 85 },
-    tiers: {
-      strong: { l: 0.558, c: 0.132 },
-      ink: { l: 0.485, c: 0.108 },
-      container: { l: 0.936, c: 0.03 },
-      graph: { l: 0.534, c: 0.12 },
-      focus: { l: 0.558, c: 0.123 },
-    },
-    link: 'redwood',
-    attention: { strong: { l: 0.62, c: 0.145 }, ink: { l: 0.47, c: 0.105 } },
-  },
-  {
-    selector: ".dark[data-palette='github-sharp']",
-    dark: true,
-    hue: GITHUB_HUE,
-    saturation: 0.034,
-    neutrals: githubNeutrals.dark,
-    selected: 0.12,
-    hues: { redwood: 247, teal: 150, ochre: 95, error: 18, focus: 247, action: 13, insight: 85 },
-    tiers: {
-      strong: { l: 0.633, c: 0.123 },
-      ink: { l: 0.779, c: 0.105 },
-      container: { l: 0.324, c: 0.048 },
-      graph: { l: 0.745, c: 0.125 },
-      focus: { l: 0.558, c: 0.123 },
     },
     link: 'redwood',
     attention: { strong: { l: 0.8, c: 0.14 }, ink: { l: 0.86, c: 0.105 } },
@@ -669,7 +653,7 @@ export function appearanceTokens(mode: (typeof modes)[number], calm = false) {
 export function palettesCss() {
   const calmModes = modes.slice(0, 2).map((mode) => ({
     ...mode,
-    selector: `${mode.dark ? '.dark' : ':root'}:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):where(:not([data-palette]), [data-palette='ember'])`,
+    selector: `${mode.dark ? '.dark' : ':root'}:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):where(:not([data-palette]), [data-palette='github-sharp'])`,
   }))
   const blocks = [...modes, ...calmModes].map((mode, index) => {
     const tokens = appearanceTokens(mode, index >= modes.length)
@@ -719,18 +703,18 @@ export function paletteTokens(value: string) {
     (mode) =>
       !mode.dark &&
       (mode.selector === `[data-palette='${value}']` ||
-        (value === 'ember' && mode.selector === ':root')),
+        (value === 'github-sharp' && mode.selector === ':root')),
   )
   const dark = modes.find(
     (mode) =>
       mode.dark &&
       (mode.selector === `.dark[data-palette='${value}']` ||
-        (value === 'ember' && mode.selector === '.dark')),
+        (value === 'github-sharp' && mode.selector === '.dark')),
   )
   if (!light || !dark) return undefined
   return {
-    light: appearanceTokens(light, value === 'ember'),
-    dark: appearanceTokens(dark, value === 'ember'),
+    light: appearanceTokens(light, value === 'github-sharp'),
+    dark: appearanceTokens(dark, value === 'github-sharp'),
   }
 }
 

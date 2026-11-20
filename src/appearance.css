@@ -109,13 +109,18 @@
 }
 /* A row's controls keep their own size but never fall below the control
    minimum, as the composer toolbar's do. Height becomes a minimum so
-   enlarged type grows the control instead of clipping its label. */
+   enlarged type grows the control instead of clipping its label. A switch
+   is excluded: its track is sized from --thumb-size (twice as wide as tall),
+   and forcing a square minimum collapsed it to a circle. */
 [data-appearance-part='settings-row']
-  :is(button, [role='button'], [role='switch'], [role='combobox']) {
+  :is(button, [role='button'], [role='combobox']):not([role='switch']) {
   min-block-size: var(--appearance-control-min);
   min-inline-size: var(--appearance-control-min);
   block-size: auto;
 }
+/* A switch keeps its own track geometry (twice as wide as tall, from
+   --thumb-size); stretching it to the control minimum drew a circle. Its
+   hit area is the row itself, which already meets the control minimum. */
 /* A data-management section: the compact steps for its own rows and heading.
    Touch keeps its larger steps, so a table never shrinks a target below it. */
 :root:not([data-density='touch'])

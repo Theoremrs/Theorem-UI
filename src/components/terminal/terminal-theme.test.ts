@@ -42,28 +42,28 @@ const darker = (m: Mode, by: number): Mode => ({
 })
 
 const WORKSPACES = {
-  'GitHub Sharp': workspace(mode("[data-palette='github-sharp']")),
-  'GitHub Sharp dark': workspace(mode(".dark[data-palette='github-sharp']")),
+  'GitHub Sharp': workspace(mode(':root')),
+  'GitHub Sharp dark': workspace(mode('.dark')),
   Stone: workspace(mode("[data-palette='stone']")),
   'Stone dark': workspace(mode(".dark[data-palette='stone']")),
   // A person's own colours, made the way a palette is.
   'plum dark': workspace({
-    ...mode(".dark[data-palette='github-sharp']"),
+    ...mode('.dark'),
     hue: 320,
     saturation: 0.12,
   }),
   'red dark': workspace({
-    ...mode(".dark[data-palette='github-sharp']"),
+    ...mode('.dark'),
     hue: 25,
     saturation: 0.15,
   }),
   'green light': workspace({
-    ...mode("[data-palette='github-sharp']"),
+    ...mode(':root'),
     hue: 146,
     saturation: 0.2,
   }),
   'pure grey, darker': workspace({
-    ...darker(mode(".dark[data-palette='github-sharp']"), 0.05),
+    ...darker(mode('.dark'), 0.05),
     saturation: 0,
   }),
 }

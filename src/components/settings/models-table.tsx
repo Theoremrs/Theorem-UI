@@ -93,7 +93,7 @@ function ModelCell() {
     <button
       ref={trigger}
       type="button"
-      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+      className="flex min-w-0 flex-1 items-center justify-center gap-1.5"
       aria-label={`Details for ${model.name}, ${model.ref}`}
       onClick={() => inspect(model.ref, trigger.current!)}
     >
@@ -196,7 +196,9 @@ function modelColumns(models: readonly ModelOption[]) {
     enableGlobalFilter: false,
     size: 92,
   }
-  const numericHeader = 'flex w-full justify-end'
+  // Every column is centered (owner, 2026-11-20); the header button centers
+  // its label and sort mark together.
+  const centeredHeader = 'flex w-full justify-center'
   return columnHelper.columns([
     columnHelper.accessor('starred', {
       id: 'starred',
@@ -219,7 +221,7 @@ function modelColumns(models: readonly ModelOption[]) {
     // as separate fields.
     columnHelper.accessor('name', {
       id: 'name',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <ModelCell />,
       sortFn: nameSort,
       filterFn: modelTextFilter,
@@ -230,7 +232,7 @@ function modelColumns(models: readonly ModelOption[]) {
     }),
     columnHelper.accessor('vendor', {
       id: 'vendor',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: ({ cell }) => <cell.TextCell />,
       enableGlobalFilter: false,
       size: 112,
@@ -239,7 +241,7 @@ function modelColumns(models: readonly ModelOption[]) {
     columnHelper.accessor('contextLength', {
       id: 'contextLength',
       ...numeric,
-      header: ({ header }) => <header.ColumnHeader className={numericHeader} />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <TokensCell />,
       size: 148,
       meta: { label: 'Context (tokens)', variant: 'number' },
@@ -247,7 +249,7 @@ function modelColumns(models: readonly ModelOption[]) {
     columnHelper.accessor('maxOutput', {
       id: 'maxOutput',
       ...numeric,
-      header: ({ header }) => <header.ColumnHeader className={numericHeader} />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <TokensCell />,
       size: 172,
       meta: { label: 'Max output (tokens)', variant: 'number' },
@@ -255,7 +257,7 @@ function modelColumns(models: readonly ModelOption[]) {
     columnHelper.accessor('promptPrice', {
       id: 'promptPrice',
       ...numeric,
-      header: ({ header }) => <header.ColumnHeader className={numericHeader} />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <PriceCell />,
       size: 108,
       meta: { label: 'Input $/M', variant: 'number' },
@@ -263,14 +265,14 @@ function modelColumns(models: readonly ModelOption[]) {
     columnHelper.accessor('completionPrice', {
       id: 'completionPrice',
       ...numeric,
-      header: ({ header }) => <header.ColumnHeader className={numericHeader} />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <PriceCell />,
       size: 116,
       meta: { label: 'Output $/M', variant: 'number' },
     }),
     columnHelper.accessor('inputs', {
       id: 'inputs',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <InputsCell />,
       getUniqueValues: (row) => [...row.inputs],
       enableSorting: false,
@@ -287,7 +289,7 @@ function modelColumns(models: readonly ModelOption[]) {
     }),
     columnHelper.accessor('tools', {
       id: 'tools',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <BooleanCell />,
       sortFn: 'basic',
       sortDescFirst: true,
@@ -297,7 +299,7 @@ function modelColumns(models: readonly ModelOption[]) {
     }),
     columnHelper.accessor('reasoning', {
       id: 'reasoning',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <BooleanCell />,
       sortFn: 'basic',
       sortDescFirst: true,
@@ -310,7 +312,7 @@ function modelColumns(models: readonly ModelOption[]) {
         row.addedAtMs === undefined ? undefined : new Date(row.addedAtMs),
       {
         id: 'addedAt',
-        header: ({ header }) => <header.ColumnHeader />,
+        header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
         cell: ({ cell }) => <cell.DateCell />,
         sortFn: 'datetime',
         sortUndefined: 'last',
@@ -321,7 +323,7 @@ function modelColumns(models: readonly ModelOption[]) {
     ),
     columnHelper.accessor('source', {
       id: 'source',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <SourceCell />,
       enableGlobalFilter: false,
       size: 128,
@@ -502,14 +504,10 @@ export function ModelsTable({
                               <TableHead
                                 colSpan={h.colSpan}
                                 className={cn(
-                                  'relative h-9',
+                                  // Twenty's sticky 32px header row, 13px text,
+                                  // a vertical rule between columns.
+                                  'relative h-8 justify-center border-s border-separator text-[13px] first:border-s-0',
                                   h.column.id === 'starred' && 'px-0',
-                                  [
-                                    'contextLength',
-                                    'maxOutput',
-                                    'promptPrice',
-                                    'completionPrice',
-                                  ].includes(h.column.id) && 'justify-end',
                                   h.column.getIsPinned() && 'bg-raised',
                                 )}
                                 style={{
@@ -540,7 +538,9 @@ export function ModelsTable({
                             {(c) => (
                               <TableCell
                                 className={cn(
-                                  'py-1.5 text-sm text-ink',
+                                  // Twenty's 36px rows, 13px text, centered,
+                                  // a vertical rule between columns.
+                                  'h-9 justify-center border-s border-separator py-0 text-[13px] text-ink first:border-s-0',
                                   c.column.id === 'starred' &&
                                     'justify-center px-0',
                                   [
@@ -549,7 +549,7 @@ export function ModelsTable({
                                     'promptPrice',
                                     'completionPrice',
                                   ].includes(c.column.id) &&
-                                    'justify-end tabular-nums',
+                                    'tabular-nums',
                                   pinnedCell(c.column.getIsPinned()),
                                 )}
                                 style={{
