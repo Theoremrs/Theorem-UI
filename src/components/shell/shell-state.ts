@@ -3,6 +3,7 @@ import type { SerializedDockview } from 'dockview-react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
+  Attachment,
   Companion,
   PlacementChoice,
 } from '@/components/workbench/placement'
@@ -77,6 +78,8 @@ type ShellState = {
    * decides (components/workbench/placement.ts).
    */
   workbench: PlacementChoice | undefined
+  /** Whether the workbench beside or under the conversation is a drawer over it or part of the screen (Settings, Appearance). */
+  workbenchAttachment: Attachment
   /** The docked placement last used, which a toggle reopens. */
   lastCompanion: Companion
   /** The workbench docked under the sheet: its height as a share of the window. */
@@ -127,6 +130,7 @@ type ShellState = {
   setProjectOrder: (order: readonly string[]) => void
   /** Puts the workbench somewhere, or closes it; a docked placement becomes the one a toggle reopens. */
   setWorkbench: (choice: PlacementChoice) => void
+  setWorkbenchAttachment: (attachment: Attachment) => void
   setTerminalHeight: (height: number) => void
   setTerminalThread: (projectId: string, threadId: string | undefined) => void
   setSideDrawer: (drawer: SideDrawer | undefined) => void
@@ -166,6 +170,7 @@ export const useShell = create<ShellState>()(
       organizeOpen: {},
       projectOrder: [],
       workbench: undefined,
+      workbenchAttachment: 'drawer',
       lastCompanion: 'side',
       terminalHeight: 0.42,
       terminalThreads: {},
@@ -207,6 +212,8 @@ export const useShell = create<ShellState>()(
             ? { workbench, lastCompanion: workbench }
             : { workbench },
         ),
+      setWorkbenchAttachment: (workbenchAttachment) =>
+        set({ workbenchAttachment }),
       setTerminalHeight: (terminalHeight) => set({ terminalHeight }),
       setTerminalThread: (projectId, threadId) =>
         set((s) => {
@@ -313,6 +320,7 @@ export const useShell = create<ShellState>()(
         ideFilesHeight,
         projectOrder,
         workbench,
+        workbenchAttachment,
         lastCompanion,
         terminalHeight,
         sideWidth,
@@ -333,6 +341,7 @@ export const useShell = create<ShellState>()(
         ideFilesHeight,
         projectOrder,
         workbench,
+        workbenchAttachment,
         lastCompanion,
         terminalHeight,
         sideWidth,
