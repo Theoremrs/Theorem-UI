@@ -11,6 +11,7 @@ import { useTheme } from '@/ui/theme'
 import { readApproval } from './approval'
 import { ApprovalCard } from './approval-card'
 import { LinkedText } from './linked-text'
+import { MarkdownText } from './markdown-text'
 import { PROPOSE_EVENT } from '../phone-actions/calendar'
 import { EventProposalCard } from '../phone-actions/event-card'
 
@@ -101,7 +102,7 @@ function stepTitleOf(part: Extract<Part, { type: 'tool-call' }>): string {
 function PartView({ part, runId }: { part: Part; runId: string | undefined }) {
   switch (part.type) {
     case 'text':
-      return <LinkedText text={part.text} />
+      return <MarkdownText text={part.text} />
     case 'reasoning':
       // Only reasoning the provider supplied; nothing is inferred from prose.
       return (
