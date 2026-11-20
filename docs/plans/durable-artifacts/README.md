@@ -194,14 +194,16 @@ second tracker. Status lives in [checklist.json](checklist.json).
   resolve their overlap by source+tests, record compatible frontend/backend
   revisions. The true gate to product-live: the merged UI runs against a fixture
   backend until these land.
-- **Cabinet runtime ownership (package 2 gap).** The dock is a referrer, but the
-  cabinet's "Open latest" still renders a live App interactively — a second
-  runtime path §4.2 names. Extend the single-owner rule there; acceptance =
-  startup/external subscription fires once across chat/note/panel/cabinet/expand.
-- **Writer transport recovery (package 3 gap, §4.4).** Recover an acknowledged
-  writer after a retryable transport failure and reconcile lost acknowledgements
-  against stored progress; distinguish malformed input from temporary storage
-  failure. (Identical/conflicting repeats are done; a failed write still stops.)
+- **Cabinet runtime ownership (package 2 gap) — fixed.** The cabinet's
+  "Open latest" on a live interactive App now renders `ArtifactReferrer`
+  (`original-view.tsx`), the same single-owner pattern as the dock; the pinned
+  read-only `AppRevision` default and non-live bodies are unchanged. Remaining:
+  the cross-surface startup-once acceptance in a signed-in browser (package 6).
+- **Writer transport recovery (package 3 gap, §4.4) — fixed.** A retryable
+  failure (transport death, 5xx/408/429) rolls the writer back to stored progress
+  and re-ensures the run instead of stopping it; lost acknowledgements reconcile
+  by re-sending against the store's sequence-idempotent chunks; a permanent 4xx
+  refusal still stops (`artifact-store.ts`).
 - **Evidence hygiene (package 1).** Rewrite #139's template body with actual
   behavior/verification/gaps; classify the broader Composer mobile-nav timeout
   from evidence (do not assume unrelated).
