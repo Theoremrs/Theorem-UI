@@ -15,8 +15,10 @@ function harness(options: { refuse?: string[] } = {}) {
     get state() {
       return state
     },
+    // As HeadlessConversation does: a new subscriber hears the current state at once.
     subscribe(listener) {
       listeners.add(listener)
+      listener(state)
       return () => listeners.delete(listener)
     },
     async connect() {},
@@ -51,6 +53,18 @@ describe('Outbox', () => {
     const id = outbox.submit('th', 'hello')
     await settle()
     expect(calls).toEqual([`send:${id}:hello`])
+  })
+
+  test('a message sent after a run finished goes, though the outbox last saw it running', async () => {
+    const { calls, outbox, phase } = harness()
+    const first = outbox.submit('th', 'one')
+    await settle()
+    phase('completed')
+    await settle()
+    const second = outbox.submit('th', 'two')
+    await settle()
+    expect(calls).toEqual([`send:${first}:one`, `send:${second}:two`])
+    expect(outbox.snapshot('th').inflight).toBeUndefined()
   })
 
   test('a message sent during a run waits, then goes once, under its original id', async () => {
