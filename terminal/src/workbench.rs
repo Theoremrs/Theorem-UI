@@ -1043,6 +1043,7 @@ fn js_error(error: impl std::fmt::Display) -> JsValue {
 /// The mounted workbench. React calls these from its own event handlers.
 #[wasm_bindgen]
 pub struct WorkbenchHandle {
+    frames: Rc<crate::FrameLoop>,
     core: Rc<RefCell<Core>>,
     parent: web_sys::Element,
     on_effect: js_sys::Function,
@@ -1132,6 +1133,9 @@ impl WorkbenchHandle {
     /// The host element changed size: measure it in cells and tell the model.
     /// The frame loop also follows the grid the backend actually built.
     pub fn resize(&self) {
+        if !self.frames.visible.get() {
+            return;
+        }
         let rect = self.parent.get_bounding_client_rect();
         let mut core = self.core.borrow_mut();
         let Some(cell) = core.cell else {
@@ -1145,6 +1149,11 @@ impl WorkbenchHandle {
         let effects = core.resize(Rect::new(0, 0, cols, rows), cell);
         drop(core);
         deliver(&self.on_effect, &self.on_semantics, &effects, None);
+    }
+
+    /// Pauses rendering while the shell keeps the workspace and its sessions mounted.
+    pub fn set_visible(&self, visible: bool) {
+        self.frames.set_visible(visible);
     }
 
     pub fn set_focused(&self, focused: bool) {
@@ -1330,7 +1339,7 @@ pub fn mount_workbench(
     let core = Rc::new(RefCell::new(Core::new(platform)));
     let parent = screen.parent.clone();
     let first_frame = Rc::new(RefCell::new(FirstFrame::new()));
-    run_frames(
+    let frames = run_frames(
         screen,
         Rc::new(RefCell::new(Mounted {
             core: core.clone(),
@@ -1343,6 +1352,7 @@ pub fn mount_workbench(
         })),
     );
     Ok(WorkbenchHandle {
+        frames,
         core,
         parent,
         on_effect,

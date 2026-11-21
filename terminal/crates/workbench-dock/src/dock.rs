@@ -69,7 +69,7 @@ impl Group {
 /// and hiding or showing a region is a flag, not a rebuild.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Preset {
-    /// Files | main | tools, main to tools 2:1.
+    /// Files | main | tools, with bounded starting widths for the secondary groups.
     Default,
     /// Files and a wide main; tools hidden.
     EditorCentered,
@@ -131,7 +131,13 @@ impl Dock {
         let mut groups = BTreeMap::new();
         groups.insert(files, Group::new(Role::Files, Some(cfg.files_px)));
         groups.insert(main, Group::new(Role::Main, None));
-        groups.insert(tools, Group::new(Role::Tools, None));
+        groups.insert(
+            tools,
+            Group::new(
+                Role::Tools,
+                (preset == Preset::Default).then_some(cfg.tools_min_px),
+            ),
+        );
         match preset {
             Preset::Default => {}
             Preset::EditorCentered => groups.get_mut(&tools).expect("tools").hidden = true,
