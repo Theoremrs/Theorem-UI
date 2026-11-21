@@ -446,6 +446,22 @@ test('a ?implementation fingerprint follows nested workers and fingerprints, and
   expect(await digestIn(remote, serving('export const deep = 2'))).not.toBe(before)
 }, 120_000)
 
+test('two files that import each other are different implementations, and each is stable', async () => {
+  const files = {
+    'main.ts': 'import a from "./a.ts?implementation"\nimport b from "./b.ts?implementation"\nexport { a, b }',
+    'a.ts': 'import "./b"\nexport const solve = () => 1',
+    'b.ts': 'import "./a"\nexport const solve = () => 2',
+  }
+  const digests = async () => {
+    const bundle = await bundleAppSources({ entry: 'main.ts', files }, esbuild, new AppDependencies({}, modules({}).request))
+    return [...bundle.code.matchAll(/"(sha256:[0-9a-f]{64})"/g)].map((match) => match[1])
+  }
+  const first = await digests()
+  expect(first).toHaveLength(2)
+  expect(first[0]).not.toBe(first[1])
+  expect(await digests()).toEqual(first)
+}, 120_000)
+
 test('a ?implementation or ?worker file that reaches itself is refused, not built forever', async () => {
   const build = (files: Record<string, string>) =>
     bundleAppSources({ entry: 'main.ts', files }, esbuild, new AppDependencies({}, modules({}).request))

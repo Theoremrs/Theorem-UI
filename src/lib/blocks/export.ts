@@ -78,10 +78,13 @@ const NAMESPACE = {
  * (`nested`, so what it imports at any depth counts), a remote dependency by
  * the SHA-256 of the bytes the build was given for it (`load`, so a mutable
  * URL that serves new code is a new implementation), and anything else, the
- * vendored modules Theorem ships, by its path.
+ * vendored modules Theorem ships, by its path. `entry`, the file the build
+ * started from, is part of it: two files that import each other read the same
+ * modules but run different code.
  */
 export async function implementationDigest(
   files: Record<string, string>,
+  entry: string,
   inputs: Array<string>,
   nested: ReadonlyMap<string, string> = new Map(),
   load?: (url: string) => Promise<AppModule>,
@@ -118,7 +121,7 @@ export async function implementationDigest(
     }
     read[input] = input
   }
-  return digestBytes(encoder.encode(canonicalJson(read)))
+  return digestBytes(encoder.encode(canonicalJson({ entry, read })))
 }
 
 /** A bare import, through the import map, to the vendored file that serves it. */
@@ -448,6 +451,7 @@ function appPlugin(
         })
         const fingerprint = await implementationDigest(
           files,
+          path,
           Object.keys(result.metafile.inputs),
           nested.fingerprints,
           (url) => dependencies.load(url),
