@@ -1,5 +1,5 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises'
-import { auditPaletteCss, REQUIRED_PALETTE_PAIRS } from './colors.mjs'
+import { auditPaletteCss, REQUIRED_PALETTE_PAIRS, REQUIRED_PALETTE_MODES } from './colors.mjs'
 const results = auditPaletteCss(
   await readFile(new URL('../../src/palettes.css', import.meta.url), 'utf8'),
 )
@@ -11,18 +11,7 @@ const contractPairs=results.filter(result=>result.id.startsWith('COL-01.contract
 const failures = results.filter((result) => result.status !== 'pass')
 // An independent inventory, including Ember in both modes, keeps missing or
 // substituted palette blocks from passing on their count alone.
-const expectedModes = [
-  ':root',
-  '.dark',
-  "[data-palette='ember']",
-  ".dark[data-palette='ember']",
-  "[data-palette='stone']",
-  ".dark[data-palette='stone']",
-  "[data-palette='vitesse']",
-  ".dark[data-palette='vitesse']",
-  ":root:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):where(:not([data-palette]), [data-palette='github-sharp'])",
-  ".dark:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):where(:not([data-palette]), [data-palette='github-sharp'])",
-]
+const expectedModes = [...REQUIRED_PALETTE_MODES]
 const observedModes = modes.map((result) => result.evidence.mode)
 if (JSON.stringify(observedModes.sort()) !== JSON.stringify(expectedModes.sort()))
   failures.push({

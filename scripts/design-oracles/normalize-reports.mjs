@@ -2,6 +2,9 @@
 import { createHash } from 'node:crypto'
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { REQUIRED_PALETTE_MODES, REQUIRED_PALETTE_PAIRS } from './colors.mjs'
+
+const expectedPalettePairCount = REQUIRED_PALETTE_MODES.length * REQUIRED_PALETTE_PAIRS.length
 
 const args=process.argv.slice(2)
 const value=(name,fallback)=>{const i=args.indexOf(name);return i<0?fallback:args[i+1]}
@@ -12,7 +15,8 @@ const auditSha256=createHash('sha256').update(auditBytes).digest('hex')
 const auditData=JSON.parse(auditBytes)
 const purePaletteRows=auditData.results.filter(row=>row.id.startsWith('COL-01.minimum.')||row.id.startsWith('COL-01.contract.'))
 const paletteSummary={
-  count:54,
+  count:new Set(purePaletteRows.map(row=>row.evidence?.pair?.id).filter(Boolean)).size,
+  expectedCount:REQUIRED_PALETTE_PAIRS.length,
   builtInModeCount:auditData.modes,
   predicateRecordCount:purePaletteRows.length,
   byClass:Object.fromEntries(['Standard','Contract'].map(className=>[className,purePaletteRows.filter(row=>row.class===className).length])),
@@ -48,7 +52,7 @@ for(const file of files){
   const renderedPairs=col01?.observed?.renderedPairs??[]
   if(col01&&col01.observed){
     col01.observed.palettePairCount=paletteMinRows.length
-    col01.observed.expectedPalettePairCount=54*8
+    col01.observed.expectedPalettePairCount=expectedPalettePairCount
     col01.observed.palettePairs=paletteSummary
     col01.observed.renderedPairs=renderedPairs
     col01.evidence={...col01.evidence,paletteAudit:{path:'../colors.json',sha256:auditSha256,independent:true}}
@@ -59,7 +63,7 @@ for(const file of files){
   for(const [id,rows] of [['COL-01.minimum',paletteMinRows],['COL-01.product-minimum',paletteContractRows]]){
     const child=report.results.find(row=>row.id===id)
     if(child){
-      child.observed={...child.observed,palettePairs:rows.length,expectedPalettePairs:54*8,failedPalettePairs:rows.filter(row=>(row.status??row.result)==='fail').map(row=>row.id),renderedPairs:renderedPairs.length,failedRenderedPairs:renderedPairs.filter(row=>row.status==='fail')}
+      child.observed={...child.observed,palettePairs:rows.length,expectedPalettePairs:expectedPalettePairCount,failedPalettePairs:rows.filter(row=>(row.status??row.result)==='fail').map(row=>row.id),renderedPairs:renderedPairs.length,failedRenderedPairs:renderedPairs.filter(row=>row.status==='fail')}
       child.evidence={...child.evidence,paletteAudit:{path:'../colors.json',sha256:auditSha256,independent:true}}
     }
   }

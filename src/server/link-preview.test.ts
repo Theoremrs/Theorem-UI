@@ -101,6 +101,47 @@ describe('publicAddress', () => {
   })
 })
 
+describe('special-purpose IPv4 addresses', () => {
+  test('refuses benchmarking and non-global protocol/documentation ranges as addresses and URLs', () => {
+    for (const address of [
+      '198.18.0.0',
+      '198.18.0.1',
+      '198.19.255.255',
+      '192.0.0.0',
+      '192.0.0.8',
+      '192.0.0.11',
+      '192.0.0.255',
+      '192.0.2.0',
+      '192.0.2.255',
+      '198.51.100.0',
+      '198.51.100.255',
+      '203.0.113.0',
+      '203.0.113.255',
+    ]) {
+      expect(publicAddress(address)).toBe(false)
+      expect(publicHttpUrl(`http://${address}/`)).toBeUndefined()
+    }
+  })
+
+  test('keeps adjacent public ranges and the public protocol anycast exceptions', () => {
+    for (const address of [
+      '198.17.255.255',
+      '198.20.0.0',
+      '192.0.0.9',
+      '192.0.0.10',
+      '192.0.1.255',
+      '192.0.3.0',
+      '198.51.99.255',
+      '198.51.101.0',
+      '203.0.112.255',
+      '203.0.114.0',
+    ]) {
+      expect(publicAddress(address)).toBe(true)
+      expect(publicHttpUrl(`https://${address}/`)).toBeDefined()
+    }
+  })
+})
+
 describe('extractMetadata', () => {
   const base = new URL('https://example.com/page')
 
@@ -120,6 +161,63 @@ describe('extractMetadata', () => {
       siteName: 'Example',
       favicon: 'https://example.com/favicon.png',
     })
+  })
+
+  test('bounds malformed tag scans without repeatedly rescanning the remaining head', () => {
+    for (const tag of ['meta', 'link', 'title']) {
+      const html = `<${tag} `.repeat(6_000)
+      const started = performance.now()
+      const metadata = extractMetadata(html, base)
+      const elapsed = performance.now() - started
+      expect(metadata.title).toBeUndefined()
+      // The former repeated regex scan takes about 1.8 seconds for <meta.
+      // A generous CPU budget permits slow CI while rejecting quadratic work.
+      expect(elapsed).toBeLessThan(750)
+    }
+  })
+
+  test('preserves matching quote boundaries and metadata priority regardless of attribute order', () => {
+    const html = `<title>Fallback title</title>
+      <META CONTENT='Twitter "fallback"' NAME="twitter:title">
+      <meta content="O'Reilly > books" property='og:title'>
+      <meta property="og:title" content="Later duplicate">
+      <meta name="description" content='A "quoted" description'>
+      <link href="/search?q=it's" rel="shortcut icon">
+      <link rel="apple-touch-icon" href="/apple.png">`
+    const metadata = extractMetadata(html, base)
+    expect(metadata.title).toBe("O'Reilly > books")
+    expect(metadata.description).toBe('A "quoted" description')
+    expect(metadata.favicon).toBe(new URL("/search?q=it's", base).href)
+  })
+
+  test('replaces invalid numeric entities without losing valid metadata', () => {
+    const metadata = extractMetadata(
+      '<meta property="og:title" content="A &#x110000; &#99999999999999999999999; &#xD800; &#0; &#128512; &#x1F642;">',
+      base,
+    )
+    expect(metadata.title).toBe('A \uFFFD \uFFFD \uFFFD \uFFFD 😀 🙂')
+  })
+
+  test('ignores apparent metadata inside comments and raw text', () => {
+    const metadata = extractMetadata(
+      `<!-- <meta property="og:title" content="Comment"> -->
+      <script>const example = '<meta property="og:title" content="Script">'</script>
+      <style>/* <meta property="og:title" content="Style"> */</style>
+      <title>Literal &lt;meta&gt; title</title>
+      <meta name="description" content="Real description">`,
+      base,
+    )
+    expect(metadata.title).toBe('Literal <meta> title')
+    expect(metadata.description).toBe('Real description')
+  })
+
+  test('limits extraction to the first 200,000 characters', () => {
+    const metadata = extractMetadata(
+      ' '.repeat(200_000) +
+        '<meta property="og:title" content="Beyond the cap">',
+      base,
+    )
+    expect(metadata.title).toBeUndefined()
   })
 
   test('falls back to the title tag and the default favicon', () => {
@@ -211,6 +309,7 @@ describe('resolveLinkMetadata request lifecycle', () => {
   }
   let initialResponse:
     { statusCode: number; headers: Record<string, string> } | undefined
+  let initialResponseDelay = 0
   let serial = 0
   const href = () => `https://preview-${++serial}.example.test/article`
 
@@ -219,6 +318,7 @@ describe('resolveLinkMetadata request lifecycle', () => {
     abort = spyOn(AbortController.prototype, 'abort')
     connections = []
     initialResponse = undefined
+    initialResponseDelay = 0
     mockLookupAll().mockResolvedValue([{ address: '93.184.215.14', family: 4 }])
     spyOn(https, 'request').mockImplementation(((
       options: https.RequestOptions,
@@ -229,7 +329,12 @@ describe('resolveLinkMetadata request lifecycle', () => {
       Object.assign(response, initialResponse)
       initialResponse = undefined
       connections.push({ options, request, response })
-      queueMicrotask(() => receive(response as unknown as IncomingMessage))
+      const receiveResponse = () =>
+        receive(response as unknown as IncomingMessage)
+      const delay = initialResponseDelay
+      initialResponseDelay = 0
+      if (delay) setTimeout(receiveResponse, delay)
+      else queueMicrotask(receiveResponse)
       return request as unknown as ClientRequest
     }) as typeof https.request)
   })
@@ -237,11 +342,14 @@ describe('resolveLinkMetadata request lifecycle', () => {
   afterEach(() => {
     // Observe cancellation instead of getTimerCount: Bun counts cleared timer
     // entries until their scheduled time is advanced.
-    const completedAborts = abort.mock.calls.length
-    jest.advanceTimersByTime(10_000)
-    expect(abort).toHaveBeenCalledTimes(completedAborts)
-    mock.restore()
-    jest.useRealTimers()
+    try {
+      const completedAborts = abort.mock.calls.length
+      jest.advanceTimersByTime(10_000)
+      expect(abort).toHaveBeenCalledTimes(completedAborts)
+    } finally {
+      mock.restore()
+      jest.useRealTimers()
+    }
   })
 
   test('stops a continuously trickling body at the total deadline and destroys the connection', async () => {
@@ -294,10 +402,10 @@ describe('resolveLinkMetadata request lifecycle', () => {
       statusCode: 302,
       headers: { location: 'https://redirect.example.test/final' },
     }
+    initialResponseDelay = 4_000
     const result = resolveLinkMetadata(href())
     await flushPromises()
     jest.advanceTimersByTime(4_000)
-    connection(0).response.emit('end')
     await flushPromises()
     expect(connections).toHaveLength(2)
 
@@ -308,6 +416,83 @@ describe('resolveLinkMetadata request lifecycle', () => {
     expect(connection(1).request.destroyed).toBe(true)
     expect(connection(1).response.destroyed).toBe(true)
     expect(await result).toBeNull()
+  })
+
+  test('releases a redirect connection before reading its body', async () => {
+    initialResponse = {
+      statusCode: 302,
+      headers: { location: 'https://immediate-redirect.example.test/' },
+    }
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    const first = connection(0)
+    const startedBeforeBody = connections.length
+    const releasedBeforeBody =
+      first.request.destroyed && first.response.destroyed
+    // Completing the old response keeps a failing regression deterministic.
+    first.response.emit('end')
+    await flushPromises()
+    connection(1).response.emit(
+      'data',
+      Buffer.from('<title>Destination</title>'),
+    )
+    connection(1).response.emit('end')
+
+    expect((await result)?.title).toBe('Destination')
+    expect(startedBeforeBody).toBe(2)
+    expect(releasedBeforeBody).toBe(true)
+    expect(first.response.listenerCount('data')).toBe(0)
+  })
+
+  test('coalesces concurrent requests so a late duplicate failure cannot poison a success', async () => {
+    const url = href()
+    const first = resolveLinkMetadata(url)
+    const second = resolveLinkMetadata(url)
+    await flushPromises()
+    connection(0).response.emit(
+      'data',
+      Buffer.from('<title>Shared success</title>'),
+    )
+    connection(0).response.emit('end')
+    expect((await first)?.title).toBe('Shared success')
+    // The old implementation opens a second connection and caches its failure.
+    connections[1]?.request.emit('error', new Error('late duplicate failure'))
+
+    expect((await second)?.title).toBe('Shared success')
+    expect((await resolveLinkMetadata(url))?.title).toBe('Shared success')
+    expect(connections).toHaveLength(1)
+    expect(dns.lookup).toHaveBeenCalledTimes(1)
+  })
+
+  test('refuses special-purpose DNS answers before opening a connection', async () => {
+    for (const address of [
+      '198.18.0.1',
+      '198.19.255.255',
+      '192.0.0.8',
+      '192.0.2.1',
+      '198.51.100.1',
+      '203.0.113.1',
+    ]) {
+      mockLookupAll().mockResolvedValue([{ address, family: 4 }])
+      expect(await resolveLinkMetadata(href())).toBeNull()
+    }
+    expect(connections).toHaveLength(0)
+  })
+
+  test('pins only the public answer when DNS also returns a benchmarking address', async () => {
+    mockLookupAll().mockResolvedValue([
+      { address: '198.18.0.1', family: 4 },
+      { address: '93.184.215.14', family: 4 },
+    ])
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    expect(connection(0).options.host).toBe('93.184.215.14')
+    connection(0).response.emit(
+      'data',
+      Buffer.from('<title>Public destination</title>'),
+    )
+    connection(0).response.emit('end')
+    expect((await result)?.title).toBe('Public destination')
   })
 
   test('address retries share the budget and stop retrying when it expires', async () => {
@@ -433,15 +618,18 @@ describe('resolveLinkMetadata on Cloudflare Workers', () => {
   afterEach(() => {
     // Observe cancellation instead of getTimerCount: Bun counts cleared timer
     // entries until their scheduled time is advanced.
-    const completedAborts = abort.mock.calls.length
-    jest.advanceTimersByTime(10_000)
-    expect(abort).toHaveBeenCalledTimes(completedAborts)
-    mock.restore()
-    jest.useRealTimers()
-    if (navigatorDescriptor) {
-      Object.defineProperty(globalThis, 'navigator', navigatorDescriptor)
-    } else {
-      Reflect.deleteProperty(globalThis, 'navigator')
+    try {
+      const completedAborts = abort.mock.calls.length
+      jest.advanceTimersByTime(10_000)
+      expect(abort).toHaveBeenCalledTimes(completedAborts)
+    } finally {
+      mock.restore()
+      jest.useRealTimers()
+      if (navigatorDescriptor) {
+        Object.defineProperty(globalThis, 'navigator', navigatorDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, 'navigator')
+      }
     }
   })
 
@@ -474,6 +662,60 @@ describe('resolveLinkMetadata on Cloudflare Workers', () => {
     expect(await resolveLinkMetadata(href())).toBeNull()
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(dns.lookup).toHaveBeenCalledTimes(2)
+  })
+
+  test('refuses special-purpose DNS answers before platform fetch', async () => {
+    for (const address of [
+      '198.18.0.1',
+      '198.19.255.255',
+      '192.0.0.8',
+      '192.0.2.1',
+      '198.51.100.1',
+      '203.0.113.1',
+    ]) {
+      mockLookupAll().mockResolvedValue([{ address, family: 4 }])
+      expect(await resolveLinkMetadata(href())).toBeNull()
+    }
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  test('cancels a redirect body without waiting for it or its cancellation', async () => {
+    let body!: ReadableStreamDefaultController<Uint8Array>
+    const cancel = mock(() => new Promise<void>(() => {}))
+    mockPlatformFetch()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              body = controller
+            },
+            cancel,
+          }),
+          {
+            status: 302,
+            headers: {
+              location: 'https://worker-immediate-redirect.example.test/',
+            },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response('<title>Immediate destination</title>', {
+          headers: { 'content-type': 'text/html' },
+        }),
+      )
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    await flushPromises()
+    const startedBeforeBody = mockPlatformFetch().mock.calls.length
+    const cancelledBeforeBody = cancel.mock.calls.length
+    // Let the former implementation complete so failure does not hang a test.
+    if (startedBeforeBody === 1) body.close()
+
+    expect((await result)?.title).toBe('Immediate destination')
+    expect(startedBeforeBody).toBe(2)
+    expect(cancelledBeforeBody).toBe(1)
+    expect(cancel).toHaveBeenCalledTimes(1)
   })
 
   test('cancels a trickling platform body at the shared deadline', async () => {

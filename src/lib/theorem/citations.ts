@@ -49,14 +49,21 @@ const supplied = (value: Json): Json =>
  * Rebuild from the durable message on every update. A source owns one card,
  * while later citations enrich its metadata and contribute distinct passages.
  * Explicit source IDs remain distinct even when they happen to share a URL.
+ * Labels are display text, not identity: citations without an ID or URL stay
+ * separate even when their labels match.
  */
 export function collectCitationSources(
   content: readonly CitationPart[],
 ): CitationSource[] {
   const sources: CitationSource[] = []
   const byId = new Map<string, CitationSource>()
+  let citationIndex = 0
   for (const part of content) {
     if (part.type !== 'data' || part.name !== 'theorem-citation') continue
+    // The SDK omits stored part IDs from assistant-ui citation data. Its
+    // citation order survives appends/reload, unlike surrounding text or
+    // activity positions, so use that order when no source identity exists.
+    const fallbackKey = `part:${citationIndex++}`
     const data = object(part.data)
     const provenance = supplied(object(data.provenance))
     const sourceId = str(data.sourceId)
@@ -65,25 +72,16 @@ export function collectCitationSources(
     const label = str(data.label)
     const excerpt = str(provenance.excerpt)
     let source = sourceId ? byId.get(sourceId) : undefined
-    if (!source) {
+    if (!source && url) {
       source = sources.find(
         (candidate) =>
-          // A fallback citation can gain its durable ID later in the stream.
-          (!sourceId || !candidate.sourceId) &&
-          (url
-            ? candidate.url === url
-            : !candidate.url &&
-              label !== undefined &&
-              candidate.label === label),
+          // A URL-bearing fallback can gain its durable ID later in the stream.
+          (!sourceId || !candidate.sourceId) && candidate.url === url,
       )
     }
     if (!source) {
       source = {
-        key: sourceId
-          ? `id:${sourceId}`
-          : url
-            ? `url:${url}`
-            : `label:${label ?? 'Source'}`,
+        key: sourceId ? `id:${sourceId}` : url ? `url:${url}` : fallbackKey,
         label: label ?? (url && new URL(url).hostname) ?? 'Source',
         url,
         sourceId,

@@ -511,6 +511,8 @@ export function useLiquidGlass(
   const pane = join?.pane
   const joinTop = join?.top ?? false
   const joinBottom = join?.bottom ?? false
+  // Activation recreates the entry when edges or transparency change, so
+  // restore its join even when the join's own values stayed the same.
   useEffect(() => {
     const element = ref.current
     if (!enabled || !element) return
@@ -518,5 +520,16 @@ export function useLiquidGlass(
       element,
       pane ? { pane, top: joinTop, bottom: joinBottom } : undefined,
     )
-  }, [ref, enabled, pane, joinTop, joinBottom])
+  }, [
+    ref,
+    enabled,
+    top,
+    right,
+    bottom,
+    left,
+    reduced,
+    pane,
+    joinTop,
+    joinBottom,
+  ])
 }

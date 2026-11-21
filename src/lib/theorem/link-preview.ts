@@ -22,14 +22,16 @@ export const linkMetadataQueryKey = (url: string) =>
 /**
  * One URL's preview metadata. `null` means the server could read none (the
  * page failed, refused, or carries no metadata): the caller falls back to a
- * plain hyperlink, never a broken card. Failures are not retried in the
- * session; the server caches them briefly so a remount is cheap.
+ * plain hyperlink, never a broken card. Failures are not retried immediately;
+ * missing metadata becomes stale with the server's five-minute negative cache,
+ * while successful metadata keeps its longer freshness window.
  */
 export function useLinkMetadata(url: string | undefined) {
   return useQuery({
     queryKey: linkMetadataQueryKey(url ?? ''),
     enabled: url !== undefined,
-    staleTime: 30 * 60_000,
+    staleTime: (query) =>
+      query.state.data === null ? 5 * 60_000 : 30 * 60_000,
     retry: false,
     queryFn: async (): Promise<LinkMetadata | null> => {
       const response = await fetch(

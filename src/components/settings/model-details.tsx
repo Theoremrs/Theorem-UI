@@ -47,6 +47,27 @@ function Field({
   )
 }
 
+/** Clipboard feedback and pending completion belong to one model identity. */
+function CopyModelId({ value }: { value: string }) {
+  const { isCopied, copyToClipboard } = useCopyToClipboard()
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="shrink-0"
+      aria-label="Copy canonical ID"
+      onClick={() => void copyToClipboard(value)}
+    >
+      {isCopied ? (
+        <Icon.Copied className="size-3.5" aria-hidden="true" />
+      ) : (
+        <Icon.Copy className="size-3.5" aria-hidden="true" />
+      )}
+      {isCopied ? 'Copied' : 'Copy'}
+    </Button>
+  )
+}
+
 /**
  * One model's complete identity beside the catalog: the full name, canonical
  * ID with a copy action, maker and routing provider, limits, prices with
@@ -69,7 +90,6 @@ export function ModelDetails({
   /** The control that opened the panel; focus returns to it on close. */
   returnFocusTo: React.RefObject<HTMLElement | null>
 }): React.JSX.Element {
-  const { isCopied, copyToClipboard } = useCopyToClipboard()
   const route = model ? resolvedModel(model.ref) : undefined
   const price = model ? formatPrice(model) : undefined
   return (
@@ -118,20 +138,7 @@ export function ModelDetails({
                     <code className="min-w-0 break-all font-mono text-xs">
                       {model.ref}
                     </code>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      aria-label="Copy canonical ID"
-                      onClick={() => void copyToClipboard(model.ref)}
-                    >
-                      {isCopied ? (
-                        <Icon.Copied className="size-3.5" aria-hidden="true" />
-                      ) : (
-                        <Icon.Copy className="size-3.5" aria-hidden="true" />
-                      )}
-                      {isCopied ? 'Copied' : 'Copy'}
-                    </Button>
+                    <CopyModelId key={model.ref} value={model.ref} />
                   </span>
                 </Field>
                 <Field label="Vendor">{model.vendor}</Field>

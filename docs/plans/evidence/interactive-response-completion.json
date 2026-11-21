@@ -1,28 +1,29 @@
 {
   "schema": "theorem.interactive-response-completion.v1",
-  "recordedAt": "2026-11-20T23:16:22.222934+00:00",
+  "recordedAt": "2026-11-21T00:00:56.816605+00:00",
   "pullRequest": 146,
   "baseRevision": "02b9783d9415c8424dd9323ee18a6db678d536ac",
   "scope": "Phase1 evidence responses; local and fixture verification, no production deployment or human visual seal",
   "unitSuites": {
     "composer": {
-      "passed": 975,
+      "passed": 1000,
       "failed": 0,
-      "files": 98,
-      "assertions": 3213
+      "files": 99,
+      "assertions": 3358
     },
     "appearance": {
-      "passed": 152,
+      "passed": 174,
       "failed": 0,
-      "files": 14,
-      "assertions": 4871
+      "files": 15,
+      "assertions": 5322
     }
   },
   "typecheck": "passed",
   "changedFileEslint": "passed",
   "colorAudit": {
     "modes": 10,
-    "predicates": 1090,
+    "edges": 119,
+    "predicates": 2390,
     "failures": 0
   },
   "browserResponses": [
@@ -104,10 +105,12 @@
       "no horizontal page overflow": true,
       "no browser runtime errors": true
     },
-    "errors": []
+    "errors": [],
+    "verificationScope": "Baseline fixture retained; subsequent review validation includes the current response browser suites."
   },
   "workerBuild": {
     "status": "passed",
+    "compatibilityDate": "2026-10-01",
     "compatibilityFlags": [
       "global_fetch_strictly_public",
       "nodejs_compat"
@@ -116,7 +119,8 @@
   "workerRuntime": {
     "example.com": "Example Domain",
     "react.dev": "React metadata returned",
-    "localtest.me": "private addresses resolved; platform fetch refused; preview null"
+    "localtest.me": "private addresses resolved; platform fetch refused; preview null",
+    "verificationScope": "Baseline actual workerd probe, supplemented by the current transport regressions and full Workers build."
   },
   "browserAppearanceChromium": {
     "id": "settings-appearance",
@@ -137,5 +141,40 @@
     "fix": "Scope resolved and fallback actions by stable source ID; wait for the fallback to become hidden after Escape.",
     "originalAssertions": "retained",
     "targetedRerun": "19/19 response checks in Chromium and WebKit; 4/4 appearance checks in Chromium"
+  },
+  "reviewFollowup": {
+    "review": "https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6000753294",
+    "previousHead": "e855ee4ba7f374ad0f29ae981255d97935e3150f",
+    "previousComposerRun": "https://github.com/Travis-Gilbert/Theorem-UI/actions/runs/44835621628",
+    "previousComposerResult": "success: response19/19, appearance4/4",
+    "localStatus": "passed",
+    "freshCi": "Tracked on the pull request for the commit containing this record.",
+    "metadataServer": {
+      "tests": 37,
+      "assertions": 217,
+      "failures": 0
+    },
+    "sourceAndPreviewQuery": {
+      "tests": 31,
+      "assertions": 127,
+      "failures": 0
+    },
+    "models": {
+      "tests": 34,
+      "assertions": 93,
+      "failures": 0
+    },
+    "glass": {
+      "tests": 20,
+      "assertions": 85,
+      "failures": 0
+    },
+    "paletteAndIndependentPolicy": {
+      "tests": 54,
+      "assertions": 4839,
+      "failures": 0
+    },
+    "identityDecision": "Labels are display text, not proof of source identity. Entries without a shared ID or URL remain distinct.",
+    "sourceMedia": "Untrusted metadata images and favicons are omitted at the rendering boundary, including cached metadata."
   }
 }

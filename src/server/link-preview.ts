@@ -29,6 +29,7 @@ const MAX_REDIRECTS = 3
 const MAX_ADDRESSES = 8
 
 const cache = new Map<string, { at: number; value: LinkMetadata | null }>()
+const inFlight = new Map<string, Promise<LinkMetadata | null>>()
 
 /** A hostname this server refuses to dial: loopback, private, link-local. */
 function blockedHost(host: string): boolean {
@@ -44,7 +45,12 @@ function blockedHost(host: string): boolean {
   // IPv4 literals in the private/loopback/link-local ranges.
   const v4 = name.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
   if (v4) {
-    const [a, b] = [Number(v4[1]), Number(v4[2])]
+    const [a, b, c, d] = [
+      Number(v4[1]),
+      Number(v4[2]),
+      Number(v4[3]),
+      Number(v4[4]),
+    ]
     if (
       a === 0 ||
       a === 10 ||
@@ -53,6 +59,12 @@ function blockedHost(host: string): boolean {
       (a === 172 && b >= 16 && b <= 31) ||
       (a === 192 && b === 168) ||
       (a === 100 && b >= 64 && b <= 127) ||
+      // Non-global protocol, documentation and benchmarking allocations.
+      // 192.0.0.9/.10 are explicitly public anycast exceptions.
+      // https://www.iana.org/assignments/iana-ipv4-special-registry/
+      (a === 192 && b === 0 && (c === 2 || (c === 0 && d !== 9 && d !== 10))) ||
+      (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+      (a === 203 && b === 0 && c === 113) ||
       a >= 224
     )
       return true
@@ -216,6 +228,7 @@ function fetchPinned(
           const headers: Record<string, string> = {}
           for (const [name, value] of Object.entries(incoming.headers))
             if (typeof value === 'string') headers[name] = value
+          const status = incoming.statusCode ?? 0
           const chunks: Buffer[] = []
           let bytes = 0
           const finish = () => {
@@ -223,11 +236,19 @@ function fetchPinned(
             settled = true
             cleanup()
             resolve({
-              status: incoming.statusCode ?? 0,
+              status,
               headers,
               body: Buffer.concat(chunks).toString('utf8'),
               url: url.href,
             })
+          }
+          if (status >= 300 && status < 400 && headers.location) {
+            // A redirect needs only its headers. Release the connection now;
+            // its body must not consume the next destination's time budget.
+            finish()
+            incoming.destroy()
+            request?.destroy()
+            return
           }
           const data = (chunk: Buffer) => {
             const bounded = chunk.subarray(0, MAX_BYTES - bytes)
@@ -290,6 +311,14 @@ async function fetchPublicWorker(
         'Mozilla/5.0 (compatible; TheoremLinkPreview/1.0; +https://theorem.dev)',
     },
   })
+  const headers = Object.fromEntries(response.headers)
+  if (response.status >= 300 && response.status < 400 && headers.location) {
+    // Cancellation itself may be slow; following the redirect must not wait
+    // for an unused body, while the shared signal still bounds the next hop.
+    void response.body?.cancel().catch(() => {})
+    signal.throwIfAborted()
+    return { status: response.status, headers, body: '', url: url.href }
+  }
   const reader = response.body?.getReader()
   const cancel = () => {
     // Cancelling a reader also releases the platform's active fetch connection.
@@ -313,7 +342,7 @@ async function fetchPublicWorker(
     }
     return {
       status: response.status,
-      headers: Object.fromEntries(response.headers),
+      headers,
       body: Buffer.concat(chunks).toString('utf8'),
       url: url.href,
     }
@@ -324,6 +353,13 @@ async function fetchPublicWorker(
   }
 }
 
+function numericEntity(digits: string, radix: number): string {
+  const point = parseInt(digits, radix)
+  return point > 0 && point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff)
+    ? String.fromCodePoint(point)
+    : '\uFFFD'
+}
+
 const entity = (text: string): string =>
   text
     .replace(/&amp;/g, '&')
@@ -331,36 +367,138 @@ const entity = (text: string): string =>
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#0?39;|&apos;/g, "'")
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) =>
-      String.fromCodePoint(parseInt(hex, 16)),
-    )
-    .replace(/&#(\d+);/g, (_, dec: string) =>
-      String.fromCodePoint(parseInt(dec, 10)),
-    )
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => numericEntity(hex, 16))
+    .replace(/&#(\d+);/g, (_, dec: string) => numericEntity(dec, 10))
     .trim()
 
-/** One meta tag's content, by property or name, from the head's HTML. */
-function metaOf(html: string, ...keys: string[]): string | undefined {
-  for (const key of keys) {
-    const pattern = new RegExp(
-      `<meta[^>]+(?:property|name)\\s*=\\s*["']${key}["'][^>]*>`,
-      'i',
-    )
-    const tag = html.match(pattern)?.[0]
-    if (!tag) continue
-    const content = tag.match(/content\s*=\s*["']([^"']*)["']/i)?.[1]
-    if (content) return entity(content)
+/** Read a tag's attributes with matching quotes and a monotonic cursor. */
+function tagAttributes(
+  html: string,
+  start: number,
+  end: number,
+): Map<string, string> {
+  const attributes = new Map<string, string>()
+  let cursor = start
+  while (cursor < end) {
+    while (cursor < end && /[\s/]/.test(html.charAt(cursor))) cursor++
+    const nameStart = cursor
+    while (cursor < end && !/[\s/="'<>]/.test(html.charAt(cursor))) cursor++
+    if (cursor === nameStart) {
+      cursor++
+      continue
+    }
+    const name = html.slice(nameStart, cursor).toLowerCase()
+    while (cursor < end && /\s/.test(html.charAt(cursor))) cursor++
+    let value = ''
+    if (html.charAt(cursor) === '=') {
+      cursor++
+      while (cursor < end && /\s/.test(html.charAt(cursor))) cursor++
+      const quote = html.charAt(cursor)
+      if (quote === '"' || quote === "'") {
+        const valueStart = ++cursor
+        while (cursor < end && html.charAt(cursor) !== quote) cursor++
+        value = html.slice(valueStart, cursor)
+        cursor++
+      } else {
+        const valueStart = cursor
+        while (cursor < end && !/\s/.test(html.charAt(cursor))) cursor++
+        value = html.slice(valueStart, cursor)
+      }
+    }
+    // HTML keeps the first occurrence of a duplicate attribute.
+    if (!attributes.has(name)) attributes.set(name, value)
   }
-  return undefined
+  return attributes
 }
 
-function linkHref(html: string, rel: string): string | undefined {
-  const tags = html.match(/<link[^>]+>/gi) ?? []
-  for (const tag of tags) {
-    const rels = tag.match(/rel\s*=\s*["']([^"']*)["']/i)?.[1] ?? ''
-    if (!rels.toLowerCase().split(/\s+/).includes(rel)) continue
-    const href = tag.match(/href\s*=\s*["']([^"']*)["']/i)?.[1]
-    if (href) return entity(href)
+/** Scan the bounded head once. Tag boundaries and attribute values each visit
+ *  a character at most once; an unterminated tag cannot restart a suffix scan.
+ *  A timer cannot interrupt synchronous parsing, so this bound matters even
+ *  though network work already has an elapsed-time deadline. */
+function headFields(head: string): {
+  metadata: Map<string, string>
+  links: Map<string, string>
+  title: string | undefined
+} {
+  const metadata = new Map<string, string>()
+  const links = new Map<string, string>()
+  let title: string | undefined
+  let cursor = 0
+  const rawTextEnd = /<\/(title|script|style|textarea)\s*>/gi
+  while (cursor < head.length) {
+    const opening = head.indexOf('<', cursor)
+    if (opening === -1) break
+    if (head.startsWith('<!--', opening)) {
+      const end = head.indexOf('-->', opening + 4)
+      if (end === -1) break
+      cursor = end + 3
+      continue
+    }
+    cursor = opening + 1
+    const closing = head.charAt(cursor) === '/'
+    if (closing) cursor++
+    const nameStart = cursor
+    while (cursor < head.length && /[a-z0-9:-]/i.test(head.charAt(cursor)))
+      cursor++
+    const name = head.slice(nameStart, cursor).toLowerCase()
+    const attributesStart = cursor
+    let quote = ''
+    while (cursor < head.length) {
+      const character = head.charAt(cursor)
+      if (quote) {
+        if (character === quote) quote = ''
+      } else if (character === '"' || character === "'") {
+        quote = character
+      } else if (character === '>') {
+        break
+      }
+      cursor++
+    }
+    if (cursor === head.length) break
+    const end = cursor++
+    if (closing) continue
+
+    // These elements contain text, not metadata tags. Skip their contents
+    // without searching the same suffix again for every apparent opening tag.
+    if (['title', 'script', 'style', 'textarea'].includes(name)) {
+      rawTextEnd.lastIndex = cursor
+      let match: RegExpExecArray | null
+      do {
+        match = rawTextEnd.exec(head)
+      } while (match && match[1]?.toLowerCase() !== name)
+      if (!match) break
+      if (name === 'title' && title === undefined)
+        title = head.slice(cursor, match.index)
+      cursor = rawTextEnd.lastIndex
+      continue
+    }
+    if (name !== 'meta' && name !== 'link') continue
+    const attributes = tagAttributes(head, attributesStart, end)
+    if (name === 'meta') {
+      for (const attribute of ['property', 'name']) {
+        const key = attributes.get(attribute)?.toLowerCase()
+        if (key && !metadata.has(key))
+          metadata.set(key, attributes.get('content') ?? '')
+      }
+    } else {
+      const href = attributes.get('href')
+      if (!href) continue
+      for (const rel of (attributes.get('rel') ?? '')
+        .toLowerCase()
+        .split(/\s+/))
+        if (rel && !links.has(rel)) links.set(rel, href)
+    }
+  }
+  return { metadata, links, title }
+}
+
+function firstField(
+  fields: Map<string, string>,
+  ...keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = fields.get(key)
+    if (value) return entity(value)
   }
   return undefined
 }
@@ -377,26 +515,28 @@ const absolute = (base: URL, value: string | undefined): string | undefined => {
 
 /** The metadata one HTML document carries, against the URL it came from. */
 export function extractMetadata(html: string, base: URL): LinkMetadata {
-  const head = html.slice(0, 200_000)
+  const {
+    metadata,
+    links,
+    title: documentTitle,
+  } = headFields(html.slice(0, 200_000))
   const title =
-    metaOf(head, 'og:title', 'twitter:title') ??
-    (entity(head.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '') ||
-      undefined)
-  const description =
-    metaOf(head, 'og:description', 'twitter:description', 'description') ??
-    undefined
+    firstField(metadata, 'og:title', 'twitter:title') ??
+    (entity(documentTitle ?? '') || undefined)
+  const description = firstField(
+    metadata,
+    'og:description',
+    'twitter:description',
+    'description',
+  )
   const image = absolute(
     base,
-    metaOf(head, 'og:image:secure_url', 'og:image', 'twitter:image'),
+    firstField(metadata, 'og:image:secure_url', 'og:image', 'twitter:image'),
   )
-  const siteName = metaOf(head, 'og:site_name', 'application-name') ?? undefined
+  const siteName = firstField(metadata, 'og:site_name', 'application-name')
   const favicon =
-    absolute(
-      base,
-      linkHref(head, 'icon') ??
-        linkHref(head, 'shortcut') ??
-        linkHref(head, 'apple-touch-icon'),
-    ) ?? absolute(base, '/favicon.ico')
+    absolute(base, firstField(links, 'icon', 'shortcut', 'apple-touch-icon')) ??
+    absolute(base, '/favicon.ico')
   return {
     href: base.href,
     ...(title && { title: title.slice(0, 300) }),
@@ -467,6 +607,20 @@ export async function resolveLinkMetadata(
   const cached = cache.get(url.href)
   if (cached && Date.now() - cached.at < (cached.value ? CACHE_MS : FAILURE_MS))
     return cached.value
+  const pending = inFlight.get(url.href)
+  if (pending) return pending
+  // One request per URL prevents a late duplicate failure from replacing a
+  // successful cache entry. Release the entry on both success and failure.
+  const result = resolveUncachedMetadata(url)
+  inFlight.set(url.href, result)
+  try {
+    return await result
+  } finally {
+    inFlight.delete(url.href)
+  }
+}
+
+async function resolveUncachedMetadata(url: URL): Promise<LinkMetadata | null> {
   let value: LinkMetadata | null = null
   try {
     const response = await fetchChecked(url)

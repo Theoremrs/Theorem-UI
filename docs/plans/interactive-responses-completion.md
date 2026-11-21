@@ -50,19 +50,33 @@ The previous GitHub run completed the last touch-rhythm checks immediately befor
 
 The first clean remote run passed all twelve existing appearance browser oracles, then exposed an ambiguous global Add-to-context selector in the new response story. The closing source popover still exposed its valid action during its exit animation. The story now targets each source's stable identity and waits for the fallback to become hidden before repeating the resolved source's action. The two-source and idempotence assertions remain intact.
 
+## Review follow-up after `e855ee4b`
+
+The [Composer acceptance run for `e855ee4b`](https://github.com/Travis-Gilbert/Theorem-UI/actions/runs/44835621628) passed, including the corrected response story. That result covers the pushed commit and does not include the fixes prompted by [CodeRabbit's full review](https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6000753294). The follow-ups below have passed the integrated local verification in the table below. Fresh GitHub verification of the commit containing this record is tracked in [PR #146](https://github.com/Travis-Gilbert/Theorem-UI/pull/146).
+
+The four Major findings are addressed through bounded metadata parsing, rejection of the benchmarking address range, omission of untrusted browser-loaded preview media, and compatible completion of valid legacy palettes. The confirmed Minor findings extend those fixes to related behavior and acceptance gaps:
+
+- **Preview parsing and transport:** metadata scanning has linear worst-case behavior on the bounded response body, handles matching attribute quotes and invalid numeric character references, and preserves usable metadata. Redirects release their discarded bodies promptly and continue under the shared deadline. Concurrent lookups preserve successful cached metadata. IPv4 admission now excludes `198.18.0.0/15`.
+- **Sources and viewer privacy:** source cards retain their text, links, exact passages and actions without automatically requesting publisher-controlled images or favicons from the viewer's browser. Sources without IDs or URLs have distinct message-local context identities, including after reload and when their display labels match. The open Sources panel retains every displayed source, including later streaming arrivals, until it closes. If all of its sources resolve while open, Escape restores focus to the relevant preview link when the fallback trigger disappears. Missing preview metadata becomes stale after five minutes; successful metadata retains its longer freshness window.
+- **Appearance continuity:** valid legacy palettes gain compatible missing semantic tokens before completed-palette contrast validation. Editor values follow the active preset, and changing palettes invalidates an obsolete draft while unrelated appearance changes preserve it. Reactivating glass after reduced transparency restores the pane's join geometry.
+- **Independent color evidence:** the independent oracle includes the action, insight and chart-series contrast edges, and measures code using its actual `attention-ink` role instead of primary ink. The evidence ledger distinguishes the current Theorem SVG chart from its historical upstream renderer and points Ember entries to the named Ember modes.
+- **Models behavior and verification:** OR filters initialize from the first active rule, copy feedback follows the displayed model, and clipboard tests assert the resolved contents rather than accepting an unresolved Promise.
+
+The suggestion to associate a fallback with a later durable citation solely by their shared label was not applied. Labels are display text and cannot establish source identity; that inference could combine unrelated evidence. Grouping uses supplied IDs or matching URLs. Entries lacking both retain separate citation identities, with regressions covering same-label documents and later durable records that have no shared identity.
+
 ## Verification record
 
 | Gate                                                       | Verified result                                                                             |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Full repository TypeScript and focused changed-file ESLint | Passed                                                                                      |
-| Expanded composer/response suite                           | 975 tests, 98 files, 3,213 assertions, zero failures                                        |
-| Expanded appearance/settings suite                         | 152 tests, 14 files, 4,871 assertions, zero failures                                        |
-| Independent emitted-color audit                            | 10 modes, 1,090 predicates, zero failures                                                   |
+| Expanded composer/response suite                           | 1,000 tests, 99 files, 3,358 assertions, zero failures                                        |
+| Expanded appearance/settings suite                         | 174 tests, 15 files, 5,322 assertions, zero failures                                        |
+| Independent emitted-color audit                            | 119 edges, 10 modes, 2,390 predicates, zero failures                                                   |
 | Response-evidence browser oracle                           | 19/19 in Chromium 156.0.8078.4 and WebKit 27.2                                              |
 | Appearance editor browser oracle                           | 4/4 in Chromium 156.0.8078.4 and WebKit 27.2                                                                          |
-| Narrow light-mode touch probe (390 × 844)                  | 9/9, including exact values, expansion, viewport fit, Data continuity and no runtime errors |
+| Narrow light-mode touch probe (390 × 844, baseline)                  | 9/9, including exact values, expansion, viewport fit, Data continuity and no runtime errors |
 | Full Workers application Vite build                        | Passed; generated flags contain both strictly-public fetch and Node compatibility           |
-| Live local workerd transport probe                         | Public metadata succeeds; private-address resolution/refetch is refused                     |
+| Live local workerd transport probe (baseline)                         | Public metadata succeeds; private-address resolution/refetch is refused                     |
 
 The touch probe also verified that tapping 8px above the visible switch toggles it: its 44px hit area grows independently of its unchanged 38 × 22px track.
 

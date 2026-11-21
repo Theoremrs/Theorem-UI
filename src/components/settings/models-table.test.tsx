@@ -399,13 +399,11 @@ test('the details panel copies the canonical ID', async () => {
   )
   await waitFor(() => document.querySelector('[data-model-details]'))
   await click(buttonLabeled(document, 'Copy canonical ID')!)
-  await waitFor(
-    async () =>
-      (await navigator.clipboard.readText()) ===
-      'openrouter/nvidia/llama-3.3-nemotron-super-49b-v1.1',
+  await waitFor(() =>
+    buttonLabeled(document, 'Copy canonical ID')?.textContent.includes('Copied'),
   )
-  expect(buttonLabeled(document, 'Copy canonical ID')?.textContent).toContain(
-    'Copied',
+  expect(await navigator.clipboard.readText()).toBe(
+    'openrouter/nvidia/llama-3.3-nemotron-super-49b-v1.1',
   )
 })
 
@@ -441,4 +439,66 @@ test('Starred first remains an explicit sort choice', async () => {
   // The starred row leads; the rest keep the core row order under a single rule.
   expect(shownNames(container)[0]).toBe('Nano Banana')
   expect(shownNames(container).slice(1)).not.toContain('Nano Banana')
+})
+
+
+async function inspectTwin(container: HTMLElement, ref: string) {
+  await click(buttonLabeled(container, `Details for Twins, ${ref}`)!)
+  await waitFor(() => document.querySelector('[data-model-details]'))
+}
+
+async function closeModelDetails() {
+  await act(async () => {
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    )
+  })
+  await waitFor(() => !document.querySelector('[data-model-details]'))
+}
+
+test('copy feedback belongs to the inspected model', async () => {
+  const { container } = await mount()
+  await inspectTwin(container, 'alpha/twins')
+  await click(buttonLabeled(document, 'Copy canonical ID')!)
+  await waitFor(() =>
+    buttonLabeled(document, 'Copy canonical ID')?.textContent.includes('Copied'),
+  )
+  expect(await navigator.clipboard.readText()).toBe('alpha/twins')
+  await closeModelDetails()
+  await inspectTwin(container, 'beta/twins')
+  expect(buttonLabeled(document, 'Copy canonical ID')?.textContent).toBe('Copy')
+  await click(buttonLabeled(document, 'Copy canonical ID')!)
+  await waitFor(() =>
+    buttonLabeled(document, 'Copy canonical ID')?.textContent.includes('Copied'),
+  )
+  expect(await navigator.clipboard.readText()).toBe('beta/twins')
+})
+
+test('a pending copy cannot mark a later model as copied', async () => {
+  const originalWriteText = navigator.clipboard.writeText
+  let finishCopy: (() => void) | undefined
+  let copied = ''
+  navigator.clipboard.writeText = (value: string) => {
+    copied = value
+    return new Promise<void>((resolve) => {
+      finishCopy = resolve
+    })
+  }
+  try {
+    const { container } = await mount()
+    await inspectTwin(container, 'alpha/twins')
+    await click(buttonLabeled(document, 'Copy canonical ID')!)
+    expect(copied).toBe('alpha/twins')
+    await closeModelDetails()
+    await inspectTwin(container, 'beta/twins')
+    await act(async () => {
+      finishCopy?.()
+    })
+    expect(buttonLabeled(document, 'Copy canonical ID')?.textContent).toBe('Copy')
+  } finally {
+    await act(async () => {
+      finishCopy?.()
+    })
+    navigator.clipboard.writeText = originalWriteText
+  }
 })

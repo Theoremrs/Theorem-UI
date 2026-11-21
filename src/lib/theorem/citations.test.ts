@@ -231,3 +231,94 @@ test('anonymous source identity remains stable when its durable ID arrives later
     citationReferenceKey(citationContextReference(after!, 'thread', 'message')),
   )
 })
+
+test('anonymous sources have distinct context identities that survive non-citation updates and reload', () => {
+  const first = part({ provenance: { excerpt: 'First anonymous passage.' } })
+  const second = part({ provenance: { excerpt: 'Second anonymous passage.' } })
+  const sources = collectCitationSources([first, second])
+  expect(sources).toHaveLength(2)
+  expect(new Set(sources.map((source) => source.key)).size).toBe(2)
+  const keys = sources.map((source) =>
+    citationReferenceKey(citationContextReference(source, 'thread', 'message')),
+  )
+  expect(new Set(keys).size).toBe(2)
+  const reloaded = collectCitationSources(
+    JSON.parse(
+      JSON.stringify([
+        { type: 'text', text: 'A growing answer.' },
+        first,
+        { type: 'data', name: 'theorem-activity', data: {} },
+        second,
+        part({ provenance: { excerpt: 'Third anonymous passage.' } }),
+      ]),
+    ),
+  )
+  expect(reloaded.slice(0, 2).map((source) => source.key)).toEqual(
+    sources.map((source) => source.key),
+  )
+  expect(new Set(reloaded.map((source) => source.key)).size).toBe(3)
+})
+
+test('a shared label does not identify a fallback as a later URL-bearing source', () => {
+  const sources = collectCitationSources([
+    part({
+      label: 'Research notes',
+      provenance: { excerpt: 'Unlinked evidence.' },
+    }),
+    part({
+      sourceId: 'durable-paper',
+      label: 'Research notes',
+      provenance: {
+        url: 'https://example.com/paper',
+        excerpt: 'Linked evidence.',
+      },
+    }),
+  ])
+  expect(sources).toHaveLength(2)
+  expect(sources[0]).toMatchObject({
+    key: 'part:0',
+    passages: [{ excerpt: 'Unlinked evidence.' }],
+  })
+  expect(sources[0]?.url).toBeUndefined()
+  expect(sources[1]).toMatchObject({
+    key: 'id:durable-paper',
+    url: 'https://example.com/paper',
+    passages: [{ excerpt: 'Linked evidence.' }],
+  })
+})
+
+test('same-label sources without IDs or URLs stay distinct from each other and a later durable source', () => {
+  const parts = [
+    part({
+      label: 'Research notes',
+      provenance: { excerpt: 'First document.' },
+    }),
+    part({
+      label: 'Research notes',
+      provenance: { excerpt: 'Second document.' },
+    }),
+    part({
+      sourceId: 'third-document',
+      label: 'Research notes',
+      provenance: { excerpt: 'Third document.' },
+    }),
+  ]
+  const sources = collectCitationSources(parts)
+  expect(sources).toHaveLength(3)
+  expect(new Set(sources.map((source) => source.key)).size).toBe(3)
+  expect(
+    sources.map((source) => source.passages.map((passage) => passage.excerpt)),
+  ).toEqual([['First document.'], ['Second document.'], ['Third document.']])
+  expect(
+    new Set(
+      sources.map((source) =>
+        citationReferenceKey(
+          citationContextReference(source, 'thread', 'message'),
+        ),
+      ),
+    ).size,
+  ).toBe(3)
+  expect(collectCitationSources(JSON.parse(JSON.stringify(parts)))).toEqual(
+    sources,
+  )
+})

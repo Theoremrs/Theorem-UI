@@ -12,7 +12,7 @@ import {
   useAppearance,
   appearanceOverridesSchema,
 } from '@/lib/appearance'
-import type { AppearanceOverrides } from '@/lib/appearance'
+import type { ResolvedAppearance } from '@/lib/appearance'
 import { COLOR_ROLES } from '@/lib/appearance-policy'
 import { paletteTokens } from '../../../scripts/palettes'
 
@@ -23,16 +23,15 @@ const TOKENS = [...new Set(Object.values(COLOR_ROLES))]
 
 /** The active palette's full token set in one mode: a custom palette being
  *  edited, or the built-in the person is looking at, as the page paints it. */
-function seedColors(mode: Mode, overrides: AppearanceOverrides): Colors {
+function seedColors(mode: Mode, appearance: ResolvedAppearance): Colors {
   // Saved custom colours seed the editors only while the custom palette is
   // the active one; choosing a built-in shows that built-in's colours, not a
   // stale custom theme kept in overrides.
   const custom =
-    overrides.palette === 'custom' ? overrides.customPalette?.[mode] : undefined
+    appearance.palette === 'custom' ? appearance.customPalette?.[mode] : undefined
   const builtin = paletteTokens(
-    overrides.palette && overrides.palette !== 'custom'
-      ? overrides.palette
-      : 'github-sharp',
+    appearance.palette !== 'custom' ? appearance.palette : 'github-sharp',
+    appearance.preset === 'calm',
   )
   const tokens = builtin?.[mode] ?? {}
   return Object.fromEntries(
@@ -59,24 +58,44 @@ const rowToken = (token: string) =>
  */
 export function PaletteColors() {
   const { appearance, overrides, setOverrides } = useAppearance()
-  const [draft, setDraft] = useState<{ light: Colors; dark: Colors }>()
+  const paletteKey = JSON.stringify([
+    appearance.preset,
+    appearance.palette,
+    appearance.palette === 'custom' ? appearance.customPalette : null,
+  ])
+  const [draft, setDraft] = useState<{
+    paletteKey: string
+    colors: Record<Mode, Colors>
+  }>()
   const [message, setMessage] = useState('')
   const [invalid, setInvalid] = useState(false)
   const colors = useMemo(
     () =>
-      draft ?? {
-        light: seedColors('light', overrides),
-        dark: seedColors('dark', overrides),
-      },
-    [draft, overrides],
+      draft?.paletteKey === paletteKey
+        ? draft.colors
+        : {
+            light: seedColors('light', appearance),
+            dark: seedColors('dark', appearance),
+          },
+    [draft, paletteKey, appearance],
   )
+  // Only palette/expression changes discard a draft. Density, scale, and
+  // materials can change while these same colors are still being edited.
+  if (draft && draft.paletteKey !== paletteKey) {
+    setDraft(undefined)
+    setMessage('')
+    setInvalid(false)
+  }
   /** What a row shows: its own token, or the popover token for the raised
    *  surface (the custom-palette contract names it `popover`). */
   const shown = (mode: Mode, token: string) =>
     colors[mode][rowToken(token)] ?? ''
   const edit = (mode: Mode, token: string, value: string) => {
     const key = rowToken(token)
-    setDraft({ ...colors, [mode]: { ...colors[mode], [key]: value } })
+    setDraft({
+      paletteKey,
+      colors: { ...colors, [mode]: { ...colors[mode], [key]: value } },
+    })
     setMessage('')
     setInvalid(false)
   }

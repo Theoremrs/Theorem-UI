@@ -695,10 +695,10 @@ export { modes }
  * One built-in palette's tokens in both modes, by token name: what a
  * person's custom palette starts from when they edit the colours of the
  * palette they are looking at. Calm's fixed assignments are included for
- * the default palette, since that is what the page paints without a
- * data-palette attribute; a named palette paints its expressive tokens.
+ * the default palette unless the active expression opts out; a named
+ * palette always paints its own tokens.
  */
-export function paletteTokens(value: string) {
+export function paletteTokens(value: string, calm = true) {
   const light = modes.find(
     (mode) =>
       !mode.dark &&
@@ -713,8 +713,8 @@ export function paletteTokens(value: string) {
   )
   if (!light || !dark) return undefined
   return {
-    light: appearanceTokens(light, value === 'github-sharp'),
-    dark: appearanceTokens(dark, value === 'github-sharp'),
+    light: appearanceTokens(light, value === 'github-sharp' && calm),
+    dark: appearanceTokens(dark, value === 'github-sharp' && calm),
   }
 }
 

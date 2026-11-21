@@ -1,7 +1,7 @@
 // SOURCING: assistant-ui LinkPreview, the shared link-metadata query, and coss
 // Popover for the owner's Sources hyperlink + chevron dropdown. This panel
 // contains evidence and several controls, so normal Tab navigation applies.
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { FC } from 'react'
 import { useAuiState } from '@assistant-ui/react'
 import { hashKey, useQueryClient } from '@tanstack/react-query'
@@ -58,19 +58,20 @@ export const CitationSources: FC = () => {
 const SourceSlot: FC<{ source: CitationSource }> = ({ source }) => {
   const metadata = useLinkMetadata(source.url)
   if (!source.url || !metadata.data) return null
+  // Page authors control metadata image URLs. Keep the complete text card and
+  // local site initial without making automatic requests from the viewer.
   return (
     <div
       className="flex max-w-md flex-col gap-1"
       data-source-id={source.sourceId}
+      data-source-key={source.key}
     >
       <LinkPreview
         layout="compact"
         href={source.url}
         title={metadata.data.title ?? source.label}
         description={metadata.data.description ?? source.passages[0]?.excerpt}
-        image={metadata.data.image}
         siteName={metadata.data.siteName}
-        favicon={metadata.data.favicon}
       />
       <SourceActions source={source} />
     </div>
@@ -204,8 +205,15 @@ const SourcesRow: FC<{ sources: CitationSource[] }> = ({ sources }) => {
   const unresolved = useUnresolvedSources(sources)
   const [open, setOpen] = useState(false)
   const [openedKeys, setOpenedKeys] = useState<readonly string[]>([])
-  // A preview resolving while someone reads its fallback must not remove the
-  // focused inspector. Keep those source identities until this panel closes.
+  const rowRef = useRef<HTMLDivElement>(null)
+  const resolvedFocus = useRef<HTMLAnchorElement>(null)
+  // Capture every newly displayed identity before commit. A later metadata
+  // update must not unmount a source streamed in after this panel was opened.
+  const addedKeys = open
+    ? unresolved.filter((source) => !openedKeys.includes(source.key))
+    : []
+  if (addedKeys.length > 0)
+    setOpenedKeys([...openedKeys, ...addedKeys.map((source) => source.key)])
   const listed = open
     ? sources.filter(
         (source) =>
@@ -216,7 +224,11 @@ const SourcesRow: FC<{ sources: CitationSource[] }> = ({ sources }) => {
   if (listed.length === 0) return null
   const firstLink = listed.find((source) => source.url)?.url
   return (
-    <div data-slot="sources-row" className="flex items-center gap-0.5 text-sm">
+    <div
+      ref={rowRef}
+      data-slot="sources-row"
+      className="flex items-center gap-0.5 text-sm"
+    >
       <Icon.Link
         aria-hidden
         className="me-1 size-3.5 shrink-0 text-ink-muted"
@@ -236,8 +248,32 @@ const SourcesRow: FC<{ sources: CitationSource[] }> = ({ sources }) => {
       )}
       <Popover
         open={open}
-        onOpenChange={(next) => {
-          if (next) setOpenedKeys(unresolved.map((source) => source.key))
+        onOpenChange={(next, details) => {
+          resolvedFocus.current = null
+          if (
+            !next &&
+            details.reason === 'escape-key' &&
+            unresolved.length === 0
+          ) {
+            // Once every source resolves, this trigger disappears on close.
+            // Hand focus to the preview for the source the reader was using.
+            const row = rowRef.current
+            const focusedKey =
+              row?.ownerDocument.activeElement?.closest<HTMLElement>(
+                '[data-slot="source-entry"]',
+              )?.dataset.sourceKey
+            const sourceKey = focusedKey ?? listed[0]?.key
+            const preview = [
+              ...(row?.parentElement?.querySelectorAll<HTMLElement>(
+                '[data-source-key]',
+              ) ?? []),
+            ].find((element) => element.dataset.sourceKey === sourceKey)
+            resolvedFocus.current =
+              preview?.querySelector<HTMLAnchorElement>(
+                '[data-slot="link-preview"] a',
+              ) ?? null
+          }
+          setOpenedKeys(next ? unresolved.map((source) => source.key) : [])
           setOpen(next)
         }}
       >
@@ -247,7 +283,11 @@ const SourcesRow: FC<{ sources: CitationSource[] }> = ({ sources }) => {
         >
           <Icon.ChevronDown aria-hidden className="size-3.5" />
         </PopoverTrigger>
-        <PopoverPopup align="start" className="w-80 max-w-[calc(100vw-2rem)]">
+        <PopoverPopup
+          align="start"
+          finalFocus={unresolved.length === 0 ? resolvedFocus : undefined}
+          className="w-80 max-w-[calc(100vw-2rem)]"
+        >
           <PopoverTitle className="sr-only">Sources</PopoverTitle>
           <div className="flex max-h-96 flex-col gap-2 overflow-y-auto">
             {listed.map((source) => (
@@ -266,6 +306,7 @@ const SourceEntry: FC<{ source: CitationSource }> = ({ source }) => {
     <section
       data-slot="source-entry"
       data-source-id={source.sourceId}
+      data-source-key={source.key}
       aria-label={source.label}
       className="flex flex-col items-start gap-1"
     >

@@ -65,7 +65,7 @@ export function matchesModelTextFilter(
 ): boolean {
   const text = value.toLowerCase()
   const join = filters[0]?.joinOperator ?? 'and'
-  return filters.reduce((pass, filter, index) => {
+  const matched = filters.reduce<boolean | undefined>((pass, filter) => {
     const needle = String(filter.value ?? '').toLowerCase()
     if (
       !needle &&
@@ -100,9 +100,10 @@ export function matchesModelTextFilter(
         result = text.includes(needle)
         break
     }
-    if (index === 0) return result
+    if (pass === undefined) return result
     return join === 'and' ? pass && result : pass || result
-  }, true)
+  }, undefined)
+  return matched ?? true
 }
 
 /**

@@ -158,3 +158,21 @@ test('the column text filter joins several rules and skips empty values', () => 
   ).toBe(false)
   expect(matchesModelTextFilter('Model 1', [{ value: '' }])).toBe(true)
 })
+
+
+test('OR filters initialize from the first active rule after empty rows', () => {
+  const filters = [
+    { value: '', joinOperator: 'or' },
+    { value: 'spark', operator: 'includesString' },
+    { value: 'banana', operator: 'includesString' },
+  ]
+  expect(matchesModelTextFilter('Nemotron', filters)).toBe(false)
+  expect(matchesModelTextFilter('Muse Spark', filters)).toBe(true)
+  expect(matchesModelTextFilter('Nano Banana', filters)).toBe(true)
+  expect(
+    matchesModelTextFilter('Nemotron', [
+      { value: '', joinOperator: 'or' },
+      { value: null },
+    ]),
+  ).toBe(true)
+})

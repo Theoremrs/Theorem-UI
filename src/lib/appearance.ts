@@ -52,8 +52,14 @@ const uncommented = (css: string) => css.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, ' ')
 export const customCssSchema = z
   .string()
   .max(20_000, 'Keep custom CSS under 20,000 characters.')
-  .refine((css) => !css.includes('\\'), 'Custom CSS cannot use backslash escapes.')
-  .refine((css) => !/@import/i.test(uncommented(css)), 'Custom CSS cannot use @import.')
+  .refine(
+    (css) => !css.includes('\\'),
+    'Custom CSS cannot use backslash escapes.',
+  )
+  .refine(
+    (css) => !/@import/i.test(uncommented(css)),
+    'Custom CSS cannot use @import.',
+  )
   .refine(
     (css) => !/(?:url|src)\((?!\s*['"]?\s*data:)/i.test(uncommented(css)),
     'Custom CSS can only use data: URLs.',
@@ -354,11 +360,65 @@ function completeCustomPalette(palette: {
   const fill = (mode: 'light' | 'dark') => {
     const saved = palette[mode]
     const fallback = DEFAULT_TOKENS?.[mode] ?? {}
+    const alternate =
+      DEFAULT_TOKENS?.[mode === 'light' ? 'dark' : 'light'] ?? {}
     const complete: Record<string, string> = {}
     for (const token of new Set(Object.values(COLOR_ROLES))) {
       const value = saved[token] ?? fallback[token]
       if (value) complete[token] = value
     }
+
+    // A saved light mode can have dark surfaces, or the reverse. Missing
+    // new roles prefer the built-in colors, then inherit a saved ink or
+    // surface that satisfies their actual pairs. Saved colors stay intact.
+    const fillMissing = (
+      token: string,
+      inheritedToken: string,
+      pendingBackground?: string,
+    ) => {
+      if (saved[token] !== undefined) return
+      const chosen = [
+        complete[token],
+        alternate[token],
+        complete[inheritedToken],
+        complete.ink,
+      ].find(
+        (value) =>
+          value !== undefined &&
+          COLOR_PAIRS.every(({ foreground, background, minimum }) => {
+            const inkToken = COLOR_ROLES[foreground]
+            const fillToken = COLOR_ROLES[background]
+            if (inkToken !== token && fillToken !== token) return true
+            if (fillToken === pendingBackground) return true
+            const ink = inkToken === token ? value : complete[inkToken]
+            const backdrop = fillToken === token ? value : complete[fillToken]
+            return Boolean(
+              ink && backdrop && wcagContrast(ink, backdrop) >= minimum,
+            )
+          }),
+      )
+      if (chosen !== undefined) complete[token] = chosen
+    }
+    for (const [ink, container, inherited] of [
+      ['action-ink', 'action-container', 'redwood-ink'],
+      ['insight-ink', 'insight-container', 'ochre-ink'],
+    ] as const) {
+      fillMissing(
+        ink,
+        inherited,
+        saved[container] === undefined ? container : undefined,
+      )
+      fillMissing(container, 'surface-neutral')
+    }
+    for (const [series, inherited] of [
+      ['series-1', 'redwood-ink'],
+      ['series-2', 'teal-ink'],
+      ['series-3', 'ochre-ink'],
+      ['series-4', 'ink'],
+      ['series-5', 'ink-muted'],
+    ] as const)
+      fillMissing(series, inherited)
+
     return complete
   }
   return { name: palette.name, light: fill('light'), dark: fill('dark') }

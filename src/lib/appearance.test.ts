@@ -7,6 +7,7 @@ import {
   appearanceOverridesSchema,
   appearanceSelectionSchema,
   customCssSchema,
+  customPaletteSchema,
   DEFAULT_APPEARANCE,
   migrateLegacyAppearance,
   resolveAppearance,
@@ -44,7 +45,9 @@ describe('appearance selection', () => {
     const appearance = resolveAppearance(DEFAULT_APPEARANCE)
     expect(appearance.palette).toBe('github-sharp')
     for (const role of SURFACE_ROLES)
-      expect(appearance.materials[role]).toBe(role === 'chart' ? 'glass' : 'flat')
+      expect(appearance.materials[role]).toBe(
+        role === 'chart' ? 'glass' : 'flat',
+      )
     expect(appearance.life).toBe(false)
     for (const mode of modes.slice(0, 2)) {
       const tokens = appearanceTokens(mode, true)
@@ -299,8 +302,7 @@ describe('appearance selection', () => {
       'series-4',
       'series-5',
     ] as const
-    for (const slot of slots)
-      expect(Object.values(COLOR_ROLES)).toContain(slot)
+    for (const slot of slots) expect(Object.values(COLOR_ROLES)).toContain(slot)
     const valid = customPalette()
     // A neutral custom theme: every series set to one deliberate grey that
     // still clears 3:1 on the candidate surfaces.
@@ -319,6 +321,91 @@ describe('appearance selection', () => {
         expect(parsed.data.customPalette?.dark[slot]).toBe('#a6a6a6')
       }
   })
+
+  test.each([
+    ['black surfaces', '#000000', '#ffffff'],
+    ['gray surfaces', '#707070', '#ffffff'],
+    ['white surfaces', '#ffffff', '#000000'],
+  ] as const)(
+    'a legacy palette on %s migrates without changing its saved colors or preferences',
+    (label, background, foreground) => {
+      const added = new Set([
+        'action-ink',
+        'action-container',
+        'insight-ink',
+        'insight-container',
+        'series-1',
+        'series-2',
+        'series-3',
+        'series-4',
+        'series-5',
+      ])
+      const previousPairs = COLOR_PAIRS.filter(
+        (pair) =>
+          !added.has(COLOR_ROLES[pair.foreground]) &&
+          !added.has(COLOR_ROLES[pair.background]),
+      )
+      const colors: Record<string, string> = Object.fromEntries(
+        Object.values(COLOR_ROLES)
+          .filter((token) => !added.has(token))
+          .map((token) => [token, background]),
+      )
+      for (const pair of previousPairs)
+        colors[COLOR_ROLES[pair.foreground]] = foreground
+      // Establish that this was a valid saved palette before the new roles.
+      for (const pair of previousPairs)
+        expect(
+          wcagContrast(
+            colors[COLOR_ROLES[pair.foreground]]!,
+            colors[COLOR_ROLES[pair.background]]!,
+          ),
+        ).toBeGreaterThanOrEqual(pair.minimum)
+
+      const older = {
+        name: `Legacy ${label}`,
+        light: { ...colors },
+        dark: { ...colors },
+      }
+      const selection = {
+        preset: 'expressive',
+        overrides: {
+          palette: 'custom',
+          customPalette: older,
+          density: 'touch',
+          scales: { ui: 1.25 },
+        },
+      }
+      const parsed = appearanceSelectionSchema.safeParse(selection)
+      expect(parsed.success).toBe(true)
+      if (!parsed.success) return
+      const resolved = resolveAppearance(parsed.data)
+      expect(resolved.preset).toBe('expressive')
+      expect(resolved.density).toBe('touch')
+      expect(resolved.scales.ui).toBe(1.25)
+      expect(resolved.customPalette?.name).toBe(older.name)
+      for (const mode of ['light', 'dark'] as const)
+        for (const [token, color] of Object.entries(colors))
+          expect(resolved.customPalette?.[mode][token]).toBe(color)
+      expect(
+        customPaletteSchema.safeParse(resolved.customPalette).success,
+      ).toBe(true)
+
+      // A contradictory new color explicitly chosen by the user is still
+      // rejected; only absent defaults may adapt during completion.
+      expect(
+        appearanceSelectionSchema.safeParse({
+          ...selection,
+          overrides: {
+            ...selection.overrides,
+            customPalette: {
+              ...older,
+              light: { ...older.light, 'action-ink': background },
+            },
+          },
+        }).success,
+      ).toBe(false)
+    },
+  )
 
   test('an older custom palette missing the new tokens still loads, filled from the default', () => {
     const valid = customPalette()
@@ -371,8 +458,12 @@ describe('custom CSS', () => {
 
   test('takes plain rules and data: URLs', () => {
     expect(ok('.aui-composer { border-radius: 4px; }')).toBe(true)
-    expect(ok('body { background: url("data:image/png;base64,AAAA"); }')).toBe(true)
-    expect(ok("body { background: url( 'data:image/svg+xml,<svg/>' ); }")).toBe(true)
+    expect(ok('body { background: url("data:image/png;base64,AAAA"); }')).toBe(
+      true,
+    )
+    expect(ok("body { background: url( 'data:image/svg+xml,<svg/>' ); }")).toBe(
+      true,
+    )
   })
 
   test('refuses anything that could reach the network, however it is spelled', () => {
