@@ -23,11 +23,13 @@ import { Crepe } from '@milkdown/crepe'
 import '@milkdown/crepe/theme/common/style.css'
 import {
   editorViewOptionsCtx,
+  parserCtx,
   remarkStringifyOptionsCtx,
   serializerCtx,
 } from '@milkdown/kit/core'
 import { uploadPlugin } from '@milkdown/kit/plugin/upload'
 import { remarkPreserveEmptyLinePlugin } from '@milkdown/kit/preset/commonmark'
+import { redo, undo } from '@milkdown/kit/prose/history'
 import { Plugin, PluginKey, Selection } from '@milkdown/kit/prose/state'
 import type { EditorView } from '@milkdown/kit/prose/view'
 import type { Serializer } from '@milkdown/kit/transformer'
@@ -38,6 +40,13 @@ import { defaultHandlers } from 'mdast-util-to-markdown'
 import type { Handle } from 'mdast-util-to-markdown'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef } from 'react'
 import type { ClipboardEvent, FocusEvent, KeyboardEvent } from 'react'
+import {
+  codeClipboardHtml,
+  insertCodeBlock,
+  leaveCodeBlock,
+  openCodeFence,
+  pasteMarkdownCode,
+} from './composer-code'
 import { serializeComposerText } from './composer-markdown'
 import { useCrepeMarkdown } from '@/components/notes/crepe-markdown'
 import { cn } from '@/lib/utils'
@@ -176,6 +185,11 @@ function Editor({
     const serialize = serializeRef.current
     const triggers = popover?.getTriggers()
     if (!serialize || !triggers?.size) return
+    if (view.state.selection.$head.parent.type.spec.code) {
+      for (const { resource } of triggers.values())
+        resource.setCursorPosition(0)
+      return
+    }
     const text = aui.composer.getState().text
     // Writing the document out a second time to place the caret is only worth
     // it when a menu could open. Ordinary prose carries no trigger character,
@@ -202,6 +216,7 @@ function Editor({
     markdown: value,
     onChange: setText,
     read: asText,
+    reportEditsSynchronously: true,
     build: (root, editor) => {
       const crepe = new Crepe({
         root,
@@ -221,6 +236,10 @@ function Editor({
             extensions: [
               CodeMirrorView.contentAttributes.of({
                 'data-appearance-recipe': 'code',
+                'aria-label': 'Code block',
+                'aria-description':
+                  'Tab indents. Escape then Tab moves focus out. Alt+Down leaves the block. Control or Command+Enter sends.',
+                title: 'Alt+Down to leave code · Cmd/Ctrl+Enter to send',
               }),
             ],
           },
@@ -230,6 +249,10 @@ function Editor({
         .config((ctx) => {
           ctx.update(editorViewOptionsCtx, (options) => ({
             ...options,
+            transformPastedHTML: codeClipboardHtml,
+            handlePaste: (view, event) =>
+              !!event.clipboardData &&
+              pasteMarkdownCode(view, event.clipboardData, ctx.get(parserCtx)),
             attributes: () => ({
               role: 'textbox',
               'data-appearance-part': 'editor-viewport',
@@ -244,7 +267,9 @@ function Editor({
               'aria-label': label,
               ...(placeholder ? { 'aria-placeholder': placeholder } : {}),
               ...(crepe.readonly ? { 'aria-disabled': 'true' } : {}),
-              enterkeyhint: 'enter',
+              enterkeyhint: 'send',
+              'aria-description':
+                'Enter sends. Shift+Enter inserts a new line.',
             }),
           }))
           ctx.update(remarkStringifyOptionsCtx, (options) => ({
@@ -267,7 +292,7 @@ function Editor({
                   // The composer's text follows every edit at once, so sending
                   // uses what is on screen; Milkdown's own listener waits.
                   update: (current, before) => {
-                    const edited = !before.doc.eq(current.state.doc)
+                    const edited = before.doc !== current.state.doc
                     if (edited)
                       editor.report(
                         asText(ctx.get(serializerCtx)(current.state.doc)),
@@ -376,6 +401,7 @@ function Editor({
       const trigger = popover?.getTriggers().get(char)
       if (!view || !serialize || !trigger?.matcher) return false
       if (trigger.behavior?.kind !== 'directive') return false
+      if (view.state.selection.$head.parent.type.spec.code) return false
       const text = aui.composer.getState().text
       const at = caretOffset(view, serialize, text)
       const match = trigger.matcher(text, char, at)
@@ -403,10 +429,10 @@ function Editor({
   )
   useEffect(() => {
     if (!popover) return
-    const undo = new Map<string, () => void>()
+    const unregister = new Map<string, () => void>()
     const added = (trigger: Trigger) => {
-      undo.get(trigger.char)?.()
-      undo.set(
+      unregister.get(trigger.char)?.()
+      unregister.set(
         trigger.char,
         trigger.resource.registerSelectItemOverride((item, onInserted) =>
           pick(trigger.char, item, onInserted),
@@ -414,14 +440,14 @@ function Editor({
       )
     }
     const removed = (char: string) => {
-      undo.get(char)?.()
-      undo.delete(char)
+      unregister.get(char)?.()
+      unregister.delete(char)
     }
     for (const trigger of popover.getTriggers().values()) added(trigger)
     const off = popover.subscribeLifecycle({ added, removed })
     return () => {
       off()
-      for (const char of [...undo.keys()]) removed(char)
+      for (const char of [...unregister.keys()]) removed(char)
     }
   }, [popover])
 
@@ -432,8 +458,13 @@ function Editor({
     if (!wrapper) return
     const insert = (event: Event) => {
       const view = viewRef.current
-      const text = (event as CustomEvent<string>).detail
-      if (!view || isDisabled || !text) return
+      const text = (event as CustomEvent<string | null>).detail
+      if (!view || isDisabled) return
+      if (text == null) {
+        insertCodeBlock(view)
+        return
+      }
+      if (!text) return
       const end = Selection.atEnd(view.state.doc)
       const before = view.state.doc.textBetween(0, end.head, '\n')
       const written = before && !/\s$/u.test(before) ? ` ${text}` : text
@@ -449,7 +480,12 @@ function Editor({
   const onKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
     const view = viewRef.current
     if (!view || isDisabled) return
-    if (event.nativeEvent.isComposing || event.keyCode === 229) return
+    if (
+      event.nativeEvent.isComposing ||
+      view.composing ||
+      event.keyCode === 229
+    )
+      return
     // A code block is its own CodeMirror. Native fields supplied by the editor
     // keep their own handlers, but Enter must not implicitly submit this form.
     const inCode = (event.target as Element).closest('.cm-content') !== null
@@ -461,7 +497,23 @@ function Editor({
 
     const explicitSend =
       event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.altKey
-    if (!explicitSend)
+    if (inCode && !explicitSend) {
+      const historyShortcut =
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        event.key.toLowerCase() === 'z'
+      const handled = historyShortcut
+        ? (event.shiftKey ? redo : undo)(view.state, view.dispatch)
+        : event.altKey && event.key === 'ArrowDown' && leaveCodeBlock(view)
+      if (handled) {
+        view.focus()
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      return
+    }
+
+    if (!explicitSend && !(event.key === 'Enter' && event.shiftKey))
       for (const { resource } of popover?.getTriggers().values() ?? [])
         if (resource.handleKeyDown(event)) {
           event.stopPropagation()
@@ -494,11 +546,15 @@ function Editor({
         return
     }
 
-    // Enter always edits the document, including lists, headings and code.
-    // A response finishing must not turn the next paragraph into a send.
-    // Every explicit shortcut uses the same form as the Send button; the form
-    // decides whether this is a new turn, an edit, or input to a running turn.
-    if (!explicitSend) return
+    if (!explicitSend) {
+      if (event.shiftKey || event.altKey) return
+      if (openCodeFence(view)) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+    }
+    // The same form handles new turns, edits and input to a running turn.
     event.preventDefault()
     event.stopPropagation()
     sentFromHere.current = inCode
@@ -539,8 +595,8 @@ function Editor({
 /** The event a control dispatches on the editor to write text at the end of the draft. */
 export const COMPOSER_INSERT = 'theorem:composer-insert'
 
-/** Writes `text` at the end of the draft in the composer around `from`, and puts the caret after it. */
-export function insertInComposer(from: Element | null, text: string) {
+/** Inserts text at the end of the draft or opens an empty code block at the caret. */
+export function insertInComposer(from: Element | null, text?: string) {
   from
     ?.closest('[data-slot="aui_composer-shell"]')
     ?.querySelector('.theorem-composer')

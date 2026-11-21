@@ -4,7 +4,7 @@
 //
 //   node scripts/e2e/composer.mjs
 //   node scripts/e2e/composer.mjs --built
-import { chromium } from 'playwright-core'
+import { chromium, firefox } from 'playwright-core'
 import { servePage } from './harness.mjs'
 
 const served = await servePage('composer')
@@ -18,12 +18,16 @@ const check = (name, pass, detail) => {
 let browser
 
 try {
-  browser = await chromium.launch({
-    executablePath: process.env.E2E_CHROMIUM || undefined,
+  const engine = process.argv.includes('--firefox') ? firefox : chromium
+  browser = await engine.launch({
+    executablePath: engine === chromium ? process.env.E2E_CHROMIUM : undefined,
   })
   const page = await browser.newPage()
   const pageErrors = []
-  page.on('pageerror', (error) => pageErrors.push(error.message))
+  page.on('pageerror', (error) => {
+    pageErrors.push(error.message)
+    console.error(error.message)
+  })
   await page.goto(served.url)
   const input = page.getByRole('textbox', { name: 'Message input' })
   await input.waitFor()
@@ -44,25 +48,28 @@ try {
   await load('Plain')
   await input.click()
   await page.keyboard.press('End')
-  await page.keyboard.press('Enter')
+  await page.keyboard.press('Shift+Enter')
   await page.keyboard.type('Second paragraph')
   check(
-    'Enter writes another paragraph without submitting',
+    'Shift+Enter writes a new line without submitting',
     (await sent()) === '0' &&
       (await submits()) === '0' &&
-      (await draft()) === 'First paragraph\n\nSecond paragraph',
+      (await draft()).includes('\nSecond paragraph'),
     await draft(),
   )
-  await page.keyboard.press('Control+Enter')
+  const multiline = await draft()
+  await page.keyboard.press('Enter')
   await page.waitForFunction(
     () =>
       document.querySelector('[data-testid="sent-count"]').textContent === '1',
+    undefined,
+    { timeout: 2000 },
   )
   check(
-    'Control+Enter submits exactly the document shown',
+    'Enter submits exactly the document shown',
     (await submits()) === '1' &&
       (await page.getByTestId('sent').textContent()) ===
-        JSON.stringify(['First paragraph\n\nSecond paragraph']),
+        JSON.stringify([multiline]),
   )
 
   await load('Code')
@@ -91,18 +98,113 @@ try {
         JSON.stringify(['```ts\nconst first = 1\nconst second = 2\n```']),
   )
 
-  await load('List')
+  await load('Empty')
   await input.click()
-  await page.keyboard.press('End')
+  await page.keyboard.type('```c++')
   await page.keyboard.press('Enter')
-  await page.keyboard.type('Second item')
+  await page.keyboard.type('a / b')
+  await page.keyboard.press('Tab')
   check(
-    'Enter continues a list without submitting or reordering typed characters',
-    (await sent()) === '0' &&
-      (await submits()) === '0' &&
-      (await input.locator('li').count()) === 2 &&
-      (await draft()) === '* First item\n* Second item',
+    'a punctuated fence enters code and Tab indents it',
+    (await sent()) === '0' && (await draft()).includes('```c++\n  a / b\n'),
     await draft(),
+  )
+
+  await page.keyboard.press('Alt+ArrowDown')
+  check(
+    'Alt+Down leaves code in the composer',
+    await input.evaluate((el) => document.activeElement === el),
+  )
+  await load('Empty')
+  await page.getByRole('button', { name: 'Insert code block' }).click()
+  await code.waitFor()
+  check(
+    'explicit insertion focuses code',
+    await code.evaluate((el) => document.activeElement === el),
+  )
+  await page.keyboard.press('ControlOrMeta+z')
+  check(
+    'one undo removes the inserted block',
+    (await code.count()) === 0 && (await draft()) === '',
+  )
+  await page.keyboard.press('ControlOrMeta+Shift+z')
+  check('redo restores the inserted block', (await code.count()) === 1)
+
+  const paste = (plain, html) =>
+    input.evaluate(
+      (el, clipboard) => {
+        const data = new DataTransfer()
+        if (clipboard.plain) data.setData('text/plain', clipboard.plain)
+        if (clipboard.html) data.setData('text/html', clipboard.html)
+        const event = new ClipboardEvent('paste', {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: data,
+        })
+        Object.defineProperty(event, 'clipboardData', { value: data })
+        return !el.dispatchEvent(event)
+      },
+      { plain, html },
+    )
+  for (const [name, plain, html, expected] of [
+    ['plain fence', '```ts\n  a / b\n```', '', '```ts\n  a / b\n```'],
+    [
+      'rich literal fence',
+      '```abc9\n  a / `b`\n```',
+      '<p>```abc9</p><p>  a / `b`</p><p>```</p>',
+      '```abc9\n  a / `b`\n```',
+    ],
+    [
+      'semantic code',
+      '',
+      '<pre><code class="language-c++">a / b<br>    c</code></pre>',
+      '```c++\na / b\n    c\n```',
+    ],
+  ]) {
+    await load('Empty')
+    await input.click()
+    await page.keyboard.press('ArrowRight')
+    const handled = await paste(plain, html)
+    await page
+      .waitForFunction(
+        (text) =>
+          document.querySelector('[data-testid="draft"]').textContent === text,
+        expected,
+        { timeout: 2000 },
+      )
+      .catch(() => undefined)
+    check(`${name} preserves code and language`, (await draft()) === expected, {
+      draft: await draft(),
+      handled,
+      blocks: await code.count(),
+    })
+  }
+  await page.getByRole('button', { name: 'Send message' }).click()
+  check(
+    'immediate button send uses the pasted code',
+    (await page.getByTestId('sent').textContent()) ===
+      JSON.stringify(['```c++\na / b\n    c\n```']),
+  )
+
+  await load('Plain')
+  await input.focus()
+  const compositionPrevented = await input.evaluate((el) => {
+    el.dispatchEvent(
+      new CompositionEvent('compositionstart', { bubbles: true }),
+    )
+    const key = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      isComposing: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    el.dispatchEvent(key)
+    el.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+    return key.defaultPrevented
+  })
+  check(
+    'IME confirmation does not submit',
+    !compositionPrevented && (await submits()) === '0',
   )
 
   await load('Code')
@@ -131,10 +233,14 @@ try {
 
   await load('Markdown')
   await input.click()
-  // Ctrl+A creates a ProseMirror AllSelection, for which Crepe deliberately
-  // hides its text toolbar. Select the line as a person would with Shift+End.
-  await page.keyboard.press('Home')
-  await page.keyboard.press('Shift+End')
+  // Select a text range instead of ProseMirror's Select All.
+  await input.evaluate((el) => {
+    const range = document.createRange()
+    range.selectNodeContents(el.querySelector('p'))
+    const selection = window.getSelection()
+    selection.removeAllRanges()
+    selection.addRange(range)
+  })
   await page.waitForFunction(
     () => window.getSelection()?.toString() === 'Select this text',
   )
@@ -151,8 +257,13 @@ try {
 
   await load('Markdown')
   await input.click()
-  await page.keyboard.press('Home')
-  await page.keyboard.press('Shift+End')
+  await input.evaluate((el) => {
+    const range = document.createRange()
+    range.selectNodeContents(el.querySelector('p'))
+    const selection = window.getSelection()
+    selection.removeAllRanges()
+    selection.addRange(range)
+  })
   await page.waitForFunction(
     () => window.getSelection()?.toString() === 'Select this text',
   )

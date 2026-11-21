@@ -9,7 +9,8 @@ combination has already been verified.
 
 | Input                                                | Expected behavior                                                                                            |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Enter in the document                                | Continue writing: a paragraph, list item, or code line according to the editor's current block.              |
+| Enter in ordinary chat text                          | Submit through the same form as Send in compact and expanded composers.                                     |
+| Enter after an opening code fence or in a code block  | Open the block or insert an indented code line.                                                               |
 | Shift+Enter                                          | Insert the editor's line break; do not send.                                                                 |
 | Ctrl+Enter or Cmd+Enter, including with Shift        | Submit through the same form admission as the Send button; Shift does not bypass admission or force a steer. |
 | Enter while selecting a slash suggestion             | Select the suggestion; do not also submit the message.                                                       |
@@ -20,6 +21,10 @@ All submit shortcuts must use the form's admission policy. There must not be a
 second direct call to the runtime that bypasses the selected model, context,
 attachment readiness, pending-send guard, or active-run behavior. A blank draft
 without an attachment is not a message.
+
+Use **Insert code block** in the plus menu to add an undoable code block.
+Tab indents inside CodeMirror. Escape followed by Tab leaves its tab stop,
+and Alt+Down returns to prose. Slash commands and mentions belong to prose.
 
 Markdown serialization must preserve what the author meant: visible text,
 formatting, literal punctuation, code, and line breaks. Test edited documents,
@@ -77,8 +82,8 @@ Keep the failure scenario small enough to reproduce without live model output.
 
 The Bun suites use happy-dom. Run `node node_modules/playwright-core/cli.js install --with-deps chromium`
 and `bun run e2e:composer --built` for the committed browser scenario, or set
-`E2E_CHROMIUM` to an installed browser. It exercises real paragraph, list, and
-CodeMirror keys, explicit submission, and editor controls against the actual
+`E2E_CHROMIUM` to an installed browser. Use `--firefox` for the Playwright Firefox build. It exercises real paragraph, list, and
+CodeMirror keys, clipboard paths, both send shortcuts, and editor controls against the actual
 composer without a Theorem server or model call. It does not establish live
 delivery, IME, or layout behavior. For those changes, record a browser check on
 the tested commit with the relevant remaining cases:

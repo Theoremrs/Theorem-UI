@@ -269,40 +269,28 @@ test('Ctrl+Enter in an empty editor reaches the form, and a writer can clear the
   expect(composer.getState().text).toBe('')
 })
 
-test('a run finishing never changes Enter from document editing into sending', async () => {
+test.each([true, false])('Shift+Enter inserts a break with isRunning=%s', async (isRunning) => {
   const sent: AppendMessage[] = []
-  const { container, rerender } = await render(
-    <Harness text="Keep writing" sent={sent} isRunning bare />,
+  const { container } = await render(
+    <Harness text="Keep writing" sent={sent} isRunning={isRunning} bare />,
   )
   const editor = await editorOf(container)
   await waitFor(() => editor.textContent === 'Keep writing')
   let submits = 0
   editor.closest('form')!.addEventListener('submit', () => submits++)
-  const enter = () =>
-    act(async () => {
-      editor.dispatchEvent(
-        new KeyboardEvent('keydown', {
-          key: 'Enter',
-          bubbles: true,
-          cancelable: true,
-        }),
-      )
-    })
-  await enter()
+  await act(async () => {
+    editor.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Enter',
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
+  })
   expect(submits).toBe(0)
   expect(sent).toHaveLength(0)
-  const blocksWhileRunning = editor.querySelectorAll('p').length
-  expect(blocksWhileRunning).toBeGreaterThan(1)
-
-  await rerender(
-    <Harness text="Keep writing" sent={sent} isRunning={false} bare />,
-  )
-  await enter()
-  expect(submits).toBe(0)
-  expect(sent).toHaveLength(0)
-  expect(editor.querySelectorAll('p').length).toBeGreaterThan(
-    blocksWhileRunning,
-  )
+  expect(editor.querySelectorAll('br:not(.ProseMirror-trailingBreak)')).toHaveLength(1)
   expect(composer.getState().text).toContain('Keep writing')
 })
 

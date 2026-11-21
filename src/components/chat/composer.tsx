@@ -338,8 +338,8 @@ export const ComposerPrimaryActions: FC<{
               review
                 ? 'Send feedback'
                 : running
-                  ? 'Send to current response (⌘/Ctrl+Enter)'
-                  : 'Send message (⌘/Ctrl+Enter)'
+                  ? 'Send to current response (Enter)'
+                  : 'Enter to send · Shift+Enter for a new line'
             }
             delay={COMPOSER_TOOLTIP_DELAY}
             side="top"
@@ -359,7 +359,7 @@ export const ComposerPrimaryActions: FC<{
                   ? 'Send to current response'
                   : 'Send message'
             }
-            aria-keyshortcuts="Control+Enter Meta+Enter"
+            aria-keyshortcuts="Enter Control+Enter Meta+Enter"
           >
             <Icon.Send className="aui-composer-send-icon size-5" />
           </TooltipIconButton>
