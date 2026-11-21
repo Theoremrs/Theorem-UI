@@ -21,6 +21,7 @@ import { createFixtureServer, fixtureFetch } from '@/components/crm/fixture'
 import type { Binding, IndexItem } from '@/components/index/contract'
 import { useComposerReferences } from './composer-references'
 import {
+  MENTION_FORMATTER,
   citeMention,
   pruneMentionCites,
   switchMentionConversation,
@@ -40,6 +41,9 @@ const record = (id: string, label: string) => ({
   metadata: { cite: 'record', objectType: 'Person', objectId: id },
 })
 const NOOR = record('person:noor', 'Noor')
+/** What a pick of `item` writes into the message. */
+const words = (item: ReturnType<typeof record>) =>
+  MENTION_FORMATTER.serialize(item)
 const NOOR_HADDAD = record('person:noor-haddad', 'Noor Haddad')
 
 const keys = () =>
@@ -55,45 +59,45 @@ beforeEach(() => {
 })
 
 describe('which mention a message still holds', () => {
-  test('deleting @Noor keeps @Noor Haddad and drops only the Noor reference', () => {
+  test('deleting one mention keeps another that starts with the same name', () => {
     citeMention(NOOR)
     citeMention(NOOR_HADDAD)
-    pruneMentionCites('ask @Noor and @Noor Haddad')
+    pruneMentionCites(`ask ${words(NOOR)} and ${words(NOOR_HADDAD)}`)
     expect(keys()).toEqual(['person:noor', 'person:noor-haddad'])
-    // The first words are gone; the second name still starts with them.
-    pruneMentionCites('ask @Noor Haddad')
+    pruneMentionCites(`ask ${words(NOOR_HADDAD)}`)
     expect(keys()).toEqual(['person:noor-haddad'])
   })
 
-  test('words inside a longer word are not the mention', () => {
+  test('words run into a longer word are not the mention', () => {
     citeMention(NOOR)
-    pruneMentionCites('@Noor')
-    pruneMentionCites('@Noorish')
+    pruneMentionCites(words(NOOR))
+    pruneMentionCites(`${words(NOOR)}ish`)
     expect(keys()).toEqual([])
   })
 
-  test('two records with the same name need two mentions', () => {
+  test('two records with the same name are two mentions, each its own', () => {
     const other = record('person:noor-2', 'Noor')
     citeMention(NOOR)
     citeMention(other)
-    pruneMentionCites('@Noor and @Noor')
+    pruneMentionCites(`${words(NOOR)} and ${words(other)}`)
     expect(keys()).toHaveLength(2)
-    pruneMentionCites('@Noor')
-    expect(keys()).toHaveLength(1)
+    // The directive names the record, so deleting one takes that one.
+    pruneMentionCites(words(other))
+    expect(keys()).toEqual(['person:noor-2'])
   })
 })
 
 describe('switching conversations', () => {
   test("another conversation's draft never prunes this one's mention", () => {
     citeMention(NOOR)
-    pruneMentionCites('ask @Noor')
+    pruneMentionCites(`ask ${words(NOOR)}`)
     switchMentionConversation('a', 'b')
-    // Conversation b has its own text, with no @Noor in it.
+    // Conversation b has its own text, with no mention of Noor in it.
     pruneMentionCites('a different draft')
     pruneMentionCites('')
     expect(keys()).toEqual(['person:noor'])
     switchMentionConversation('b', 'a')
-    pruneMentionCites('ask @Noor')
+    pruneMentionCites(`ask ${words(NOOR)}`)
     expect(keys()).toEqual(['person:noor'])
     // Deleting the words in a still removes the reference.
     pruneMentionCites('ask')

@@ -11,6 +11,14 @@ import { appearancePair } from '@/lib/appearance-policy'
 
 const ToolText = createDirectiveText(defaultDirectiveFormatter)
 
+const QUOTED = String.raw`"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[\da-fA-F]{4})){1,1024}"`
+
+/** The directives the composer writes, as they appear in the sent Markdown. */
+const USER_DIRECTIVE = new RegExp(
+  String.raw`:tool\[[\p{L}\p{N}_.:/-]{1,1024}\]|:skill\[[^\]\n]{1,256}\](?:\{name=[^}\n]{1,1024}\})?|:(?:record|document)(?:\[[^\]\n]{1,1024}\](?:\{name=[^}\n]{1,1024}\})?|\{label=${QUOTED}(?: name=${QUOTED})?\})`,
+  'gu',
+)
+
 /** Parse Markdown first: directive-looking code and link labels stay their own text. */
 const remarkUserTools: Plugin<[], Root> = () => (tree, file) => {
   const source = String(file)
@@ -26,10 +34,10 @@ const remarkUserTools: Plugin<[], Root> = () => (tree, file) => {
     const parts: Text[] = []
     let cursor = 0
     // A / tool pick writes `:tool[name]`; a skill from the + menu writes
-    // `:skill[title]`, with `{name=id}` when the pack id differs from its title.
-    for (const match of raw.matchAll(
-      /:tool\[[\p{L}\p{N}_.:/-]{1,1024}\]|:skill\[[^\]\n]{1,256}\](?:\{name=[^}\n]{1,1024}\})?/gu,
-    )) {
+    // `:skill[title]`, with `{name=id}` when the pack id differs from its title;
+    // an @ pick writes `:record[title]{name=id}` or `:document[title]{name=id}`,
+    // or `:record{label="..." name="..."}` when its title holds a `]`.
+    for (const match of raw.matchAll(USER_DIRECTIVE)) {
       const before = raw.slice(0, match.index)
       if ((before.match(/\\+$/)?.[0].length ?? 0) % 2) continue
       // A literal Markdown link example is not an instruction to use a tool.
