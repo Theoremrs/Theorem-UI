@@ -3,37 +3,81 @@ import type { ThreadMessage, ThreadRuntime } from '@assistant-ui/react'
 import type { Theorem } from './client'
 import { toHistoryMessages } from './message-history'
 
-function sameHead(local: ThreadMessage, durable: Theorem.Message): boolean {
-  if (local.id === durable.messageId) return true
-  if (local.role !== 'assistant' || durable.role !== 'assistant') return false
-  const runId = local.metadata.custom.theoremRunId
-  return (
-    typeof runId === 'string' && runId.length > 0 && runId === durable.runId
-  )
+function localRunId(message: ThreadMessage): string | undefined {
+  const runId = message.metadata.custom.theoremRunId
+  return message.role === 'assistant' && typeof runId === 'string' && runId
+    ? runId
+    : undefined
 }
 
-/** Background deliveries extend an assistant's durable parent chain. */
-function backgroundAnswersAfter(
-  message: ThreadMessage,
+type Gap = {
+  parentId: string
+  successorId?: string
+  messages: Theorem.Message[]
+}
+
+/** Find durable additions before exporting the local repository. */
+function historyGaps(
   visible: readonly ThreadMessage[],
   durable: readonly Theorem.Message[],
-): Theorem.Message[] {
-  if (message.role !== 'assistant') return []
-  const index = durable.findIndex((candidate) => sameHead(message, candidate))
-  if (index < 0) return []
-  const answers: Theorem.Message[] = []
-  let parentId = durable[index]!.messageId
-  for (const candidate of durable.slice(index + 1)) {
+): Gap[] {
+  const byId = new Map(
+    durable.map((message, index) => [message.messageId, index]),
+  )
+  const byRun = new Map<string, number>()
+  durable.forEach((message, index) => {
     if (
-      candidate.role !== 'assistant' ||
-      candidate.parentMessageId !== parentId ||
-      visible.some((local) => sameHead(local, candidate))
+      message.role === 'assistant' &&
+      message.runId &&
+      !byRun.has(message.runId)
     )
-      break
-    answers.push(candidate)
-    parentId = candidate.messageId
+      byRun.set(message.runId, index)
+  })
+  const indexOf = (message: ThreadMessage) => {
+    const run = localRunId(message)
+    const exact = byId.get(message.id)
+    const byAssistantRun = run ? byRun.get(run) : undefined
+    // Keep the first durable match (which can be a streamed assistant's run).
+    return exact !== undefined && byAssistantRun !== undefined
+      ? Math.min(exact, byAssistantRun)
+      : (exact ?? byAssistantRun)
   }
-  return answers
+  const head = visible.at(-1)!
+  const headIndex = indexOf(head)
+  if (headIndex === undefined) return []
+  const present = new Set(visible.map((message) => message.id))
+  const presentRuns = new Set(
+    visible.flatMap((message) => localRunId(message) ?? []),
+  )
+  const gaps: Gap[] = []
+  visible.slice(0, -1).forEach((anchor, offset) => {
+    if (anchor.role !== 'assistant') return
+    const index = indexOf(anchor)
+    if (index === undefined) return
+    let parentId = durable[index]!.messageId
+    const missing: Theorem.Message[] = []
+    for (let next = index + 1; next < durable.length; next++) {
+      const candidate = durable[next]!
+      if (
+        candidate.role !== 'assistant' ||
+        candidate.parentMessageId !== parentId ||
+        present.has(candidate.messageId) ||
+        (candidate.runId && presentRuns.has(candidate.runId))
+      )
+        break
+      missing.push(candidate)
+      parentId = candidate.messageId
+    }
+    if (missing.length)
+      gaps.push({
+        parentId: anchor.id,
+        successorId: visible[offset + 1]!.id,
+        messages: missing,
+      })
+  })
+  if (headIndex + 1 < durable.length)
+    gaps.push({ parentId: head.id, messages: durable.slice(headIndex + 1) })
+  return gaps
 }
 
 /** Use assistant-ui's existing repository conversion and preserve local entries. */
@@ -56,67 +100,76 @@ function graftMessages(
   return parentId
 }
 
-function insertBackgroundAnswers(
-  entries: Map<string, ExportedMessageRepository['messages'][number]>,
-  visible: readonly ThreadMessage[],
-  snapshot: Theorem.ThreadSnapshot,
-): boolean {
-  let changed = false
-  for (let index = 0; index < visible.length - 1; index += 1) {
-    const anchor = visible[index]!
-    const successor = entries.get(visible[index + 1]!.id)
-    if (!entries.has(anchor.id) || !successor) continue
-    const missing = backgroundAnswersAfter(anchor, visible, snapshot.messages)
-    if (!missing.length) continue
-    const parentId = graftMessages(entries, anchor.id, missing, snapshot)
-    entries.set(successor.message.id, { ...successor, parentId })
-    changed = true
-  }
-  return changed
-}
-
 /** Keep local IDs, configuration and side branches while filling durable gaps. */
 function reconcileHistory(
   repository: ExportedMessageRepository,
-  visible: readonly ThreadMessage[],
+  gaps: readonly Gap[],
   snapshot: Theorem.ThreadSnapshot,
 ): ExportedMessageRepository | undefined {
-  const head = visible.at(-1)!
-  const index = snapshot.messages.findIndex((message) =>
-    sameHead(head, message),
-  )
-  if (index < 0) return undefined
   const entries = new Map(
     repository.messages.map((entry) => [entry.message.id, entry]),
   )
-  if (!entries.has(head.id)) return undefined
-  const inserted = insertBackgroundAnswers(entries, visible, snapshot)
-  const tail = snapshot.messages.slice(index + 1)
-  if (!inserted && !tail.length) return undefined
-  const headId = graftMessages(entries, head.id, tail, snapshot)
-  return { headId, messages: [...entries.values()] }
+  let headId = repository.headId
+  let changed = false
+  for (const gap of gaps) {
+    if (!entries.has(gap.parentId)) continue
+    const successor = gap.successorId ? entries.get(gap.successorId) : undefined
+    if (gap.successorId && !successor) continue
+    const parentId = graftMessages(
+      entries,
+      gap.parentId,
+      gap.messages,
+      snapshot,
+    )
+    if (successor) entries.set(successor.message.id, { ...successor, parentId })
+    else headId = parentId
+    changed = true
+  }
+  if (changed) return { headId, messages: [...entries.values()] }
+}
+
+export type RefreshCursor = {
+  snapshot?: string
+  messages?: readonly ThreadMessage[]
 }
 
 /** Import a completed background answer only while the visible conversation is unchanged. */
 export async function refreshConversation(
   thread: Pick<ThreadRuntime, 'getState' | 'export' | 'import'>,
   load: () => Promise<Theorem.ThreadSnapshot>,
+  cursor?: RefreshCursor,
+  active: () => boolean = () => true,
 ): Promise<boolean> {
   const before = thread.getState()
   if (before.isRunning || before.isLoading) return false
   const snapshot = await load()
   const now = thread.getState()
   if (
+    !active() ||
     now.isRunning ||
     now.isLoading ||
     now.messages !== before.messages ||
     snapshot.liveRun
   )
     return false
-  const head = now.messages.at(-1)
-  if (!head) return false
-  const extended = reconcileHistory(thread.export(), now.messages, snapshot)
-  if (!extended) return false
-  thread.import(extended)
-  return true
+  if (!now.messages.length) return false
+  const { threadId, selectedBranchId, revision } = snapshot.thread
+  const version = JSON.stringify([
+    threadId,
+    selectedBranchId,
+    snapshot.viewedBranchId,
+    revision,
+  ])
+  if (cursor?.snapshot === version && cursor.messages === now.messages)
+    return false
+  const gaps = historyGaps(now.messages, snapshot.messages)
+  const extended = gaps.length
+    ? reconcileHistory(thread.export(), gaps, snapshot)
+    : undefined
+  if (extended) thread.import(extended)
+  if (cursor) {
+    cursor.snapshot = version
+    cursor.messages = thread.getState().messages
+  }
+  return !!extended
 }
