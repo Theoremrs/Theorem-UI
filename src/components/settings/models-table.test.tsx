@@ -400,7 +400,9 @@ test('the details panel copies the canonical ID', async () => {
   await waitFor(() => document.querySelector('[data-model-details]'))
   await click(buttonLabeled(document, 'Copy canonical ID')!)
   await waitFor(() =>
-    buttonLabeled(document, 'Copy canonical ID')?.textContent.includes('Copied'),
+    buttonLabeled(document, 'Copy canonical ID')?.textContent.includes(
+      'Copied',
+    ),
   )
   expect(await navigator.clipboard.readText()).toBe(
     'openrouter/nvidia/llama-3.3-nemotron-super-49b-v1.1',
@@ -441,7 +443,6 @@ test('Starred first remains an explicit sort choice', async () => {
   expect(shownNames(container).slice(1)).not.toContain('Nano Banana')
 })
 
-
 async function inspectTwin(container: HTMLElement, ref: string) {
   await click(buttonLabeled(container, `Details for Twins, ${ref}`)!)
   await waitFor(() => document.querySelector('[data-model-details]'))
@@ -461,7 +462,9 @@ test('copy feedback belongs to the inspected model', async () => {
   await inspectTwin(container, 'alpha/twins')
   await click(buttonLabeled(document, 'Copy canonical ID')!)
   await waitFor(() =>
-    buttonLabeled(document, 'Copy canonical ID')?.textContent.includes('Copied'),
+    buttonLabeled(document, 'Copy canonical ID')?.textContent.includes(
+      'Copied',
+    ),
   )
   expect(await navigator.clipboard.readText()).toBe('alpha/twins')
   await closeModelDetails()
@@ -469,7 +472,9 @@ test('copy feedback belongs to the inspected model', async () => {
   expect(buttonLabeled(document, 'Copy canonical ID')?.textContent).toBe('Copy')
   await click(buttonLabeled(document, 'Copy canonical ID')!)
   await waitFor(() =>
-    buttonLabeled(document, 'Copy canonical ID')?.textContent.includes('Copied'),
+    buttonLabeled(document, 'Copy canonical ID')?.textContent.includes(
+      'Copied',
+    ),
   )
   expect(await navigator.clipboard.readText()).toBe('beta/twins')
 })
@@ -494,11 +499,153 @@ test('a pending copy cannot mark a later model as copied', async () => {
     await act(async () => {
       finishCopy?.()
     })
-    expect(buttonLabeled(document, 'Copy canonical ID')?.textContent).toBe('Copy')
+    expect(buttonLabeled(document, 'Copy canonical ID')?.textContent).toBe(
+      'Copy',
+    )
   } finally {
     await act(async () => {
       finishCopy?.()
     })
+    navigator.clipboard.writeText = originalWriteText
+  }
+})
+
+test('clipboard failure is announced, retry succeeds, and feedback resets for another model', async () => {
+  const originalWriteText = navigator.clipboard.writeText
+  let rejected = true
+  navigator.clipboard.writeText = (value: string) =>
+    rejected
+      ? Promise.reject(
+          new DOMException('Clipboard permission denied', 'NotAllowedError'),
+        )
+      : originalWriteText.call(navigator.clipboard, value)
+  try {
+    const { container } = await mount()
+    await inspectTwin(container, 'alpha/twins')
+    await click(buttonLabeled(document, 'Copy canonical ID')!)
+    expect(
+      document.querySelector('[data-model-details] [role="alert"]')
+        ?.textContent,
+    ).toBe('Could not copy the model ID. Try again.')
+    expect(buttonLabeled(document, 'Copy canonical ID')?.textContent).toBe(
+      'Copy',
+    )
+
+    rejected = false
+    await click(buttonLabeled(document, 'Copy canonical ID')!)
+    await waitFor(() =>
+      buttonLabeled(document, 'Copy canonical ID')?.textContent.includes(
+        'Copied',
+      ),
+    )
+    expect(
+      document.querySelector('[data-model-details] [role="alert"]'),
+    ).toBeNull()
+    expect(await navigator.clipboard.readText()).toBe('alpha/twins')
+
+    rejected = true
+    await click(buttonLabeled(document, 'Copy canonical ID')!)
+    expect(
+      document.querySelector('[data-model-details] [role="alert"]'),
+    ).not.toBeNull()
+    expect(buttonLabeled(document, 'Copy canonical ID')?.textContent).toBe(
+      'Copy',
+    )
+    await closeModelDetails()
+    await inspectTwin(container, 'beta/twins')
+    expect(
+      document.querySelector('[data-model-details] [role="alert"]'),
+    ).toBeNull()
+    expect(buttonLabeled(document, 'Copy canonical ID')?.textContent).toBe(
+      'Copy',
+    )
+  } finally {
+    navigator.clipboard.writeText = originalWriteText
+  }
+})
+
+test('a late clipboard rejection cannot show an error for another model', async () => {
+  const originalWriteText = navigator.clipboard.writeText
+  let rejectCopy: ((error: Error) => void) | undefined
+  navigator.clipboard.writeText = () =>
+    new Promise<void>((_, reject) => {
+      rejectCopy = reject
+    })
+  try {
+    const { container } = await mount()
+    await inspectTwin(container, 'alpha/twins')
+    await click(buttonLabeled(document, 'Copy canonical ID')!)
+    await closeModelDetails()
+    await inspectTwin(container, 'beta/twins')
+    await act(async () =>
+      rejectCopy?.(new Error('Clipboard permission denied')),
+    )
+    expect(
+      document.querySelector('[data-model-details] [role="alert"]'),
+    ).toBeNull()
+    expect(buttonLabeled(document, 'Copy canonical ID')?.textContent).toBe(
+      'Copy',
+    )
+  } finally {
+    await act(async () =>
+      rejectCopy?.(new Error('Clipboard permission denied')),
+    )
+    navigator.clipboard.writeText = originalWriteText
+  }
+})
+
+test('a pending clipboard write blocks a second write and allows retry after settlement', async () => {
+  const originalWriteText = navigator.clipboard.writeText
+  const writes: string[] = []
+  let rejectFirst: ((error: Error) => void) | undefined
+  navigator.clipboard.writeText = (value: string) => {
+    writes.push(value)
+    return writes.length === 1
+      ? new Promise<void>((_, reject) => {
+          rejectFirst = reject
+        })
+      : originalWriteText.call(navigator.clipboard, value)
+  }
+  try {
+    const { container } = await mount()
+    await inspectTwin(container, 'alpha/twins')
+    const copy = buttonLabeled(document, 'Copy canonical ID')!
+    await click(copy)
+    const pending = {
+      disabled: copy.disabled,
+      busy: copy.getAttribute('aria-busy'),
+      text: copy.textContent,
+    }
+    await click(copy)
+    await act(async () =>
+      rejectFirst?.(new Error('Clipboard permission denied')),
+    )
+    expect({
+      pending,
+      writes,
+      settledText: copy.textContent,
+      failed: Boolean(
+        document.querySelector('[data-model-details] [role="alert"]'),
+      ),
+    }).toEqual({
+      pending: { disabled: true, busy: 'true', text: 'Copying…' },
+      writes: ['alpha/twins'],
+      settledText: 'Copy',
+      failed: true,
+    })
+    expect(copy.disabled).toBe(false)
+    expect(copy.getAttribute('aria-busy')).toBe('false')
+    await click(copy)
+    await waitFor(() => copy.textContent.includes('Copied'))
+    expect(writes).toEqual(['alpha/twins', 'alpha/twins'])
+    expect(
+      document.querySelector('[data-model-details] [role="alert"]'),
+    ).toBeNull()
+    expect(await navigator.clipboard.readText()).toBe('alpha/twins')
+  } finally {
+    await act(async () =>
+      rejectFirst?.(new Error('Clipboard permission denied')),
+    )
     navigator.clipboard.writeText = originalWriteText
   }
 })

@@ -252,7 +252,8 @@ const SourcesRow: FC<{ sources: CitationSource[] }> = ({ sources }) => {
           resolvedFocus.current = null
           if (
             !next &&
-            details.reason === 'escape-key' &&
+            (details.reason === 'escape-key' ||
+              details.reason === 'trigger-press') &&
             unresolved.length === 0
           ) {
             // Once every source resolves, this trigger disappears on close.

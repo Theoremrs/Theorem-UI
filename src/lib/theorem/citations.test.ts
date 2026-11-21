@@ -82,6 +82,70 @@ test('explicit identities sharing one URL remain separate; anonymous repeats can
   expect(sources[0]?.key).toBe('url:https://example.com/source')
 })
 
+test('URL-only evidence merges with one matching source but stays independent when explicit IDs share the URL', () => {
+  const url = 'https://example.com/shared?edition=1#evidence'
+  const identified = [
+    part({
+      sourceId: 'first-document',
+      label: 'First document',
+      provenance: { url, excerpt: 'First identified evidence.' },
+    }),
+    part({
+      sourceId: 'second-document',
+      label: 'Second document',
+      provenance: { url, excerpt: 'Second identified evidence.' },
+    }),
+  ]
+  const anonymous = part({
+    label: 'Unattributed document',
+    provenance: { url, excerpt: 'Unattributed evidence.' },
+  })
+  const unambiguous = collectCitationSources([identified[0]!, anonymous])
+  expect(unambiguous).toHaveLength(1)
+  expect(unambiguous[0]).toMatchObject({
+    sourceId: 'first-document',
+    passages: [
+      { excerpt: 'First identified evidence.' },
+      { excerpt: 'Unattributed evidence.' },
+    ],
+  })
+  for (const order of [identified, [...identified].reverse()]) {
+    const initial = [...order, anonymous]
+    const anonymousKey = collectCitationSources(initial)[2]!.key
+    const parts = [
+      ...initial,
+      part({
+        label: 'Unattributed document',
+        provenance: { url, excerpt: 'More unattributed evidence.' },
+      }),
+    ]
+    const sources = collectCitationSources(parts)
+    expect(sources).toHaveLength(3)
+    expect(sources[2]!.key).toBe(anonymousKey)
+    expect(sources.slice(0, 2).map((source) => source.passages.length)).toEqual(
+      [1, 1],
+    )
+    expect(sources[2]).toMatchObject({
+      url,
+      passages: [
+        { excerpt: 'Unattributed evidence.' },
+        { excerpt: 'More unattributed evidence.' },
+      ],
+    })
+    expect(sources[2]!.sourceId).toBeUndefined()
+    const references = sources.map((source) =>
+      citationContextReference(source, 'thread', 'message'),
+    )
+    expect(new Set(references.map(citationReferenceKey)).size).toBe(3)
+    expect(
+      JSON.parse(references[2]!.excerpt!).citation.sourceId,
+    ).toBeUndefined()
+    expect(collectCitationSources(JSON.parse(JSON.stringify(parts)))).toEqual(
+      sources,
+    )
+  }
+})
+
 test('a reused URL cannot claim the key of an enriched source that moved', () => {
   const originalUrl = 'https://example.com/original'
   const updatedUrl = 'https://example.com/updated'

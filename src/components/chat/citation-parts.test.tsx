@@ -554,6 +554,46 @@ for (const { name, citations, passages } of [
       ['Independent evidence.'],
     ],
   },
+  {
+    name: 'ambiguous URL-only evidence remains a separate composer reference after reload',
+    citations: [
+      {
+        sourceId: 'first-document',
+        label: 'First document',
+        provenance: {
+          url: 'https://example.com/shared?edition=1#evidence',
+          excerpt: 'First identified evidence.',
+        },
+      },
+      {
+        sourceId: 'second-document',
+        label: 'Second document',
+        provenance: {
+          url: 'https://example.com/shared?edition=1#evidence',
+          excerpt: 'Second identified evidence.',
+        },
+      },
+      {
+        label: 'Unattributed document',
+        provenance: {
+          url: 'https://example.com/shared?edition=1#evidence',
+          excerpt: 'Unattributed evidence.',
+        },
+      },
+      {
+        label: 'Unattributed document',
+        provenance: {
+          url: 'https://example.com/shared?edition=1#evidence',
+          excerpt: 'More unattributed evidence.',
+        },
+      },
+    ],
+    passages: [
+      ['First identified evidence.'],
+      ['Second identified evidence.'],
+      ['Unattributed evidence.', 'More unattributed evidence.'],
+    ],
+  },
 ]) {
   test(name, async () => {
     const { referenceKey, useComposerReferences } =
@@ -587,7 +627,7 @@ for (const { name, citations, passages } of [
           ),
         )
     try {
-      const { container, rerender } = await render(
+      const { container, unmount } = await render(
         <Harness messages={messages} client={client} />,
       )
       const trigger = await waitFor(() =>
@@ -596,13 +636,10 @@ for (const { name, citations, passages } of [
       await act(async () =>
         trigger.dispatchEvent(new MouseEvent('click', { bubbles: true })),
       )
-      await waitFor(
-        () =>
-          document.querySelectorAll('[data-slot="source-entry"]').length === 2,
-      )
+      await waitFor(() => document.querySelector('[data-slot="source-entry"]'))
       const addAll = async () => {
         const entries = document.querySelectorAll('[data-slot="source-entry"]')
-        expect(entries).toHaveLength(2)
+        expect(entries).toHaveLength(passages.length)
         for (const entry of entries) {
           const add = [...entry.querySelectorAll('button')].find((button) =>
             button.textContent.includes('Add to context'),
@@ -616,21 +653,34 @@ for (const { name, citations, passages } of [
       const originalKeys = useComposerReferences
         .getState()
         .references.map(referenceKey)
-      expect(originalKeys).toHaveLength(2)
-      expect(new Set(originalKeys).size).toBe(2)
+      expect(originalKeys).toHaveLength(passages.length)
+      expect(new Set(originalKeys).size).toBe(passages.length)
       expect(referencePassages()).toEqual(passages)
 
-      await rerender(
+      await unmount()
+      expect(trigger.isConnected).toBe(false)
+      expect(document.querySelector('[data-slot="source-entry"]')).toBeNull()
+      await act(async () => useComposerReferences.setState({ references: [] }))
+      expect(useComposerReferences.getState().references).toHaveLength(0)
+      const reloaded = await render(
         <Harness
           messages={JSON.parse(JSON.stringify(messages))}
           client={client}
         />,
       )
-      await act(async () => useComposerReferences.setState({ references: [] }))
-      expect(useComposerReferences.getState().references).toHaveLength(0)
+      const reloadedTrigger = await waitFor(() =>
+        reloaded.container.querySelector('button[aria-label="List sources"]'),
+      )
+      expect(reloadedTrigger).not.toBe(trigger)
+      await act(async () =>
+        reloadedTrigger.dispatchEvent(
+          new MouseEvent('click', { bubbles: true }),
+        ),
+      )
+      await waitFor(() => document.querySelector('[data-slot="source-entry"]'))
       await addAll()
       const references = useComposerReferences.getState().references
-      expect(references).toHaveLength(2)
+      expect(references).toHaveLength(passages.length)
       expect(references.map(referenceKey)).toEqual(originalKeys)
       expect(referencePassages()).toEqual(passages)
       await addAll()
@@ -723,71 +773,117 @@ test('a source that arrives while Sources is open retains its focused fallback a
   ).toBeNull()
 })
 
-test('Escape returns focus to the resolved source preview when its Sources trigger disappears', async () => {
-  const client = new QueryClient()
-  const url = 'https://example.com/recovering-fallback'
-  const readyUrl = 'https://example.com/already-ready'
-  client.setQueryData(['theorem', 'link-preview', url], null)
-  client.setQueryData(['theorem', 'link-preview', readyUrl], {
-    href: readyUrl,
-    title: 'Already resolved paper',
-    siteName: 'Example',
+for (const close of ['Escape', 'trigger click', 'outside click'] as const) {
+  test(`${close} preserves focus when the resolved Sources trigger disappears`, async () => {
+    const client = new QueryClient()
+    const url = 'https://example.com/recovering-fallback'
+    const firstUrl = 'https://example.com/first-fallback'
+    client.setQueryData(['theorem', 'link-preview', url], null)
+    client.setQueryData(['theorem', 'link-preview', firstUrl], null)
+    const stored = storedCitation(url, 'document', 'Exact recovering evidence.')
+    stored.parts.splice(1, 0, {
+      partId: 'first-fallback-source',
+      type: 'citation',
+      payload: {
+        sourceId: 'first-fallback',
+        sourceKind: 'document',
+        label: 'First unresolved paper',
+        provenance: { url: firstUrl, excerpt: 'Earlier evidence.' },
+      },
+    })
+    const { container } = await render(
+      <>
+        <Harness messages={toAssistantMessages([stored])} client={client} />
+        <button type="button" data-testid="outside-source-control">
+          Outside control
+        </button>
+      </>,
+    )
+    const trigger = await waitFor(() =>
+      container.querySelector<HTMLButtonElement>(
+        'button[aria-label="List sources"]',
+      ),
+    )
+    await act(async () => trigger.focus())
+    await act(async () =>
+      trigger.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    )
+    const entry = await waitFor(() =>
+      document.querySelector(
+        '[data-slot="source-entry"][data-source-id="hit-1"]',
+      ),
+    )
+    expect(
+      [...document.querySelectorAll('[data-slot="source-entry"]')].map(
+        (source) => source.getAttribute('data-source-id'),
+      ),
+    ).toEqual(['first-fallback', 'hit-1'])
+    const add = [...entry.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent.includes('Add to context'),
+    )!
+    await act(async () => add.focus())
+    await act(async () => {
+      client.setQueryData(['theorem', 'link-preview', url], {
+        href: url,
+        title: 'Recovered source',
+        siteName: 'Example',
+      })
+      client.setQueryData(['theorem', 'link-preview', firstUrl], {
+        href: firstUrl,
+        title: 'First recovered source',
+        siteName: 'Example',
+      })
+    })
+    const resolvedLink = await waitFor(() =>
+      container.querySelector<HTMLAnchorElement>(
+        '[data-source-id="hit-1"] [data-slot="link-preview"] a',
+      ),
+    )
+    const firstResolvedLink = await waitFor(() =>
+      container.querySelector<HTMLAnchorElement>(
+        '[data-source-id="first-fallback"] [data-slot="link-preview"] a',
+      ),
+    )
+    const outside = container.querySelector<HTMLButtonElement>(
+      '[data-testid="outside-source-control"]',
+    )!
+    expect(document.activeElement === add).toBe(true)
+    let expectedFocus: HTMLElement
+    if (close === 'Escape') {
+      expectedFocus = resolvedLink
+      await act(async () =>
+        add.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'Escape',
+            bubbles: true,
+            cancelable: true,
+          }),
+        ),
+      )
+    } else if (close === 'trigger click') {
+      expectedFocus = firstResolvedLink
+      await act(async () => {
+        trigger.focus()
+        trigger.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, detail: 1 }),
+        )
+      })
+    } else {
+      expectedFocus = outside
+      await act(async () => {
+        for (const event of ['pointerdown', 'mousedown'])
+          outside.dispatchEvent(
+            new MouseEvent(event, { bubbles: true, button: 0, detail: 1 }),
+          )
+        outside.focus()
+        for (const event of ['pointerup', 'mouseup', 'click'])
+          outside.dispatchEvent(
+            new MouseEvent(event, { bubbles: true, button: 0, detail: 1 }),
+          )
+      })
+    }
+    await waitFor(() => !container.querySelector('[data-slot="sources-row"]'))
+    await waitFor(() => document.activeElement === expectedFocus)
+    expect(resolvedLink.href).toBe(url)
   })
-  const stored = storedCitation(url, 'document', 'Exact recovering evidence.')
-  stored.parts.splice(1, 0, {
-    partId: 'already-resolved-source',
-    type: 'citation',
-    payload: {
-      sourceId: 'already-resolved',
-      sourceKind: 'document',
-      label: 'Already resolved paper',
-      provenance: { url: readyUrl, excerpt: 'Earlier evidence.' },
-    },
-  })
-  const { container } = await render(
-    <Harness messages={toAssistantMessages([stored])} client={client} />,
-  )
-  const trigger = await waitFor(() =>
-    container.querySelector<HTMLButtonElement>(
-      'button[aria-label="List sources"]',
-    ),
-  )
-  await act(async () => trigger.focus())
-  await act(async () =>
-    trigger.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-  )
-  const entry = await waitFor(() =>
-    document.querySelector(
-      '[data-slot="source-entry"][data-source-id="hit-1"]',
-    ),
-  )
-  const add = [...entry.querySelectorAll<HTMLButtonElement>('button')].find(
-    (button) => button.textContent.includes('Add to context'),
-  )!
-  await act(async () => add.focus())
-  await act(async () =>
-    client.setQueryData(['theorem', 'link-preview', url], {
-      href: url,
-      title: 'Recovered source',
-      siteName: 'Example',
-    }),
-  )
-  const resolvedLink = await waitFor(() =>
-    container.querySelector<HTMLAnchorElement>(
-      '[data-source-id="hit-1"] [data-slot="link-preview"] a',
-    ),
-  )
-  expect(document.activeElement === add).toBe(true)
-  await act(async () =>
-    add.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'Escape',
-        bubbles: true,
-        cancelable: true,
-      }),
-    ),
-  )
-  await waitFor(() => !container.querySelector('[data-slot="sources-row"]'))
-  await waitFor(() => document.activeElement === resolvedLink)
-  expect(resolvedLink.href).toBe(url)
-})
+}

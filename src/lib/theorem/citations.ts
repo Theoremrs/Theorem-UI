@@ -74,11 +74,18 @@ export function collectCitationSources(
     const excerpt = str(provenance.excerpt)
     let source = sourceId ? byId.get(sourceId) : undefined
     if (!source && url) {
-      source = sources.find(
+      const matches = sources.filter(
         (candidate) =>
           // A URL-bearing fallback can gain its durable ID later in the stream.
           (!sourceId || !candidate.sourceId) && candidate.url === url,
       )
+      // Keep repeated URL-only passages in their own unattributed group.
+      // A URL alone cannot choose between several explicit source IDs.
+      const anonymousMatches = matches.filter(
+        (candidate) => !candidate.sourceId,
+      )
+      if (anonymousMatches.length === 1) source = anonymousMatches[0]
+      else if (matches.length === 1) source = matches[0]
     }
     if (!source) {
       const preferredKey = sourceId

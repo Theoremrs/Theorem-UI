@@ -211,6 +211,44 @@ describe('extractMetadata', () => {
     expect(metadata.description).toBe('Real description')
   })
 
+  test('ignores nested template metadata and resumes reading the document after it closes', () => {
+    const metadata = extractMetadata(
+      `<head><template>
+        <title>Template title</title>
+        <meta property="og:title" content="Template Open Graph title">
+        <template>
+          <meta name="description" content="Nested template description">
+        </template>
+        <meta property="og:image" content="/template.png">
+        <meta property="og:site_name" content="Template site">
+        <link rel="icon" href="/template.ico">
+        <script>const example = '</template><meta property="og:title" content="Script title">';</script>
+        <!-- </template> -->
+        <meta name="description" content="Still inside the template">
+      </template>
+      <title>Document title</title>
+      <meta name="description" content="Document description">
+      <link rel="icon" href="/document.ico">
+      </head>`,
+      base,
+    )
+    expect(metadata).toEqual({
+      href: base.href,
+      title: 'Document title',
+      description: 'Document description',
+      favicon: 'https://example.com/document.ico',
+    })
+  })
+
+  test('an unclosed template cannot contribute fallback document metadata', () => {
+    const metadata = extractMetadata(
+      '<template><title>Template title</title><meta name="description" content="Template description">',
+      base,
+    )
+    expect(metadata.title).toBeUndefined()
+    expect(metadata.description).toBeUndefined()
+  })
+
   test('limits extraction to the first 200,000 characters', () => {
     const metadata = extractMetadata(
       ' '.repeat(200_000) +
@@ -477,7 +515,9 @@ describe('resolveLinkMetadata request lifecycle', () => {
   test('releases a redirect connection before reading its body', async () => {
     initialResponse = {
       statusCode: 302,
-      headers: { location: 'https://immediate-redirect.example.test/' },
+      headers: {
+        location: 'https://immediate-redirect.example.test/?edition=1#results',
+      },
     }
     const result = resolveLinkMetadata(href())
     await flushPromises()
@@ -494,7 +534,10 @@ describe('resolveLinkMetadata request lifecycle', () => {
     )
     connection(1).response.emit('end')
 
-    expect((await result)?.title).toBe('Destination')
+    expect(await result).toMatchObject({
+      href: 'https://immediate-redirect.example.test/?edition=1',
+      title: 'Destination',
+    })
     expect(startedBeforeBody).toBe(2)
     expect(releasedBeforeBody).toBe(true)
     expect(first.response.listenerCount('data')).toBe(0)
@@ -518,6 +561,46 @@ describe('resolveLinkMetadata request lifecycle', () => {
     expect((await resolveLinkMetadata(url))?.title).toBe('Shared success')
     expect(connections).toHaveLength(1)
     expect(dns.lookup).toHaveBeenCalledTimes(1)
+  })
+
+  test('shares fragment variants in flight and in cache while retaining distinct query strings', async () => {
+    const documentUrl = href() + '?edition=1'
+    const methodsUrl = documentUrl + '#methods'
+    const resultsUrl = documentUrl + '#results'
+    const first = resolveLinkMetadata(methodsUrl)
+    const second = resolveLinkMetadata(resultsUrl)
+    await flushPromises()
+    // Finish every connection so the pre-fix duplicate fetch also settles.
+    for (const { response } of connections) {
+      response.emit('data', Buffer.from('<title>Shared document</title>'))
+      response.emit('end')
+    }
+    const values = await Promise.all([first, second])
+    expect(connections).toHaveLength(1)
+    expect(dns.lookup).toHaveBeenCalledTimes(1)
+    expect(values[0]).toMatchObject({
+      href: documentUrl,
+      title: 'Shared document',
+    })
+    expect(values[1]).toBe(values[0])
+    expect(await resolveLinkMetadata(documentUrl + '#discussion')).toBe(
+      values[0],
+    )
+    expect(connections).toHaveLength(1)
+    const otherEditionUrl = documentUrl.replace('edition=1', 'edition=2')
+    const otherEdition = resolveLinkMetadata(otherEditionUrl + '#methods')
+    await flushPromises()
+    connection(1).response.emit(
+      'data',
+      Buffer.from('<title>Different edition</title>'),
+    )
+    connection(1).response.emit('end')
+    expect(await otherEdition).toMatchObject({
+      href: otherEditionUrl,
+      title: 'Different edition',
+    })
+    expect(connections).toHaveLength(2)
+    expect(dns.lookup).toHaveBeenCalledTimes(2)
   })
 
   test('refuses special-purpose DNS answers before opening a connection', async () => {

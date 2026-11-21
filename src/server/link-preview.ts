@@ -427,6 +427,7 @@ function headFields(head: string): {
   const links = new Map<string, string>()
   let title: string | undefined
   let cursor = 0
+  let templateDepth = 0
   const rawTextEnd = /<\/(title|script|style|textarea)[\t\n\f\r ]*>/gi
   while (cursor < head.length) {
     const opening = head.indexOf('<', cursor)
@@ -462,6 +463,14 @@ function headFields(head: string): {
     }
     if (cursor === head.length) break
     const end = cursor++
+    // Template contents belong to a separate document fragment, including
+    // nested templates. An unclosed template keeps the remaining input inert.
+    if (name === 'template') {
+      templateDepth = closing
+        ? Math.max(0, templateDepth - 1)
+        : templateDepth + 1
+      continue
+    }
     if (closing) continue
 
     // These elements contain text, not metadata tags. Skip their contents
@@ -473,12 +482,12 @@ function headFields(head: string): {
         match = rawTextEnd.exec(head)
       } while (match && match[1]?.toLowerCase() !== name)
       if (!match) break
-      if (name === 'title' && title === undefined)
+      if (name === 'title' && title === undefined && templateDepth === 0)
         title = head.slice(cursor, match.index)
       cursor = rawTextEnd.lastIndex
       continue
     }
-    if (name !== 'meta' && name !== 'link') continue
+    if (templateDepth > 0 || (name !== 'meta' && name !== 'link')) continue
     const attributes = tagAttributes(head, attributesStart, end)
     if (name === 'meta') {
       for (const attribute of ['property', 'name']) {
@@ -610,6 +619,9 @@ export async function resolveLinkMetadata(
 ): Promise<LinkMetadata | null> {
   const url = publicHttpUrl(href)
   if (!url) return null
+  // Fragments identify passages in the UI, but never reach the HTTP server.
+  // Share document metadata without changing the original citation link.
+  url.hash = ''
   const cached = cache.get(url.href)
   if (cached && Date.now() - cached.at < (cached.value ? CACHE_MS : FAILURE_MS))
     return cached.value
@@ -637,6 +649,7 @@ async function resolveUncachedMetadata(url: URL): Promise<LinkMetadata | null> {
       type.includes('html')
     ) {
       const finalUrl = publicHttpUrl(response.url) ?? url
+      finalUrl.hash = ''
       const meta = extractMetadata(response.body, finalUrl)
       // A page with no title at all is not a preview worth drawing.
       if (meta.title || meta.description || meta.image) value = meta

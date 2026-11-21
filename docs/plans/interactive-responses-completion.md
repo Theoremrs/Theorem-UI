@@ -76,13 +76,23 @@ The [palette-editor review](https://github.com/Travis-Gilbert/Theorem-UI/pull/14
 
 Every foreground and background used by contrast validation has a control in both light and dark mode. A regression starts with a rejected accent/text combination, repairs its hover and pressed fills through the visible controls, and applies the resulting valid custom palette. Palette values, contrast requirements and the validation schema are preserved.
 
+### Ambiguous sources, recovery, and preview extraction
+
+The [review of `a792e846`](https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001469822) prompted six further checks. URL-only evidence stays separate when several explicit source identities share its URL; repeated anonymous passages reuse that separate group. Reload verification now unmounts and remounts the runtime from serialized messages before rebuilding context references. Closing Sources through either Escape or its trigger hands focus to a preview when the trigger disappears, while outside-click focus stays on the selected control.
+
+Model-ID copy failures now appear as an accessible error. A pending write disables the copy control and shows its busy state, then permits retry after settlement. The keyed model boundary isolates feedback from earlier selections.
+
+Preview extraction excludes nested and unclosed template contents while continuing to skip comments and raw text correctly. Server caching and in-flight requests use document URLs without fragments, preserve query strings, and return shared metadata without a caller's anchor. Citation links retain their original anchors.
+
+The parser evaluation favored retaining the bounded forward scan for this change. On the local nested-tag probe at the existing 200,000-character limit, full-tree parse5 construction took about 2,242 ms and the existing scan about 10 ms. This is a workload-specific measurement, not a general parser benchmark; the template fix uses a single nesting counter.
+
 ## Verification record
 
 | Gate                                                       | Verified result                                                                             |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Full repository TypeScript and focused changed-file ESLint | Passed                                                                                      |
-| Expanded composer/response suite                           | 1,008 tests, 99 files, 3,399 assertions, zero failures                                        |
-| Expanded appearance/settings suite                         | 176 tests, 15 files, 5,435 assertions, zero failures                                        |
+| Expanded composer/response suite                           | 1,015 tests, 99 files, 3,457 assertions, zero failures                                        |
+| Expanded appearance/settings suite                         | 179 tests, 15 files, 5,451 assertions, zero failures                                        |
 | Independent emitted-color audit                            | 119 edges, 10 modes, 2,390 predicates, zero failures                                                   |
 | Response-evidence browser oracle                           | 19/19 in Chromium 156.0.8078.4 and WebKit 27.2                                              |
 | Appearance editor browser oracle                           | 4/4 in Chromium 156.0.8078.4 and WebKit 27.2                                                                          |
@@ -90,7 +100,9 @@ Every foreground and background used by contrast validation has a control in bot
 | Full Workers application Vite build                        | Passed; generated flags contain both strictly-public fetch and Node compatibility           |
 | Live local workerd transport probe (baseline)                         | Public metadata succeeds; private-address resolution/refetch is refused                     |
 
-The source-key and metadata edge cases reran the combined composer suite, repository typecheck and focused source/server tests. The subsequent editor inventory correction reran the full appearance suite, typecheck, focused lint and Chromium appearance story. Cross-browser response captures and the local Workers build above remain recorded baseline results; current GitHub verification is tracked on the PR for the commit containing this record.
+The latest recovery follow-up reran the combined composer and appearance suites, repository typecheck, focused lint and WebKit response story. The Chromium response, appearance-browser, touch and local Workers measurements include recorded earlier evidence. Current GitHub verification is tracked on the PR for the commit containing this record.
+
+The latest WebKit response run passed all 19 checks and reported no JavaScript page errors. It logged six HTTP 503 resource messages. A separate single-load trace identified `/api/chat/v1/dictation/status` returning `theorem_unconfigured` because this isolated preview has no Theorem backend configured. That trace showed no preview or asset failure and is consistent with the one message per scenario in the original run. The test is not recorded as completely free of resource errors.
 
 The touch probe also verified that tapping 8px above the visible switch toggles it: its 44px hit area grows independently of its unchanged 38 × 22px track.
 

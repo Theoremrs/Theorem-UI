@@ -1,22 +1,21 @@
 {
   "schema": "theorem.interactive-response-completion.v1",
-  "recordedAt": "2026-11-21T00:39:53.152271+00:00",
+  "recordedAt": "2026-11-21T01:09:25.200938+00:00",
   "pullRequest": 146,
   "baseRevision": "02b9783d9415c8424dd9323ee18a6db678d536ac",
   "scope": "Phase1 evidence responses; local and fixture verification, no production deployment or human visual seal",
   "unitSuites": {
     "composer": {
-      "passed": 1008,
+      "passed": 1015,
       "failed": 0,
       "files": 99,
-      "assertions": 3399,
-      "verificationScope": "Recorded on 0372ce1d before the palette-editor inventory correction; final integrated CI is tracked on the PR."
+      "assertions": 3457
     },
     "appearance": {
-      "passed": 176,
+      "passed": 179,
       "failed": 0,
       "files": 15,
-      "assertions": 5435
+      "assertions": 5451
     }
   },
   "typecheck": "passed",
@@ -53,7 +52,7 @@
         "the Data view shows the plot's own values": true,
         "units and provenance stay visible": true
       },
-      "verificationScope": "Captured on 97b9359e. Subsequent source-key and parser edge cases have focused regressions; the current Chromium acceptance run is tracked on the PR."
+      "verificationScope": "Rerun after ambiguous-source, focus, reload, and recovery fixes. Resource console diagnostics are recorded separately."
     },
     {
       "id": "response-evidence",
@@ -231,5 +230,71 @@
       "total": 4
     },
     "freshCi": "Tracked on the pull request for the commit containing this record."
+  },
+  "recoveryFollowup": {
+    "review": "https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001469822",
+    "previousHead": "a792e846dd66d1ba52ab73e1dd68495a8bd846cf",
+    "sourceTests": {
+      "passed": 34,
+      "assertions": 193,
+      "failed": 0
+    },
+    "metadataTests": {
+      "passed": 46,
+      "assertions": 244,
+      "failed": 0
+    },
+    "modelAndClipboardTests": {
+      "passed": 26,
+      "assertions": 73,
+      "failed": 0
+    },
+    "behaviors": [
+      "Ambiguous anonymous URL citations retain a separate ID-less group; repeats reuse that group.",
+      "Reload tests reconstruct a fresh runtime before recreating composer references.",
+      "Escape and trigger-close restore focus when the fallback disappears; outside clicks retain their actual target.",
+      "Clipboard errors are visible and pending writes cannot overlap; model changes isolate feedback.",
+      "Nested/unclosed template metadata is excluded from the page preview.",
+      "Metadata caches coalesce fragments while preserving queries and original citation links."
+    ],
+    "parserEvaluation": {
+      "package": "parse5 7.3.0",
+      "fixture": "nested div tags at the existing bounded extraction size",
+      "sizesCharacters": [
+        25000,
+        50000,
+        100000,
+        200000
+      ],
+      "fullTreeMilliseconds": [
+        54.5,
+        163.4,
+        585.7,
+        2242.1
+      ],
+      "existingScanMilliseconds": [
+        2.8,
+        1.0,
+        2.1,
+        9.7
+      ],
+      "scope": "Local workload-specific probe before the template counter; not a general parser comparison."
+    },
+    "freshCi": "Tracked on the pull request for the commit containing this record.",
+    "localStatus": "Passed: combined composer and appearance suites, repository typecheck, focused lint and WebKit response oracle.",
+    "webkitConsoleDiagnostics": {
+      "http503Messages": 6,
+      "pageErrorReports": 0,
+      "attribution": {
+        "tracedPath": "/api/chat/v1/dictation/status",
+        "resourceType": "fetch",
+        "status": 503,
+        "contentType": "application/problem+json",
+        "code": "theorem_unconfigured",
+        "title": "Theorem backend is not configured",
+        "detail": "Set THEOREM_API_URL in .env (see .env.example).",
+        "scope": "One fresh WebKit load traced this background request; it is consistent with the original six per-scenario messages, whose logger omitted URLs. No preview or asset failure appeared in the attributed load."
+      }
+    }
   }
 }

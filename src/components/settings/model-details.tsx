@@ -49,22 +49,48 @@ function Field({
 
 /** Clipboard feedback and pending completion belong to one model identity. */
 function CopyModelId({ value }: { value: string }) {
-  const { isCopied, copyToClipboard } = useCopyToClipboard()
+  const [copyFailed, setCopyFailed] = React.useState(false)
+  const [copyPending, setCopyPending] = React.useState(false)
+  const { isCopied, copyToClipboard } = useCopyToClipboard({
+    onError: () => setCopyFailed(true),
+  })
+  const copy = async () => {
+    if (copyPending) return
+    setCopyFailed(false)
+    setCopyPending(true)
+    try {
+      await copyToClipboard(value)
+    } finally {
+      setCopyPending(false)
+    }
+  }
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="shrink-0"
-      aria-label="Copy canonical ID"
-      onClick={() => void copyToClipboard(value)}
-    >
-      {isCopied ? (
-        <Icon.Copied className="size-3.5" aria-hidden="true" />
-      ) : (
-        <Icon.Copy className="size-3.5" aria-hidden="true" />
+    <div className="flex flex-col gap-1">
+      <span className="flex min-w-0 items-center gap-2">
+        <code className="min-w-0 break-all font-mono text-xs">{value}</code>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          aria-label="Copy canonical ID"
+          aria-busy={copyPending}
+          disabled={copyPending}
+          onClick={() => void copy()}
+        >
+          {isCopied ? (
+            <Icon.Copied className="size-3.5" aria-hidden="true" />
+          ) : (
+            <Icon.Copy className="size-3.5" aria-hidden="true" />
+          )}
+          {copyPending ? 'Copying…' : isCopied ? 'Copied' : 'Copy'}
+        </Button>
+      </span>
+      {copyFailed && (
+        <p role="alert" className="text-xs text-error-ink">
+          Could not copy the model ID. Try again.
+        </p>
       )}
-      {isCopied ? 'Copied' : 'Copy'}
-    </Button>
+    </div>
   )
 }
 
@@ -134,12 +160,7 @@ export function ModelDetails({
             <SheetPanel>
               <dl className="flex flex-col gap-4">
                 <Field label="Canonical ID">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <code className="min-w-0 break-all font-mono text-xs">
-                      {model.ref}
-                    </code>
-                    <CopyModelId key={model.ref} value={model.ref} />
-                  </span>
+                  <CopyModelId key={model.ref} value={model.ref} />
                 </Field>
                 <Field label="Vendor">{model.vendor}</Field>
                 <Field label="Routing provider">{route?.provider}</Field>
