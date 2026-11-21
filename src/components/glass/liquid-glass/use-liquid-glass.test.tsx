@@ -1,8 +1,9 @@
 import { afterEach, expect, mock, spyOn, test } from 'bun:test'
-import { useRef } from 'react'
+import { act, useRef } from 'react'
 import { cleanup, render } from '../../../../test/blocks/render'
 import { publishLifeFrame } from '@/components/life/frames'
 import type { Pane, Scene } from './renderer'
+import type { LiquidJoin } from './use-liquid-glass'
 
 const renders: Array<{ pane: Pane; scene: Scene }> = []
 let contextLost: ((lost: boolean) => void) | undefined
@@ -104,22 +105,24 @@ function idle(frames = 60) {
 
 function Pane({
   edges,
+  join,
 }: {
   edges?: { top: boolean; right: boolean; bottom: boolean; left: boolean }
+  join?: LiquidJoin
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  useLiquidGlass(ref, true, edges)
+  useLiquidGlass(ref, true, edges, join)
   return <div ref={ref} className="sheet" data-testid="pane" />
 }
 
-async function mount() {
+async function mount(join?: LiquidJoin) {
   const paneBox = rect(10, 20, 300, 120)
   const fieldBox = rect(0, 0, 800, 600)
   const field = document.createElement('canvas')
   document.body.append(field)
   measure(field, fieldBox)
 
-  const view = await render(<Pane />)
+  const view = await render(<Pane join={join} />)
   const pane = view.container.querySelector<HTMLElement>(
     '[data-testid="pane"]',
   )!
@@ -128,6 +131,25 @@ async function mount() {
   flush(0)
 
   return { view, pane, paneBox, field, fieldBox }
+}
+
+function joinedPane() {
+  const element = document.createElement('div')
+  element.dataset.testid = 'joined-pane'
+  const box = rect(300, 20, 400, 240)
+  measure(element, box)
+  document.body.append(element)
+  const previous = restore
+  restore = () => {
+    element.remove()
+    previous()
+  }
+  const join: LiquidJoin = {
+    pane: '[data-testid="joined-pane"]',
+    top: true,
+    bottom: true,
+  }
+  return { join, box }
 }
 
 afterEach(async () => {
@@ -530,6 +552,96 @@ test('removing the last pane disconnects its observers and idle work', async () 
     layoutReads: 0,
     rafCalls: 0,
   })
+})
+
+test('reduced transparency removes the canvas and restores its join when turned off', async () => {
+  instrument()
+  // A controllable media query: the pane mounts with transparency allowed.
+  const listeners = new Set<(event: { matches: boolean }) => void>()
+  let reduced = false
+  const nativeMatchMedia = window.matchMedia
+  window.matchMedia = (query: string) => {
+    if (query.includes('prefers-reduced-transparency')) {
+      return {
+        get matches() {
+          return reduced
+        },
+        media: query,
+        addEventListener: (
+          _: string,
+          cb: (event: { matches: boolean }) => void,
+        ) => listeners.add(cb),
+        removeEventListener: (
+          _: string,
+          cb: (event: { matches: boolean }) => void,
+        ) => listeners.delete(cb),
+        addListener: (cb: (event: { matches: boolean }) => void) =>
+          listeners.add(cb),
+        removeListener: (cb: (event: { matches: boolean }) => void) =>
+          listeners.delete(cb),
+        dispatchEvent: () => true,
+        onchange: null,
+      } as unknown as MediaQueryList
+    }
+    return nativeMatchMedia(query)
+  }
+  const previousRestore = restore
+  restore = () => {
+    window.matchMedia = nativeMatchMedia
+    listeners.clear()
+    previousRestore()
+  }
+
+  const { join, box } = joinedPane()
+  const { pane } = await mount(join)
+  const originalCanvas = pane.querySelector('[data-liquid-canvas]')
+  expect(pane.dataset.liquid).toBe('live')
+  expect(originalCanvas).not.toBeNull()
+  expect(renders.at(-1)?.pane.light).toBe(box)
+
+  // The person asks for less transparency while the chart is already mounted.
+  reduced = true
+  await act(async () => {
+    for (const cb of listeners) cb({ matches: true })
+  })
+
+  expect(pane.dataset.liquid).toBeUndefined()
+  expect(pane.querySelector('[data-liquid-canvas]')).toBeNull()
+
+  reduced = false
+  renders.length = 0
+  await act(async () => {
+    for (const cb of listeners) cb({ matches: false })
+  })
+  flush()
+
+  expect(pane.dataset.liquid).toBe('live')
+  expect(pane.querySelectorAll('[data-liquid-canvas]')).toHaveLength(1)
+  expect(pane.querySelector('[data-liquid-canvas]')).not.toBe(originalCanvas)
+  expect(renders.at(-1)?.pane.light).toBe(box)
+})
+
+test('edge changes recreate the canvas with its shared lighting join', async () => {
+  instrument()
+  const { join, box } = joinedPane()
+  const { view, pane } = await mount(join)
+  const originalCanvas = pane.querySelector('[data-liquid-canvas]')
+  expect(renders.at(-1)?.pane.light).toBe(box)
+
+  renders.length = 0
+  await view.rerender(
+    <Pane
+      join={join}
+      edges={{ top: true, right: false, bottom: true, left: true }}
+    />,
+  )
+  flush()
+
+  expect(pane.dataset.liquid).toBe('live')
+  expect(pane.querySelectorAll('[data-liquid-canvas]')).toHaveLength(1)
+  expect(pane.querySelector('[data-liquid-canvas]')).not.toBe(originalCanvas)
+  expect(renders.at(-1)?.pane.extend).toEqual([0, 0, 4096, 0])
+  expect(renders.at(-1)?.pane.light).toBe(box)
 })
 
 test('a pane moved by a sibling growing redraws without a scroll or resize', async () => {

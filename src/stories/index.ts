@@ -51,6 +51,30 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 1024, height: 768 },
   },
   {
+    id: 'response-evidence',
+    title: 'Interactive responses: a research answer with inspectable sources and a chart with its data',
+    lane: 'original',
+    viewport: { width: 1024, height: 900 },
+  },
+  {
+    id: 'response-coding',
+    title: 'Interactive responses: a coding answer keeping the failed step beside the fix',
+    lane: 'original',
+    viewport: { width: 1024, height: 768 },
+  },
+  {
+    id: 'response-writing',
+    title: 'Interactive responses: a draft whose claims carry evidence status',
+    lane: 'original',
+    viewport: { width: 1024, height: 768 },
+  },
+  {
+    id: 'settings-appearance',
+    title: 'Settings: Appearance with the per-role palette color editors',
+    lane: 'original',
+    viewport: { width: 1024, height: 900 },
+  },
+  {
     id: 'assistant-context-usage',
     title: 'assistant-ui: context usage ring beside the composer',
     lane: 'translation',

@@ -63,6 +63,7 @@ import { Route as ApiChatV1SplatRouteImport } from './routes/api/chat/v1/$'
 import { Route as ApiDocumentsV2SplatRouteImport } from './routes/api/documents/v2/$'
 import { Route as ApiEnvironmentV1SplatRouteImport } from './routes/api/environment/v1/$'
 import { Route as ApiFilesV1SplatRouteImport } from './routes/api/files/v1/$'
+import { Route as ApiLinkPreviewV1SplatRouteImport } from './routes/api/link-preview/v1/$'
 import { Route as ApiObserveV1SplatRouteImport } from './routes/api/observe/v1/$'
 import { Route as ApiProjectFilesV1SplatRouteImport } from './routes/api/project-files/v1/$'
 import { Route as ApiSceneV1SplatRouteImport } from './routes/api/scene/v1/$'
@@ -360,6 +361,11 @@ const ApiFilesV1SplatRoute = ApiFilesV1SplatRouteImport.update({
   path: '/api/files/v1/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiLinkPreviewV1SplatRoute = ApiLinkPreviewV1SplatRouteImport.update({
+  id: '/api/link-preview/v1/$',
+  path: '/api/link-preview/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiObserveV1SplatRoute = ApiObserveV1SplatRouteImport.update({
   id: '/api/observe/v1/$',
   path: '/api/observe/v1/$',
@@ -566,6 +572,7 @@ export interface FileRoutesByFullPath {
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
+  '/api/link-preview/v1/$': typeof ApiLinkPreviewV1SplatRoute
   '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
@@ -646,6 +653,7 @@ export interface FileRoutesByTo {
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
+  '/api/link-preview/v1/$': typeof ApiLinkPreviewV1SplatRoute
   '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
@@ -729,6 +737,7 @@ export interface FileRoutesById {
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
+  '/api/link-preview/v1/$': typeof ApiLinkPreviewV1SplatRoute
   '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
@@ -812,6 +821,7 @@ export interface FileRouteTypes {
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
+    | '/api/link-preview/v1/$'
     | '/api/observe/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
@@ -892,6 +902,7 @@ export interface FileRouteTypes {
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
+    | '/api/link-preview/v1/$'
     | '/api/observe/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
@@ -974,6 +985,7 @@ export interface FileRouteTypes {
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
+    | '/api/link-preview/v1/$'
     | '/api/observe/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
@@ -1033,6 +1045,7 @@ export interface RootRouteChildren {
   ApiDocumentsV2SplatRoute: typeof ApiDocumentsV2SplatRoute
   ApiEnvironmentV1SplatRoute: typeof ApiEnvironmentV1SplatRoute
   ApiFilesV1SplatRoute: typeof ApiFilesV1SplatRoute
+  ApiLinkPreviewV1SplatRoute: typeof ApiLinkPreviewV1SplatRoute
   ApiObserveV1SplatRoute: typeof ApiObserveV1SplatRoute
   ApiProjectFilesV1SplatRoute: typeof ApiProjectFilesV1SplatRoute
   ApiSceneV1SplatRoute: typeof ApiSceneV1SplatRoute
@@ -1440,6 +1453,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFilesV1SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/link-preview/v1/$': {
+      id: '/api/link-preview/v1/$'
+      path: '/api/link-preview/v1/$'
+      fullPath: '/api/link-preview/v1/$'
+      preLoaderRoute: typeof ApiLinkPreviewV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/observe/v1/$': {
       id: '/api/observe/v1/$'
       path: '/api/observe/v1/$'
@@ -1745,6 +1765,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDocumentsV2SplatRoute: ApiDocumentsV2SplatRoute,
   ApiEnvironmentV1SplatRoute: ApiEnvironmentV1SplatRoute,
   ApiFilesV1SplatRoute: ApiFilesV1SplatRoute,
+  ApiLinkPreviewV1SplatRoute: ApiLinkPreviewV1SplatRoute,
   ApiObserveV1SplatRoute: ApiObserveV1SplatRoute,
   ApiProjectFilesV1SplatRoute: ApiProjectFilesV1SplatRoute,
   ApiSceneV1SplatRoute: ApiSceneV1SplatRoute,
@@ -1784,3 +1805,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

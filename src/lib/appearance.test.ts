@@ -5,7 +5,9 @@ import {
   APPEARANCE_VERSION,
   appearanceDocumentSchema,
   appearanceOverridesSchema,
+  appearanceSelectionSchema,
   customCssSchema,
+  customPaletteSchema,
   DEFAULT_APPEARANCE,
   migrateLegacyAppearance,
   resolveAppearance,
@@ -39,10 +41,13 @@ const customPalette = () => ({
 })
 
 describe('appearance selection', () => {
-  test('the Calm manifest keeps all surfaces flat and Life off', () => {
+  test('the Calm manifest keeps reading surfaces flat, the chart glass, Life off', () => {
     const appearance = resolveAppearance(DEFAULT_APPEARANCE)
+    expect(appearance.palette).toBe('github-sharp')
     for (const role of SURFACE_ROLES)
-      expect(appearance.materials[role]).toBe('flat')
+      expect(appearance.materials[role]).toBe(
+        role === 'chart' ? 'glass' : 'flat',
+      )
     expect(appearance.life).toBe(false)
     for (const mode of modes.slice(0, 2)) {
       const tokens = appearanceTokens(mode, true)
@@ -51,6 +56,20 @@ describe('appearance selection', () => {
       ))
         expect(tokens[role]).toBe(paint)
     }
+  })
+
+  test('the chart defaults to glass in both presets and an explicit override wins', () => {
+    for (const preset of ['calm', 'expressive'] as const)
+      expect(resolveAppearance({ preset, overrides: {} }).materials.chart).toBe(
+        'glass',
+      )
+    const overridden = resolveAppearance({
+      preset: 'expressive',
+      overrides: { materials: { chart: 'flat' } },
+    })
+    expect(overridden.materials.chart).toBe('flat')
+    // The chart default does not change the artifact surface.
+    expect(overridden.materials.artifact).toBe('flat')
   })
 
   test('overrides survive preset changes and do not couple materials', () => {
@@ -183,6 +202,79 @@ describe('appearance selection', () => {
       ).toBe(true)
   })
 
+  test.each([
+    ['light', { ink: '#ffffff' }],
+    ['dark', { ink: '#000000' }],
+    ['light', { 'surface-neutral': '#000000' }],
+    ['dark', { 'surface-neutral': '#ffffff' }],
+  ] as const)(
+    'a partial %s palette is checked against its completed colors (%j)',
+    (mode, colors) => {
+      const selection = {
+        preset: 'calm',
+        overrides: {
+          palette: 'custom',
+          customPalette: {
+            name: 'Incomplete contrast',
+            light: {},
+            dark: {},
+            [mode]: colors,
+          },
+        },
+      }
+      const imported = appearanceDocumentSchema.safeParse({
+        version: APPEARANCE_VERSION,
+        ...selection,
+      })
+      const saved = appearanceSelectionSchema.safeParse(selection)
+      for (const result of [imported, saved]) {
+        expect(result.success).toBe(false)
+        if (!result.success)
+          expect(
+            result.error.issues.some(
+              ({ path, message }) =>
+                path.join('.') === `overrides.customPalette.${mode}.primary` &&
+                message.includes('primary on canvas'),
+            ),
+          ).toBe(true)
+      }
+    },
+  )
+
+  test('a readable partial palette retains its colors and completes to a validated theme', () => {
+    const parsed = appearanceDocumentSchema.parse({
+      version: APPEARANCE_VERSION,
+      preset: 'calm',
+      overrides: {
+        palette: 'custom',
+        customPalette: {
+          name: 'Partial theme',
+          light: { ink: '#000000' },
+          dark: { ink: '#ffffff' },
+        },
+      },
+    })
+    const resolved = resolveAppearance(
+      appearanceSelectionSchema.parse({
+        preset: parsed.preset,
+        overrides: parsed.overrides,
+      }),
+    )
+    expect(resolved.customPalette?.light.ink).toBe('#000000')
+    expect(resolved.customPalette?.dark.ink).toBe('#ffffff')
+    expect(resolved.customPalette?.name).toBe('Partial theme')
+    for (const mode of ['light', 'dark'] as const)
+      for (const { foreground, background, minimum } of COLOR_PAIRS) {
+        const colors = resolved.customPalette![mode]
+        expect(
+          wcagContrast(
+            colors[COLOR_ROLES[foreground]]!,
+            colors[COLOR_ROLES[background]]!,
+          ),
+        ).toBeGreaterThanOrEqual(minimum)
+      }
+  })
+
   test('every emitted built-in set satisfies all registered role pairs after quantization', () => {
     for (const mode of modes) {
       const sets = [appearanceTokens(mode)]
@@ -199,6 +291,166 @@ describe('appearance selection', () => {
       }
     }
   })
+
+  test('all five series slots are exposed and follow an explicit override', () => {
+    // The coverage defect: series 2 and 5 once read raw teal / graph-agent,
+    // which the custom schema did not expose, so a user edit left them behind.
+    const slots = [
+      'series-1',
+      'series-2',
+      'series-3',
+      'series-4',
+      'series-5',
+    ] as const
+    for (const slot of slots) expect(Object.values(COLOR_ROLES)).toContain(slot)
+    const valid = customPalette()
+    // A neutral custom theme: every series set to one deliberate grey that
+    // still clears 3:1 on the candidate surfaces.
+    for (const slot of slots) {
+      valid.light[slot] = '#595959'
+      valid.dark[slot] = '#a6a6a6'
+    }
+    const parsed = appearanceOverridesSchema.safeParse({
+      palette: 'custom',
+      customPalette: valid,
+    })
+    expect(parsed.success).toBe(true)
+    if (parsed.success)
+      for (const slot of slots) {
+        expect(parsed.data.customPalette?.light[slot]).toBe('#595959')
+        expect(parsed.data.customPalette?.dark[slot]).toBe('#a6a6a6')
+      }
+  })
+
+  test.each([
+    ['black surfaces', '#000000', '#ffffff'],
+    ['gray surfaces', '#707070', '#ffffff'],
+    ['white surfaces', '#ffffff', '#000000'],
+  ] as const)(
+    'a legacy palette on %s migrates without changing its saved colors or preferences',
+    (label, background, foreground) => {
+      const added = new Set([
+        'action-ink',
+        'action-container',
+        'insight-ink',
+        'insight-container',
+        'series-1',
+        'series-2',
+        'series-3',
+        'series-4',
+        'series-5',
+      ])
+      const previousPairs = COLOR_PAIRS.filter(
+        (pair) =>
+          !added.has(COLOR_ROLES[pair.foreground]) &&
+          !added.has(COLOR_ROLES[pair.background]),
+      )
+      const colors: Record<string, string> = Object.fromEntries(
+        Object.values(COLOR_ROLES)
+          .filter((token) => !added.has(token))
+          .map((token) => [token, background]),
+      )
+      for (const pair of previousPairs)
+        colors[COLOR_ROLES[pair.foreground]] = foreground
+      // Establish that this was a valid saved palette before the new roles.
+      for (const pair of previousPairs)
+        expect(
+          wcagContrast(
+            colors[COLOR_ROLES[pair.foreground]]!,
+            colors[COLOR_ROLES[pair.background]]!,
+          ),
+        ).toBeGreaterThanOrEqual(pair.minimum)
+
+      const older = {
+        name: `Legacy ${label}`,
+        light: { ...colors },
+        dark: { ...colors },
+      }
+      const selection = {
+        preset: 'expressive',
+        overrides: {
+          palette: 'custom',
+          customPalette: older,
+          density: 'touch',
+          scales: { ui: 1.25 },
+        },
+      }
+      const parsed = appearanceSelectionSchema.safeParse(selection)
+      expect(parsed.success).toBe(true)
+      if (!parsed.success) return
+      const resolved = resolveAppearance(parsed.data)
+      expect(resolved.preset).toBe('expressive')
+      expect(resolved.density).toBe('touch')
+      expect(resolved.scales.ui).toBe(1.25)
+      expect(resolved.customPalette?.name).toBe(older.name)
+      for (const mode of ['light', 'dark'] as const)
+        for (const [token, color] of Object.entries(colors))
+          expect(resolved.customPalette?.[mode][token]).toBe(color)
+      expect(
+        customPaletteSchema.safeParse(resolved.customPalette).success,
+      ).toBe(true)
+
+      // A contradictory new color explicitly chosen by the user is still
+      // rejected; only absent defaults may adapt during completion.
+      expect(
+        appearanceSelectionSchema.safeParse({
+          ...selection,
+          overrides: {
+            ...selection.overrides,
+            customPalette: {
+              ...older,
+              light: { ...older.light, 'action-ink': background },
+            },
+          },
+        }).success,
+      ).toBe(false)
+    },
+  )
+
+  test('an older custom palette missing the new tokens still loads, filled from the default', () => {
+    const valid = customPalette()
+    // Simulate a palette saved before action/insight/series existed.
+    const older = {
+      name: 'Old theme',
+      light: { ...valid.light },
+      dark: { ...valid.dark },
+    }
+    for (const token of [
+      'action-ink',
+      'action-container',
+      'insight-ink',
+      'insight-container',
+      'series-1',
+      'series-2',
+      'series-3',
+      'series-4',
+      'series-5',
+    ]) {
+      delete older.light[token]
+      delete older.dark[token]
+    }
+    const parsed = appearanceSelectionSchema.safeParse({
+      preset: 'expressive',
+      overrides: {
+        palette: 'custom',
+        customPalette: older,
+        density: 'touch',
+        scales: { ui: 1.25 },
+      },
+    })
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    const resolved = resolveAppearance(parsed.data)
+    // The new tokens are filled from the default palette, not dropped.
+    expect(resolved.customPalette?.light['series-1']).toMatch(/^#[0-9a-f]{6}$/)
+    expect(resolved.customPalette?.dark['action-ink']).toMatch(/^#[0-9a-f]{6}$/)
+    // The person's own saved colours are preserved.
+    expect(resolved.customPalette?.light.ink).toBe(valid.light.ink)
+    expect(resolved.customPalette?.name).toBe('Old theme')
+    expect(resolved.preset).toBe('expressive')
+    expect(resolved.density).toBe('touch')
+    expect(resolved.scales.ui).toBe(1.25)
+  })
 })
 
 describe('custom CSS', () => {
@@ -206,8 +458,12 @@ describe('custom CSS', () => {
 
   test('takes plain rules and data: URLs', () => {
     expect(ok('.aui-composer { border-radius: 4px; }')).toBe(true)
-    expect(ok('body { background: url("data:image/png;base64,AAAA"); }')).toBe(true)
-    expect(ok("body { background: url( 'data:image/svg+xml,<svg/>' ); }")).toBe(true)
+    expect(ok('body { background: url("data:image/png;base64,AAAA"); }')).toBe(
+      true,
+    )
+    expect(ok("body { background: url( 'data:image/svg+xml,<svg/>' ); }")).toBe(
+      true,
+    )
   })
 
   test('refuses anything that could reach the network, however it is spelled', () => {

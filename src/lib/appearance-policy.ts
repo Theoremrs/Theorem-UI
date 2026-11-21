@@ -6,6 +6,11 @@ export const PALETTES = [
     code: { light: 'github-light-default', dark: 'github-dark-default' },
   },
   {
+    value: 'ember',
+    label: 'Ember',
+    code: { light: 'github-light-default', dark: 'github-dark-default' },
+  },
+  {
     value: 'stone',
     label: 'Stone',
     code: { light: 'github-light-default', dark: 'github-dark-default' },
@@ -28,6 +33,7 @@ export const SURFACE_ROLES = [
   'popover',
   'artifact',
   'status',
+  'chart',
 ] as const
 
 export const MATERIALS = ['flat', 'paper', 'glass', 'liquid'] as const
@@ -121,6 +127,11 @@ export const TEXT_RECIPES = {
   },
 } as const
 
+/**
+ * The Calm preset's fixed colours: GitHub Sharp's own, held flat (the
+ * default the owner restored on 2026-11-20). scripts/palettes.ts owns the
+ * rules; this manifest mirrors its :root/.dark calm output.
+ */
 export const CALM_COLORS = {
   light: {
     'surface-neutral': '#ffffff',
@@ -191,6 +202,21 @@ export const COLOR_ROLES = {
   'success-fill': 'teal-container',
   'warning-ink': 'ochre-ink',
   'warning-fill': 'ochre-container',
+  // An action available now or a pending decision (the co-browse brief's
+  // oxblood); a learned relationship or capture confirmation (its gold).
+  // Each palette gives these meanings its own hues.
+  action: 'action-ink',
+  'action-fill': 'action-container',
+  insight: 'insight-ink',
+  'insight-fill': 'insight-container',
+  // The five categorical data-series slots. Categorical, not semantic: a
+  // person recolours each independently, and the chart reads them for every
+  // line, marker and legend swatch (no inherited root hue survives).
+  'series-1': 'series-1',
+  'series-2': 'series-2',
+  'series-3': 'series-3',
+  'series-4': 'series-4',
+  'series-5': 'series-5',
 } as const
 
 const readableSurfaces = [
@@ -236,6 +262,21 @@ export const COLOR_PAIRS: readonly ColorPair[] = [
   { foreground: 'error', background: 'status', minimum: 4.5 },
   { foreground: 'success-ink', background: 'success-fill', minimum: 4.5 },
   { foreground: 'warning-ink', background: 'warning-fill', minimum: 4.5 },
+  { foreground: 'action', background: 'action-fill', minimum: 4.5 },
+  { foreground: 'insight', background: 'insight-fill', minimum: 4.5 },
+  ...readableSurfaces.flatMap((background) =>
+    (['action', 'insight'] as const).map((foreground) => ({
+      foreground,
+      background,
+      minimum: 4.5,
+    })),
+  ),
+  // Series marks are graphics: 3:1 against the surfaces they plot on.
+  ...readableSurfaces.flatMap((background) =>
+    (['series-1', 'series-2', 'series-3', 'series-4', 'series-5'] as const).map(
+      (foreground) => ({ foreground, background, minimum: 3 }),
+    ),
+  ),
   ...(
     ['canvas', 'navigation', 'composer', 'popover', 'artifact'] as const
   ).flatMap((background) =>

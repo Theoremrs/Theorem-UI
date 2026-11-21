@@ -41,8 +41,10 @@ let engineVersion = ''
 /** Pixelmatch's per-pixel threshold, the declared tolerance. */
 const THRESHOLD = 0.2
 
-/** The dev server's own floating buttons are not part of any component. */
-const DEV_OVERLAYS = 'body > div:not(:has([data-story])):not([data-story]) { display: none !important; }'
+/** The dev server's own floating buttons are not part of any component.
+ *  A portal (a popover, a dialog) is app content even though it hangs off
+ *  the body, so a div holding one is kept. */
+const DEV_OVERLAYS = 'body > div:not(:has([data-story])):not([data-story]):not(:has([data-slot="popover-positioner"], [data-slot="dialog-popup"], [role="dialog"], [role="menu"])) { display: none !important; }'
 
 const list = async () => {
   const response = await fetch(`${ORIGIN}/stories.json`)
@@ -1918,6 +1920,8 @@ const SCENARIOS = {
 
 // The feature stories' scenarios live in their own module (they share this file's helpers).
 Object.assign(SCENARIOS, (await import('./story-oracle-features.mjs')).scenarios({ pageText, has, sees, hasWrapped, wrappedIncludes, recordEffects, effectsSince, snap, layoutOf, markedAt, CHORD }))
+// The interactive-responses stories are the app thread, not a workbench grid; their scenarios read the whole document.
+Object.assign(SCENARIOS, (await import('./story-oracle-responses.mjs')).scenarios({ snap }))
 
 async function interact(story) {
   const scenarios = SCENARIOS[story.id]
@@ -1928,7 +1932,9 @@ async function interact(story) {
     index += 1
     // Each scenario starts on a fresh load of the story.
     const checks = await withPage(story, async (page) => {
-      await page.locator('textarea').first().focus()
+      // The workbench stories rest their textarea; the app-thread stories have a ProseMirror composer.
+      const field = page.locator('textarea, .aui-composer-input .ProseMirror').first()
+      if (await field.count()) await field.focus().catch(() => {})
       const result = await scenario(page)
       // The claim is checked against pixels too: a screenshot after the wait.
       mkdirSync(process.env.ORACLE_RENDER_DIR ?? join(EVIDENCE, 'renders'), { recursive: true })

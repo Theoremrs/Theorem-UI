@@ -157,6 +157,8 @@ const config = defineConfig({
         wrangler: {
           name: 'theorem-ui',
           compatibility_date: '2026-10-01',
+          // Link previews use the public Internet boundary, including same-zone URLs.
+          compatibility_flags: ['global_fetch_strictly_public'],
           routes: [{ pattern: 'theorem.rs', custom_domain: true }],
           // Also reachable at theorem-ui.<account>.workers.dev.
           workers_dev: true,

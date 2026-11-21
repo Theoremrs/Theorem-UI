@@ -4,6 +4,18 @@ import { converter, displayable, parse, wcagContrast } from 'culori'
 // Independent semantic edge set transcribed from the v1 policy. Semantic names
 // map to generated palette variables here; production policy is deliberately
 // not imported, so mismatches between the two manifests remain detectable.
+export const REQUIRED_PALETTE_MODES = Object.freeze([
+  ':root',
+  '.dark',
+  "[data-palette='ember']",
+  ".dark[data-palette='ember']",
+  "[data-palette='stone']",
+  ".dark[data-palette='stone']",
+  "[data-palette='vitesse']",
+  ".dark[data-palette='vitesse']",
+  ":root:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):where(:not([data-palette]), [data-palette='github-sharp'])",
+  ".dark:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):where(:not([data-palette]), [data-palette='github-sharp'])",
+])
 const READING_SURFACES = Object.freeze({
   canvas: 'surface-neutral', navigation: 'surface-sidebar', composer: 'surface-composer',
   'user-message': 'surface-user-message', 'assistant-reading': 'surface-neutral',
@@ -11,11 +23,16 @@ const READING_SURFACES = Object.freeze({
 })
 export const REQUIRED_PALETTE_PAIRS = Object.freeze([
   ...Object.entries(READING_SURFACES).flatMap(([surface, background]) =>
-    [['primary','ink'],['secondary','ink-muted'],['link','redwood-ink'],['code','ink']].map(([role,foreground]) => ({ foreground, background, threshold: 4.5, id: `${role}/${surface}` }))),
+    [['primary','ink'],['secondary','ink-muted'],['link','redwood-ink'],['code','attention-ink']].map(([role,foreground]) => ({ foreground, background, threshold: 4.5, id: `${role}/${surface}` }))),
   { foreground: 'ink-muted', background: 'surface-composer', threshold: 4.5, id: 'placeholder/composer' },
   ...[['on-redwood','redwood','on-accent/redwood'],['on-redwood','redwood-hover','on-accent/redwood-hover'],['on-redwood','redwood-pressed','on-accent/redwood-pressed']].map(([foreground,background,id]) => ({ foreground, background, threshold: 4.5, id })),
   { foreground:'on-error',background:'error-solid',threshold:4.5,id:'on-destructive/destructive-fill' },
   ...[['error-ink','error-container','error'],['teal-ink','teal-container','success'],['ochre-ink','ochre-container','warning']].map(([foreground,background,role])=>({foreground,background,threshold:4.5,id:`${role}-ink/${role}-container`})),
+  ...[['action-ink','action-container','action/action-fill'],['insight-ink','insight-container','insight/insight-fill']].map(([foreground,background,id]) => ({ foreground, background, threshold: 4.5, id })),
+  ...Object.entries(READING_SURFACES).flatMap(([surface, background]) =>
+    [['action','action-ink'],['insight','insight-ink']].map(([role,foreground]) => ({ foreground, background, threshold: 4.5, id: `${role}/${surface}` }))),
+  ...Object.entries(READING_SURFACES).flatMap(([surface, background]) =>
+    ['series-1','series-2','series-3','series-4','series-5'].map(foreground => ({ foreground, background, threshold: 3, id: `${foreground}/${surface}` }))),
   ...[['surface-neutral','canvas'],['surface-sidebar','navigation'],['surface-composer','composer'],['popover','popover'],['surface-artifact','artifact']].flatMap(([background,surface])=>[
     {foreground:'focus',background,threshold:3,id:`focus/${surface}`},
     {foreground:'line-control',background,threshold:3,id:`boundary/${surface}`},
@@ -27,7 +44,10 @@ export const REQUIRED_PALETTE_PAIRS = Object.freeze([
 // foreground/background relationship.
 const RENDERED_FOREGROUNDS = Object.freeze({
   primary: ['ink'], secondary: ['ink-muted'], link: ['redwood-ink'],
-  placeholder: ['ink-muted'], code: ['ink'], 'code-token': ['ink'],
+  placeholder: ['ink-muted'], code: ['attention-ink'], 'code-token': ['attention-ink'],
+  action: ['action-ink'], insight: ['insight-ink'],
+  'series-1': ['series-1'], 'series-2': ['series-2'], 'series-3': ['series-3'],
+  'series-4': ['series-4'], 'series-5': ['series-5'],
   'on-accent': ['on-redwood'], 'on-destructive': ['on-error'], error: ['error-ink'],
   focus: ['focus'], boundary: ['line-control'],
 })
@@ -36,7 +56,7 @@ const RENDERED_BACKGROUNDS = Object.freeze({
   'user-message': ['surface-user-message'], 'assistant-reading': ['surface-neutral'],
   popover: ['popover'], artifact: ['surface-artifact'], hover: ['surface-hover'],
   selected: ['surface-selected'], accent: ['redwood'], 'destructive-fill': ['error-solid'],
-  status: ['error-container'],
+  status: ['error-container'], 'action-fill': ['action-container'], 'insight-fill': ['insight-container'],
 })
 
 export function renderedRolePairRegistration(pair) {

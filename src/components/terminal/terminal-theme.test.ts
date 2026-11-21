@@ -47,9 +47,21 @@ const WORKSPACES = {
   Stone: workspace(mode("[data-palette='stone']")),
   'Stone dark': workspace(mode(".dark[data-palette='stone']")),
   // A person's own colours, made the way a palette is.
-  'plum dark': workspace({ ...mode('.dark'), hue: 320, saturation: 0.12 }),
-  'red dark': workspace({ ...mode('.dark'), hue: 25, saturation: 0.15 }),
-  'green light': workspace({ ...mode(':root'), hue: 146, saturation: 0.2 }),
+  'plum dark': workspace({
+    ...mode('.dark'),
+    hue: 320,
+    saturation: 0.12,
+  }),
+  'red dark': workspace({
+    ...mode('.dark'),
+    hue: 25,
+    saturation: 0.15,
+  }),
+  'green light': workspace({
+    ...mode(':root'),
+    hue: 146,
+    saturation: 0.2,
+  }),
   'pure grey, darker': workspace({
     ...darker(mode('.dark'), 0.05),
     saturation: 0,

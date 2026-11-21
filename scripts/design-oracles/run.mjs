@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, firefox, webkit } from 'playwright-core'
 import { converter, displayable, parse } from 'culori'
-import { auditPaletteCss, contrastRatio, REQUIRED_PALETTE_PAIRS, REQUIRED_RENDERED_FIXTURE_CANDIDATES, REQUIRED_RENDERED_FIXTURE_PAIRS, renderedRolePairRegistration, srgbToOklab, srgbToOklch } from './colors.mjs'
+import { auditPaletteCss, contrastRatio, REQUIRED_PALETTE_PAIRS, REQUIRED_PALETTE_MODES, REQUIRED_RENDERED_FIXTURE_CANDIDATES, REQUIRED_RENDERED_FIXTURE_PAIRS, renderedRolePairRegistration, srgbToOklab, srgbToOklch } from './colors.mjs'
 import { LATIN_PROSE_V1, LATIN_PROSE_V1_ACTUAL_SHA256, LATIN_PROSE_V1_SHA256, FONT_ASSET_EVIDENCE } from './corpus.mjs'
 import { CHILD_ORACLES, EXECUTION_MATRIX, FIXTURES, ORACLES, POLICY, PREDICATE_TOLERANCES } from './registry.mjs'
 import { measureReading } from './measure-reading.mjs'
@@ -686,8 +686,9 @@ for (const oracle of ORACLES) {
     const rows = [...resultById.values()].filter((r) => r.id.startsWith('COL-01.minimum.'))
     const missingPairs = measurements.colorPairs.filter((pair) => !pair.foregroundRole || !pair.backgroundRole)
     const live = measurements.colorPairs.map((pair) => {const registration=renderedRolePairRegistration(pair);return { id: pair.id, foregroundRole: pair.foregroundRole, backgroundRole: pair.backgroundRole, state: pair.state, candidateKind:pair.candidateKind,text:pair.text,status: pair.contrast?.status ?? 'not-measurable', ratio: pair.contrast?.ratio,registration }})
-    const expectedPaletteCount = 8 * REQUIRED_PALETTE_PAIRS.length
-    const paletteCoverage = rows.length === expectedPaletteCount
+    const expectedPaletteCount = REQUIRED_PALETTE_MODES.length * REQUIRED_PALETTE_PAIRS.length
+    const observedModes = paletteResults.filter((row) => row.id.startsWith('COL-04.emitted-colors.')).map((row) => row.evidence.mode).sort()
+    const paletteCoverage = rows.length === expectedPaletteCount && JSON.stringify(observedModes) === JSON.stringify([...REQUIRED_PALETTE_MODES].sort())
     const rowFailure = rows.some((r) => r.status === 'fail')
     const rowUnmeasured = !paletteCoverage || rows.some((r) => r.status !== 'pass')
     const liveFailure = live.some((r) => r.status === 'fail')

@@ -1,5 +1,5 @@
 // SOURCING: native ResizeObserver, IntersectionObserver and MutationObserver signal the shared on-demand redraw frame; scroll and visibility signals cover movement and hiding. Life frames arrive through life/frames.ts. Materials are CSS custom properties (styles.css --lg-*), read with getComputedStyle; colours resolve to sRGB through a 1px canvas, as mount-life.ts resolves its palette. Where WebGL is missing, the context is lost, or the person asks for less transparency, the element keeps its CSS frost.
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { RefObject } from 'react'
 import {
   isVisible,
@@ -124,6 +124,25 @@ function available() {
   if (window.matchMedia('(prefers-reduced-transparency: reduce)').matches)
     return false
   return true
+}
+
+/** Whether the person currently asks for less transparency, live: a change
+ *  while a pane is mounted must take effect, not only at activation. */
+function useReducedTransparency(): boolean {
+  const [reduced, setReduced] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-transparency: reduce)').matches,
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const query = window.matchMedia('(prefers-reduced-transparency: reduce)')
+    const onChange = () => setReduced(query.matches)
+    onChange()
+    query.addEventListener('change', onChange)
+    return () => query.removeEventListener('change', onChange)
+  }, [])
+  return reduced
 }
 
 class Glass {
@@ -480,17 +499,20 @@ export function useLiquidGlass(
   join?: LiquidJoin,
 ) {
   const { top, right, bottom, left } = edges
+  const reduced = useReducedTransparency()
   useEffect(() => {
     const element = ref.current
-    if (!enabled || !element || !available()) return
+    if (!enabled || !element || reduced || !available()) return
     glass ??= new Glass()
     const active = glass
     if (!active.add(element, { top, right, bottom, left })) return
     return () => active.remove(element)
-  }, [ref, enabled, top, right, bottom, left])
+  }, [ref, enabled, top, right, bottom, left, reduced])
   const pane = join?.pane
   const joinTop = join?.top ?? false
   const joinBottom = join?.bottom ?? false
+  // Activation recreates the entry when edges or transparency change, so
+  // restore its join even when the join's own values stayed the same.
   useEffect(() => {
     const element = ref.current
     if (!enabled || !element) return
@@ -498,5 +520,16 @@ export function useLiquidGlass(
       element,
       pane ? { pane, top: joinTop, bottom: joinBottom } : undefined,
     )
-  }, [ref, enabled, pane, joinTop, joinBottom])
+  }, [
+    ref,
+    enabled,
+    top,
+    right,
+    bottom,
+    left,
+    reduced,
+    pane,
+    joinTop,
+    joinBottom,
+  ])
 }
