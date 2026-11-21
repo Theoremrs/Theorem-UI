@@ -718,6 +718,10 @@ export function paletteTokens(value: string, calm = true) {
   }
 }
 
-export const PALETTES_CSS = new URL('../src/palettes.css', import.meta.url)
+// A function, not a module constant: the app imports this module (settings'
+// palette editor), and the theorem.rs Worker has no file URL for it, so
+// resolving the path at load threw "Invalid URL string" on every request.
+export const palettesCssUrl = () =>
+  new URL('../src/palettes.css', import.meta.url)
 
-if (import.meta.main) await Bun.write(PALETTES_CSS, palettesCss())
+if (import.meta.main) await Bun.write(palettesCssUrl(), palettesCss())
