@@ -1,6 +1,7 @@
 // SOURCING: components/kit/kit-stage.tsx for the layer (fixed over the whole shell, taking pointer events only in the figure itself, below popups) and for the status node a screen reader gets; lib/kit/store for the run's liveness and the agent's authored expression, which both figures read. The visor plate is this app's reading of the reference robot's dark screen; whether it is there is the person's setting (./look), and its dark is an element of its own so the driver can draw it in to a ball behind an orb (./plate).
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { useAui } from '@assistant-ui/react'
 import { THEO } from '@/lib/face/identity'
 import { theFace, useFaceStage } from '@/lib/face/store'
 import { useKit } from '@/lib/kit/store'
@@ -19,6 +20,7 @@ const WAVES = ['l0', 'l1', 'l2', 'r0', 'r1', 'r2'] as const
  * the `face.*` operations its turns declare.
  */
 export function FaceStage() {
+  const aui = useAui()
   const holder = useRef<HTMLDivElement | null>(null)
   const plate = useRef<HTMLDivElement | null>(null)
   const back = useRef<HTMLDivElement | null>(null)
@@ -57,17 +59,45 @@ export function FaceStage() {
     )
     driver.start()
     driving.current = driver
+    // A held press dictates into the composer: the same session the mic button
+    // uses, so interim text, stop and cancel all behave the same.
+    driver.dictate = {
+      start: () => {
+        try {
+          aui.composer.startDictation()
+        } catch {
+          // No adapter configured: the press does nothing but poke.
+        }
+      },
+      stop: () => aui.composer.stopDictation(),
+      active: () => aui.composer.getState().dictation !== undefined,
+    }
     useFaceStage.setState({ mounted: true })
     return () => {
       driver.destroy()
       driving.current = undefined
       useFaceStage.setState({ mounted: false, painter: undefined })
     }
-  }, [])
+  }, [aui])
 
   useEffect(() => {
     if (driving.current) driving.current.look = look
   }, [look])
+  // The composer's mic dictates through the same session as a held press, so
+  // the face takes the listening form for it too: person.listen while a
+  // dictation session is live, person.listen.end when it closes.
+  useEffect(() => {
+    let listening = false
+    const follow = () => {
+      const active = aui.composer.getState().dictation != null
+      if (active === listening) return
+      listening = active
+      theFace().notice(active ? 'person.listen' : 'person.listen.end')
+      if (!active) theFace().feed({ 'mic.level': 0 })
+    }
+    follow()
+    return aui.subscribe(follow)
+  }, [aui])
   useEffect(() => {
     theFace().setLiveness(liveness)
   }, [liveness])

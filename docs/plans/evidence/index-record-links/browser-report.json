@@ -1,0 +1,452 @@
+{
+  "fixture": true,
+  "liveBackendVerified": false,
+  "command": "node scripts/e2e/index-record-links.mjs",
+  "baseCommit": "446a5e9b0ed6528b04bf7fda0647efa52fdc3597",
+  "sourceHashes": {
+    "record-links.tsx": "c740df16f400b9b7d14542a78f5e6fe9ae0a5274cb948ac02314abb7fa044a23",
+    "record-link-picker.tsx": "f4fb0d19b076d9060c1b1878b8c1a8c98537eb9e709bef90d8f97088d69a0628"
+  },
+  "baselineCommit": "f7c31043feaef8e0c3f321924c998dd7258a120d",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "runs": [
+    {
+      "theme": "light",
+      "checks": [
+        {
+          "name": "baseline has no record-type selector",
+          "passed": true
+        },
+        {
+          "name": "Change opens the real picker",
+          "passed": true
+        },
+        {
+          "name": "custom ResearchQuestion type remains inside the About picker",
+          "passed": true
+        },
+        {
+          "name": "existing correction endpoint carries typed research item id",
+          "passed": true
+        },
+        {
+          "name": "record search only asks the chosen type with a bounded page",
+          "passed": true
+        },
+        {
+          "name": "Undo uses existing receipt endpoint and restores the original link",
+          "passed": true
+        },
+        {
+          "name": "record itself is unchanged",
+          "passed": true
+        }
+      ],
+      "screenshots": [
+        "light-baseline-picker.png",
+        "light-record-types.png",
+        "light-research-choice.png",
+        "light-corrected.png"
+      ],
+      "receipts": {
+        "writes": [
+          {
+            "path": "/api/documents/v2/record-filings/r1/corrections",
+            "body": {
+              "schema": "theorem-document/2",
+              "idempotencyKey": "d8423c86-36f4-496a-9918-aae7026f7a58",
+              "receiptId": "r1",
+              "recordItemId": "record:ResearchQuestion/question:throughput"
+            }
+          },
+          {
+            "path": "/api/documents/v2/record-filing-corrections/c1/undo",
+            "body": {
+              "schema": "theorem-document/2",
+              "idempotencyKey": "789985e0-c46b-43f3-8c10-95dc20b5dc7d",
+              "correctionId": "c1"
+            }
+          }
+        ],
+        "reads": [
+          {
+            "objectTypeId": "objtype:demo:person",
+            "input": {
+              "limit": 20
+            }
+          },
+          {
+            "objectTypeId": "objtype:demo:researchquestion",
+            "input": {
+              "limit": 20
+            }
+          },
+          {
+            "objectTypeId": "objtype:demo:researchquestion",
+            "input": {
+              "limit": 20,
+              "filters": [
+                {
+                  "field_key": "question",
+                  "operator": "contains",
+                  "value": "throughput"
+                }
+              ]
+            }
+          },
+          {
+            "objectTypeId": "objtype:demo:researchquestion",
+            "input": {
+              "limit": 20,
+              "filters": [
+                {
+                  "field_key": "question",
+                  "operator": "contains",
+                  "value": "Throughput"
+                }
+              ]
+            }
+          }
+        ],
+        "history": {
+          "schema": "theorem-document/2",
+          "documentId": "doc:research-source-fixture",
+          "receipts": [
+            {
+              "schema": "theorem-document/2",
+              "documentId": "doc:research-source-fixture",
+              "receiptId": "r1",
+              "recordItemId": "record:Person/person:noor",
+              "recordId": "person:noor",
+              "nameSingular": "Person",
+              "title": "Noor",
+              "tier": "learned",
+              "attribution": {
+                "kind": "name_mention",
+                "where": "text",
+                "tokens": ["noor"]
+              },
+              "confidence": 0.55,
+              "actor": {
+                "kind": "engine"
+              },
+              "lowConfidence": false,
+              "generation": 1
+            },
+            {
+              "schema": "theorem-document/2",
+              "documentId": "doc:research-source-fixture",
+              "receiptId": "r2",
+              "recordItemId": "record:ResearchQuestion/question:throughput",
+              "recordId": "question:throughput",
+              "nameSingular": "ResearchQuestion",
+              "title": "When does this method improve throughput?",
+              "tier": "precedent",
+              "attribution": {
+                "kind": "correction",
+                "actor": {
+                  "kind": "human",
+                  "actorId": "fixture-person"
+                }
+              },
+              "confidence": 1,
+              "actor": {
+                "kind": "engine"
+              },
+              "lowConfidence": false,
+              "generation": 2
+            }
+          ],
+          "links": [
+            {
+              "schema": "theorem-document/2",
+              "documentId": "doc:research-source-fixture",
+              "receiptId": "r1",
+              "recordItemId": "record:Person/person:noor",
+              "recordId": "person:noor",
+              "nameSingular": "Person",
+              "title": "Noor",
+              "tier": "learned",
+              "attribution": {
+                "kind": "name_mention",
+                "where": "text",
+                "tokens": ["noor"]
+              },
+              "confidence": 0.55,
+              "actor": {
+                "kind": "engine"
+              },
+              "lowConfidence": false,
+              "generation": 1
+            }
+          ],
+          "corrections": [
+            {
+              "schema": "theorem-document/2",
+              "correctionId": "c1",
+              "receiptId": "r1",
+              "documentId": "doc:research-source-fixture",
+              "fromRecordItemId": "record:Person/person:noor",
+              "toRecordItemId": "record:ResearchQuestion/question:throughput",
+              "actor": {
+                "kind": "human",
+                "actorId": "fixture-person"
+              },
+              "generation": 2,
+              "undo": false,
+              "undone": true
+            },
+            {
+              "schema": "theorem-document/2",
+              "correctionId": "c2",
+              "receiptId": "r1",
+              "documentId": "doc:research-source-fixture",
+              "fromRecordItemId": "record:ResearchQuestion/question:throughput",
+              "toRecordItemId": "record:Person/person:noor",
+              "actor": {
+                "kind": "human",
+                "actorId": "fixture-person"
+              },
+              "generation": 3,
+              "undo": true,
+              "undone": false
+            }
+          ]
+        },
+        "record": {
+          "id": "question:throughput",
+          "labels": ["ResearchQuestion"],
+          "properties": {
+            "question": "When does this method improve throughput?"
+          },
+          "version": 1
+        }
+      },
+      "outline": "- main:\n  - paragraph: Synthetic fixture · no live service\n  - heading \"Research source\" [level=1]\n  - paragraph: Correct the record this document is about.\n  - region \"About\":\n    - heading \"About\" [level=3]\n    - list:\n      - listitem:\n        - button \"Noor\"\n        - text: Person\n        - paragraph: Named in the text.\n        - button \"Not about Noor\"\n        - combobox \"Change linked record\": Change…"
+    },
+    {
+      "theme": "dark",
+      "checks": [
+        {
+          "name": "baseline has no record-type selector",
+          "passed": true
+        },
+        {
+          "name": "Change opens the real picker",
+          "passed": true
+        },
+        {
+          "name": "custom ResearchQuestion type remains inside the About picker",
+          "passed": true
+        },
+        {
+          "name": "Tab from type selector focuses record search",
+          "passed": true
+        },
+        {
+          "name": "existing correction endpoint carries typed research item id",
+          "passed": true
+        },
+        {
+          "name": "record search only asks the chosen type with a bounded page",
+          "passed": true
+        },
+        {
+          "name": "Undo uses existing receipt endpoint and restores the original link",
+          "passed": true
+        },
+        {
+          "name": "record itself is unchanged",
+          "passed": true
+        }
+      ],
+      "screenshots": [
+        "dark-baseline-picker.png",
+        "dark-record-types.png",
+        "dark-research-choice.png",
+        "dark-corrected.png"
+      ],
+      "receipts": {
+        "writes": [
+          {
+            "path": "/api/documents/v2/record-filings/r1/corrections",
+            "body": {
+              "schema": "theorem-document/2",
+              "idempotencyKey": "b824f151-bef4-4e95-a75c-442cf5fdfe73",
+              "receiptId": "r1",
+              "recordItemId": "record:ResearchQuestion/question:throughput"
+            }
+          },
+          {
+            "path": "/api/documents/v2/record-filing-corrections/c1/undo",
+            "body": {
+              "schema": "theorem-document/2",
+              "idempotencyKey": "dc488196-8fef-4ee8-85a4-55981d4129f7",
+              "correctionId": "c1"
+            }
+          }
+        ],
+        "reads": [
+          {
+            "objectTypeId": "objtype:demo:person",
+            "input": {
+              "limit": 20
+            }
+          },
+          {
+            "objectTypeId": "objtype:demo:researchquestion",
+            "input": {
+              "limit": 20
+            }
+          },
+          {
+            "objectTypeId": "objtype:demo:researchquestion",
+            "input": {
+              "limit": 20,
+              "filters": [
+                {
+                  "field_key": "question",
+                  "operator": "contains",
+                  "value": "throughput"
+                }
+              ]
+            }
+          },
+          {
+            "objectTypeId": "objtype:demo:researchquestion",
+            "input": {
+              "limit": 20,
+              "filters": [
+                {
+                  "field_key": "question",
+                  "operator": "contains",
+                  "value": "Throughput"
+                }
+              ]
+            }
+          }
+        ],
+        "history": {
+          "schema": "theorem-document/2",
+          "documentId": "doc:research-source-fixture",
+          "receipts": [
+            {
+              "schema": "theorem-document/2",
+              "documentId": "doc:research-source-fixture",
+              "receiptId": "r1",
+              "recordItemId": "record:Person/person:noor",
+              "recordId": "person:noor",
+              "nameSingular": "Person",
+              "title": "Noor",
+              "tier": "learned",
+              "attribution": {
+                "kind": "name_mention",
+                "where": "text",
+                "tokens": ["noor"]
+              },
+              "confidence": 0.55,
+              "actor": {
+                "kind": "engine"
+              },
+              "lowConfidence": false,
+              "generation": 1
+            },
+            {
+              "schema": "theorem-document/2",
+              "documentId": "doc:research-source-fixture",
+              "receiptId": "r2",
+              "recordItemId": "record:ResearchQuestion/question:throughput",
+              "recordId": "question:throughput",
+              "nameSingular": "ResearchQuestion",
+              "title": "When does this method improve throughput?",
+              "tier": "precedent",
+              "attribution": {
+                "kind": "correction",
+                "actor": {
+                  "kind": "human",
+                  "actorId": "fixture-person"
+                }
+              },
+              "confidence": 1,
+              "actor": {
+                "kind": "engine"
+              },
+              "lowConfidence": false,
+              "generation": 2
+            }
+          ],
+          "links": [
+            {
+              "schema": "theorem-document/2",
+              "documentId": "doc:research-source-fixture",
+              "receiptId": "r1",
+              "recordItemId": "record:Person/person:noor",
+              "recordId": "person:noor",
+              "nameSingular": "Person",
+              "title": "Noor",
+              "tier": "learned",
+              "attribution": {
+                "kind": "name_mention",
+                "where": "text",
+                "tokens": ["noor"]
+              },
+              "confidence": 0.55,
+              "actor": {
+                "kind": "engine"
+              },
+              "lowConfidence": false,
+              "generation": 1
+            }
+          ],
+          "corrections": [
+            {
+              "schema": "theorem-document/2",
+              "correctionId": "c1",
+              "receiptId": "r1",
+              "documentId": "doc:research-source-fixture",
+              "fromRecordItemId": "record:Person/person:noor",
+              "toRecordItemId": "record:ResearchQuestion/question:throughput",
+              "actor": {
+                "kind": "human",
+                "actorId": "fixture-person"
+              },
+              "generation": 2,
+              "undo": false,
+              "undone": true
+            },
+            {
+              "schema": "theorem-document/2",
+              "correctionId": "c2",
+              "receiptId": "r1",
+              "documentId": "doc:research-source-fixture",
+              "fromRecordItemId": "record:ResearchQuestion/question:throughput",
+              "toRecordItemId": "record:Person/person:noor",
+              "actor": {
+                "kind": "human",
+                "actorId": "fixture-person"
+              },
+              "generation": 3,
+              "undo": true,
+              "undone": false
+            }
+          ]
+        },
+        "record": {
+          "id": "question:throughput",
+          "labels": ["ResearchQuestion"],
+          "properties": {
+            "question": "When does this method improve throughput?"
+          },
+          "version": 1
+        }
+      },
+      "outline": "- main:\n  - paragraph: Synthetic fixture · no live service\n  - heading \"Research source\" [level=1]\n  - paragraph: Correct the record this document is about.\n  - region \"About\":\n    - heading \"About\" [level=3]\n    - list:\n      - listitem:\n        - button \"Noor\"\n        - text: Person\n        - paragraph: Named in the text.\n        - button \"Not about Noor\"\n        - combobox \"Change linked record\": Change…"
+    }
+  ],
+  "errors": [],
+  "browser": "Chromium 156.0.8078.4",
+  "passed": true
+}

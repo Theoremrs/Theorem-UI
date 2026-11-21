@@ -355,7 +355,7 @@ export const fileNameOf = (artifact: TheoremArtifact, latest: boolean) =>
 /**
  * Whether showing the artifact at a distance holds a live session. A live
  * representation opens only when the person asks for it: Follow the Agent
- * never opens one, and the conversation offers it as Interact.
+ * never opens one. The conversation mounts a live representation directly.
  */
 export const isLive = (artifact: TheoremArtifact, distance: Distance) =>
   representationOf(artifact, distance).session === 'live'

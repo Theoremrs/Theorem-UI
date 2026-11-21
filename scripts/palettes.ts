@@ -38,7 +38,7 @@ import {
   workspaceOf,
 } from '../src/components/terminal/terminal-theme'
 
-type Family = 'redwood' | 'teal' | 'ochre' | 'error' | 'focus'
+type Family = 'redwood' | 'teal' | 'ochre' | 'error' | 'focus' | 'action' | 'insight'
 type Tier = 'strong' | 'ink' | 'container' | 'graph' | 'focus'
 type Role = 'strong' | 'hover' | 'pressed' | 'ink' | 'container'
 
@@ -53,6 +53,10 @@ const roles: Record<Family, Array<Role>> = {
   ochre: ['strong', 'ink', 'container'],
   error: ['ink', 'container'],
   focus: [],
+  // The response system's two semantic accents (interactive-responses plan):
+  // an action available now or a pending decision, and a learned insight.
+  action: ['ink', 'container'],
+  insight: ['ink', 'container'],
 }
 
 /**
@@ -66,6 +70,14 @@ const graphHues = {
   'graph-tag': 135,
   'graph-attachment': 90,
 }
+
+/**
+ * The five categorical data-series hues, evenly spread so neighbouring
+ * series stay distinct. Placed at the graph tier (one lightness and chroma
+ * per mode), exposed as `series-1..5` so a person can recolour every slot;
+ * the chart's lines, markers and legend swatches all read these.
+ */
+const seriesHues = [265, 175, 90, 20, 320]
 
 interface Mode {
   selector: string
@@ -151,6 +163,9 @@ const STONE_HUE = 70
 const ATTENTION_HUE = 75
 
 const modes: Array<Mode & { hue: number }> = [
+  // GitHub Sharp is the default (the owner rolled the Ember experiment back,
+  // 2026-11-20): crisp white surfaces, GitHub ink and hairlines, the theme's
+  // blue for the accent. Ember stays a named, selectable palette below.
   {
     selector: ':root',
     dark: false,
@@ -158,7 +173,7 @@ const modes: Array<Mode & { hue: number }> = [
     saturation: 0.1,
     neutrals: githubNeutrals.light,
     selected: 0.4,
-    hues: { redwood: 247, teal: 150, ochre: 95, error: 18, focus: 247 },
+    hues: { redwood: 247, teal: 150, ochre: 95, error: 18, focus: 247, action: 13, insight: 85 },
     tiers: {
       strong: { l: 0.558, c: 0.132 },
       ink: { l: 0.485, c: 0.108 },
@@ -176,13 +191,99 @@ const modes: Array<Mode & { hue: number }> = [
     saturation: 0.034,
     neutrals: githubNeutrals.dark,
     selected: 0.12,
-    hues: { redwood: 247, teal: 150, ochre: 95, error: 18, focus: 247 },
+    hues: { redwood: 247, teal: 150, ochre: 95, error: 18, focus: 247, action: 13, insight: 85 },
     tiers: {
       strong: { l: 0.633, c: 0.123 },
       ink: { l: 0.779, c: 0.105 },
       container: { l: 0.324, c: 0.048 },
       graph: { l: 0.745, c: 0.125 },
       focus: { l: 0.558, c: 0.123 },
+    },
+    link: 'redwood',
+    attention: { strong: { l: 0.8, c: 0.14 }, ink: { l: 0.86, c: 0.105 } },
+  },
+  // Ember: the interactive-responses plan's candidate colors, kept as a named
+  // option. Warm parchment light, violet-tinted graphite dark; violet brand,
+  // oxblood action, gold insight, teal success.
+  {
+    selector: "[data-palette='ember']",
+    dark: false,
+    hue: 76,
+    saturation: 0.1,
+    neutrals: {
+      'surface-neutral': 0.9709,
+      'surface-sidebar': 0.9502,
+      'surface-frame': 0.8982,
+      'surface-raised': 0.933,
+      'surface-hover': 0.9468,
+      'surface-selected': 0.8842,
+      'surface-composer': 0.988,
+      'surface-artifact': 0.9555,
+      'surface-rail': 0.9166,
+      'sheet-from': 0.988,
+      'sheet-to': 0.9389,
+      'ink-faint-top': 0.3982,
+      'ink-faint-bottom': 0.3445,
+      ink: 0.1923,
+      'ink-muted': 0.3982,
+      'ink-faint': 0.3445,
+      'line-control': 0.5581,
+      'line-separator': 0.8877,
+      'on-redwood': 0.9985,
+      'graph-note': githubNeutrals.light['graph-note'],
+      'graph-unresolved': githubNeutrals.light['graph-unresolved'],
+      'graph-link': githubNeutrals.light['graph-link'],
+    },
+    selected: 0.35,
+    hues: { redwood: 311, teal: 177, ochre: 95, error: 18, focus: 311, action: 9, insight: 80 },
+    tiers: {
+      strong: { l: 0.558, c: 0.132 },
+      ink: { l: 0.485, c: 0.108 },
+      container: { l: 0.936, c: 0.03 },
+      graph: { l: 0.534, c: 0.12 },
+      focus: { l: 0.558, c: 0.123 },
+    },
+    link: 'redwood',
+    attention: { strong: { l: 0.62, c: 0.145 }, ink: { l: 0.47, c: 0.105 } },
+  },
+  {
+    selector: ".dark[data-palette='ember']",
+    dark: true,
+    hue: 312,
+    saturation: 0.06,
+    neutrals: {
+      'surface-neutral': 0.126,
+      'surface-sidebar': 0.126,
+      'surface-frame': 0.0652,
+      'surface-raised': 0.1668,
+      'surface-hover': 0.1582,
+      'surface-selected': 0.2101,
+      'surface-composer': 0.1582,
+      'surface-artifact': 0.1411,
+      'surface-rail': 0.0652,
+      'sheet-from': 0.1755,
+      'sheet-to': 0.1117,
+      'ink-faint-top': 0.5436,
+      'ink-faint-bottom': 0.4935,
+      ink: 0.9232,
+      'ink-muted': 0.7106,
+      'ink-faint': 0.4935,
+      'line-control': 0.3883,
+      'line-separator': 0.1971,
+      'on-redwood': 0.0454,
+      'graph-note': githubNeutrals.dark['graph-note'],
+      'graph-unresolved': githubNeutrals.dark['graph-unresolved'],
+      'graph-link': githubNeutrals.dark['graph-link'],
+      'graph-label': githubNeutrals.dark['graph-label'],
+    },
+    selected: 0.25,
+    hues: { redwood: 307, teal: 169, ochre: 95, error: 18, focus: 307, action: 7, insight: 84 },
+    tiers: {
+      strong: { l: 0.633, c: 0.123 },
+      ink: { l: 0.779, c: 0.105 },
+      container: { l: 0.324, c: 0.048 },
+      graph: { l: 0.745, c: 0.125 },
+      focus: { l: 0.633, c: 0.1 },
     },
     link: 'redwood',
     attention: { strong: { l: 0.8, c: 0.14 }, ink: { l: 0.86, c: 0.105 } },
@@ -216,7 +317,7 @@ const modes: Array<Mode & { hue: number }> = [
       'graph-unresolved': githubNeutrals.light['graph-unresolved'],
       'graph-link': githubNeutrals.light['graph-link'],
     },
-    hues: { redwood: 13, teal: 182, ochre: 85, error: 12, focus: 226 },
+    hues: { redwood: 13, teal: 182, ochre: 85, error: 12, focus: 226, action: 13, insight: 85 },
     tiers: {
       strong: { l: 0.476, c: 0.108 },
       ink: { l: 0.394, c: 0.087 },
@@ -258,7 +359,7 @@ const modes: Array<Mode & { hue: number }> = [
       'graph-link': githubNeutrals.dark['graph-link'],
       'graph-label': githubNeutrals.dark['graph-label'],
     },
-    hues: { redwood: 222, teal: 182, ochre: 85, error: 12, focus: 197 },
+    hues: { redwood: 222, teal: 182, ochre: 85, error: 12, focus: 197, action: 13, insight: 85 },
     tiers: {
       strong: { l: 0.666, c: 0.108 },
       ink: { l: 0.822, c: 0.092 },
@@ -307,7 +408,7 @@ const modes: Array<Mode & { hue: number }> = [
     selected: 0.4,
     // Its accent and links #1c6b48, functions #59873a, warnings #bda437,
     // errors #ab5959.
-    hues: { redwood: 160, teal: 134, ochre: 96, error: 21, focus: 160 },
+    hues: { redwood: 160, teal: 134, ochre: 96, error: 21, focus: 160, action: 21, insight: 96 },
     tiers: {
       strong: { l: 0.471, c: 0.095 },
       ink: { l: 0.44, c: 0.09 },
@@ -363,7 +464,7 @@ const modes: Array<Mode & { hue: number }> = [
     selected: 0.12,
     // Its accent, links and focus #4d9375, functions #80a665, warnings
     // #e6cc77, errors #cb7676.
-    hues: { redwood: 164, teal: 133, ochre: 93, error: 20, focus: 164 },
+    hues: { redwood: 164, teal: 133, ochre: 93, error: 20, focus: 164, action: 20, insight: 93 },
     tiers: {
       strong: { l: 0.609, c: 0.085 },
       ink: { l: 0.77, c: 0.095 },
@@ -475,6 +576,15 @@ export function modeTokens(mode: Mode & { hue: number }) {
   const graphChroma = tierChroma(graph.l, graph.c, Object.values(graphHues))
   for (const [name, h] of Object.entries(graphHues))
     tokens[name] = hex({ mode: 'oklch', l: graph.l, c: graphChroma, h })
+  const seriesChroma = tierChroma(graph.l, graph.c, seriesHues)
+  seriesHues.forEach((h, index) => {
+    tokens[`series-${index + 1}`] = hex({
+      mode: 'oklch',
+      l: graph.l,
+      c: seriesChroma,
+      h,
+    })
+  })
   return tokens
 }
 
@@ -495,6 +605,16 @@ export function appearanceTokens(mode: (typeof modes)[number], calm = false) {
     'redwood-pressed',
     // Inline code's ink (COLOR_ROLES.code) reads on every reading surface.
     'attention-ink',
+    // The response accents read as text on every reading surface too.
+    'action-ink',
+    'insight-ink',
+    // Categorical series marks keep 3:1 on every surface they plot on; on a
+    // mid-grey palette (Stone light) the graph tier alone is too light.
+    'series-1',
+    'series-2',
+    'series-3',
+    'series-4',
+    'series-5',
   ]
   for (const token of readable) {
     const color = toOklch(tokens[token])
@@ -533,7 +653,7 @@ export function appearanceTokens(mode: (typeof modes)[number], calm = false) {
 export function palettesCss() {
   const calmModes = modes.slice(0, 2).map((mode) => ({
     ...mode,
-    selector: `${mode.dark ? '.dark' : ':root'}:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):not([data-palette='stone'], [data-palette='vitesse'], [data-palette='custom'])`,
+    selector: `${mode.dark ? '.dark' : ':root'}:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):where(:not([data-palette]), [data-palette='github-sharp'])`,
   }))
   const blocks = [...modes, ...calmModes].map((mode, index) => {
     const tokens = appearanceTokens(mode, index >= modes.length)
@@ -570,6 +690,33 @@ ${blocks.join('\n')}\n${['light', 'dark']
 }
 
 export { modes }
+
+/**
+ * One built-in palette's tokens in both modes, by token name: what a
+ * person's custom palette starts from when they edit the colours of the
+ * palette they are looking at. Calm's fixed assignments are included for
+ * the default palette unless the active expression opts out; a named
+ * palette always paints its own tokens.
+ */
+export function paletteTokens(value: string, calm = true) {
+  const light = modes.find(
+    (mode) =>
+      !mode.dark &&
+      (mode.selector === `[data-palette='${value}']` ||
+        (value === 'github-sharp' && mode.selector === ':root')),
+  )
+  const dark = modes.find(
+    (mode) =>
+      mode.dark &&
+      (mode.selector === `.dark[data-palette='${value}']` ||
+        (value === 'github-sharp' && mode.selector === '.dark')),
+  )
+  if (!light || !dark) return undefined
+  return {
+    light: appearanceTokens(light, value === 'github-sharp' && calm),
+    dark: appearanceTokens(dark, value === 'github-sharp' && calm),
+  }
+}
 
 export const PALETTES_CSS = new URL('../src/palettes.css', import.meta.url)
 

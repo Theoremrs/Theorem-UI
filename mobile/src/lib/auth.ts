@@ -149,7 +149,12 @@ export async function signIn(): Promise<void> {
     config.oauthRedirectUri,
     { preferUniversalLinks: true },
   )
-  if (result.type !== 'success') throw new SignInError('cancelled', 'Sign-in was closed before it finished.')
+  if (result.type !== 'success') {
+    // The native session reports why it ended (for example an unverified
+    // callback association) as `error`, which the result type leaves out.
+    const reason = (result as { error?: string | null }).error
+    throw new SignInError('cancelled', reason ? `Sign-in ended: ${reason}` : 'Sign-in was closed before it finished.')
+  }
   const code = readCallback(result.url, {
     redirectUri: config.oauthRedirectUri,
     state,

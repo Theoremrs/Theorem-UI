@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { toHistoryMessages, hasTheoremError } from './message-history'
+import { CONTEXT_REFERENCES_METADATA, toHistoryMessages, hasTheoremError } from './message-history'
 import type { Theorem } from './client'
 
 function assistant(id: string, parts: Theorem.StoredPart[]): Theorem.Message {
@@ -42,4 +42,17 @@ test('tool failures alone do not mark a recovered response as failed', () => {
 test('plain runtime errors retain their standard error renderer', () => {
   expect(hasTheoremError([{ type: 'text', text: 'partial response' }])).toBe(false)
   expect(hasTheoremError('partial response')).toBe(false)
+})
+
+test('a stored user message brings back the references it was sent with, on its metadata', () => {
+  const reference = { label: 'App', location: { resource: { kind: 'graph-object', objectId: 'doc', objectType: 'theorem.app' } }, excerpt: '{}' }
+  const asked = {
+    schema: 'theorem.chat.message.v1', messageId: 'asked', tenantId: 'tenant', threadId: 'thread',
+    originBranchId: 'branch', role: 'user', parts: [{ partId: 'p', type: 'text', payload: { text: 'Why?' } }],
+    createdAtMs: 1, contextReferences: [reference],
+  } as unknown as Theorem.Message
+  const plain = { ...asked, messageId: 'plain', contextReferences: undefined } as unknown as Theorem.Message
+  const [withReferences, without] = toHistoryMessages([asked, plain])
+  expect(withReferences?.metadata?.custom?.[CONTEXT_REFERENCES_METADATA]).toEqual([reference])
+  expect(without?.metadata?.custom?.[CONTEXT_REFERENCES_METADATA]).toBeUndefined()
 })

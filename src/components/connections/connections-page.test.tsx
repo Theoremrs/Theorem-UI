@@ -21,9 +21,11 @@ import { cleanup, render, waitFor } from '../../../test/blocks/render'
 import { GithubSection } from './github-card'
 import { McpServers } from './mcp-servers'
 import { OtherConnections } from './other-connections'
+import { ServerDetail } from './server-detail'
 
-const page = (window as unknown as { happyDOM: { setURL: (url: string) => void } })
-  .happyDOM
+const page = (
+  window as unknown as { happyDOM: { setURL: (url: string) => void } }
+).happyDOM
 const settings = 'http://localhost:3000/settings/connections'
 beforeAll(() => page.setURL(settings))
 afterAll(() => page.setURL('about:blank'))
@@ -38,19 +40,28 @@ const json = (status: number, body: unknown) =>
 /** The route's :id arrives still percent-encoded, as the client wrote it. */
 const idOf = (params: Record<string, string>) => decodeURIComponent(params.id!)
 
-type Seen = { method: string; path: string; body: unknown; ifMatch: string | null }
+type Seen = {
+  method: string
+  path: string
+  body: unknown
+  ifMatch: string | null
+}
 let seen: Seen[]
 let github: GithubConnection | undefined
 let others: Connection[]
 let servers: McpServer[]
 let deliveries: GithubDelivery[]
 let work: WorkSettings
+/** Reads of GET /github through the mounted fake, for re-check assertions. */
+let githubReads = 0
 /** A status the next write to this method and path is refused with. */
 let refuse: Record<string, { status: number; detail: string } | undefined>
 let restore: () => void = () => {}
 let client: QueryClient
 
-const githubFixture = (changes: Partial<GithubConnection> = {}): GithubConnection => ({
+const githubFixture = (
+  changes: Partial<GithubConnection> = {},
+): GithubConnection => ({
   id: 'github',
   kind: 'github',
   label: 'GitHub',
@@ -71,8 +82,18 @@ const githubFixture = (changes: Partial<GithubConnection> = {}): GithubConnectio
     },
   ],
   availableActions: [
-    { name: 'search_code', title: 'Search code', effect: 'read', granted: true },
-    { name: 'create_issue', title: 'Create an issue', effect: 'write', granted: true },
+    {
+      name: 'search_code',
+      title: 'Search code',
+      effect: 'read',
+      granted: true,
+    },
+    {
+      name: 'create_issue',
+      title: 'Create an issue',
+      effect: 'write',
+      granted: true,
+    },
   ],
   subscribedEvents: ['push', 'pull_request'],
   webhook: {
@@ -116,7 +137,10 @@ function mount(node: React.ReactNode) {
       ],
       stdioAvailable: false,
     }),
-    [`GET ${root}/github`]: () => (github ? github : json(404, { title: 'Not connected' })),
+    [`GET ${root}/github`]: () => {
+      githubReads += 1
+      return github ? github : json(404, { title: 'Not connected' })
+    },
     [`POST ${root}/github/connect`]: async (_p, request) => {
       seen.push(await note(request))
       const refusal = refuse['POST github/connect']
@@ -131,13 +155,19 @@ function mount(node: React.ReactNode) {
     [`PATCH ${root}/github`]: async (_p, request) => {
       seen.push(await note(request))
       const refusal = refuse['PATCH github']
-      if (refusal) return json(refusal.status, { title: 'Refused', detail: refusal.detail })
+      if (refusal)
+        return json(refusal.status, {
+          title: 'Refused',
+          detail: refusal.detail,
+        })
       github = { ...github!, ...(seen.at(-1)!.body as object) }
       return github
     },
     [`PUT ${root}/github/repositories`]: async (_p, request) => {
       seen.push(await note(request))
-      const tracked = new Set((seen.at(-1)!.body as { tracked: string[] }).tracked)
+      const tracked = new Set(
+        (seen.at(-1)!.body as { tracked: string[] }).tracked,
+      )
       github = {
         ...github!,
         installations: github!.installations.map((installation) => ({
@@ -152,7 +182,9 @@ function mount(node: React.ReactNode) {
     },
     [`GET ${root}/github/deliveries`]: (_p, request) => {
       const state = new URL(request.url).searchParams.get('state')
-      return { deliveries: deliveries.filter((d) => !state || d.state === state) }
+      return {
+        deliveries: deliveries.filter((d) => !state || d.state === state),
+      }
     },
     [`POST ${root}/github/deliveries/:id/retry`]: async (params, request) => {
       seen.push(await note(request))
@@ -162,9 +194,17 @@ function mount(node: React.ReactNode) {
     [`POST ${root}/mcp`]: async (_p, request) => {
       seen.push(await note(request))
       const refusal = refuse['POST mcp']
-      if (refusal) return json(refusal.status, { title: 'Refused', detail: refusal.detail })
+      if (refusal)
+        return json(refusal.status, {
+          title: 'Refused',
+          detail: refusal.detail,
+        })
       const body = seen.at(-1)!.body as { label: string; url: string }
-      const added = serverFixture({ id: 'mcp:new', label: body.label, url: body.url })
+      const added = serverFixture({
+        id: 'mcp:new',
+        label: body.label,
+        url: body.url,
+      })
       servers = [...servers, added]
       return added
     },
@@ -195,7 +235,9 @@ function mount(node: React.ReactNode) {
     },
   })
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>)
+  return render(
+    <QueryClientProvider client={client}>{node}</QueryClientProvider>,
+  )
 }
 
 async function note(request: Request): Promise<Seen> {
@@ -212,6 +254,7 @@ beforeEach(() => {
   // Connecting GitHub sends the window to GitHub; put it back so relative requests resolve.
   page.setURL(settings)
   seen = []
+  githubReads = 0
   github = githubFixture()
   others = []
   servers = [
@@ -266,14 +309,22 @@ afterEach(async () => {
   restore()
 })
 
-const press = (element: Element) => act(async () => (element as HTMLElement).click())
+const press = (element: Element) =>
+  act(async () => (element as HTMLElement).click())
 const text = () => document.body.textContent
 const buttonNamed = (name: string) =>
-  [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === name)
-const named = (label: string) => document.querySelector<HTMLElement>(`[aria-label="${label}"]`)
-const settled = () => act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+  [...document.querySelectorAll('button')].find(
+    (button) => button.textContent.trim() === name,
+  )
+const named = (label: string) =>
+  document.querySelector<HTMLElement>(`[aria-label="${label}"]`)
+const settled = () =>
+  act(() => new Promise((resolve) => setTimeout(resolve, 20)))
 
-async function type(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+async function type(
+  input: HTMLInputElement | HTMLTextAreaElement,
+  value: string,
+) {
   const prototype = Object.getPrototypeOf(input) as object
   const { set } = Object.getOwnPropertyDescriptor(prototype, 'value')!
   await act(async () => {
@@ -284,13 +335,16 @@ async function type(input: HTMLInputElement | HTMLTextAreaElement, value: string
 
 // ---- GitHub, not connected
 
-test('before GitHub is connected the section shows a heading and one provider button', async () => {
+test('GitHub setup shows its repository connection and optional hosted tools together', async () => {
   github = undefined
   await mount(<GithubSection />)
   await waitFor(() => buttonNamed('GitHub'))
-  expect(document.querySelector('h2')?.textContent).toBe('Connect git provider')
-  expect(document.querySelectorAll('button')).toHaveLength(1)
-  expect(text()).toBe('Connect git providerGitHub')
+  expect(document.querySelector('h2')?.textContent).toBe('GitHub')
+  expect(buttonNamed('Add GitHub tools')).toBeDefined()
+  await waitFor(() => text().includes('GitHub MCP tools are not connected.'))
+  expect(text()).toContain(
+    'Repository access, following, and tools in one place.',
+  )
 })
 
 test('the GitHub button starts sign-in and says where to come back to', async () => {
@@ -320,7 +374,8 @@ test('a GitHub sign-in error appears below the provider button', async () => {
 
 test('a connections list that cannot be read says why and offers another try', async () => {
   restore = installFakeTheorem({
-    [`GET ${root}`]: () => json(500, { title: 'Broken', detail: 'The connections store is down.' }),
+    [`GET ${root}`]: () =>
+      json(500, { title: 'Broken', detail: 'The connections store is down.' }),
   })
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   await render(
@@ -336,7 +391,7 @@ test('a connections list that cannot be read says why and offers another try', a
 
 test('a connected GitHub shows the account, repositories, actions, events and webhook health', async () => {
   await mount(<GithubSection />)
-  await waitFor(() => named('Agent can use GitHub'))
+  await waitFor(() => named('Agent can use the repository connection'))
   expect(text()).toContain('travis')
   expect(text()).toContain('2 of 3 followed')
   expect(text()).toContain('Search code')
@@ -348,7 +403,9 @@ test('a connected GitHub shows the account, repositories, actions, events and we
 
 test('the agent switch turns at once and is sent as a patch', async () => {
   await mount(<GithubSection />)
-  const toggle = await waitFor(() => named('Agent can use GitHub'))
+  const toggle = await waitFor(() =>
+    named('Agent can use the repository connection'),
+  )
   expect(toggle.getAttribute('aria-checked')).toBe('true')
   await press(toggle)
   await waitFor(() => seen.some((request) => request.method === 'PATCH'))
@@ -356,24 +413,40 @@ test('the agent switch turns at once and is sent as a patch', async () => {
     path: `${root}/github`,
     body: { enabled: false },
   })
-  await waitFor(() => named('Agent can use GitHub')?.getAttribute('aria-checked') === 'false')
+  await waitFor(
+    () =>
+      named('Agent can use the repository connection')?.getAttribute(
+        'aria-checked',
+      ) === 'false',
+  )
 })
 
 test('a refused agent switch goes back and shows the refusal', async () => {
-  refuse['PATCH github'] = { status: 409, detail: 'GitHub is being reconnected.' }
+  refuse['PATCH github'] = {
+    status: 409,
+    detail: 'GitHub is being reconnected.',
+  }
   await mount(<GithubSection />)
-  await press(await waitFor(() => named('Agent can use GitHub')))
+  await press(
+    await waitFor(() => named('Agent can use the repository connection')),
+  )
   await waitFor(() => text().includes('GitHub is being reconnected.'))
-  expect(named('Agent can use GitHub')?.getAttribute('aria-checked')).toBe('true')
+  expect(
+    named('Agent can use the repository connection')?.getAttribute(
+      'aria-checked',
+    ),
+  ).toBe('true')
 })
 
 test('followed repositories are saved only on Save, as one sorted list', async () => {
   await mount(<GithubSection />)
-  await waitFor(() => named('Agent can use GitHub'))
+  await waitFor(() => named('Agent can use the repository connection'))
   const save = buttonNamed('Save repositories')!
   expect(save.hasAttribute('disabled')).toBe(true)
 
-  const docs = [...document.querySelectorAll('label')].find((row) => row.textContent.includes('travis/docs'))!
+  const docs = [...document.querySelectorAll('label')].find((row) =>
+    row.textContent.includes('travis/docs'),
+  )!
   await press(docs)
   expect(buttonNamed('Save repositories')!.hasAttribute('disabled')).toBe(false)
   expect(text()).toContain('3 of 3 followed')
@@ -389,8 +462,10 @@ test('followed repositories are saved only on Save, as one sorted list', async (
 
 test('discarding changes puts the checkboxes back without a request', async () => {
   await mount(<GithubSection />)
-  await waitFor(() => named('Agent can use GitHub'))
-  const docs = [...document.querySelectorAll('label')].find((row) => row.textContent.includes('travis/docs'))!
+  await waitFor(() => named('Agent can use the repository connection'))
+  const docs = [...document.querySelectorAll('label')].find((row) =>
+    row.textContent.includes('travis/docs'),
+  )!
   await press(docs)
   await press(buttonNamed('Discard changes')!)
   expect(text()).toContain('2 of 3 followed')
@@ -399,10 +474,17 @@ test('discarding changes puts the checkboxes back without a request', async () =
 
 test('each GitHub event consequence is a switch that writes the whole settings document back', async () => {
   await mount(<GithubSection />)
-  const inbox = await waitFor(() => named('A review request lands in your work inbox'))
+  const inbox = await waitFor(() =>
+    named('A review request lands in your work inbox'),
+  )
   expect(inbox.getAttribute('aria-checked')).toBe('false')
   await press(inbox)
-  await waitFor(() => seen.some((request) => request.method === 'PUT' && request.path === '/api/work/v1/settings'))
+  await waitFor(() =>
+    seen.some(
+      (request) =>
+        request.method === 'PUT' && request.path === '/api/work/v1/settings',
+    ),
+  )
   const put = seen.find((request) => request.path === '/api/work/v1/settings')!
   expect(put.ifMatch).toBe('w1')
   expect(put.body).toMatchObject({
@@ -422,28 +504,39 @@ test('a Theorem that has no work settings says so instead of showing dead switch
   restore()
   restore = installFakeTheorem({
     'GET /api/chat/v1/bootstrap': () => ({ csrfToken: 'csrf' }),
-    [`GET ${root}`]: () => ({ connections: [summary(github!)], stdioAvailable: false }),
+    [`GET ${root}`]: () => ({
+      connections: [summary(github!)],
+      stdioAvailable: false,
+    }),
     [`GET ${root}/github`]: () => github,
     [`GET ${root}/github/deliveries`]: () => ({ deliveries: [] }),
   })
   await cleanup()
   await render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
       <GithubSection />
     </QueryClientProvider>,
   )
-  await waitFor(() => text().includes('This Theorem does not act on GitHub events yet'))
+  await waitFor(() =>
+    text().includes('This Theorem does not act on GitHub events yet'),
+  )
   expect(named('A push refreshes what Theorem knows')).toBeNull()
 })
 
 test('recent deliveries load only when opened, and a failed one can be run again', async () => {
   await mount(<GithubSection />)
-  await waitFor(() => named('Agent can use GitHub'))
+  await waitFor(() => named('Agent can use the repository connection'))
   expect(text()).not.toContain('The inbox was unavailable.')
   await press(buttonNamed('Recent deliveries')!)
   await waitFor(() => text().includes('The inbox was unavailable.'))
   expect(text()).toContain('3 attempts')
-  const retries = [...document.querySelectorAll('button')].filter((button) => button.textContent.trim() === 'Retry')
+  const retries = [...document.querySelectorAll('button')].filter(
+    (button) => button.textContent.trim() === 'Retry',
+  )
   expect(retries).toHaveLength(1)
   await press(retries[0]!)
   await waitFor(() => seen.some((request) => request.method === 'POST'))
@@ -463,21 +556,61 @@ test('a GitHub that needs sign-in says so and offers Sign in again', async () =>
   expect(text()).toContain('The token expired.')
 })
 
+// The empty installation state is a step of the setup journey, not a dead
+// end: it links the App's installation page and offers a re-check when the
+// person comes back from GitHub.
+test('no installations offers the App installation action and a re-check', async () => {
+  github = githubFixture({
+    installations: [],
+    installUrl: 'https://github.com/apps/theorem/installations/new',
+  })
+  await mount(<GithubSection />)
+  const install = await waitFor(() =>
+    [...document.querySelectorAll('a')].find((anchor) =>
+      anchor.textContent.includes('Install the Theorem GitHub App'),
+    ),
+  )
+  expect(install.getAttribute('href')).toBe(
+    'https://github.com/apps/theorem/installations/new',
+  )
+  const before = githubReads
+  await press(buttonNamed('Check again')!)
+  await waitFor(() => githubReads > before)
+})
+
+test('without a known installation address the empty state still explains the step', async () => {
+  github = githubFixture({ installations: [] })
+  await mount(<GithubSection />)
+  await waitFor(() =>
+    text().includes('GitHub shows Theorem no repositories yet'),
+  )
+  expect(
+    [...document.querySelectorAll('a')].some((anchor) =>
+      anchor.textContent.includes('Install the Theorem GitHub App'),
+    ),
+  ).toBe(false)
+  expect(buttonNamed('Check again')).toBeDefined()
+})
+
 test('Disconnect asks first and does nothing until it is confirmed', async () => {
   await mount(<GithubSection />)
   await press(await waitFor(() => buttonNamed('Disconnect')))
-  await waitFor(() => text().includes('Disconnect GitHub?'))
+  await waitFor(() => text().includes('Disconnect the repository connection?'))
   expect(seen).toEqual([])
   await press(buttonNamed('Stay connected')!)
   await settled()
   expect(seen).toEqual([])
 
   await press(buttonNamed('Disconnect')!)
-  await waitFor(() => text().includes('Disconnect GitHub?'))
-  const confirm = [...document.querySelectorAll('button')].filter((button) => button.textContent.trim() === 'Disconnect').at(-1)!
+  await waitFor(() => text().includes('Disconnect the repository connection?'))
+  const confirm = [...document.querySelectorAll('button')]
+    .filter((button) => button.textContent.trim() === 'Disconnect')
+    .at(-1)!
   await press(confirm)
   await waitFor(() => seen.some((request) => request.method === 'DELETE'))
-  expect(seen.find((request) => request.method === 'DELETE')?.path).toBe(`${root}/github`)
+  expect(seen.find((request) => request.method === 'DELETE')?.path).toBe(
+    `${root}/github`,
+  )
 })
 
 // ---- MCP servers
@@ -488,7 +621,9 @@ test('MCP servers are listed with their state, and a failing one says why', asyn
   expect(text()).toContain('Broken one')
   expect(text()).toContain('https://docs.example.com/mcp')
   expect(text()).toContain('The server refused the token.')
-  expect(named('Docs search: agent can use it')?.getAttribute('aria-checked')).toBe('true')
+  expect(
+    named('Docs search: agent can use it')?.getAttribute('aria-checked'),
+  ).toBe('true')
 })
 
 test('with no servers it says so and offers to add one', async () => {
@@ -513,7 +648,9 @@ test('adding a server with nothing filled in shows what is missing and sends not
   await waitFor(() => text().includes('Docs search'))
   await press(buttonNamed('Add server')!)
   await waitFor(() => text().includes('Add MCP server'))
-  const submit = [...document.querySelectorAll('button')].filter((button) => button.textContent.trim() === 'Add server').at(-1)!
+  const submit = [...document.querySelectorAll('button')]
+    .filter((button) => button.textContent.trim() === 'Add server')
+    .at(-1)!
   await press(submit)
   await waitFor(() => text().includes('Give the server a name.'))
   expect(text()).toContain('Enter the server address.')
@@ -525,12 +662,21 @@ test('a server that is added shows the tools it was found to have', async () => 
   await waitFor(() => text().includes('Docs search'))
   await press(buttonNamed('Add server')!)
   await waitFor(() => text().includes('Add MCP server'))
-  await type(document.querySelector<HTMLInputElement>('input[placeholder="Docs search"]')!, 'Release notes')
   await type(
-    document.querySelector<HTMLInputElement>('input[placeholder="https://mcp.example.com/mcp"]')!,
+    document.querySelector<HTMLInputElement>(
+      'input[placeholder="Docs search"]',
+    )!,
+    'Release notes',
+  )
+  await type(
+    document.querySelector<HTMLInputElement>(
+      'input[placeholder="https://mcp.example.com/mcp"]',
+    )!,
     'https://notes.example.com/mcp',
   )
-  const submit = [...document.querySelectorAll('button')].filter((button) => button.textContent.trim() === 'Add server').at(-1)!
+  const submit = [...document.querySelectorAll('button')]
+    .filter((button) => button.textContent.trim() === 'Add server')
+    .at(-1)!
   await press(submit)
   await waitFor(() => text().includes('Found 2 tools'))
   expect(seen.find((request) => request.method === 'POST')).toMatchObject({
@@ -553,6 +699,9 @@ test('the GitHub MCP option fills the hosted address and requires a bearer token
   const token = await waitFor(() =>
     document.querySelector<HTMLInputElement>('input[type="password"]'),
   )
+  // The shortcut says how it relates to the GitHub connection above it, so
+  // "I connected GitHub" is not silently two different setups.
+  expect(text()).toContain('separate from the GitHub connection')
   const form = token.closest('form')!
   const submit = form.querySelector('button[type="submit"]')!
   await press(submit)
@@ -573,20 +722,71 @@ test('the GitHub MCP option fills the hosted address and requires a bearer token
   })
 })
 
+// A server that serves skills beside its tools shows them: the connection's
+// result describes what was added, not only the tool count.
+test("a server's detail lists the skills it serves beside its tools", async () => {
+  servers = [
+    serverFixture({
+      skills: [
+        {
+          uri: 'skill://review/SKILL.md',
+          name: 'review',
+          description: 'Review a change before it lands.',
+          dynamic: false,
+        },
+        {
+          uri: 'skill://generated/SKILL.md',
+          name: 'generated',
+          description: '',
+          dynamic: true,
+        },
+      ],
+    }),
+  ]
+  await mount(<ServerDetail id="mcp:docs" onOpenChange={() => {}} />)
+  await waitFor(() => text().includes('Skills (2)'))
+  expect(text()).toContain('review')
+  expect(text()).toContain('Review a change before it lands.')
+  expect(text()).toContain('generated')
+  expect(text()).toContain('Dynamic')
+  expect(text()).toContain("composer's Skills menu")
+})
+
+test('a server without skills shows no skills section', async () => {
+  servers = [serverFixture()]
+  await mount(<ServerDetail id="mcp:docs" onOpenChange={() => {}} />)
+  await waitFor(() => text().includes('Tools (2)'))
+  expect(text()).not.toContain('Skills (')
+})
+
 test('a server Theorem refuses keeps the form open and shows the refusal in its words', async () => {
-  refuse['POST mcp'] = { status: 422, detail: 'That address resolves to a private network.' }
+  refuse['POST mcp'] = {
+    status: 422,
+    detail: 'That address resolves to a private network.',
+  }
   await mount(<McpServers />)
   await waitFor(() => text().includes('Docs search'))
   await press(buttonNamed('Add server')!)
   await waitFor(() => text().includes('Add MCP server'))
-  await type(document.querySelector<HTMLInputElement>('input[placeholder="Docs search"]')!, 'Internal')
   await type(
-    document.querySelector<HTMLInputElement>('input[placeholder="https://mcp.example.com/mcp"]')!,
+    document.querySelector<HTMLInputElement>(
+      'input[placeholder="Docs search"]',
+    )!,
+    'Internal',
+  )
+  await type(
+    document.querySelector<HTMLInputElement>(
+      'input[placeholder="https://mcp.example.com/mcp"]',
+    )!,
     'http://10.0.0.5/mcp',
   )
-  const submit = [...document.querySelectorAll('button')].filter((button) => button.textContent.trim() === 'Add server').at(-1)!
+  const submit = [...document.querySelectorAll('button')]
+    .filter((button) => button.textContent.trim() === 'Add server')
+    .at(-1)!
   await press(submit)
-  await waitFor(() => text().includes('That address resolves to a private network.'))
+  await waitFor(() =>
+    text().includes('That address resolves to a private network.'),
+  )
   expect(text()).toContain('Add MCP server')
 })
 
@@ -594,14 +794,22 @@ test('Remove asks first, names the server, and deletes only on confirmation', as
   await mount(<McpServers />)
   await press(await waitFor(() => named('Broken one options')))
   const remove = await waitFor(() =>
-    [...document.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent.trim() === 'Remove'),
+    [...document.querySelectorAll('[role="menuitem"]')].find(
+      (item) => item.textContent.trim() === 'Remove',
+    ),
   )
   await press(remove)
   await waitFor(() => text().includes('Remove Broken one?'))
   expect(seen).toEqual([])
-  await press([...document.querySelectorAll('button')].filter((button) => button.textContent.trim() === 'Remove').at(-1)!)
+  await press(
+    [...document.querySelectorAll('button')]
+      .filter((button) => button.textContent.trim() === 'Remove')
+      .at(-1)!,
+  )
   await waitFor(() => seen.some((request) => request.method === 'DELETE'))
-  expect(seen.find((request) => request.method === 'DELETE')?.path).toBe(`${root}/mcp/mcp%3Abroken`)
+  expect(seen.find((request) => request.method === 'DELETE')?.path).toBe(
+    `${root}/mcp/mcp%3Abroken`,
+  )
   await waitFor(() => !text().includes('Broken one'))
 })
 
@@ -609,11 +817,15 @@ test('Test connection from the row menu reports what the server answered', async
   await mount(<McpServers />)
   await press(await waitFor(() => named('Docs search options')))
   const testItem = await waitFor(() =>
-    [...document.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent.trim() === 'Test connection'),
+    [...document.querySelectorAll('[role="menuitem"]')].find(
+      (item) => item.textContent.trim() === 'Test connection',
+    ),
   )
   await press(testItem)
   await waitFor(() => text().includes('Connection works: 41 ms, 2 tools.'))
-  expect(seen.find((request) => request.method === 'POST')?.path).toBe(`${root}/mcp/mcp%3Adocs/test`)
+  expect(seen.find((request) => request.method === 'POST')?.path).toBe(
+    `${root}/mcp/mcp%3Adocs/test`,
+  )
 })
 
 // ---- other connections
@@ -640,4 +852,50 @@ test('with no other connections the section is not drawn', async () => {
   const { container } = await mount(<OtherConnections />)
   await settled()
   expect(container.textContent).toBe('')
+})
+
+test('GitHub hosted connections appear once in the coordinated GitHub entry', async () => {
+  servers = [
+    serverFixture({
+      id: 'mcp:github',
+      label: 'Repository tools',
+      url: 'https://api.githubcopilot.com/mcp/',
+    }),
+    serverFixture(),
+  ]
+  await mount(
+    <>
+      <GithubSection />
+      <McpServers excludeGithub />
+    </>,
+  )
+  await waitFor(() => named('Repository tools: agent can use it'))
+  expect(
+    document.querySelectorAll(
+      '[aria-label="Repository tools: agent can use it"]',
+    ),
+  ).toHaveLength(1)
+  const section = document.querySelector('h2')!.closest('section')!
+  expect(section.textContent).toContain('Repository tools')
+  expect(section.textContent).toContain(
+    'Agent can use the repository connection',
+  )
+  expect(section.textContent).not.toContain('Docs search')
+})
+
+test('the GitHub entry opens its ready-to-complete MCP setup', async () => {
+  servers = []
+  await mount(<GithubSection />)
+  await press(await waitFor(() => buttonNamed('Add GitHub tools')))
+  const token = await waitFor(() =>
+    document.querySelector<HTMLInputElement>('input[type="password"]'),
+  )
+  await type(token, 'fixture-token')
+  await press(token.closest('form')!.querySelector('button[type="submit"]')!)
+  await waitFor(() => seen.some((entry) => entry.method === 'POST'))
+  expect(seen.find((entry) => entry.method === 'POST')?.body).toMatchObject({
+    label: 'GitHub MCP',
+    url: 'https://api.githubcopilot.com/mcp/',
+    auth: { type: 'bearer' },
+  })
 })

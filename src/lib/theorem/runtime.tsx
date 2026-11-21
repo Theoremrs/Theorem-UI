@@ -28,6 +28,7 @@ import {
   toAssistantMessages,
 } from '@theoremharness/sdk/assistant-ui'
 import type { TheoremChatAdapterOptions } from '@theoremharness/sdk/assistant-ui'
+import type { TheoremContextReference } from '@theoremharness/sdk'
 import { createAssistantStream } from 'assistant-stream'
 import pMap from 'p-map'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
@@ -37,6 +38,7 @@ import type { ReactNode } from 'react'
 import { toastManager } from '@/components/coss/toast'
 import { useComposerReferences } from '@/components/chat/composer-references'
 import { codingTurnOptions, planningTurnOptions, useCodeMode, usePlanning, webTurnOptions } from '@/components/chat/composer-tools'
+import { skillTurnOptions } from './skill-selection'
 import { connectionTurnOptions } from './tool-selection'
 import { DRAFT_PLAN } from './plans'
 import { TheoremPartRenderers } from '@/components/chat/theorem-parts'
@@ -69,11 +71,13 @@ import { isUntitledTitle, threadTitle } from './thread-title'
 
 import { Figures } from '@/components/face/figures'
 import { useKitRequests } from '@/lib/kit/operations'
+import { usePresentRequests } from '@/lib/generative/operations'
 import { useAppRequests } from '@/lib/blocks/app-operations'
 import { useFaceRequests } from '@/lib/face/operations'
 import { useWorkbenchRequests } from '@/lib/workbench/agent/operations'
 import { useSessionNoticeDelivery } from '@/lib/workbench/agent/deliver'
 import { speechAdapter } from '@/lib/speech/adapter'
+import { dictationAdapter } from '@/lib/speech/dictation'
 import { useNarrateReplies } from '@/lib/speech/narrate'
 import { clientSurfaceTurnOptions } from './client-surface'
 
@@ -194,11 +198,21 @@ async function alignWithDurableBranch(
       : user.id
   // The SDK's adapter takes text turns; what they carry goes as upload ids.
   const content = user.content.filter((part) => part.type === 'text')
-  const text = content.map((part) => part.text).join('\n')
+  // A quote carried in from a reply rides the message's metadata; the text
+  // turn must still carry the passage, or the question loses its subject.
+  // Older saved turns and test fixtures may carry no metadata at all.
+  const custom = (user as { metadata?: { custom?: unknown } }).metadata?.custom
+  const quoteText = (custom as { quote?: { text?: string } } | undefined)?.quote
+    ?.text
+  const quoted =
+    quoteText && !content.some((part) => part.text.includes(quoteText))
+      ? [{ type: 'text' as const, text: `> ${quoteText.replace(/\n/g, '\n> ')}` }]
+      : []
+  const text = [...quoted, ...content].map((part) => part.text).join('\n')
   return {
     messages: [
       ...messages.slice(0, -1),
-      { ...user, id, content, attachments: [] },
+      { ...user, id, content: [...quoted, ...content], attachments: [] },
     ],
     uploadIds: turnUploads(
       text,
@@ -637,8 +651,11 @@ function useTheoremThreadRuntime() {
     () => ({
       async *run(options) {
         try {
-          const references = options.runConfig.custom?.theoremRunInput === true
-            ? [] : useComposerReferences.getState().references
+          // A send that names its own context (a question asked from inside an App) goes with that;
+          // otherwise the composer's references go, unless the turn is a run's own input.
+          const given = options.runConfig.custom?.theoremContextReferences as TheoremContextReference[] | undefined
+          const references = given ?? (options.runConfig.custom?.theoremRunInput === true
+            ? [] : useComposerReferences.getState().references)
           const { id: localId, remoteId: existingId } = aui.threadListItem.getState()
           const isNew = !existingId
           const { remoteId } = await aui.threadListItem.initialize()
@@ -650,14 +667,16 @@ function useTheoremThreadRuntime() {
           const custom = options.runConfig.custom ?? {}
           const configured = custom.theoremTurnOptions as Record<string,unknown> | undefined
           // The composer's context, Web, Plan and Code mode toggles, client surface and connection choice, read at each send like the model pick.
-          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(localId,remoteId),...codingTurnOptions(localId,remoteId),...clientSurfaceTurnOptions(),...connectionTurnOptions(localId,remoteId),...generationTurnOptions(remoteId)}
+          // The skills picked in the draft ride as structured ids, so the harness loads them.
+          const draftText = options.messages.at(-1)?.content.map((part) => part.type === 'text' ? part.text : '').join('\n') ?? ''
+          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(localId,remoteId),...codingTurnOptions(localId,remoteId),...clientSurfaceTurnOptions(),...connectionTurnOptions(localId,remoteId),...skillTurnOptions(draftText),...generationTurnOptions(remoteId)}
           const composed = Object.keys(added).length ? {
             ...options,
             runConfig:{...options.runConfig,custom:{...custom,theoremTurnOptions:{...configured,...added}}},
           } : options
           const turn = runTurn(remoteId,composed,modelTurnOptions,()=>{
             // Recovery replays its saved request; only a newly accepted send consumes these references.
-            useComposerReferences.setState(state=>({references:state.references.filter(reference=>!references.includes(reference))}))
+            if (!given) useComposerReferences.setState(state=>({references:state.references.filter(reference=>!references.includes(reference))}))
           })
           for await (const step of timed(turn)) {
             // Plan stays on until a plan is written; the turn that writes one turns it off for this conversation.
@@ -676,7 +695,10 @@ function useTheoremThreadRuntime() {
   )
   // Replies are read aloud by the page's own voice, when the person asks.
   const speech = useMemo(() => speechAdapter(), [])
-  const runtime = useLocalRuntime(adapter, { adapters: { speech } })
+  // Dictation is Parakeet where its model is here, the browser's own
+  // recognition otherwise; the composer's mic appears only where one can run.
+  const dictation = useMemo(() => dictationAdapter(), [])
+  const runtime = useLocalRuntime(adapter, { adapters: { speech, dictation } })
   useEffect(() => bindRunInput(runtime, {
     threadKey: aui.threadListItem.getState().id,
     threadId: () => aui.threadListItem.getState().remoteId,
@@ -709,6 +731,8 @@ function useTheoremThreadRuntime() {
   useFaceRequests(runtime, faceEffort)
   // The agent reads and acts on the workbench; this answers it.
   useWorkbenchRequests(runtime)
+  // The agent paints an interface into its reply; this answers it.
+  usePresentRequests(runtime)
   // A coding session the agent started that stops working wakes the agent; this tells it.
   useSessionNoticeDelivery(runtime)
   useEffect(() => {

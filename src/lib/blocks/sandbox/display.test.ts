@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
-import { markSelectedCell, observeHeight } from './display'
+import { lookNow, markSelectedCell, observeHeight, snapshotHtml } from './display'
+import { MAX_SNAPSHOT } from './protocol'
 
 const root = document.documentElement
 const original = globalThis.ResizeObserver
@@ -90,4 +91,130 @@ test('a page with a fractional height gets the whole pixel above it', () => {
 
 test('content overflowing the page box still counts', () => {
   expect(measured(400, 186, 186)).toEqual([400])
+})
+
+/** A page laid out by its viewport: `extra` taller than whatever frame it is in. */
+function viewportPage(frame: number, extra: number) {
+  Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: frame })
+  Object.defineProperty(root, 'scrollHeight', {
+    configurable: true,
+    get: () => window.innerHeight + extra,
+  })
+  Object.defineProperty(root, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({ height: window.innerHeight }) as DOMRect,
+  })
+}
+
+const frames = (count: number) =>
+  new Promise<void>((resolve) => {
+    const next = (left: number) => (left ? requestAnimationFrame(() => next(left - 1)) : resolve())
+    next(count)
+  })
+
+test('a page laid out by its viewport, which outgrows every frame sized to it, says it fills its frame and stops growing', () => {
+  // 62vh and 38vh under a 45px caption.
+  viewportPage(150, 45)
+  const reports: Array<[number, boolean | undefined]> = []
+  observeHeight((height, fills) => reports.push([height, fills]))
+  const resizeTo = (height: number) => {
+    window.innerHeight = height
+    window.dispatchEvent(new Event('resize'))
+  }
+  resizeTo(195)
+  resizeTo(240)
+  resizeTo(600)
+  resizeTo(645)
+  expect(reports.filter(([, fills]) => fills)).toEqual([[240, true]])
+  expect(reports.at(-1)).toEqual([240, true])
+})
+
+test('a page exactly as tall as the frame it loaded in says it fills its frame', async () => {
+  viewportPage(150, 0)
+  const reports: Array<[number, boolean | undefined]> = []
+  observeHeight((height, fills) => reports.push([height, fills]))
+  await frames(3)
+  expect(reports).toEqual([[150, undefined], [150, true]])
+  // The host gives it a height that follows the window; it says nothing more.
+  window.innerHeight = 504
+  window.dispatchEvent(new Event('resize'))
+  await frames(3)
+  expect(reports).toEqual([[150, undefined], [150, true]])
+})
+
+test('a page that only happened to be as tall as its first frame goes back to its content height, and follows it', async () => {
+  let resized = () => {}
+  globalThis.ResizeObserver = class {
+    constructor(callback: () => void) {
+      resized = callback
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+  layout(150, 150)
+  const reports: Array<[number, boolean | undefined]> = []
+  observeHeight((height, fills) => reports.push([height, fills]))
+  await frames(3)
+  expect(reports).toEqual([[150, undefined], [150, true]])
+  // The host gives it the fill height, which its content does not follow.
+  layout(150, 504)
+  window.dispatchEvent(new Event('resize'))
+  expect(reports.at(-1)).toEqual([150, undefined])
+  // Back at 150px, more content loads.
+  layout(400, 150)
+  resized()
+  expect(reports.at(-1)).toEqual([400, undefined])
+})
+
+test('a page sized by its content does not say it fills its frame', async () => {
+  layout(320, 150)
+  const reports: Array<[number, boolean | undefined]> = []
+  observeHeight((height, fills) => reports.push([height, fills]))
+  layout(320, 320)
+  window.dispatchEvent(new Event('resize'))
+  await frames(3)
+  expect(reports).toEqual([[320, undefined]])
+})
+
+/** A canvas whose picture is `size` characters of data URL. */
+function canvas(id: string, size: number): HTMLCanvasElement {
+  const element = document.createElement('canvas')
+  element.id = id
+  element.width = 40
+  element.height = 20
+  element.toDataURL = () => `data:image/png;base64,${'A'.repeat(size)}`
+  return element
+}
+
+test('a copy too large for a snapshot leaves out its largest canvas pictures, blank at their size, and keeps the page', () => {
+  const words = document.createElement('p')
+  words.textContent = 'ALU result 12'
+  document.body.replaceChildren(words, canvas('scene', MAX_SNAPSHOT * 0.6), canvas('chart', MAX_SNAPSHOT * 0.7), canvas('small', 100))
+  try {
+    const html = snapshotHtml()
+    expect(html.length).toBeLessThanOrEqual(MAX_SNAPSHOT)
+    const copy = document.createElement('div')
+    copy.innerHTML = html
+    const images = [...copy.querySelectorAll('img')]
+    expect(images.map((image) => [image.getAttribute('width'), image.getAttribute('height')])).toEqual([['40', '20'], ['40', '20'], ['40', '20']])
+    expect(images.map((image) => (image.getAttribute('src') ?? '').length > 0)).toEqual([true, false, true])
+    expect(copy.textContent).toContain('ALU result 12')
+    expect(lookNow()?.html).toBe(html)
+  } finally {
+    document.body.replaceChildren()
+  }
+})
+
+test('decoration hidden from assistive technology is left out of a copy before a larger canvas that is content', () => {
+  const glass = canvas('glass', MAX_SNAPSHOT * 0.5)
+  glass.setAttribute('aria-hidden', 'true')
+  document.body.replaceChildren(canvas('scene', MAX_SNAPSHOT * 0.6), glass)
+  try {
+    const copy = document.createElement('div')
+    copy.innerHTML = snapshotHtml()
+    expect([...copy.querySelectorAll('img')].map((image) => (image.getAttribute('src') ?? '').length > 0)).toEqual([true, false])
+  } finally {
+    document.body.replaceChildren()
+  }
 })

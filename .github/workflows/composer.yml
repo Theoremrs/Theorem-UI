@@ -19,11 +19,14 @@ on:
       - 'src/components/terminal/**'
       - 'src/components/pages/conversation-module*'
       - 'src/lib/theorem/**'
+      - 'src/lib/generative/**'
       - 'src/routes/_chat*'
       - 'src/routes/_chat/**'
       - 'src/routes/api/chat/**'
+      - 'src/routes/api/link-preview/**'
       - 'src/routes/v1/theorem/**'
       - 'src/server/theorem-*'
+      - 'src/server/link-preview*'
       - 'src/stories/**'
       - 'src/styles.css'
       - 'src/appearance.css'
@@ -42,12 +45,14 @@ on:
       - 'src/components/coss/**'
       - 'src/components/ui/**'
       - 'src/components/life/**'
+      - 'src/components/glass/**'
       - 'src/lib/life/**'
       - 'src/lib/motion.ts'
       - 'src/components/shell/**'
-      - 'src/routes/settings/appearance.tsx'
-      - 'scripts/palettes.ts'
+      - 'src/routes/settings/**'
+      - 'scripts/palettes.*'
       - 'scripts/design-oracles/**'
+      - 'scripts/story-oracle*.mjs'
       - 'tests/design-oracles/**'
       - 'scripts/e2e/**'
       - 'terminal/**'
@@ -64,7 +69,8 @@ jobs:
   composer:
     name: Composer contract
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Allow bounded headroom for cold Rust setup and the full browser gate.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -87,7 +93,7 @@ jobs:
         run: bun run build:terminal
       - name: Check types
         run: bun run typecheck
-      - name: Check composer and delivery behavior
+      - name: Check composer, response evidence, and delivery behavior
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: bun run test:composer
       - name: Install the browser for composer interactions
@@ -97,7 +103,7 @@ jobs:
       - name: Check native composer interactions
         if: ${{ !cancelled() && steps.browser.outcome == 'success' }}
         run: bun run e2e:composer --built
-      - name: Check appearance policy and emitted color pairs
+      - name: Check appearance, settings, and emitted color pairs
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: |
           bun run test:appearance
@@ -108,7 +114,7 @@ jobs:
         env:
           ORACLE_REVIEW_OUT: ${{ runner.temp }}/appearance-review
         run: |
-          mkdir -p "$ORACLE_REVIEW_OUT"
+          mkdir -p "$ORACLE_REVIEW_OUT/responses"
           node node_modules/vite/bin/vite.js dev --host 127.0.0.1 --port 3117 --strictPort > "$ORACLE_REVIEW_OUT/vite.log" 2>&1 &
           appearance_server=$!
           trap 'kill "$appearance_server" 2>/dev/null || true' EXIT
@@ -126,6 +132,8 @@ jobs:
           bun run oracle:code
           ORACLE_ENGINE=chromium bun run oracle:states
           bun run oracle:touch
+          STORY_ORIGIN=http://127.0.0.1:3117 ORACLE_RENDER_DIR="$ORACLE_REVIEW_OUT/responses" node scripts/story-oracle.mjs interact response-evidence
+          STORY_ORIGIN=http://127.0.0.1:3117 ORACLE_RENDER_DIR="$ORACLE_REVIEW_OUT/responses" node scripts/story-oracle.mjs interact settings-appearance
       - name: Show appearance server diagnostics on failure
         if: ${{ failure() }}
         run: |

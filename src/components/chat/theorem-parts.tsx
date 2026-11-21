@@ -1,4 +1,4 @@
-// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), @tanstack/react-router CatchBoundary per part, coss ui Collapsible (base-ui) for the activity line's details, shadcn Trace (ReUI, Base UI build) for the reply's tool calls folded into one summary row, and the installed ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, the terminal's openOf/pathOf and Follow's useRevealFile for the file a tool card opens in the IDE, scene-part.tsx for the theorem-scene part
+// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), @tanstack/react-router CatchBoundary per part, coss ui Collapsible (base-ui) for the activity line's details, shadcn Trace (ReUI, Base UI build) for the reply's tool calls folded into one summary row, and the installed ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, the terminal's openOf/pathOf and Follow's useRevealFile for the file a tool card opens in the IDE, scene-part.tsx for the theorem-scene part, the CRM's context-manifest-part.tsx for the theorem-context_manifest part (the saved records a reply was given) and record-change-proposal-part.tsx for proposed record changes and their outcomes
 //
 // Theorem message parts that are not text or tool calls arrive as data parts
 // named `theorem-<type>` (see @theoremharness/sdk/assistant-ui). This file
@@ -7,6 +7,9 @@
 // gives the artifact tools a pending card while they run. Delegated work has
 // its own cards in delegation-parts.
 import { useAui, useAuiState, useAssistantDataUI } from '@assistant-ui/react'
+import { renderGenerativeUI } from '@assistant-ui/generative-ui/react'
+import { styledGenerativeUILibrary } from '@/components/assistant-ui/elements/generative-ui'
+import { PRESENT } from '@/lib/generative/operations'
 import { CatchBoundary } from '@tanstack/react-router'
 import type {
   AssistantState,
@@ -38,6 +41,12 @@ import {
 } from '@/components/artifacts/artifact-model'
 import { ArtifactMessage } from '@/components/artifacts/artifact-message'
 import { DELEGATION_RENDERERS } from '@/components/chat/delegation-parts'
+import { ContextManifestPart } from '@/components/crm/context-manifest-part'
+import { SkillLoadPart } from '@/components/chat/skill-load-part'
+import {
+  RecordChangeOutcomePart,
+  RecordChangeProposalPart,
+} from '@/components/crm/record-change-proposal-part'
 import { ProgramPart } from '@/components/chat/program-part'
 import { CompletionFooter } from '@/components/chat/run-footer'
 import { UserMarkdown } from '@/components/chat/user-markdown'
@@ -375,9 +384,23 @@ export function appCheckProblems(data: unknown): string | undefined {
 /**
  * Something the agent asked this page to do. Nothing draws here: a check of
  * an App is a row of the tool-calls section, and the fox on the stage shows
- * what Kit's operations did.
+ * what Kit's operations did. A `ui.present` call is the exception: the tree
+ * it carries is the reply's interface, drawn from the styled vocabulary.
  */
-const ClientOperationPart: DataMessagePartComponent = () => null
+const ClientOperationPart: DataMessagePartComponent = ({ data }) => {
+  const call = object(data)
+  const args = object(call.args)
+  const running = useAuiState((s) => s.message.status?.type === 'running')
+  if (str(call.operation) !== PRESENT) return null
+  const state = str(call.state) ?? 'pending'
+  // While the call streams, the tree is partial; the renderer tolerates that.
+  const status = state === 'pending' && running ? 'streaming' : 'done'
+  return (
+    <div data-slot="theorem-present" className="aui-p-present my-2">
+      {renderGenerativeUI(args, styledGenerativeUILibrary, { status })}
+    </div>
+  )
+}
 
 /* ------------------------------------------------------------------ approvals */
 
@@ -883,54 +906,13 @@ const ReasoningSummaryPart: DataMessagePartComponent = ({ data }) => {
   )
 }
 
-/** External evidence links must name an absolute web URL; never infer a destination. */
-function citationUrl(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined
-  try {
-    const url = new URL(value)
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : undefined
-  } catch {
-    return undefined
-  }
-}
-
 /**
- * Sources a web search or page read retrieved. Each result arrived as its own
- * citation and drew a tag, eight to a search, crowding the answer; the answer
- * links what it uses and the tool call keeps every result, so these draw none.
+ * Citations draw nothing in the part flow: the message's sources are drawn
+ * once after its parts (CitationSources in the thread) — full link previews
+ * where metadata resolved, one Sources hyperlink row with a dropdown for
+ * the rest. The part renderer stays registered so the data part is claimed.
  */
-const RETRIEVED_SOURCES = new Set<unknown>(['web_search', 'web_read'])
-
-const CitationPart: DataMessagePartComponent = ({ data }) => {
-  const part = object(data)
-  if (RETRIEVED_SOURCES.has(part.sourceKind)) return null
-  const provenance = object(part.provenance)
-  const url = citationUrl(provenance.url)
-  const label = str(part.label) ?? (url && new URL(url).hostname) ?? 'Source'
-  const title = str(provenance.excerpt) ?? url
-  const chip = cn(CHIP, 'me-1.5 mt-2 align-top')
-  const content = (
-    <>
-      <Icon.Link className="size-3 shrink-0" />
-      <span className="truncate">{label}</span>
-    </>
-  )
-  return url ? (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      title={title}
-      className={cn(chip, 'hover:text-ink')}
-    >
-      {content}
-    </a>
-  ) : (
-    <span title={title} className={chip}>
-      {content}
-    </span>
-  )
-}
+const CitationPart: DataMessagePartComponent = () => null
 
 const ErrorPart: DataMessagePartComponent = ({ data }) => {
   const part = object(data)
@@ -1074,6 +1056,12 @@ const RENDERERS = (
     ['theorem-user_input', UserInputPart],
     // A run's completion: why it stopped, and the way back up when a limit stopped it.
     ['theorem-completion', CompletionFooter],
+    // The saved records a reply was given, each at its saved revision, and what was held back.
+    ['theorem-context_manifest', ContextManifestPart],
+    ['theorem-skill_load', SkillLoadPart],
+    // A change the assistant proposes to a saved record: nothing is saved until the person approves.
+    ['theorem-record_change_proposal', RecordChangeProposalPart],
+    ['theorem-record_change_outcome', RecordChangeOutcomePart],
     ...DELEGATION_RENDERERS,
   ] satisfies Array<[string, DataMessagePartComponent]>
 )
@@ -1088,7 +1076,8 @@ const RENDERERS = (
     ['theorem-expression', Inert],
     ['theorem-expression_refused', Inert],
     // The page's client operations: a check of an App shows as a chip.
-    ['theorem-client_operation', ClientOperationPart],
+    // A ui.present tree is model-supplied; a render failure stays in its slot.
+    ['theorem-client_operation', guarded('theorem-client_operation', ClientOperationPart)],
     // A TypeScript program the agent wrote is shown as one, closed, with its
     // source inside. What it did shows up as its calls and their artifacts.
     ['theorem-program', ProgramPart],

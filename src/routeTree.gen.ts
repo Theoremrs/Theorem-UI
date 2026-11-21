@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ChatRouteImport } from './routes/_chat'
+import { Route as AppHostRouteImport } from './routes/app-host'
 import { Route as GraphqlRouteImport } from './routes/graphql'
 import { Route as InstallRouteImport } from './routes/install'
 import { Route as LoginRouteImport } from './routes/login'
@@ -38,6 +39,7 @@ import { Route as SettingsConnectionsRouteImport } from './routes/settings/conne
 import { Route as SettingsImportRouteImport } from './routes/settings/import'
 import { Route as SettingsKeysRouteImport } from './routes/settings/keys'
 import { Route as SettingsPluginsRouteImport } from './routes/settings/plugins'
+import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsResponsesRouteImport } from './routes/settings/responses'
 import { Route as SettingsWorkRouteImport } from './routes/settings/work'
 import { Route as StoryAssetsSceneHostDothtmlRouteImport } from './routes/story-assets.scene-host[.]html'
@@ -56,12 +58,14 @@ import { Route as DesktopBlocksIndexRouteImport } from './routes/desktop/blocks/
 import { Route as DesktopBlocksAppTokenRouteImport } from './routes/desktop/blocks/app-token'
 import { Route as DesktopWorkspaceIndexRouteImport } from './routes/desktop/workspace/index'
 import { Route as SettingsObserveIndexRouteImport } from './routes/settings/observe/index'
+import { Route as ApiAppsV1SplatRouteImport } from './routes/api/apps/v1/$'
 import { Route as ApiArtifactsV1SplatRouteImport } from './routes/api/artifacts/v1/$'
 import { Route as ApiCapabilitiesV1SplatRouteImport } from './routes/api/capabilities/v1/$'
 import { Route as ApiChatV1SplatRouteImport } from './routes/api/chat/v1/$'
 import { Route as ApiDocumentsV2SplatRouteImport } from './routes/api/documents/v2/$'
 import { Route as ApiEnvironmentV1SplatRouteImport } from './routes/api/environment/v1/$'
 import { Route as ApiFilesV1SplatRouteImport } from './routes/api/files/v1/$'
+import { Route as ApiLinkPreviewV1SplatRouteImport } from './routes/api/link-preview/v1/$'
 import { Route as ApiObserveV1SplatRouteImport } from './routes/api/observe/v1/$'
 import { Route as ApiProjectFilesV1SplatRouteImport } from './routes/api/project-files/v1/$'
 import { Route as ApiSceneV1SplatRouteImport } from './routes/api/scene/v1/$'
@@ -91,6 +95,11 @@ import { Route as V1TheoremAgentStreamSplatRouteImport } from './routes/v1/theor
 
 const ChatRoute = ChatRouteImport.update({
   id: '/_chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppHostRoute = AppHostRouteImport.update({
+  id: '/app-host',
+  path: '/app-host',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GraphqlRoute = GraphqlRouteImport.update({
@@ -234,6 +243,11 @@ const SettingsPluginsRoute = SettingsPluginsRouteImport.update({
   path: '/plugins',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsProfileRoute = SettingsProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsResponsesRoute = SettingsResponsesRouteImport.update({
   id: '/responses',
   path: '/responses',
@@ -325,6 +339,11 @@ const SettingsObserveIndexRoute = SettingsObserveIndexRouteImport.update({
   path: '/observe/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const ApiAppsV1SplatRoute = ApiAppsV1SplatRouteImport.update({
+  id: '/api/apps/v1/$',
+  path: '/api/apps/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiArtifactsV1SplatRoute = ApiArtifactsV1SplatRouteImport.update({
   id: '/api/artifacts/v1/$',
   path: '/api/artifacts/v1/$',
@@ -353,6 +372,11 @@ const ApiEnvironmentV1SplatRoute = ApiEnvironmentV1SplatRouteImport.update({
 const ApiFilesV1SplatRoute = ApiFilesV1SplatRouteImport.update({
   id: '/api/files/v1/$',
   path: '/api/files/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLinkPreviewV1SplatRoute = ApiLinkPreviewV1SplatRouteImport.update({
+  id: '/api/link-preview/v1/$',
+  path: '/api/link-preview/v1/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiObserveV1SplatRoute = ApiObserveV1SplatRouteImport.update({
@@ -509,6 +533,7 @@ const V1TheoremAgentStreamSplatRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
+  '/app-host': typeof AppHostRoute
   '/graphql': typeof GraphqlRoute
   '/install': typeof InstallRoute
   '/login': typeof LoginRoute
@@ -535,6 +560,7 @@ export interface FileRoutesByFullPath {
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story-assets/scene-host.html': typeof StoryAssetsSceneHostDothtmlRoute
@@ -554,12 +580,14 @@ export interface FileRoutesByFullPath {
   '/desktop/blocks/': typeof DesktopBlocksIndexRoute
   '/desktop/workspace/': typeof DesktopWorkspaceIndexRoute
   '/settings/observe/': typeof SettingsObserveIndexRoute
+  '/api/apps/v1/$': typeof ApiAppsV1SplatRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
+  '/api/link-preview/v1/$': typeof ApiLinkPreviewV1SplatRoute
   '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
@@ -588,6 +616,7 @@ export interface FileRoutesByFullPath {
   '/v1/theorem/agent/stream/$': typeof V1TheoremAgentStreamSplatRoute
 }
 export interface FileRoutesByTo {
+  '/app-host': typeof AppHostRoute
   '/graphql': typeof GraphqlRoute
   '/install': typeof InstallRoute
   '/login': typeof LoginRoute
@@ -613,6 +642,7 @@ export interface FileRoutesByTo {
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story-assets/scene-host.html': typeof StoryAssetsSceneHostDothtmlRoute
@@ -633,12 +663,14 @@ export interface FileRoutesByTo {
   '/desktop/blocks': typeof DesktopBlocksIndexRoute
   '/desktop/workspace': typeof DesktopWorkspaceIndexRoute
   '/settings/observe': typeof SettingsObserveIndexRoute
+  '/api/apps/v1/$': typeof ApiAppsV1SplatRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
+  '/api/link-preview/v1/$': typeof ApiLinkPreviewV1SplatRoute
   '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
@@ -669,6 +701,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
+  '/app-host': typeof AppHostRoute
   '/graphql': typeof GraphqlRoute
   '/install': typeof InstallRoute
   '/login': typeof LoginRoute
@@ -695,6 +728,7 @@ export interface FileRoutesById {
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story-assets/scene-host.html': typeof StoryAssetsSceneHostDothtmlRoute
@@ -715,12 +749,14 @@ export interface FileRoutesById {
   '/desktop/blocks/': typeof DesktopBlocksIndexRoute
   '/desktop/workspace/': typeof DesktopWorkspaceIndexRoute
   '/settings/observe/': typeof SettingsObserveIndexRoute
+  '/api/apps/v1/$': typeof ApiAppsV1SplatRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
+  '/api/link-preview/v1/$': typeof ApiLinkPreviewV1SplatRoute
   '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
@@ -752,6 +788,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/app-host'
     | '/graphql'
     | '/install'
     | '/login'
@@ -778,6 +815,7 @@ export interface FileRouteTypes {
     | '/settings/import'
     | '/settings/keys'
     | '/settings/plugins'
+    | '/settings/profile'
     | '/settings/responses'
     | '/settings/work'
     | '/story-assets/scene-host.html'
@@ -797,12 +835,14 @@ export interface FileRouteTypes {
     | '/desktop/blocks/'
     | '/desktop/workspace/'
     | '/settings/observe/'
+    | '/api/apps/v1/$'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
+    | '/api/link-preview/v1/$'
     | '/api/observe/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
@@ -831,6 +871,7 @@ export interface FileRouteTypes {
     | '/v1/theorem/agent/stream/$'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/app-host'
     | '/graphql'
     | '/install'
     | '/login'
@@ -856,6 +897,7 @@ export interface FileRouteTypes {
     | '/settings/import'
     | '/settings/keys'
     | '/settings/plugins'
+    | '/settings/profile'
     | '/settings/responses'
     | '/settings/work'
     | '/story-assets/scene-host.html'
@@ -876,12 +918,14 @@ export interface FileRouteTypes {
     | '/desktop/blocks'
     | '/desktop/workspace'
     | '/settings/observe'
+    | '/api/apps/v1/$'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
+    | '/api/link-preview/v1/$'
     | '/api/observe/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
@@ -911,6 +955,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_chat'
+    | '/app-host'
     | '/graphql'
     | '/install'
     | '/login'
@@ -937,6 +982,7 @@ export interface FileRouteTypes {
     | '/settings/import'
     | '/settings/keys'
     | '/settings/plugins'
+    | '/settings/profile'
     | '/settings/responses'
     | '/settings/work'
     | '/story-assets/scene-host.html'
@@ -957,12 +1003,14 @@ export interface FileRouteTypes {
     | '/desktop/blocks/'
     | '/desktop/workspace/'
     | '/settings/observe/'
+    | '/api/apps/v1/$'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
+    | '/api/link-preview/v1/$'
     | '/api/observe/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
@@ -993,6 +1041,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
+  AppHostRoute: typeof AppHostRoute
   GraphqlRoute: typeof GraphqlRoute
   InstallRoute: typeof InstallRoute
   LoginRoute: typeof LoginRoute
@@ -1016,12 +1065,14 @@ export interface RootRouteChildren {
   DesktopBlocksAppTokenRoute: typeof DesktopBlocksAppTokenRoute
   DesktopBlocksIndexRoute: typeof DesktopBlocksIndexRoute
   DesktopWorkspaceIndexRoute: typeof DesktopWorkspaceIndexRoute
+  ApiAppsV1SplatRoute: typeof ApiAppsV1SplatRoute
   ApiArtifactsV1SplatRoute: typeof ApiArtifactsV1SplatRoute
   ApiCapabilitiesV1SplatRoute: typeof ApiCapabilitiesV1SplatRoute
   ApiChatV1SplatRoute: typeof ApiChatV1SplatRoute
   ApiDocumentsV2SplatRoute: typeof ApiDocumentsV2SplatRoute
   ApiEnvironmentV1SplatRoute: typeof ApiEnvironmentV1SplatRoute
   ApiFilesV1SplatRoute: typeof ApiFilesV1SplatRoute
+  ApiLinkPreviewV1SplatRoute: typeof ApiLinkPreviewV1SplatRoute
   ApiObserveV1SplatRoute: typeof ApiObserveV1SplatRoute
   ApiProjectFilesV1SplatRoute: typeof ApiProjectFilesV1SplatRoute
   ApiSceneV1SplatRoute: typeof ApiSceneV1SplatRoute
@@ -1056,6 +1107,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app-host': {
+      id: '/app-host'
+      path: '/app-host'
+      fullPath: '/app-host'
+      preLoaderRoute: typeof AppHostRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/graphql': {
@@ -1254,6 +1312,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsPluginsRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/profile': {
+      id: '/settings/profile'
+      path: '/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof SettingsProfileRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/responses': {
       id: '/settings/responses'
       path: '/responses'
@@ -1380,6 +1445,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsObserveIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/api/apps/v1/$': {
+      id: '/api/apps/v1/$'
+      path: '/api/apps/v1/$'
+      fullPath: '/api/apps/v1/$'
+      preLoaderRoute: typeof ApiAppsV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/artifacts/v1/$': {
       id: '/api/artifacts/v1/$'
       path: '/api/artifacts/v1/$'
@@ -1420,6 +1492,13 @@ declare module '@tanstack/react-router' {
       path: '/api/files/v1/$'
       fullPath: '/api/files/v1/$'
       preLoaderRoute: typeof ApiFilesV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/link-preview/v1/$': {
+      id: '/api/link-preview/v1/$'
+      path: '/api/link-preview/v1/$'
+      fullPath: '/api/link-preview/v1/$'
+      preLoaderRoute: typeof ApiLinkPreviewV1SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/observe/v1/$': {
@@ -1667,6 +1746,7 @@ interface SettingsRouteChildren {
   SettingsImportRoute: typeof SettingsImportRoute
   SettingsKeysRoute: typeof SettingsKeysRoute
   SettingsPluginsRoute: typeof SettingsPluginsRoute
+  SettingsProfileRoute: typeof SettingsProfileRoute
   SettingsResponsesRoute: typeof SettingsResponsesRoute
   SettingsWorkRoute: typeof SettingsWorkRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -1682,6 +1762,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsImportRoute: SettingsImportRoute,
   SettingsKeysRoute: SettingsKeysRoute,
   SettingsPluginsRoute: SettingsPluginsRoute,
+  SettingsProfileRoute: SettingsProfileRoute,
   SettingsResponsesRoute: SettingsResponsesRoute,
   SettingsWorkRoute: SettingsWorkRoute,
   SettingsIndexRoute: SettingsIndexRoute,
@@ -1695,6 +1776,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
+  AppHostRoute: AppHostRoute,
   GraphqlRoute: GraphqlRoute,
   InstallRoute: InstallRoute,
   LoginRoute: LoginRoute,
@@ -1719,12 +1801,14 @@ const rootRouteChildren: RootRouteChildren = {
   DesktopBlocksAppTokenRoute: DesktopBlocksAppTokenRoute,
   DesktopBlocksIndexRoute: DesktopBlocksIndexRoute,
   DesktopWorkspaceIndexRoute: DesktopWorkspaceIndexRoute,
+  ApiAppsV1SplatRoute: ApiAppsV1SplatRoute,
   ApiArtifactsV1SplatRoute: ApiArtifactsV1SplatRoute,
   ApiCapabilitiesV1SplatRoute: ApiCapabilitiesV1SplatRoute,
   ApiChatV1SplatRoute: ApiChatV1SplatRoute,
   ApiDocumentsV2SplatRoute: ApiDocumentsV2SplatRoute,
   ApiEnvironmentV1SplatRoute: ApiEnvironmentV1SplatRoute,
   ApiFilesV1SplatRoute: ApiFilesV1SplatRoute,
+  ApiLinkPreviewV1SplatRoute: ApiLinkPreviewV1SplatRoute,
   ApiObserveV1SplatRoute: ApiObserveV1SplatRoute,
   ApiProjectFilesV1SplatRoute: ApiProjectFilesV1SplatRoute,
   ApiSceneV1SplatRoute: ApiSceneV1SplatRoute,

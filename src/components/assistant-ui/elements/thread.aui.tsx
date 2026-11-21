@@ -7,6 +7,10 @@ import { File, getFileHref } from '@/components/assistant-ui/elements/file'
 import { Image } from '@/components/assistant-ui/elements/image'
 import { MarkdownText } from '@/components/assistant-ui/elements/markdown-text'
 import {
+  QuoteBlock,
+  SelectionToolbar,
+} from '@/components/assistant-ui/elements/quote.aui'
+import {
   Reasoning,
   ReasoningContent,
   ReasoningRoot,
@@ -19,6 +23,7 @@ import {
   isStandaloneToolCall,
   TheoremToolCall,
 } from '@/components/chat/theorem-parts'
+import { CitationSources } from '@/components/chat/citation-sources'
 import { ComposerEditor } from '@/components/chat/composer-editor'
 import { Composer, composerSurface } from '@/components/chat/composer'
 import type { ComposerLayout, ComposerSlots } from '@/components/chat/composer'
@@ -335,6 +340,8 @@ const ThreadRoot: FC<{
           </ThreadPrimitive.ViewportFooter>
         </div>
       </ThreadPrimitive.Viewport>
+      {/* Selecting reply text offers to quote it into the composer. */}
+      <SelectionToolbar />
     </ThreadPrimitive.Root>
   )
 }
@@ -753,6 +760,7 @@ export const AssistantMessageContent: FC<{ speaker?: string }> = ({
         className="appearance-assistant-prose text-foreground wrap-break-word"
       >
         <MessageParts />
+        <CitationSources />
         <MessageError />
       </div>
     </div>
@@ -947,29 +955,24 @@ const UserMessage: FC = () => {
     const origin = takeLaunch()
     const content = contentRef.current
     if (!origin || !content) return
-    // The root's content-visibility would clip the flight to its own box.
-    const root = content.closest<HTMLElement>(
-      '[data-slot="aui_user-message-root"]',
-    )
-    root?.style.setProperty('content-visibility', 'visible')
     // The message starts where the composer's text does, so it rises straight
     // up rather than swinging across.
     const { width } = content.getBoundingClientRect()
     const start = new DOMRect(origin.left, origin.top, width, origin.height)
-    void flyFrom(content, start)?.then(() =>
-      root?.style.removeProperty('content-visibility'),
-    )
+    void flyFrom(content, start)
   }, [])
 
   return (
     // The person speaks from the right of the column, across from the agent,
     // on the composer's paper the message rose from: a soft fill with no
     // outline or drop shadow, as Claude's own turns sit, so the reply is the
-    // heavier of the two.
+    // heavier of the two. Keep these earlier turns at their real height:
+    // replacing an estimated height while scrolling to response controls can
+    // move those controls between pointerdown and click.
     <MessagePrimitive.Root
       data-slot="aui_user-message-root"
       {...surface}
-      className="flex flex-col items-end gap-1 ps-[20%] pe-2 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
+      className="flex flex-col items-end gap-1 ps-[20%] pe-2"
       data-role="user"
     >
       <UserMessageAttachments />
@@ -995,6 +998,7 @@ const UserMessage: FC = () => {
               File: UserFilePart,
               Image: UserImagePart,
               Text: UserTextPart,
+              Quote: QuoteBlock,
             }}
           />
         </div>

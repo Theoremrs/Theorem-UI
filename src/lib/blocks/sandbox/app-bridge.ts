@@ -17,7 +17,11 @@ import {
 } from './display'
 import { MAX_FRAME_ERRORS, call, rpcOver, serve } from './protocol'
 import type {
+  ArtifactObservation,
+  DossierContext,
+  DossierState,
   FrameError,
+  ModelTrace,
   ModuleValues,
   PageMethods,
   SandboxMethods,
@@ -29,6 +33,14 @@ let moduleValues: ModuleValues | undefined
 const moduleListeners = new Set<ModuleListener>()
 type ActionListener = (payload: unknown) => void
 const actionListeners = new Map<string, Set<ActionListener>>()
+type DossierListener = (state: DossierState) => void
+let dossierState: DossierState | undefined
+const dossierListeners = new Set<DossierListener>()
+let dossierWatch: Promise<void> | undefined
+const tellDossier = (state: DossierState) => {
+  dossierState = state
+  for (const listener of dossierListeners) listener(state)
+}
 
 const context = connectToPage().then((port) => {
   const rpc = rpcOver(port)
@@ -60,6 +72,10 @@ const context = connectToPage().then((port) => {
       return null
     },
   )
+  serve<SandboxMethods, 'dossier.changed'>(rpc, 'dossier.changed', (state) => {
+    tellDossier(state)
+    return null
+  })
   serve<SandboxMethods, 'theme.changed'>(rpc, 'theme.changed', (theme) => {
     if ('scheme' in theme) {
       // A hosted App's look follows into the host stylesheet, under the App's own.
@@ -74,8 +90,8 @@ const context = connectToPage().then((port) => {
   // A page that never stops changing never settles into a snapshot, so the
   // page can ask for one.
   serve<SandboxMethods, 'frame.look'>(rpc, 'frame.look', () => lookNow())
-  observeHeight((height) => {
-    void call<PageMethods, 'frame.resize'>(rpc, 'frame.resize', { height })
+  observeHeight((height, fills) => {
+    void call<PageMethods, 'frame.resize'>(rpc, 'frame.resize', { height, fills })
   })
   observeSnapshots((html, outline) => {
     void call<PageMethods, 'frame.snapshot'>(rpc, 'frame.snapshot', {
@@ -188,6 +204,8 @@ window.addEventListener('unhandledrejection', (event) => {
   report(thrown(event.reason))
 })
 
+const context_ = async () => (await context).cells
+
 type Files = ReturnType<CellContext['files']>
 /** One of the `files` calls, made once the page has connected: its own arguments, its own result. */
 const files = <TName extends keyof Files>(name: TName): Files[TName] =>
@@ -197,6 +215,69 @@ const files = <TName extends keyof Files>(name: TName): Files[TName] =>
     )) as unknown as Files[TName]
 
 const theorem = {
+  /**
+   * The page's one conversation. A question asked here goes to the page's
+   * agent with this App's revision and the `context` given, and its reply is
+   * in the conversation like any other; `watch` follows the questions asked
+   * from this App and their replies.
+   */
+  dossier: {
+    ask: async (text: string, context: DossierContext = {}) => {
+      await call<PageMethods, 'dossier.ask'>((await context_()).rpc, 'dossier.ask', { text, context })
+    },
+    /** Calls `listener` with the App's part of the conversation, and again when it changes. */
+    watch(listener: DossierListener): () => void {
+      dossierListeners.add(listener)
+      if (dossierState) listener(dossierState)
+      dossierWatch ??= context_()
+        .then(({ rpc }) => call<PageMethods, 'dossier.watch'>(rpc, 'dossier.watch', {}))
+        .then(tellDossier, () => tellDossier({ available: false, running: false, messages: [] }))
+      return () => dossierListeners.delete(listener)
+    },
+    /** Opens this App's source where `name` is written, for the person to read. */
+    source: async (name: string) =>
+      (await call<PageMethods, 'dossier.source'>((await context_()).rpc, 'dossier.source', { name })).found,
+  },
+  /**
+   * A model's run, cycle by cycle, written as a Rerun recording by Rerun's
+   * own SDK: `.rrd` bytes for `LogChannel.send_rrd` in Rerun's web viewer.
+   */
+  trace: {
+    recording: async (trace: ModelTrace) =>
+      call<PageMethods, 'trace.recording'>((await context_()).rpc, 'trace.recording', trace),
+  },
+  /**
+   * Keeps runs and results beyond this open App, for this person: a question
+   * about a moment or a result can then be resolved exactly from another
+   * conversation or App. Each is written once; writing it again is a no-op.
+   */
+  artifacts: {
+    /**
+     * Records a run's next observations (`@theorem/runtime`'s RunRef, then
+     * observations continuing from index 0 with no gaps). A run that names no
+     * source is recorded as run by this App's revision.
+     */
+    record: async (run: object, domain: string, observations: Array<ArtifactObservation>) =>
+      call<PageMethods, 'artifacts.record'>((await context_()).rpc, 'artifacts.record', {
+        run,
+        domain,
+        observations,
+      }),
+    /** Keeps a result (a ResultRef whose `content` is the digest of `bytes`) with its bytes. */
+    result: async (result: object, bytes: Uint8Array) =>
+      call<PageMethods, 'artifacts.result'>((await context_()).rpc, 'artifacts.result', { result, bytes }),
+    /** Whether a subject is held exactly; never answered with the latest instead. */
+    resolve: async (subject: object) =>
+      call<PageMethods, 'artifacts.resolve'>((await context_()).rpc, 'artifacts.resolve', { subject }),
+    /** The revision running (an ArtifactSourceRef), for a result computed now to name as its source. */
+    source: async () => call<PageMethods, 'artifacts.source'>((await context_()).rpc, 'artifacts.source', {}),
+    /**
+     * A kept result and its bytes, by the result's id, from this or any other
+     * conversation or App; both are checked against their digests.
+     */
+    open: async (id: string) =>
+      call<PageMethods, 'artifacts.open'>((await context_()).rpc, 'artifacts.open', { id }),
+  },
   /** Resolves once the page has connected this app. */
   ready: context.then(() => undefined),
   files: {

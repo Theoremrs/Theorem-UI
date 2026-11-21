@@ -10,8 +10,15 @@ import {
 } from '@tanstack/react-router'
 import { SettingsLayout } from '@/components/settings/settings-frame'
 import { Route as AiRoute } from '@/routes/settings/ai'
+import { Route as ResponsesRoute } from '@/routes/settings/responses'
+import { Route as AppearanceRoute } from '@/routes/settings/appearance'
 
-export function SettingsAiStory() {
+/** The settings frame at one of its pages: AI (the model table), Responses, or Appearance. */
+export function SettingsAiStory({
+  path = '/settings/ai',
+}: {
+  path?: '/settings/ai' | '/settings/responses' | '/settings/appearance'
+}) {
   const [router] = useState(() => {
     const root = createRootRoute({
       component: () => (
@@ -27,8 +34,18 @@ export function SettingsAiStory() {
           path: '/settings/ai',
           component: AiRoute.options.component,
         }),
+        createRoute({
+          getParentRoute: () => root,
+          path: '/settings/responses',
+          component: ResponsesRoute.options.component,
+        }),
+        createRoute({
+          getParentRoute: () => root,
+          path: '/settings/appearance',
+          component: AppearanceRoute.options.component,
+        }),
       ]),
-      history: createMemoryHistory({ initialEntries: ['/settings/ai'] }),
+      history: createMemoryHistory({ initialEntries: [path] }),
     })
   })
   return <RouterProvider router={router} />

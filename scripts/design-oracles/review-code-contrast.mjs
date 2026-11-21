@@ -82,7 +82,14 @@ async function measure(page, fixture, root, leaf, inline) {
           const value = getComputedStyle(node).backgroundColor
           if (value !== 'transparent' && value !== 'rgba(0, 0, 0, 0)')
             colors.push(value)
-          if (!value.startsWith('rgba(') && value !== 'transparent') break
+          // Any colour syntax can be translucent (rgba, or oklab/oklch/color
+          // with "/ alpha"); keep walking until an opaque layer is found.
+          const alpha = value.match(/\/\s*([\d.]+%?)\s*\)$/)?.[1]
+          const translucent =
+            value.startsWith('rgba(') ||
+            (alpha !== undefined &&
+              (alpha.endsWith('%') ? parseFloat(alpha) < 100 : parseFloat(alpha) < 1))
+          if (!translucent && value !== 'transparent') break
         }
         return colors.reverse()
       }

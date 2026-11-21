@@ -67,10 +67,11 @@ export function turns({ context, page }) {
    * Send a message, wait for its run to be recorded, and say which model it ran on.
    * `box` is the composer to type in and `keys` what sends from it.
    */
-  async function send(text, { box = page.getByRole('textbox').first(), keys = 'Enter' } = {}) {
+  async function send(text, { box = page.getByRole('textbox').first(), keys = 'Control+Enter' } = {}) {
     const before = (await lastRunOf())?.runId
     await box.click()
     await box.fill(text)
+    // Enter edits the message; the composer sends on Control+Enter.
     await page.keyboard.press(keys)
     for (let look = 0; look < LOOKS; look++) {
       const run = await lastRunOf().catch(() => undefined)
@@ -84,9 +85,9 @@ export function turns({ context, page }) {
     return { run: await lastRunOf(), acting: {} }
   }
 
-  /** Wait for the thread's latest run to end, and return it. */
-  async function ended() {
-    for (let look = 0; look < LOOKS; look++) {
+  /** Wait for the thread's latest run to end, and return it. `looks` of three seconds each; default five minutes. */
+  async function ended({ looks = LOOKS } = {}) {
+    for (let look = 0; look < looks; look++) {
       const current = await json(`/threads/${encodeURIComponent(threadId())}`).catch(() => undefined)
       if (current && !current.liveRun && current.thread?.lastRun?.outcome) return current.thread.lastRun
       await pause(LOOK_MS)

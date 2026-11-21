@@ -34,15 +34,13 @@ import {
   validateServerEdit,
 } from './server-form'
 import type { DraftErrors, ServerDraft } from './server-form'
+import { GITHUB_MCP_URL } from './github-mcp'
 
 const AUTH_CHOICES: { value: McpAuthType; label: string }[] = [
   { value: 'none', label: 'None' },
   { value: 'bearer', label: 'Bearer token' },
   { value: 'oauth', label: 'Sign in' },
 ]
-
-// GitHub's hosted server accepts a PAT as a bearer credential for MCP clients.
-const GITHUB_MCP_URL = 'https://api.githubcopilot.com/mcp/'
 
 /** Adds a server, or with `server` edits its name and how it signs in. */
 export function ServerDialog({
@@ -51,7 +49,9 @@ export function ServerDialog({
   server,
   stdioAvailable,
   onReviewTools,
+  preset,
 }: {
+  preset?: 'github'
   open: boolean
   onOpenChange: (open: boolean) => void
   server?: McpServer
@@ -62,6 +62,7 @@ export function ServerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <ServerEditor
+          preset={preset}
           server={server}
           stdioAvailable={stdioAvailable}
           close={() => onOpenChange(false)}
@@ -78,7 +79,9 @@ function ServerEditor({
   stdioAvailable,
   close,
   onReviewTools,
+  preset,
 }: {
+  preset?: 'github'
   server?: McpServer
   stdioAvailable: boolean
   close: () => void
@@ -86,15 +89,22 @@ function ServerEditor({
 }) {
   const { add, update } = useMcpMutations()
   const [draft, setDraft] = useState<ServerDraft>(
-    server ? draftFromServer(server) : emptyDraft,
+    server
+      ? draftFromServer(server)
+      : preset === 'github'
+        ? {
+            ...emptyDraft,
+            label: 'GitHub MCP',
+            url: GITHUB_MCP_URL,
+            auth: 'bearer',
+          }
+        : emptyDraft,
   )
   const [errors, setErrors] = useState<DraftErrors>({})
   const [savedId, setSavedId] = useState<string>()
 
   if (savedId)
-    return (
-      <Saved id={savedId} close={close} onReviewTools={onReviewTools} />
-    )
+    return <Saved id={savedId} close={close} onReviewTools={onReviewTools} />
 
   const pending = add.isPending || update.isPending
   const failure = add.error ?? update.error
@@ -107,7 +117,10 @@ function ServerEditor({
       setErrors(checked.ok ? {} : checked.errors)
       if (!checked.ok) return
       if (Object.keys(checked.value).length === 0) return close()
-      update.mutate({ id: server.id, patch: checked.value }, { onSuccess: close })
+      update.mutate(
+        { id: server.id, patch: checked.value },
+        { onSuccess: close },
+      )
       return
     }
     const checked = validateNewServer(draft, { stdioAvailable })
@@ -119,7 +132,9 @@ function ServerEditor({
   return (
     <form noValidate onSubmit={submit} className="flex flex-col gap-4">
       <DialogHeader>
-        <DialogTitle>{server ? `Edit ${server.label}` : 'Add MCP server'}</DialogTitle>
+        <DialogTitle>
+          {server ? `Edit ${server.label}` : 'Add MCP server'}
+        </DialogTitle>
         <DialogDescription>
           {server
             ? 'Change its name or how it signs in. To change its address, remove it and add it again.'
@@ -132,23 +147,33 @@ function ServerEditor({
         className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0"
       >
         {!server && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="self-start"
-            onClick={() => {
-              setDraft({
-                ...emptyDraft,
-                label: 'GitHub MCP',
-                url: GITHUB_MCP_URL,
-                auth: 'bearer',
-              })
-              setErrors({})
-            }}
-          >
-            Use GitHub MCP
-          </Button>
+          <div className="flex flex-col items-start gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDraft({
+                  ...emptyDraft,
+                  label: 'GitHub MCP',
+                  url: GITHUB_MCP_URL,
+                  auth: 'bearer',
+                })
+                setErrors({})
+              }}
+            >
+              Use GitHub MCP
+            </Button>
+            {draft.url === GITHUB_MCP_URL && (
+              <p className="text-xs text-ink-muted">
+                GitHub's hosted MCP server is separate from the GitHub
+                connection above: it uses its own personal access token, not
+                your connected account. Connect GitHub there for repository
+                following and the built-in tools; add this server for GitHub's
+                own MCP tools.
+              </p>
+            )}
+          </div>
         )}
         <Field invalid={Boolean(errors.label)}>
           <FieldLabel>Name</FieldLabel>
@@ -217,7 +242,9 @@ function ServerEditor({
                   }
                   className="font-mono"
                 />
-                <FieldError match={Boolean(errors.url)}>{errors.url}</FieldError>
+                <FieldError match={Boolean(errors.url)}>
+                  {errors.url}
+                </FieldError>
               </Field>
             ) : (
               <>
@@ -228,7 +255,9 @@ function ServerEditor({
                     spellCheck={false}
                     placeholder="npx"
                     value={draft.command}
-                    onChange={(event) => change({ command: event.target.value })}
+                    onChange={(event) =>
+                      change({ command: event.target.value })
+                    }
                     className="font-mono"
                   />
                   <FieldError match={Boolean(errors.command)}>
@@ -287,7 +316,9 @@ function ServerEditor({
                 ? 'Enter a GitHub personal access token with access to the repositories you want to use.'
                 : 'Theorem keeps this token and sends it only to this server.'}
             </FieldDescription>
-            <FieldError match={Boolean(errors.token)}>{errors.token}</FieldError>
+            <FieldError match={Boolean(errors.token)}>
+              {errors.token}
+            </FieldError>
           </Field>
         )}
         {draft.auth === 'oauth' && (
@@ -377,8 +408,13 @@ function Saved({
       {working ? (
         <ul className="flex max-h-60 flex-col divide-y divide-separator overflow-y-auto rounded-lg border border-separator">
           {server.tools.map((tool) => (
-            <li key={tool.name} className="flex items-center gap-2 px-3 py-2 text-sm">
-              <span className="min-w-0 flex-1 truncate">{tool.title ?? tool.name}</span>
+            <li
+              key={tool.name}
+              className="flex items-center gap-2 px-3 py-2 text-sm"
+            >
+              <span className="min-w-0 flex-1 truncate">
+                {tool.title ?? tool.name}
+              </span>
               <EffectBadge effect={tool.effect} />
             </li>
           ))}

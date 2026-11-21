@@ -38,9 +38,17 @@ import { StatusBadge, addressOf } from './parts'
 import { ServerNotice, TestOutcome } from './server-actions'
 import { ServerDetail } from './server-detail'
 import { ServerDialog } from './server-dialog'
+import { isGithubMcp } from './github-mcp'
 
-export function McpServers() {
+export function McpServers({
+  excludeGithub = false,
+}: {
+  excludeGithub?: boolean
+}) {
   const servers = useMcpServers()
+  const listed =
+    servers.data?.filter((server) => !excludeGithub || !isGithubMcp(server)) ??
+    []
   const connections = useConnections()
   const stdioAvailable = connections.data?.stdioAvailable ?? false
   const [adding, setAdding] = useState(false)
@@ -68,7 +76,11 @@ export function McpServers() {
               : 'Theorem did not list its MCP servers'}
           </EmptyTitle>
           <EmptyDescription>{describeError(servers.error)}</EmptyDescription>
-          <Button variant="outline" size="sm" onClick={() => void servers.refetch()}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void servers.refetch()}
+          >
             Try again
           </Button>
         </Empty>
@@ -84,9 +96,13 @@ export function McpServers() {
             </div>
           ))}
         </SettingsBox>
-      ) : servers.data.length === 0 ? (
+      ) : listed.length === 0 ? (
         <Empty className="rounded-lg border border-separator py-10 md:py-10">
-          <EmptyTitle>No MCP servers yet</EmptyTitle>
+          <EmptyTitle>
+            {excludeGithub && servers.data.length > 0
+              ? 'No other MCP servers'
+              : 'No MCP servers yet'}
+          </EmptyTitle>
           <EmptyDescription>
             Add a server and its tools join your agent in any conversation. You
             choose, per conversation, which connections are on.
@@ -97,7 +113,7 @@ export function McpServers() {
         </Empty>
       ) : (
         <SettingsBox>
-          {servers.data.map((server) => (
+          {listed.map((server) => (
             <ServerRow
               key={server.id}
               server={server}
@@ -128,7 +144,7 @@ export function McpServers() {
   )
 }
 
-function ServerRow({
+export function ServerRow({
   server,
   onOpen,
   onEdit,
@@ -165,7 +181,12 @@ function ServerRow({
             <span>
               {tools} {tools === 1 ? 'tool' : 'tools'}
             </span>
-            <span className="min-w-0 truncate font-mono">{addressOf(server)}</span>
+            <span>
+              {server.enabled ? 'Agent access on' : 'Agent access off'}
+            </span>
+            <span className="min-w-0 truncate font-mono">
+              {addressOf(server)}
+            </span>
           </span>
         }
       >
@@ -249,7 +270,9 @@ function ServerRow({
               variant="destructive"
               disabled={remove.isPending}
               onClick={() =>
-                remove.mutate(server.id, { onSuccess: () => setConfirming(false) })
+                remove.mutate(server.id, {
+                  onSuccess: () => setConfirming(false),
+                })
               }
             >
               {remove.isPending ? 'Removing...' : 'Remove'}

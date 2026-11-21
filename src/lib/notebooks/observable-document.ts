@@ -27,9 +27,9 @@ type Bundler = Pick<typeof Esbuild, 'build'>
 const OBSERVABLE_STYLE = [inputsStyle, inspectorStyle, highlightStyle].join('\n')
 
 /**
- * A cell's `import("d3")` as the frame resolves it. The frame has no network
- * and no import map URL to fetch from; its bundle holds the import map's
- * modules and answers by specifier.
+ * A cell's `import("d3")` as the frame resolves it. The frame has no import
+ * map URL to fetch from; its bundle holds the import map's modules and
+ * answers by specifier.
  */
 function pointImports(body: string): string {
   const out = new MagicString(body)
@@ -80,7 +80,7 @@ let runtime: Promise<string> | undefined
 /**
  * The hosted document an Observable notebook runs in: the App bridge, the
  * notebook runtime with the import map's modules, the cells, and the theme it
- * opened with. It reaches no network.
+ * opened with. It loads nothing it does not carry.
  */
 export async function observableDocument(
   notebook: ObservableNotebook,
@@ -101,8 +101,7 @@ export async function observableDocument(
     main: '',
     scripts: `<script>${script}</script>\n<script>${notebookCellsScript(notebook)}</script>`,
   })
-  // d3's delimited-text parsers build their row readers from strings.
-  return hostedAppDocument(html, esbuild, { net: [], evaluates: true })
+  return hostedAppDocument(html, esbuild)
 }
 
 /**

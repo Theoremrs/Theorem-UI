@@ -42,6 +42,18 @@ export const collapsePanel =
 export const live = "text-redwood-ink";
 
 /**
+ * A bounded response block (interactive-responses plan §5): the compact
+ * frame, its one wrapping toolbar row, and its padded body. The rules live
+ * in appearance.css on the appearance tokens, so density and material
+ * policy reach them; these names are the recipe components compose.
+ */
+export const responseFrame = "response-frame my-2";
+
+export const responseToolbar = "response-toolbar";
+
+export const responseBody = "response-frame-body";
+
+/**
  * Pops a part in when its message arrived live (the assistant message root
  * carries data-live); parts of messages loaded with history render still.
  */

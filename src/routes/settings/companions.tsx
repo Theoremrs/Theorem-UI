@@ -1,5 +1,7 @@
-// SOURCING: lib/figures (Theo and Kit), lib/speech/narrate (narrating replies as they stream), coss ui Switch and SegmentedControl (through the appearance page's Choice), the settings frame
+// SOURCING: lib/figures (Theo and Kit), lib/speech/narrate (narrating replies as they stream), lib/speech/dictation (server dictation status), coss ui Switch, Badge and SegmentedControl (through the appearance page's Choice), the settings frame
 import { createFileRoute } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
+import { Badge } from '@/components/coss/badge'
 import { SegmentedControl } from '@/components/coss/segmented-control'
 import { Switch } from '@/components/coss/switch'
 import { FaceMark } from '@/components/face/face-mark'
@@ -69,6 +71,7 @@ function CompanionsSettings() {
           </SettingsRow>
         </SettingsBox>
       </SettingsSection>
+      <DictationVoice />
       <SettingsSection title="Kit">
         <SettingsBox>
           <SettingsRow
@@ -85,5 +88,51 @@ function CompanionsSettings() {
         </SettingsBox>
       </SettingsSection>
     </SettingsPage>
+  )
+}
+
+/**
+ * Dictation is a product service: the browser captures the microphone and
+ * shows a live waveform, and Theorem's server transcribes the utterance on
+ * OpenRouter with the deployment's own key. Nothing to install, no key to
+ * bring. Where the server does not serve it, dictation falls back to the
+ * browser's own recognition.
+ */
+function DictationVoice() {
+  const [status, setStatus] = useState<{
+    served: boolean
+    execution_provider?: string | null
+  }>()
+
+  useEffect(() => {
+    fetch('/api/chat/v1/dictation/status', { headers: { Accept: 'application/json' } })
+      .then((response) => (response.ok ? response.json() : { served: false }))
+      .then(setStatus)
+      .catch(() => setStatus({ served: false }))
+  }, [])
+
+  const served = status?.served === true
+
+  return (
+    <SettingsSection
+      title="Dictation voice"
+      description="What the microphone hears with. Your voice is transcribed by Theorem's speech service and lands in the composer when you stop. Nothing to download and no key to add. Where the service is unreachable, your browser's own speech recognition is used."
+    >
+      <SettingsBox>
+        <SettingsRow
+          Mark={Icon.Microphone}
+          title="Theorem speech service"
+          description={
+            !status ? (
+              <Badge variant="outline">Checking…</Badge>
+            ) : served ? (
+              <Badge variant="success">Ready{status.execution_provider ? ` · ${status.execution_provider}` : ''}</Badge>
+            ) : (
+              <Badge variant="outline">Using browser recognition</Badge>
+            )
+          }
+        />
+      </SettingsBox>
+    </SettingsSection>
   )
 }

@@ -1,15 +1,24 @@
-// SOURCING: assistant-ui ComposerPrimitive.TriggerPopover through the vendored registry element ComposerTriggerPopover, with its TriggerAdapter and TriggerMatcher seams; the default directive formatter writes the pick into the message; the native tool catalog from lib/theorem/tools; zustand (the Web and per-conversation Plan and Code mode state the composer's + menu and the runtime share); the SDK's webResearch option requests research without narrowing the turn's tools; planning independently requests a durable plan through draft_plan
-import { defaultDirectiveFormatter } from '@assistant-ui/react'
+// SOURCING: assistant-ui ComposerPrimitive.TriggerPopover through the vendored registry element ComposerTriggerPopover, with its TriggerAdapter and TriggerMatcher seams; unstable_useSlashCommandAdapter (experimental) for the action commands, merged into the same "/" list as the tools; the default directive formatter writes the pick into the message; the native tool catalog from lib/theorem/tools; zustand (the Web and per-conversation Plan and Code mode state the composer's + menu and the runtime share); the SDK's webResearch option requests research without narrowing the turn's tools; planning independently requests a durable plan through draft_plan
+import {
+  defaultDirectiveFormatter,
+  unstable_useSlashCommandAdapter,
+  useAui,
+  useAuiState,
+} from '@assistant-ui/react'
 import type {
   TriggerAdapter,
   TriggerItem,
   TriggerMatcher,
+  Unstable_SlashCommand,
 } from '@assistant-ui/react'
+import { useNavigate } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { create } from 'zustand'
 import { ComposerTriggerPopover } from '@/components/assistant-ui/elements/composer-trigger-popover.aui'
 import { useMenuGlass } from '@/components/glass/menu-glass'
 import { OutputSettingsDialog } from '@/components/chat/response-control'
+import { Icon } from '@/components/icons'
+import { useShell } from '@/components/shell/shell-state'
 import { searchTools, useToolCatalog } from '@/lib/theorem/tools'
 import type { NativeTool, ToolCatalogState } from '@/lib/theorem/tools'
 import { cn } from '@/lib/utils'
@@ -165,6 +174,96 @@ const OUTPUT_COMMANDS: TriggerItem[] = [
 const outputCommands = (query: string) =>
   OUTPUT_COMMANDS.filter((item) => item.id.startsWith(query.toLowerCase()))
 
+/** The conversation's key: its durable id, or its local id before the first send. */
+const useThreadKey = () =>
+  useAuiState(
+    (state) => state.threadListItem.remoteId ?? state.threadListItem.id,
+  )
+
+const COMMAND_ICONS = {
+  NewChat: Icon.NewChat,
+  WebSearch: Icon.WebSearch,
+  Plan: Icon.Plan,
+  Code: Icon.Code,
+  ReadAloud: Icon.ReadAloud,
+  Plugins: Icon.Plugins,
+} as const
+
+/**
+ * The "/" list's action commands, beside the tools and the output dialogs.
+ * Each does what the + menu or the header does, from the keyboard; the
+ * trigger text is stripped, so a command leaves no chip in the message.
+ */
+function useActionCommands(): readonly Unstable_SlashCommand[] {
+  const aui = useAui()
+  const navigate = useNavigate()
+  const threadKey = useThreadKey()
+  return useMemo(
+    () => [
+      {
+        id: 'new',
+        label: 'new',
+        description: 'Start a new chat.',
+        icon: 'NewChat',
+        execute: () => void aui.threads.switchToNewThread(),
+      },
+      {
+        id: 'web',
+        label: 'web',
+        description: 'Toggle web search for this conversation.',
+        icon: 'WebSearch',
+        execute: () => useWebSearch.getState().toggle(),
+      },
+      {
+        id: 'plan',
+        label: 'plan',
+        description: 'Toggle Plan mode for this conversation.',
+        icon: 'Plan',
+        execute: () => {
+          const planning = usePlanning.getState()
+          planning.set(threadKey, planning.byThread[threadKey] !== true)
+        },
+      },
+      {
+        id: 'code',
+        label: 'code',
+        description: 'Toggle Code mode and the workbench.',
+        icon: 'Code',
+        execute: () => {
+          const modes = useCodeMode.getState()
+          const on = modes.byThread[threadKey] !== true
+          modes.set(threadKey, on)
+          const shell = useShell.getState()
+          if (on && (shell.workbench === undefined || shell.workbench === 'closed'))
+            shell.setWorkbench(shell.lastCompanion)
+        },
+      },
+      {
+        id: 'read-aloud',
+        label: 'read-aloud',
+        description: 'Read the latest reply aloud, or stop reading.',
+        icon: 'ReadAloud',
+        execute: () => {
+          const { messages } = aui.thread.getState()
+          const last = messages.at(-1)
+          if (last?.role !== 'assistant') return
+          const message = aui.thread.message({ id: last.id })
+          if (message.getState().speech) message.stopSpeaking()
+          else message.speak()
+        },
+      },
+      {
+        id: 'connections',
+        label: 'connections',
+        description: 'Open the connections settings.',
+        icon: 'Plugins',
+        execute: () => void navigate({ to: '/settings/connections' }),
+      },
+    ],
+    [aui, navigate, threadKey],
+  )
+}
+
 /** A slash that starts the text or follows a space, up to the caret. */
 const SLASH = /(?:^|\s)\/(\S*)$/u
 
@@ -176,12 +275,14 @@ const SLASH = /(?:^|\s)\/(\S*)$/u
 function slashMatcher(
   status: ToolCatalogState['status'],
   tools: readonly NativeTool[],
+  commands: readonly TriggerItem[],
 ): TriggerMatcher {
   return (text, _char, cursor) => {
     const query = SLASH.exec(text.slice(0, cursor))?.[1]
     if (query === undefined) return null
     if (query && status !== 'loading' &&
-      !outputCommands(query).length && !searchTools(tools, query).length)
+      !outputCommands(query).length && !searchTools(tools, query).length &&
+      !commands.some((item) => item.id.startsWith(query.toLowerCase())))
       return null
     return { query, offset: cursor - query.length - 1, endOffset: cursor }
   }
@@ -199,17 +300,32 @@ export function ComposerToolTrigger() {
   const { status, tools } = useToolCatalog()
   const [outputDialog, setOutputDialog] = useState<string>()
   const glass = useMenuGlass('composer')
+  const commands = useActionCommands()
+  const slash = unstable_useSlashCommandAdapter({
+    commands,
+    removeOnExecute: true,
+    iconMap: COMMAND_ICONS,
+  })
   const adapter = useMemo<TriggerAdapter>(
     () => ({
       categories: () => [],
       categoryItems: () => [],
       search: (query) => [
-        ...searchTools(tools, query).map(toItem), ...outputCommands(query),
+        ...(slash.adapter.search?.(query) ?? []),
+        ...searchTools(tools, query).map(toItem),
+        ...outputCommands(query),
       ],
     }),
-    [tools],
+    [tools, slash.adapter],
   )
-  const matcher = useMemo(() => slashMatcher(status, tools), [status, tools])
+  const commandItems = useMemo(
+    () => slash.adapter.search?.('') ?? [],
+    [slash.adapter],
+  )
+  const matcher = useMemo(
+    () => slashMatcher(status, tools, commandItems),
+    [status, tools, commandItems],
+  )
   return (
     <>
       <ComposerTriggerPopover
@@ -217,14 +333,20 @@ export function ComposerToolTrigger() {
         adapter={adapter}
         matcher={matcher}
         isLoading={status === 'loading'}
+        iconMap={COMMAND_ICONS}
         directive={{
           formatter: {
             ...defaultDirectiveFormatter,
+            // A command writes nothing: the typed "/name" is replaced by the
+            // empty string, so the command leaves no chip in the message.
             serialize: (item) => item.type === 'command'
               ? '' : defaultDirectiveFormatter.serialize(item),
           },
           onInserted: (item) => {
-            if (item.type === 'command') setOutputDialog(item.id)
+            if (item.type !== 'command') return
+            const command = commands.find((entry) => entry.id === item.id)
+            if (command) command.execute()
+            else setOutputDialog(item.id)
           },
         }}
         heading={<>

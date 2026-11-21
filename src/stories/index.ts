@@ -40,6 +40,48 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 1440, height: 900 },
   },
   {
+    id: 'assistant-math',
+    title: 'assistant-ui: LaTeX math in a reply',
+    lane: 'translation',
+    viewport: { width: 1024, height: 768 },
+  },
+  {
+    id: 'assistant-present',
+    title: 'assistant-ui: a painted interface in a reply',
+    lane: 'translation',
+    viewport: { width: 1024, height: 768 },
+  },
+  {
+    id: 'response-evidence',
+    title: 'Interactive responses: a research answer with inspectable sources and a chart with its data',
+    lane: 'original',
+    viewport: { width: 1024, height: 900 },
+  },
+  {
+    id: 'response-coding',
+    title: 'Interactive responses: a coding answer keeping the failed step beside the fix',
+    lane: 'original',
+    viewport: { width: 1024, height: 768 },
+  },
+  {
+    id: 'response-writing',
+    title: 'Interactive responses: a draft whose claims carry evidence status',
+    lane: 'original',
+    viewport: { width: 1024, height: 768 },
+  },
+  {
+    id: 'settings-appearance',
+    title: 'Settings: Appearance with the per-role palette color editors',
+    lane: 'original',
+    viewport: { width: 1024, height: 900 },
+  },
+  {
+    id: 'assistant-context-usage',
+    title: 'assistant-ui: context usage ring beside the composer',
+    lane: 'translation',
+    viewport: { width: 1024, height: 768 },
+  },
+  {
     id: 'design-oracle-long',
     title: 'Design oracle F02: fixed Latin calibration prose',
     lane: 'original',
@@ -309,6 +351,12 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 1920, height: 1080 },
   },
   {
+    id: 'settings-responses',
+    title: 'Response defaults: style, detail, effort and budgets',
+    lane: 'original',
+    viewport: { width: 1440, height: 900 },
+  },
+  {
     id: 'cpu-gpu-tradeoff',
     title: 'CPU or GPU: the tradeoff notebook',
     lane: 'original',
@@ -396,6 +444,12 @@ export const STORIES: readonly StoryMeta[] = [
   {
     id: 'face-sound',
     title: 'Theo on a page with a reply to read aloud',
+    lane: 'original',
+    viewport: { width: 1280, height: 800 },
+  },
+  {
+    id: 'face-listen',
+    title: 'Theo as a microphone, listening to the person',
     lane: 'original',
     viewport: { width: 1280, height: 800 },
   },

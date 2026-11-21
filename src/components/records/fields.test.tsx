@@ -1,6 +1,6 @@
 import { afterEach, expect, mock, test } from 'bun:test'
 import { act } from 'react'
-import { FieldEditorPopover } from './fields'
+import { FieldEditor, FieldEditorPopover } from './fields'
 import type { FieldSpec } from './contract'
 import { cleanup, render, waitFor } from '../../../test/blocks/render'
 
@@ -17,6 +17,7 @@ const tags: FieldSpec = {
 async function open(
   onCommit: (value: unknown) => void,
   onCommitAway?: (value: unknown) => void,
+  onDiscard: () => void = () => {},
 ) {
   await render(
     <FieldEditorPopover
@@ -25,7 +26,7 @@ async function open(
       value={['red']}
       onCommit={onCommit}
       onCommitAway={onCommitAway}
-      onDiscard={() => {}}
+      onDiscard={onDiscard}
     />,
   )
   const option = await waitFor(() =>
@@ -65,17 +66,79 @@ test('clicking away saves through onCommitAway, leaving focus alone', async () =
   expect(onCommit).not.toHaveBeenCalled()
 })
 
-test('Escape saves once, as a keyboard commit, not through the popover closing', async () => {
+// Changed deliberately: this case used to assert that Escape saved what the
+// editor held. Escape now cancels, so the value stays as it was and the
+// editor's owner is told to close it.
+test('Escape cancels: nothing is saved, and the editor is asked to close', async () => {
   const onCommit = mock((_value: unknown) => {})
   const onCommitAway = mock((_value: unknown) => {})
-  await open(onCommit, onCommitAway)
+  const onDiscard = mock(() => {})
+  await open(onCommit, onCommitAway, onDiscard)
   const input = document.querySelector('input')!
   await act(async () => {
     input.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
     )
   })
-  await waitFor(() => (onCommit.mock.calls.length ? true : undefined))
-  expect(onCommit.mock.calls).toHaveLength(1)
+  await waitFor(() => (onDiscard.mock.calls.length ? true : undefined))
+  expect(onDiscard.mock.calls).toHaveLength(1)
+  expect(onCommit).not.toHaveBeenCalled()
   expect(onCommitAway).not.toHaveBeenCalled()
+})
+
+const name: FieldSpec = {
+  key: 'name',
+  label: 'Name',
+  field_type: { kind: 'text' },
+  required: false,
+  system: false,
+}
+
+test('Escape in a text editor restores the value; Enter saves it', async () => {
+  const onCommit = mock((_value: unknown, _move?: string) => {})
+  const onDiscard = mock(() => {})
+  const type = (input: HTMLInputElement, text: string) => {
+    const set = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value',
+    )!.set!
+    set.call(input, text)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  const key = (input: HTMLInputElement, which: string) =>
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: which, bubbles: true }),
+    )
+
+  const view = await render(
+    <FieldEditor
+      field={name}
+      value="Noor"
+      onCommit={onCommit}
+      onDiscard={onDiscard}
+    />,
+  )
+  const input = view.container.querySelector('input')!
+  await act(async () => type(input, 'Noor Haddad'))
+  await act(async () => key(input, 'Escape'))
+  expect(onDiscard.mock.calls).toHaveLength(1)
+  // The blur that follows a cancelled edit does not save it after all.
+  await act(async () => {
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+  })
+  expect(onCommit).not.toHaveBeenCalled()
+  await cleanup()
+
+  const again = await render(
+    <FieldEditor
+      field={name}
+      value="Noor"
+      onCommit={onCommit}
+      onDiscard={onDiscard}
+    />,
+  )
+  const second = again.container.querySelector('input')!
+  await act(async () => type(second, 'Noor Haddad'))
+  await act(async () => key(second, 'Enter'))
+  expect(onCommit.mock.calls).toEqual([['Noor Haddad', 'down']])
 })

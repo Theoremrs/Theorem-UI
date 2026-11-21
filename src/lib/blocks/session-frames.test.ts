@@ -57,7 +57,7 @@ async function frame(
   const compiled = session.codeState(key).compiled!
   const inner = inProcessExecutor(
     await loadCell(compiled),
-    session.hostFor(key, compiled.capabilities),
+    session.hostFor(key),
   )
   return {
     cellKey: compiled.key,

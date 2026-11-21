@@ -9,7 +9,7 @@ body{margin:0;padding:8px;background:transparent;overflow-wrap:anywhere}
 pre{margin:0;font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap}
 .theorem-display+.theorem-display{margin-top:8px}`
 
-/** `connect-src`: nothing, unless the block declared `net("host")`. */
+/** `connect-src` for a person's limit: only the hosts they allowed, or nothing. */
 export const connectSources = (hosts: Array<string>) =>
   hosts.length ? hosts.map((host) => `https://${host}`).join(' ') : "'none'"
 

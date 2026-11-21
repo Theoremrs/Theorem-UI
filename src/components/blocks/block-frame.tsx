@@ -1,20 +1,26 @@
 // SOURCING: React (a frame's lifetime as a layout effect) over executor.ts's
 // FrameConnection, which serves the bridge to the frame's window only;
-// @tanstack/react-query reads the block listener's origin. Every frame
-// carries BLOCK_SANDBOX and nothing more (plan D9); a snapshot frame carries
-// an empty sandbox: no scripts at all.
+// @tanstack/react-query reads the block listener's origin. A frame may do
+// what any page can on an origin of its own (executor.ts, plan D9), unless the
+// person limited it; a snapshot frame is a still copy and runs no scripts.
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { BridgeHost } from '@/lib/blocks/bridge'
 import type { CompiledCell } from '@/lib/blocks/compile'
-import { BLOCK_SANDBOX, FrameConnection } from '@/lib/blocks/executor'
+import { FrameConnection, openFrame } from '@/lib/blocks/executor'
 import { blockOrigin, cellUrl } from '@/lib/blocks/frames'
 import { useBlocksQueryClient } from '@/lib/blocks/query-client'
 import type { BlockSession } from '@/lib/blocks/session'
 import { saveSnapshot } from '@/lib/blocks/snapshots'
 import { cn } from '@/lib/utils'
 import { BlockMessage } from './block-status'
+
+/**
+ * The height of a page laid out by its viewport (100vh), which has none of its
+ * own: most of the window, within what reads as one figure in a reply.
+ */
+const FILL_HEIGHT = 'clamp(360px, 70vh, 720px)'
 
 /** The block listener's origin, or null while it is asked for. */
 export function useBlockOrigin(): {
@@ -33,7 +39,7 @@ export function useBlockOrigin(): {
 }
 
 /**
- * A sandboxed frame and the page's end of its bridge. The frame is made with
+ * A block's frame, on an origin of its own, and the page's end of its bridge. The frame is made with
  * its address already set and connected before it is added to the page, so
  * its first load is the block's document and nothing earlier can ask for the
  * port. `host` must keep its identity between renders.
@@ -46,6 +52,7 @@ export function BlockFrame({
   snapshotKey,
   className,
   hidden = false,
+  limited = false,
 }: {
   src: string
   host: BridgeHost
@@ -55,6 +62,8 @@ export function BlockFrame({
   /** Where the frame's snapshots are kept (snapshots.ts), for a card far out. */
   snapshotKey?: string
   className?: string
+  /** The person limited what this frame may reach (a sandboxed module): scripts only. */
+  limited?: boolean
   /** Runs without showing: a code editor's Run, whose values show in its margin. */
   hidden?: boolean
 }) {
@@ -71,16 +80,15 @@ export function BlockFrame({
     if (!parent) return
     const frame = document.createElement('iframe')
     frame.title = title
-    frame.setAttribute('sandbox', BLOCK_SANDBOX)
-    frame.referrerPolicy = 'no-referrer'
+    openFrame(frame, limited)
     frame.className = 'block w-full border-0 bg-transparent'
     let undo: (() => void) | undefined
     const connection = new FrameConnection(
       frame,
       {
         ...host,
-        onResize: (height) => {
-          frame.style.height = `${height}px`
+        onResize: (height, fills) => {
+          frame.style.height = fills ? FILL_HEIGHT : `${height}px`
         },
         ...(snapshotKey !== undefined && {
           onSnapshot: (html: string) => saveSnapshot(snapshotKey, html),
@@ -101,7 +109,7 @@ export function BlockFrame({
       connection.dispose()
       frame.remove()
     }
-  }, [src, host, title, snapshotKey, generation])
+  }, [src, host, title, snapshotKey, generation, limited])
 
   return (
     <div
@@ -171,7 +179,7 @@ export function CellFrame({
 }) {
   const { origin, error } = useBlockOrigin()
   const host = useMemo(
-    () => session.hostFor(blockKey, compiled.capabilities),
+    () => session.hostFor(blockKey),
     [session, blockKey, compiled],
   )
   if (error) return <BlockMessage tone="error">{error}</BlockMessage>

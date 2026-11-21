@@ -5,6 +5,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import type { TheoremArtifact } from '@/components/artifacts/artifact-model'
+import { ArtifactReferrer } from '@/components/artifacts/artifact-referrer'
+import { isLive } from '@/components/artifacts/artifact-registry'
 import { OpenLatestContext } from '@/components/artifacts/app-history'
 import { ArtifactView } from '@/components/artifacts/artifact-renderers'
 import {
@@ -123,15 +125,25 @@ export function OriginalView({
           ) : !data ? (
             <p className="text-sm text-ink-muted">Opening…</p>
           ) : data.type === 'artifact' ? (
-            <OpenLatestContext.Provider
-              value={showLatest ? undefined : () => setLatest(entry?.key)}
-            >
-              <ArtifactView
-                artifact={data.artifact}
-                distance="interactive"
-                latest={showLatest}
-              />
-            </OpenLatestContext.Provider>
+            // Review §4.2 (cabinet entry point): a live App runs once, in the
+            // answer that wrote it. "Open latest" on a live interactive
+            // artifact must refer to that single runtime, not mount a second
+            // DocumentApp beside it. The default view (the pinned revision,
+            // showLatest false) and any non-live artifact keep the interactive
+            // ArtifactView below.
+            isLive(data.artifact, 'interactive') && showLatest ? (
+              <ArtifactReferrer artifact={data.artifact} />
+            ) : (
+              <OpenLatestContext.Provider
+                value={showLatest ? undefined : () => setLatest(entry?.key)}
+              >
+                <ArtifactView
+                  artifact={data.artifact}
+                  distance="interactive"
+                  latest={showLatest}
+                />
+              </OpenLatestContext.Provider>
+            )
           ) : data.type === 'image' ? (
             <img
               src={url}

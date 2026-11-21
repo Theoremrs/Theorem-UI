@@ -2,10 +2,11 @@ import { describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { contrastRatio, auditPaletteCss, REQUIRED_PALETTE_PAIRS, renderedRolePairRegistration } from '../../scripts/design-oracles/colors.mjs'
+import { contrastRatio, auditPaletteCss, REQUIRED_PALETTE_PAIRS, REQUIRED_PALETTE_MODES, renderedRolePairRegistration } from '../../scripts/design-oracles/colors.mjs'
 import { LATIN_PROSE_V1, LATIN_PROSE_V1_ACTUAL_SHA256, LATIN_PROSE_V1_SHA256 } from '../../scripts/design-oracles/corpus.mjs'
 import { CHILD_ORACLES, FIXTURES, ORACLES, PREDICATE_TOLERANCES, POLICY } from '../../scripts/design-oracles/registry.mjs'
 import { geometryResidualResult, invariantCheckResult } from '../../scripts/design-oracles/metamorphic.mjs'
+import { COLOR_PAIRS, COLOR_ROLES } from '../../src/lib/appearance-policy'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -44,15 +45,60 @@ describe('independent color predicates', () => {
     const css = await readFile(resolve(root, 'src/palettes.css'), 'utf8')
     const results = auditPaletteCss(css)
     const modes = results.filter((result) => result.id.startsWith('COL-04.emitted-colors.'))
-    expect(modes).toHaveLength(8)
+    // Keep this inventory independent of the generator: every built-in
+    // palette, including Ember, must be audited in both light and dark modes.
+    const expectedModes = [
+      ':root',
+      '.dark',
+      "[data-palette='ember']",
+      ".dark[data-palette='ember']",
+      "[data-palette='stone']",
+      ".dark[data-palette='stone']",
+      "[data-palette='vitesse']",
+      ".dark[data-palette='vitesse']",
+      ":root:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):where(:not([data-palette]), [data-palette='github-sharp'])",
+      ".dark:where(:not([data-appearance-preset]), [data-appearance-preset='calm']):where(:not([data-palette]), [data-palette='github-sharp'])",
+    ]
+    expect([...REQUIRED_PALETTE_MODES].sort()).toEqual([...expectedModes].sort())
+    expect(modes.map((result) => result.evidence.mode).sort()).toEqual(expectedModes.sort())
     expect(modes.every((result) => result.status === 'pass')).toBe(true)
-    expect(REQUIRED_PALETTE_PAIRS).toHaveLength(54)
+    expect(REQUIRED_PALETTE_PAIRS).toHaveLength(119)
     expect(results.some((result) => result.id === 'COL-01.minimum.:root.primary/canvas' && result.status === 'pass')).toBe(true)
     const pairs = results.filter((result) => result.id.startsWith('COL-01.minimum.'))
-    expect(pairs).toHaveLength(54 * 8)
+    expect(pairs).toHaveLength(119 * expectedModes.length)
     expect(pairs.every((result) => result.status === 'pass')).toBe(true)
     const emittedBuiltInTokens = results.filter((result) => result.evidence?.concrete).flatMap((result) => result.evidence.concrete)
     expect(emittedBuiltInTokens.some((token) => token.raw.includes('--custom-'))).toBe(false)
+  })
+
+  test('the independent manifest covers every concrete production pair and threshold', () => {
+    const key = (foreground, background, threshold) => JSON.stringify([foreground, background, threshold])
+    expect(REQUIRED_PALETTE_PAIRS.map(({ foreground, background, threshold }) => key(foreground, background, threshold)).sort()).toEqual(
+      COLOR_PAIRS.map(({ foreground, background, minimum }) => key(COLOR_ROLES[foreground], COLOR_ROLES[background], minimum)).sort(),
+    )
+    expect(new Set(REQUIRED_PALETTE_PAIRS.map(({ id }) => id)).size).toBe(119)
+  })
+
+  test.each([
+    ['action-ink', 'action/canvas', 4.5],
+    ['insight-ink', 'insight/canvas', 4.5],
+    ['series-1', 'series-1/canvas', 3],
+    ['series-2', 'series-2/canvas', 3],
+    ['series-3', 'series-3/canvas', 3],
+    ['series-4', 'series-4/canvas', 3],
+    ['series-5', 'series-5/canvas', 3],
+    ['attention-ink', 'code/canvas', 4.5],
+  ])('rejects a contrast-breaking %s without confusing it with primary ink', async (token, pair, threshold) => {
+    const css = (await readFile(resolve(root, 'src/palettes.css'), 'utf8')).replace(
+      new RegExp(`(--${token}: )#[0-9a-f]{6}`), '$1#ffffff',
+    )
+    const results = auditPaletteCss(css)
+    const row = results.find((result) => result.id === `COL-01.minimum.:root.${pair}`)
+    expect(row).toBeDefined()
+    expect(row.status).toBe('fail')
+    expect(row.observed.foregroundRole).toBe(token)
+    expect(row.observed.ratio).toBeLessThan(threshold)
+    expect(results.find((result) => result.id === 'COL-01.minimum.:root.primary/canvas').status).toBe('pass')
   })
 
   test('the real palette predicate rejects a contrast-breaking token mutation', async () => {
@@ -72,7 +118,11 @@ describe('independent color predicates', () => {
   test('rejects a readable but unregistered semantic foreground/background pair', () => {
     expect(renderedRolePairRegistration({ foregroundRole: 'primary', backgroundRole: 'navigation', state: 'default' }).registered).toBe(true)
     expect(renderedRolePairRegistration({ foregroundRole: 'on-accent', backgroundRole: 'accent', state: 'pressed' }).registered).toBe(true)
-    expect(renderedRolePairRegistration({ foregroundRole: 'code', backgroundRole: 'popover', state: 'default' }).registered).toBe(true)
+    expect(renderedRolePairRegistration({ foregroundRole: 'code', backgroundRole: 'popover', state: 'default' })).toMatchObject({ registered: true, foregroundTokens: ['attention-ink'] })
+    for (const foregroundRole of ['action', 'insight', 'series-1', 'series-2', 'series-3', 'series-4', 'series-5'])
+      expect(renderedRolePairRegistration({ foregroundRole, backgroundRole: 'canvas', state: 'default' }).registered).toBe(true)
+    expect(renderedRolePairRegistration({ foregroundRole: 'action', backgroundRole: 'action-fill', state: 'default' }).registered).toBe(true)
+    expect(renderedRolePairRegistration({ foregroundRole: 'insight', backgroundRole: 'insight-fill', state: 'default' }).registered).toBe(true)
     expect(renderedRolePairRegistration({ foregroundRole: 'primary', backgroundRole: 'accent', state: 'default' }).registered).toBe(false)
   })
 })

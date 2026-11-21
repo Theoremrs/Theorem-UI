@@ -12,6 +12,7 @@ import {
   TEXT_RECIPES,
 } from './appearance-policy'
 import type { Material, SurfaceRole } from './appearance-policy'
+import { paletteTokens } from '../../scripts/palettes'
 
 export const APPEARANCE_STORAGE_KEY = 'theorem-ui:appearance'
 export const APPEARANCE_VERSION = 1
@@ -51,8 +52,14 @@ const uncommented = (css: string) => css.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, ' ')
 export const customCssSchema = z
   .string()
   .max(20_000, 'Keep custom CSS under 20,000 characters.')
-  .refine((css) => !css.includes('\\'), 'Custom CSS cannot use backslash escapes.')
-  .refine((css) => !/@import/i.test(uncommented(css)), 'Custom CSS cannot use @import.')
+  .refine(
+    (css) => !css.includes('\\'),
+    'Custom CSS cannot use backslash escapes.',
+  )
+  .refine(
+    (css) => !/@import/i.test(uncommented(css)),
+    'Custom CSS cannot use @import.',
+  )
   .refine(
     (css) => !/(?:url|src)\((?!\s*['"]?\s*data:)/i.test(uncommented(css)),
     'Custom CSS can only use data: URLs.',
@@ -62,7 +69,160 @@ export const customCssSchema = z
     'Custom CSS cannot use image-set(), image() or cross-fade(); use url() with a data: URL.',
   )
 const customColorRoles = z.enum([...new Set(Object.values(COLOR_ROLES))])
-const customColors = z.record(customColorRoles, opaqueHex)
+/** A saved palette's colours. New tokens (action/insight/series) are optional
+ *  on read so an older saved palette still loads. The contrast gate completes
+ *  missing tokens with the same defaults used when the palette is applied. */
+const customColors = z.partialRecord(customColorRoles, opaqueHex)
+
+/** The color roles a person edits in Settings, in the order they are shown:
+ *  the surfaces first, then the inks, then the semantic accents. Each entry
+ *  names the CSS token it paints and what the colour means. */
+export const EDITABLE_COLOR_ROLES = [
+  {
+    token: 'surface-neutral',
+    label: 'Canvas',
+    hint: 'Reading and long-running work',
+  },
+  {
+    token: 'surface-raised',
+    label: 'Raised surface',
+    hint: 'Cards, previews and popovers',
+  },
+  {
+    token: 'surface-sidebar',
+    label: 'Navigation',
+    hint: 'The sidebar and rail',
+  },
+  { token: 'surface-composer', label: 'Composer', hint: 'Where you write' },
+  {
+    token: 'surface-user-message',
+    label: 'Your messages',
+    hint: 'The background behind your chat messages',
+  },
+  {
+    token: 'surface-artifact',
+    label: 'Artifacts',
+    hint: 'The background behind generated content',
+  },
+  {
+    token: 'surface-hover',
+    label: 'Hover surface',
+    hint: 'Rows and items under the pointer',
+  },
+  {
+    token: 'surface-selected',
+    label: 'Selection',
+    hint: 'The chosen row or item',
+  },
+  { token: 'ink', label: 'Primary ink', hint: 'Body text' },
+  { token: 'ink-muted', label: 'Secondary ink', hint: 'Labels and metadata' },
+  {
+    token: 'attention-ink',
+    label: 'Code ink',
+    hint: 'Inline code on reading surfaces',
+  },
+  {
+    token: 'redwood',
+    label: 'Accent',
+    hint: 'Brand, active selection, emphasis',
+  },
+  {
+    token: 'redwood-hover',
+    label: 'Accent hover',
+    hint: 'The accent fill under the pointer',
+  },
+  {
+    token: 'redwood-pressed',
+    label: 'Accent pressed',
+    hint: 'The accent fill while pressed',
+  },
+  { token: 'redwood-ink', label: 'Accent ink', hint: 'Links and accent text' },
+  { token: 'on-redwood', label: 'On accent', hint: 'Text on the accent fill' },
+  {
+    token: 'action-ink',
+    label: 'Action',
+    hint: 'An action available now or a pending decision',
+  },
+  {
+    token: 'action-container',
+    label: 'Action fill',
+    hint: 'The action accent as a background',
+  },
+  {
+    token: 'insight-ink',
+    label: 'Insight',
+    hint: 'A learned relationship or capture confirmation',
+  },
+  {
+    token: 'insight-container',
+    label: 'Insight fill',
+    hint: 'The insight accent as a background',
+  },
+  { token: 'teal-ink', label: 'Success', hint: 'A completed outcome' },
+  {
+    token: 'teal-container',
+    label: 'Success fill',
+    hint: 'Success as a background',
+  },
+  { token: 'ochre-ink', label: 'Warning', hint: 'Caution' },
+  {
+    token: 'ochre-container',
+    label: 'Warning fill',
+    hint: 'Warning as a background',
+  },
+  { token: 'error-ink', label: 'Error', hint: 'A failed outcome' },
+  {
+    token: 'error-container',
+    label: 'Error fill',
+    hint: 'Error as a background',
+  },
+  {
+    token: 'error-solid',
+    label: 'Destructive action',
+    hint: 'The fill for destructive buttons',
+  },
+  {
+    token: 'on-error',
+    label: 'On destructive action',
+    hint: 'Text on destructive buttons',
+  },
+  { token: 'focus', label: 'Focus ring', hint: 'Keyboard focus' },
+  {
+    token: 'line-separator',
+    label: 'Separator',
+    hint: 'Hairlines between rows',
+  },
+  {
+    token: 'line-control',
+    label: 'Control boundary',
+    hint: 'Borders of fields and controls',
+  },
+  {
+    token: 'series-1',
+    label: 'Data series 1',
+    hint: 'First chart series: line, markers and legend',
+  },
+  {
+    token: 'series-2',
+    label: 'Data series 2',
+    hint: 'Second chart series',
+  },
+  {
+    token: 'series-3',
+    label: 'Data series 3',
+    hint: 'Third chart series',
+  },
+  {
+    token: 'series-4',
+    label: 'Data series 4',
+    hint: 'Fourth chart series',
+  },
+  {
+    token: 'series-5',
+    label: 'Data series 5',
+    hint: 'Fifth chart series',
+  },
+] as const satisfies readonly { token: string; label: string; hint: string }[]
 
 export const customPaletteSchema = z
   .strictObject({
@@ -70,7 +230,8 @@ export const customPaletteSchema = z
     light: customColors,
     dark: customColors,
   })
-  .superRefine((colors, context) => {
+  .superRefine((palette, context) => {
+    const colors = completeCustomPalette(palette)
     for (const mode of ['light', 'dark'] as const) {
       for (const { foreground, background, minimum } of COLOR_PAIRS) {
         const ink = colors[mode][COLOR_ROLES[foreground]]
@@ -198,10 +359,16 @@ export const DEFAULT_APPEARANCE: AppearanceSelection = {
 
 export function resolveAppearance({ preset, overrides }: AppearanceSelection) {
   const defaults = presetDefaults[preset]
+  // An older saved custom palette predates the action/insight/series tokens.
+  // Fill those from the default palette so the custom surface keeps a complete,
+  // contrast-checked set instead of dropping the whole saved appearance.
+  const customPalette = overrides.customPalette
+    ? completeCustomPalette(overrides.customPalette)
+    : undefined
   return {
     preset,
     palette: overrides.palette ?? 'github-sharp',
-    customPalette: overrides.customPalette,
+    customPalette,
     font: overrides.font,
     density: overrides.density ?? 'comfortable',
     reading: overrides.reading ?? 'comfortable',
@@ -213,9 +380,88 @@ export function resolveAppearance({ preset, overrides }: AppearanceSelection) {
       ...defaults.materials,
       ...overrides.materials,
       'assistant-reading': 'flat' as const,
+      // The chart frame is glass by default (owner, 2026-11-19); its plotted
+      // data stays on a stable reading surface. An explicit override wins.
+      chart: overrides.materials?.chart ?? ('glass' as const),
     },
     life: defaults.life,
   }
+}
+
+/** The default palette's tokens, used to fill tokens an older custom palette
+ *  lacks. Read from the generated stylesheet's :root/.dark calm blocks. */
+const DEFAULT_TOKENS = paletteTokens('github-sharp')
+
+function completeCustomPalette(palette: {
+  name: string
+  light: Record<string, string | undefined>
+  dark: Record<string, string | undefined>
+}) {
+  const fill = (mode: 'light' | 'dark') => {
+    const saved = palette[mode]
+    const fallback = DEFAULT_TOKENS?.[mode] ?? {}
+    const alternate =
+      DEFAULT_TOKENS?.[mode === 'light' ? 'dark' : 'light'] ?? {}
+    const complete: Record<string, string> = {}
+    for (const token of new Set(Object.values(COLOR_ROLES))) {
+      const value = saved[token] ?? fallback[token]
+      if (value) complete[token] = value
+    }
+
+    // A saved light mode can have dark surfaces, or the reverse. Missing
+    // new roles prefer the built-in colors, then inherit a saved ink or
+    // surface that satisfies their actual pairs. Saved colors stay intact.
+    const fillMissing = (
+      token: string,
+      inheritedToken: string,
+      pendingBackground?: string,
+    ) => {
+      if (saved[token] !== undefined) return
+      const chosen = [
+        complete[token],
+        alternate[token],
+        complete[inheritedToken],
+        complete.ink,
+      ].find(
+        (value) =>
+          value !== undefined &&
+          COLOR_PAIRS.every(({ foreground, background, minimum }) => {
+            const inkToken = COLOR_ROLES[foreground]
+            const fillToken = COLOR_ROLES[background]
+            if (inkToken !== token && fillToken !== token) return true
+            if (fillToken === pendingBackground) return true
+            const ink = inkToken === token ? value : complete[inkToken]
+            const backdrop = fillToken === token ? value : complete[fillToken]
+            return Boolean(
+              ink && backdrop && wcagContrast(ink, backdrop) >= minimum,
+            )
+          }),
+      )
+      if (chosen !== undefined) complete[token] = chosen
+    }
+    for (const [ink, container, inherited] of [
+      ['action-ink', 'action-container', 'redwood-ink'],
+      ['insight-ink', 'insight-container', 'ochre-ink'],
+    ] as const) {
+      fillMissing(
+        ink,
+        inherited,
+        saved[container] === undefined ? container : undefined,
+      )
+      fillMissing(container, 'surface-neutral')
+    }
+    for (const [series, inherited] of [
+      ['series-1', 'redwood-ink'],
+      ['series-2', 'teal-ink'],
+      ['series-3', 'ochre-ink'],
+      ['series-4', 'ink'],
+      ['series-5', 'ink-muted'],
+    ] as const)
+      fillMissing(series, inherited)
+
+    return complete
+  }
+  return { name: palette.name, light: fill('light'), dark: fill('dark') }
 }
 
 export type ResolvedAppearance = ReturnType<typeof resolveAppearance>

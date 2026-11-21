@@ -16,9 +16,22 @@ import {
 } from '@/lib/life/life'
 import type { Field } from '@/lib/life/life'
 import { emit, fill } from '@/lib/life/emitter'
-import { TEXT_QUIET, occlusionMask } from '@/lib/life/occlusion'
+import {
+  TEXT_QUIET,
+  occlusionMask,
+  sameClientBoxes,
+} from '@/lib/life/occlusion'
 import type { ClientBox } from '@/lib/life/occlusion'
-import { RESTING, beat, decay, glow, pace, pulse, restSeconds, sustain } from '@/lib/life/energy'
+import {
+  RESTING,
+  beat,
+  decay,
+  glow,
+  pace,
+  pulse,
+  restSeconds,
+  sustain,
+} from '@/lib/life/energy'
 import type { Energy, PulseKind } from '@/lib/life/energy'
 import { createLight, settle, shine } from '@/lib/life/light'
 import type { Light } from '@/lib/life/light'
@@ -27,7 +40,7 @@ import { PATTERNS } from '@/lib/life/patterns'
 import { advance, companion, createPresence, figure } from '@/lib/life/presence'
 import type { Point, Presence } from '@/lib/life/presence'
 import { useLifeControls, useLifeCounts } from '@/lib/life/store'
-import { publishLifeFrame } from './frames'
+import { isVisible, observeVisibility, publishLifeFrame } from './frames'
 
 type Rgb = readonly [number, number, number]
 
@@ -38,7 +51,8 @@ interface Palette {
   muted: Rgb
 }
 
-const probe = typeof document === 'undefined' ? undefined : document.createElement('canvas')
+const probe =
+  typeof document === 'undefined' ? undefined : document.createElement('canvas')
 
 /** Resolves any CSS colour (hex, oklch, color-mix) to sRGB through a 1px canvas. */
 function rgb(css: string): Rgb {
@@ -67,7 +81,9 @@ function readPalette(element: Element): Palette {
   const token = (name: string) => rgb(value(name))
   const sheet = value('--sheet-from') && value('--sheet-to')
   return {
-    background: sheet ? mix(token('--sheet-from'), token('--sheet-to'), 0.5) : token('--background'),
+    background: sheet
+      ? mix(token('--sheet-from'), token('--sheet-to'), 0.5)
+      : token('--background'),
     accent: token('--primary'),
     ink: token('--foreground'),
     muted: token('--muted-foreground'),
@@ -159,6 +175,11 @@ export function mountLife(
   /** Each cell's share under text, rebuilt when the text moves or the grid changes. */
   let quiet: Float32Array | undefined
   let quietFor = ''
+  let ready = false
+  let destroyed = false
+  let pending = false
+  let redrawFrame = 0
+  let wasVisible = false
 
   const cols = () => t.grid?.cols ?? 0
   const rows = () => t.grid?.rows ?? 0
@@ -167,12 +188,17 @@ export function mountLife(
 
   const toCell = (clientX: number, clientY: number): Point | undefined => {
     const position = t.projectClientToGrid(clientX, clientY, t.grid)
-    if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) return undefined
-    return { x: Math.round(position.x) + left(), y: Math.round(position.y) + top() }
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.y))
+      return undefined
+    return {
+      x: Math.round(position.x) + left(),
+      y: Math.round(position.y) + top(),
+    }
   }
 
   const settleAll = () => {
-    for (let i = 0; i < field.age.length; i++) settle(light, i, ageAt(field, i), ghostAt(field, i))
+    for (let i = 0; i < field.age.length; i++)
+      settle(light, i, ageAt(field, i), ghostAt(field, i))
   }
 
   /** A new field blooms in from nothing; a resized one shows as it stands. */
@@ -196,12 +222,16 @@ export function mountLife(
     const before = field
     field = change(field)
     for (let i = 0; i < field.age.length; i++)
-      if (ageAt(before, i) !== ageAt(field, i) || ghostAt(before, i) !== ghostAt(field, i))
+      if (
+        ageAt(before, i) !== ageAt(field, i) ||
+        ghostAt(before, i) !== ghostAt(field, i)
+      )
         settle(light, i, ageAt(field, i), ghostAt(field, i))
   }
 
   const advanceField = (steps: number) => {
-    for (let i = 0; i < steps; i++) field = step(emit(field, energy.level, Math.random))
+    for (let i = 0; i < steps; i++)
+      field = step(emit(field, energy.level, Math.random))
   }
 
   /** How long cell `i` takes to move, as a share of the usual time. */
@@ -209,7 +239,10 @@ export function mountLife(
     const x = i % field.cols
     const y = Math.floor(i / field.cols)
     const drift = t.noise(x * DRIFT.x, y * DRIFT.y, t.secs * DRIFT.t)
-    return utils.clamp(utils.mapRange(drift, 0.25, 0.75, ...STRETCH), ...STRETCH)
+    return utils.clamp(
+      utils.mapRange(drift, 0.25, 0.75, ...STRETCH),
+      ...STRETCH,
+    )
   }
 
   const publish = () => {
@@ -225,6 +258,53 @@ export function mountLife(
       current.pace !== counts.pace
     )
       useLifeCounts.setState(counts)
+  }
+
+  const canDraw = () => !destroyed && ready && isVisible(host)
+
+  const animate = () => canDraw() && useLifeControls.getState().playing
+
+  const syncLoop = () => {
+    if (destroyed || !ready) return
+    const visible = canDraw()
+    if (!visible) {
+      pending = false
+      if (redrawFrame) cancelAnimationFrame(redrawFrame)
+      redrawFrame = 0
+    }
+    const becameVisible = visible && !wasVisible
+    wasVisible = visible
+    if (animate()) {
+      pending = false
+      if (redrawFrame) cancelAnimationFrame(redrawFrame)
+      redrawFrame = 0
+      t.loop()
+      if (becameVisible) t.redraw()
+    } else {
+      t.noLoop()
+      if (canDraw() && !pending && !redrawFrame) {
+        pending = true
+        redrawFrame = requestAnimationFrame(() => {
+          redrawFrame = 0
+          if (!canDraw()) return
+          pending = false
+          t.redraw()
+        })
+      }
+    }
+  }
+
+  const requestDraw = () => {
+    if (!canDraw()) return
+    syncLoop()
+    // A paused field draws now. `syncLoop` may already have queued the same
+    // picture for the next frame; drop that so one interaction draws once.
+    if (!useLifeControls.getState().playing) {
+      if (redrawFrame) cancelAnimationFrame(redrawFrame)
+      redrawFrame = 0
+      pending = false
+      t.redraw()
+    }
   }
 
   const touch = () => {
@@ -257,7 +337,10 @@ export function mountLife(
     const key = `${field.cols}x${field.rows}`
     if (quiet && quietFor === key) return quiet
     const grid = t.grid
-    if (!grid) return (quiet = new Float32Array(field.cols * field.rows))
+    // Nothing occludes the field until a client box is reported, so there is
+    // no geometry to read and no mask to build.
+    if (!grid || !boxes.length)
+      return (quiet = new Float32Array(field.cols * field.rows))
     const bounds = t.canvas.getBoundingClientRect()
     const scaleX = t.canvas.width / bounds.width
     const scaleY = t.canvas.height / bounds.height
@@ -315,9 +398,12 @@ export function mountLife(
     t.noiseDetail(2, 1)
     fitField()
     publish()
+    ready = true
+    syncLoop()
   })
 
   t.draw(() => {
+    if (!canDraw()) return
     canvas.style.visibility = ''
     fitField()
     const { playing, companion: playsAlong } = useLifeControls.getState()
@@ -327,8 +413,12 @@ export function mountLife(
     phase = tick.steps >= MAX_STEPS_PER_FRAME ? 0 : tick.phase
     advanceField(Math.min(tick.steps, MAX_STEPS_PER_FRAME))
 
-    const personActive = stroke !== undefined || t.secs - lastActivity < ACTIVE_SECONDS
-    presence = advance(presence, seconds, { still: reducedMotion, quiet: personActive })
+    const personActive =
+      stroke !== undefined || t.secs - lastActivity < ACTIVE_SECONDS
+    presence = advance(presence, seconds, {
+      still: reducedMotion,
+      quiet: personActive,
+    })
     if (playsAlong) {
       const next = companion(presence, field, {
         random: Math.random,
@@ -337,7 +427,13 @@ export function mountLife(
       })
       presence = next.presence
       // The agent's seeds are not the person's edits, so they bloom in.
-      if (next.seed) field = stamp(field, PATTERNS[next.seed.pattern].cells, next.seed.x, next.seed.y)
+      if (next.seed)
+        field = stamp(
+          field,
+          PATTERNS[next.seed.pattern].cells,
+          next.seed.x,
+          next.seed.y,
+        )
     }
     publish()
 
@@ -358,7 +454,10 @@ export function mountLife(
         const glyph = light.glyph[i]
         if (!glyph) continue
         const near = playsAlong
-          ? Math.max(0, 1 - Math.hypot((x - at.x) / 2, y - at.y) / ATTENTION_RADIUS)
+          ? Math.max(
+              0,
+              1 - Math.hypot((x - at.x) / 2, y - at.y) / ATTENTION_RADIUS,
+            )
           : 0
         const under = 1 - TEXT_QUIET * (hush[i] ?? 0)
         drawGlyph(x, y, glyph, shade(i, faint * (0.75 + 0.5 * near) * under))
@@ -366,6 +465,7 @@ export function mountLife(
   })
 
   overlay.draw(() => {
+    if (!canDraw()) return
     t.clear()
     const { brush, companion: playsAlong } = useLifeControls.getState()
     if (hovered && brush !== 'cell')
@@ -407,6 +507,22 @@ export function mountLife(
     publishLifeFrame(canvas)
   })
 
+  const stopVisibility = observeVisibility(host, syncLoop)
+  const stopControls = useLifeControls.subscribe((state, previous) => {
+    if (state.playing !== previous.playing) {
+      syncLoop()
+      return
+    }
+    // A paused field still shows what these settings change, so changing one
+    // repaints once instead of leaving the old picture until the next play.
+    if (
+      state.companion !== previous.companion ||
+      state.brush !== previous.brush
+    )
+      requestDraw()
+  })
+  syncLoop()
+
   return {
     press(clientX, clientY) {
       const cell = toCell(clientX, clientY)
@@ -416,11 +532,13 @@ export function mountLife(
       const { brush } = useLifeControls.getState()
       if (brush !== 'cell') {
         edit((cells) => stamp(cells, PATTERNS[brush].cells, cell.x, cell.y))
+        requestDraw()
         return
       }
       const on = !alive(field, cell.x, cell.y)
       stroke = { on, last: cell }
       edit((cells) => paint(cells, cell.x, cell.y, on))
+      requestDraw()
     },
     drag(clientX, clientY) {
       const cell = toCell(clientX, clientY)
@@ -429,27 +547,33 @@ export function mountLife(
       touch()
       paintLine(stroke.last, cell, stroke.on)
       stroke = { ...stroke, last: cell }
+      requestDraw()
     },
     release() {
       stroke = undefined
     },
     hover(clientX, clientY) {
       hovered = toCell(clientX, clientY)
+      requestDraw()
     },
     leave() {
       hovered = undefined
       stroke = undefined
+      requestDraw()
     },
     step() {
       advanceField(1)
       phase = 0
+      requestDraw()
     },
     // Like a pointer edit, a clear or a new random field shows at once.
     clear() {
       edit(clear)
+      requestDraw()
     },
     randomize() {
       edit((cells) => fill(clear(cells), Math.random))
+      requestDraw()
     },
     pulse(kind) {
       energy = pulse(energy, kind)
@@ -459,15 +583,30 @@ export function mountLife(
     },
     resize(width, height) {
       t.resizeCanvas(width, height)
+      requestDraw()
     },
     repaint() {
       palette = readPalette(canvas)
+      requestDraw()
     },
     occlude(next) {
+      // Scrolling and streaming remeasure on every frame. An identical box
+      // list is not a new picture, and drawing it would paint the idle field
+      // on every one of those frames.
+      if (sameClientBoxes(boxes, next)) return
       boxes = next
       quiet = undefined
+      // While the field plays, the animation loop paints the new mask on its
+      // next frame. A paused field has no loop, so the old clearing would
+      // stay until some other interaction. One paint; the loop stays stopped.
+      if (!useLifeControls.getState().playing) requestDraw()
     },
     destroy() {
+      destroyed = true
+      stopControls()
+      stopVisibility()
+      if (redrawFrame) cancelAnimationFrame(redrawFrame)
+      redrawFrame = 0
       t.destroy()
       canvas.remove()
     },

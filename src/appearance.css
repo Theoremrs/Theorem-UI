@@ -29,6 +29,10 @@
   --appearance-editor-toolbar-gap: 0.5rem;
   --appearance-radius-control: 0.375rem;
   --appearance-radius-field: 0.5rem;
+  /* A bounded response block (chart, preview, file tree, terminal output):
+     tighter than a message, wider than a control (interactive-responses
+     plan §5, ~6px). */
+  --appearance-radius-response: 0.375rem;
   /* Messages, artifacts, code blocks and the composer share one wider corner
      (15px, owner's choice 2026-11-17). */
   --appearance-radius-message: 0.9375rem;
@@ -74,6 +78,87 @@
 
 :root[data-reading-width='wide'] {
   --appearance-prose-measure: var(--appearance-measure-wide);
+}
+
+/* Settings: the page, its sections and their rows read the density contract
+   (models/settings/charts handoff section 6). One group step is the rhythm:
+   a row is padded by it, a section is set off by it, and the page by two, so
+   comfortable keeps the 24/32 inset the frame had and compact/touch move it.
+   A section holding a table takes the compact steps of its own. */
+[data-appearance-spacing-role='settings-page'] {
+  gap: calc(2 * var(--appearance-gap-group));
+  padding-block: calc(2 * var(--appearance-gap-group));
+  padding-inline: calc(1.5 * var(--appearance-gap-group));
+}
+[data-appearance-spacing-role='settings-section'] {
+  gap: var(--appearance-gap-group);
+}
+[data-appearance-part='settings-row'] {
+  gap: var(--appearance-gap-group);
+  min-block-size: var(--appearance-control-min);
+  padding-block: var(--appearance-gap-related);
+  padding-inline: var(--appearance-gap-group);
+}
+[data-appearance-part='settings-row'] > [data-appearance-part='settings-mark'] {
+  inline-size: calc(
+    var(--appearance-control-min) - var(--appearance-gap-within)
+  );
+  block-size: calc(
+    var(--appearance-control-min) - var(--appearance-gap-within)
+  );
+}
+/* A row's controls keep their own size but never fall below the control
+   minimum, as the composer toolbar's do. Height becomes a minimum so
+   enlarged type grows the control instead of clipping its label. A switch
+   is excluded: its track is sized from --thumb-size (twice as wide as tall),
+   and forcing a square minimum collapsed it to a circle. */
+[data-appearance-part='settings-row']
+  :is(button, [role='button'], [role='combobox']):not([role='switch']) {
+  min-block-size: var(--appearance-control-min);
+  min-inline-size: var(--appearance-control-min);
+  block-size: auto;
+}
+/* A switch keeps its own track geometry (twice as wide as tall, from
+   --thumb-size); stretching it to the control minimum drew a circle. A
+   transparent pseudo-element grows the hit area to the control minimum
+   (44px on touch) without changing the drawn track. */
+[data-appearance-part='settings-row'] [role='switch'] {
+  position: relative;
+}
+[data-appearance-part='settings-row'] [role='switch']::after {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  inline-size: max(100%, var(--appearance-control-min));
+  block-size: max(100%, var(--appearance-control-min));
+}
+/* A data-management section: the compact steps for its own rows and heading.
+   Touch keeps its larger steps, so a table never shrinks a target below it. */
+:root:not([data-density='touch'])
+  [data-appearance-spacing-role='settings-section'][data-density='compact'] {
+  --appearance-gap-related: 0.375rem;
+  --appearance-gap-group: 0.75rem;
+}
+@media (pointer: coarse) {
+  :root[data-density]:not([data-density='compact'])
+    [data-appearance-spacing-role='settings-section'][data-density='compact'] {
+    --appearance-gap-related: 0.5rem;
+    --appearance-gap-group: 1rem;
+  }
+}
+/* The settings nav row is a navigation target: its minimum comes from the
+   role, so touch density and enlarged type grow it instead of clipping it. */
+[data-appearance-part='settings-nav'] {
+  gap: var(--appearance-gap-group);
+  padding-block: var(--appearance-gap-group);
+  padding-inline: var(--appearance-gap-related);
+}
+[data-appearance-part='settings-nav'] [data-appearance-part='navigation-row'] {
+  gap: var(--appearance-gap-related);
+  min-block-size: var(--appearance-navigation-min);
+  padding-block: var(--appearance-gap-within);
+  padding-inline: var(--appearance-gap-related);
 }
 
 [data-appearance-recipe='prose'] {
@@ -139,6 +224,12 @@
 [data-surface-role='artifact'],
 [data-appearance-part='artifact'] {
   --appearance-surface-fill: var(--surface-artifact);
+}
+/* The chart frame is chrome (glass by default); its plot is a reading
+   surface. The fill is the raised surface so the opaque fallback and the
+   stable data panel share one colour. */
+[data-surface-role='chart'] {
+  --appearance-surface-fill: var(--surface-raised);
 }
 /* The status note is a tint of the error container over what it sits on, so a
    failed reply reads as a margin note rather than a slab (owner review,
@@ -1043,5 +1134,117 @@
   .appearance-surface::before,
   .appearance-surface::after {
     display: none;
+  }
+}
+
+/* Bounded response blocks (interactive-responses plan §5): a compact frame
+   on the raised surface, one toolbar row that wraps, 12px of padding, and
+   the reading layer kept flat beneath values and labels. The material
+   policy still owns the perimeter: a frame is chrome, its body is reading. */
+.response-frame {
+  --response-frame-padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--popover);
+  border: var(--appearance-border) solid var(--line-separator);
+  border-radius: var(--appearance-radius-response);
+}
+.response-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--appearance-gap-related);
+  min-height: 2rem;
+  padding: 0.375rem var(--response-frame-padding, 0.75rem);
+  border-block-end: var(--appearance-border) solid var(--line-separator);
+}
+.response-frame-body {
+  padding: var(--response-frame-padding, 0.75rem);
+}
+.response-frame > figcaption {
+  padding-inline: var(--response-frame-padding, 0.75rem);
+}
+/* The evidence chart: a glass frame (the material resolver owns the
+   perimeter) around a stable, opaque reading panel that carries the plot,
+   its axes and labels. Refraction and blur never touch the data. */
+.evidence-chart {
+  position: relative;
+  isolation: isolate;
+}
+.evidence-chart-reading {
+  background: var(--surface-raised);
+  border-radius: calc(var(--appearance-radius-response) - 1px);
+  padding: 0.5rem 0.75rem 0.625rem;
+}
+.evidence-chart-plot {
+  display: block;
+  width: 100%;
+  height: 12.5rem;
+}
+.evidence-chart-plot text {
+  font: var(--recipe-metadata);
+  fill: var(--ink-muted);
+}
+.evidence-chart-grid {
+  stroke: var(--line-separator);
+  stroke-width: 1;
+}
+.evidence-chart-axis {
+  stroke: var(--line-control);
+  stroke-width: 1;
+}
+.evidence-chart-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.evidence-chart-area {
+  stroke: none;
+  opacity: 0.16;
+}
+.evidence-chart-endpoint {
+  font: var(--recipe-metadata);
+  fill: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.evidence-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-block-start: 0.5rem;
+}
+.evidence-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font: var(--recipe-metadata);
+  color: var(--ink-muted);
+}
+.evidence-chart-legend-swatch {
+  inline-size: 0.875rem;
+  block-size: 0.25rem;
+  border-radius: 1px;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .evidence-chart.surface-liquid {
+    background-color: var(--surface-raised);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (forced-colors: active) {
+  .response-frame {
+    border-color: CanvasText;
+  }
+  .evidence-chart-reading {
+    background: Canvas;
+  }
+  .evidence-chart-line,
+  .evidence-chart-grid,
+  .evidence-chart-axis {
+    stroke: CanvasText;
   }
 }

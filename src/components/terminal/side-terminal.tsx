@@ -18,10 +18,10 @@ import {
   addReference,
   restartSession,
   stopSession,
-  useCloseOnOutsideDoubleClick,
   useSessionAction,
 } from './terminal-screen'
 import type { TerminalAction } from './terminal-screen'
+import { useCloseOnOutsideDoubleClick } from './close-on-outside-double-click'
 
 const HOST_ID = 'theorem-side-terminal'
 /** A cabinet narrower than this would be one column of cramped cards. */

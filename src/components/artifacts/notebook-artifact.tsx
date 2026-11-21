@@ -21,7 +21,6 @@ import { askAbout } from '@/components/chat/composer-references'
 import { Button } from '@/components/ui/button'
 import { BridgeDenied } from '@/lib/blocks/bridge'
 import type { BridgeHost } from '@/lib/blocks/bridge'
-import { noCapabilities } from '@/lib/blocks/declarations'
 import type { FrameConnection } from '@/lib/blocks/executor'
 import { call } from '@/lib/blocks/sandbox/protocol'
 import type {
@@ -63,7 +62,6 @@ export function notebookHost(
   onSelection?: (selection: AppSelection) => void,
 ): BridgeHost {
   return {
-    capabilities: noCapabilities(),
     state: {
       snapshot: () => ({}),
       set: denied('keeps no shared state'),

@@ -26,6 +26,10 @@ export type Binding =
   | { kind: 'collections' }
   | { kind: 'used_together'; anchorIds: string[]; limit?: number }
   | { kind: 'filing_history'; documentId: string }
+  /** CRM records by Index item id (`record:<name>/<id>`), 1..50, answered in the order given. */
+  | { kind: 'records'; ids: string[] }
+  /** The documents filed to one record, by its Index item id; answered as items. */
+  | { kind: 'record_documents'; recordItemId: string }
   | {
       kind: 'map'
       overlay?: AtlasOverlay
@@ -105,6 +109,8 @@ export type FilingReceipt = {
   actor: Actor
   lowConfidence: boolean
   generation: number
+  /** The records this filing also linked the document to; absent when it is about none. */
+  recordFilings?: RecordFilingReceipt[]
 }
 
 export type CorrectionReceipt = {
@@ -116,6 +122,60 @@ export type CorrectionReceipt = {
   actor: Actor
   generation: number
   undo: boolean
+}
+
+/** Why a document is linked to a saved record. */
+export type RecordFilingAttribution =
+  | { kind: 'identifier'; field: string }
+  | { kind: 'name_mention'; where: 'title' | 'text'; tokens: string[] }
+  | { kind: 'correction'; actor: Actor }
+  /** Theorem made the document (a message draft) for this record when the person approved `proposalId`. */
+  | { kind: 'made'; proposalId: string }
+
+/** A document's link to a record it is about, and why. Filing to records never changes the record. */
+export type RecordFilingReceipt = {
+  schema: string
+  receiptId: string
+  documentId: string
+  /** `record:<name_singular>/<record_id>` */
+  recordItemId: string
+  recordId: string
+  nameSingular: string
+  /** The record's title when it was linked. */
+  title: string
+  tier: FilingTier
+  attribution: RecordFilingAttribution
+  confidence: number
+  actor: Actor
+  lowConfidence: boolean
+  generation: number
+}
+
+/** A move or dismissal of a record link, or the undo of one. */
+export type RecordFilingCorrection = {
+  schema: string
+  correctionId: string
+  receiptId: string
+  documentId: string
+  /** Absent on the undo of a dismissal. */
+  fromRecordItemId?: string | null
+  /** Absent on a dismissal. */
+  toRecordItemId?: string | null
+  actor: Actor
+  generation: number
+  undo: boolean
+  undone: boolean
+  receipt?: RecordFilingReceipt
+}
+
+export type RecordFilingHistory = {
+  schema: string
+  documentId: string
+  /** Every record receipt the document has carried. */
+  receipts: RecordFilingReceipt[]
+  /** The receipts of the links in force now. */
+  links: RecordFilingReceipt[]
+  corrections: RecordFilingCorrection[]
 }
 
 export type AtlasOverlay =
@@ -171,10 +231,25 @@ export type AtlasSnapshot = {
   cells: AtlasCell[]
 }
 
+/** A CRM record as the Index names it: an item id of the form `record:<nameSingular>/<recordId>`. */
+export type IndexRecord = {
+  itemId: string
+  recordId: string
+  nameSingular: string
+  /** Empty when the record has no name; show `recordId` then. */
+  title: string
+}
+
 export type QueryResult =
   | { kind: 'items'; items: IndexItem[]; total: number }
   | { kind: 'collections'; collections: Collection[] }
-  | { kind: 'used_together'; items: (IndexItem & { sessions: number })[] }
+  | {
+      kind: 'used_together'
+      items: (IndexItem & { sessions: number })[]
+      /** Records opened alongside the anchors; absent from a server that predates records. */
+      records?: (IndexRecord & { sessions: number })[]
+    }
+  | { kind: 'records'; records: IndexRecord[] }
   | { kind: 'filing_history'; receipts: FilingReceipt[] }
   | { kind: 'map'; snapshot: AtlasSnapshot }
 

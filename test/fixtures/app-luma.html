@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Luma artifact GPU smoke</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 16px;
+        font: 14px system-ui;
+      }
+      canvas {
+        display: block;
+        width: 64px;
+        height: 64px;
+      }
+      output {
+        display: block;
+        margin-top: 12px;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas
+      id="scene"
+      width="64"
+      height="64"
+      aria-label="Green triangle"
+    ></canvas>
+    <output id="result">Loading the pinned Luma packages…</output>
+    <script type="text/theorem-source" data-path="package.json">
+      {"dependencies":{"@luma.gl/core":"9.4.2","@luma.gl/webgl":"9.4.2","@luma.gl/engine":"9.4.2"}}
+    </script>
+    <script type="text/theorem-source" data-path="main.ts">
+      import { luma, type Device } from '@luma.gl/core'
+      import { webgl2Adapter } from '@luma.gl/webgl'
+      import { Model } from '@luma.gl/engine'
+
+      const canvas = document.getElementById('scene') as HTMLCanvasElement
+      const output = document.getElementById('result') as HTMLOutputElement
+      const device: Device = await luma.createDevice({
+        type: 'webgl',
+        adapters: [webgl2Adapter],
+        createCanvasContext: { canvas },
+        webgl: { preserveDrawingBuffer: true },
+      })
+      const model = new Model(device, {
+        id: 'artifact-luma-smoke',
+        topology: 'triangle-list',
+        vertexCount: 3,
+        vs: `#version 300 es
+          const vec2 positions[3] = vec2[3](
+            vec2(-0.8, -0.8),
+            vec2(0.8, -0.8),
+            vec2(0.0, 0.8)
+          );
+          void main() {
+            gl_Position = vec4(positions[gl_VertexID], 0.0, 1.0);
+          }`,
+        fs: `#version 300 es
+          precision highp float;
+          out vec4 color;
+          void main() {
+            color = vec4(0.0, 1.0, 0.0, 1.0);
+          }`,
+      })
+
+      // v9 requires an explicit adapter and a RenderPass passed to Model.draw.
+      const pass = device.beginRenderPass({ clearColor: [0, 0, 0, 1] })
+      const drawn = model.draw(pass)
+      pass.end()
+      device.submit()
+
+      const gl = canvas.getContext('webgl2')
+      if (!gl) throw new Error('WebGL2 context unavailable')
+      const pixel = new Uint8Array(4)
+      gl.readPixels(
+        Math.floor(gl.drawingBufferWidth / 2),
+        Math.floor(gl.drawingBufferHeight / 2),
+        1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel,
+      )
+      const result = { drawn, pixel: [...pixel], renderer: device.info.renderer }
+      if (!drawn || pixel[1]! < 200 || pixel[0]! > 50 || pixel[2]! > 50)
+        throw new Error('Triangle did not render: ' + JSON.stringify(result))
+
+      output.dataset.lumaSmoke = 'ok'
+      output.textContent = JSON.stringify(result)
+      window.addEventListener('pagehide', () => {
+        model.destroy()
+        device.destroy()
+      }, { once: true })
+    </script>
+  </body>
+</html>

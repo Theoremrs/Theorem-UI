@@ -458,9 +458,20 @@ carries its source files as scripts a browser does not run.
   `data-path`: `.ts`, `.tsx`, `.js`, `.jsx`, `.css` or `.json`, relative, in
   folders if wanted. The App starts from `main.tsx` (or `.ts`, `.jsx`, `.js`),
   or from the file marked `data-entry`. Files import each other by relative
-  path and import the modules in [the import map](#the-import-map), nothing
-  else. A page with no such scripts is a plain HTML App, as before
+  path, import browser-compatible npm packages, or import HTTPS ES modules.
+  [The import map](#the-import-map) is an offline fast path for Apps, not a
+  list of permitted components or packages. A page with no such scripts is a plain HTML App, as before
   (`app-source.ts`).
+- **Dependencies.** Add a virtual `package.json` source with ordinary
+  `dependencies` to pin package versions (for example
+  `{"dependencies":{"@luma.gl/core":"9.2.3"}}`). Explicit version imports
+  (`@luma.gl/core@9.2.3` or `npm:@luma.gl/core@9.2.3`) and HTTPS ESM URLs work
+  too. npm packages use esm.sh's browser builds; React dependencies resolve
+  through the App's own React choice. Build and check share cached responses,
+  but only exact versions or immutable URLs pin direct dependencies across
+  page loads; transitive ranges are not a saved lockfile. Unversioned
+  packages can change on a later page load. Dependencies are fetched by the
+  host while building; the frame's declared network policy is unchanged.
 - **Build.** When the page is hosted, esbuild-wasm bundles the files and what
   they import into one module, which replaces the source scripts and runs
   last in the body. Imported `.css` becomes a style element. Types are erased,
@@ -471,8 +482,11 @@ carries its source files as scripts a browser does not run.
   (`app-check.ts`, `app-checker.ts`). The check is strict. It knows React,
   and `window.theorem` exactly as the bridge gives it: those declarations are
   written from `sandbox/app-bridge.ts` by `bun scripts/app-declarations.ts`,
-  and a test fails when they are stale. The import map's other modules import
-  untyped. An App runs whether or not its check passes; the check and the
+  and a test fails when they are stale. External module declarations are read
+  from the metadata on the same module response used for the build, including
+  their transitive type imports. Missing declarations or failed fetches are
+  reported, never hidden behind a wildcard `any` module. The import map's
+  existing other modules remain untyped. An App runs whether or not its check passes; the check and the
   build are separate facts about a revision.
 - **Running.** What the App throws and does not catch is sent to the page
   (`frame.error`), which traces it through the bundle's source map to the

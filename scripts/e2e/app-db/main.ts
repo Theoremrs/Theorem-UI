@@ -40,7 +40,6 @@ async function mount(
     pinnedAppHost(
       html,
       options.documentId,
-      declarations.capabilities,
       state.state,
       databases,
     ),

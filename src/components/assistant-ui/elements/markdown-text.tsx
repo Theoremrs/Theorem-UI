@@ -8,7 +8,13 @@ import {
   useIsMarkdownCodeBlock
 } from "@assistant-ui/react-markdown";
 import type { CodeHeaderProps, MarkdownTextPrimitiveProps } from "@assistant-ui/react-markdown";
+import {
+  escapeCurrencyDollars,
+  normalizeMathDelimiters,
+} from "@assistant-ui/react-markdown/preprocess";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import { memo, useMemo, useRef } from "react";
 import type { FC } from "react";
 import type { TextMessagePartProps } from "@assistant-ui/react";
@@ -72,7 +78,9 @@ const MarkdownTextImpl: FC<MarkdownTextProps> = ({
 
   return (
     <MarkdownTextPrimitive
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      preprocess={preprocessMath}
       className="aui-md"
       components={markdownComponents}
       componentsByLanguage={stableComponentsByLanguage ?? defaultComponentsByLanguage}
@@ -82,6 +90,10 @@ const MarkdownTextImpl: FC<MarkdownTextProps> = ({
 };
 
 export const MarkdownText = memo(MarkdownTextImpl);
+
+// Models emit \( \) and \[ \] as often as dollars; prices in prose are not math.
+const preprocessMath = (text: string) =>
+  normalizeMathDelimiters(escapeCurrencyDollars(text));
 
 /** The glass code block draws its own chrome, so a fence's separate header is empty. */
 export const CodeHeader: FC<CodeHeaderProps> = () => null;

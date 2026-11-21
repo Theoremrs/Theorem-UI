@@ -1,4 +1,4 @@
-// SOURCING: next-themes (light/dark), lib/palette (colours), lib/appearance (preset, sizes, custom CSS), lib/life/store (the field behind the chat), coss ui SegmentedControl for choices and Switch for on and off, the settings frame
+// SOURCING: next-themes (light/dark), lib/palette (colours), lib/appearance (preset, sizes, custom CSS), lib/life/store (the field behind the chat), the shell state (whether the Workspace is a drawer or part of the screen), coss ui SegmentedControl for choices and Switch for on and off, the settings frame
 import { createFileRoute } from '@tanstack/react-router'
 import { useTheme } from 'next-themes'
 import { useState } from 'react'
@@ -23,12 +23,18 @@ import {
   SegmentedControlItem,
 } from '@/components/coss/segmented-control'
 import {
+  setCalculationsShown,
+  useCalculationsShown,
+} from '@/components/crm/calculations-setting'
+import {
   SettingsBox,
   SettingsPage,
   SettingsRow,
   SettingsSection,
 } from '@/components/settings/settings-frame'
 import { useLifeControls, useLifeShown } from '@/lib/life/store'
+import { useShell } from '@/components/shell/shell-state'
+import { WORKBENCH_LABEL } from '@/components/workbench/label'
 import { PALETTES, CALM_COLORS, COLOR_ROLES } from '@/lib/appearance-policy'
 import {
   APPEARANCE_VERSION,
@@ -45,6 +51,7 @@ import type {
   AppearanceInput,
 } from '@/lib/appearance'
 import { LATIN_PROSE_V1_PARAGRAPHS } from '@/lib/appearance-corpus.mjs'
+import { PaletteColors } from '@/components/settings/palette-colors'
 
 export const Route = createFileRoute('/settings/appearance')({
   component: AppearanceSettings,
@@ -78,6 +85,49 @@ export function Choice({
   )
 }
 
+/**
+ * Whether the Workspace beside or under the conversation is a drawer over the
+ * screen or part of it (components/workbench/workbench-dock.tsx). It is kept
+ * with the shell's other preferences on this device.
+ */
+function WorkspaceSection() {
+  const attachment = useShell((s) => s.workbenchAttachment)
+  const setAttachment = useShell((s) => s.setWorkbenchAttachment)
+  return (
+    <SettingsSection
+      title={WORKBENCH_LABEL}
+      description={`How the ${WORKBENCH_LABEL} opens on the right or at the bottom. Kept on this device.`}
+    >
+      <SettingsBox>
+        <SettingsRow
+          title="Opens as"
+          description={
+            attachment === 'drawer'
+              ? 'A drawer over the screen. Double-click outside it to close it.'
+              : 'Part of the screen, beside or under the conversation, which makes room for it. It stays open until you close it.'
+          }
+        >
+          <SegmentedControl
+            size="sm"
+            aria-label={`${WORKBENCH_LABEL} opens as`}
+          >
+            <Choice
+              label="Drawer"
+              pressed={attachment === 'drawer'}
+              onPress={() => setAttachment('drawer')}
+            />
+            <Choice
+              label="Part of the screen"
+              pressed={attachment === 'docked'}
+              onPress={() => setAttachment('docked')}
+            />
+          </SegmentedControl>
+        </SettingsRow>
+      </SettingsBox>
+    </SettingsSection>
+  )
+}
+
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme()
   const { appearance, overrides, selectPreset, setOverrides, resetOverrides } =
@@ -85,6 +135,7 @@ export function AppearanceSettings() {
   const lifeShown = useLifeShown()
   const lifeOverride = useLifeControls((state) => state.shown)
   const lifePlaying = useLifeControls((state) => state.playing)
+  const calculations = useCalculationsShown()
   const reset = () => {
     resetOverrides()
     setTheme('system')
@@ -233,8 +284,20 @@ export function AppearanceSettings() {
               />
             </SegmentedControl>
           </SettingsRow>
+          <SettingsRow
+            title="Calculations under record tables"
+            description="A Calculate row under each record table: counts, percentages, sums and dates over the records loaded. Off, the table shows only how many records it holds. Kept on this device."
+          >
+            <Switch
+              aria-label="Calculations under record tables"
+              checked={calculations}
+              onCheckedChange={setCalculationsShown}
+            />
+          </SettingsRow>
         </SettingsBox>
       </SettingsSection>
+      <PaletteColors />
+      <WorkspaceSection />
       <SettingsSection
         title="Background"
         description="What runs behind the conversation."
@@ -264,7 +327,9 @@ export function AppearanceSettings() {
               aria-label="Background animation playing"
               checked={lifeShown && lifePlaying}
               disabled={!lifeShown}
-              onCheckedChange={(playing) => useLifeControls.setState({ playing })}
+              onCheckedChange={(playing) =>
+                useLifeControls.setState({ playing })
+              }
             />
           </SettingsRow>
         </SettingsBox>

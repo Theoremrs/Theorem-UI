@@ -1,6 +1,6 @@
-// SOURCING: the platform's MessageChannel and postMessage. A block runs in a
-// sandboxed iframe served by the block listener (plan D9); the page hands it
-// one MessagePort and serves its bridge over that port and nothing else.
+// SOURCING: the platform's MessageChannel and postMessage. A block runs in an
+// iframe of its own origin (plan D9); the page hands it one MessagePort and
+// serves its bridge over that port and nothing else.
 import { serveBridge } from './bridge'
 import type { BridgeHost } from './bridge'
 import { CellContext } from './sandbox/cell'
@@ -20,8 +20,58 @@ export interface CellExecutor {
   dispose: () => void
 }
 
-/** The sandbox attribute every block frame gets: scripts, and nothing else. */
-export const BLOCK_SANDBOX = 'allow-scripts'
+/**
+ * What a block frame may do: everything a page can, on an origin of its own.
+ * It may reach the network, submit forms, open windows, download, and ask
+ * for the camera or microphone like any page; what it does not get is this
+ * site's origin (allow-same-origin), so it is never signed in as the person.
+ */
+export const BLOCK_SANDBOX = [
+  'allow-scripts',
+  'allow-forms',
+  'allow-modals',
+  'allow-popups',
+  'allow-popups-to-escape-sandbox',
+  'allow-downloads',
+  'allow-pointer-lock',
+  'allow-presentation',
+  'allow-orientation-lock',
+  'allow-top-navigation-by-user-activation',
+].join(' ')
+
+/** The browser features a block frame may ask the person for (its `allow`). */
+export const BLOCK_ALLOW = [
+  'accelerometer',
+  'autoplay',
+  'camera',
+  'clipboard-read',
+  'clipboard-write',
+  'display-capture',
+  'encrypted-media',
+  'fullscreen',
+  'geolocation',
+  'gyroscope',
+  'magnetometer',
+  'microphone',
+  'midi',
+  'picture-in-picture',
+  'screen-wake-lock',
+  'web-share',
+  'xr-spatial-tracking',
+].join('; ')
+
+/**
+ * What a frame the person limited gets instead: scripts, and nothing else. A
+ * sandboxed module runs so, reaching only the hosts and files they allowed.
+ */
+export const LIMITED_SANDBOX = 'allow-scripts'
+
+/** Gives `frame` what a block frame may do, or only scripts where the person limited it. */
+export function openFrame(frame: HTMLIFrameElement, limited = false): void {
+  frame.setAttribute('sandbox', limited ? LIMITED_SANDBOX : BLOCK_SANDBOX)
+  if (!limited) frame.allow = BLOCK_ALLOW
+  frame.referrerPolicy = 'no-referrer'
+}
 
 /**
  * The page's end of a block frame. Only the frame's own window may ask for

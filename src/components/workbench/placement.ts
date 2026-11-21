@@ -11,6 +11,13 @@ export type Companion = Exclude<Placement, 'full'>
 /** What the person last chose: a placement, or closed. */
 export type PlacementChoice = Placement | 'closed'
 
+/**
+ * How the workbench sits beside or under the conversation, set in Settings: a
+ * drawer over the screen that a double-click outside closes, or part of the
+ * screen, docked, with the conversation giving up room for it.
+ */
+export type Attachment = 'drawer' | 'docked'
+
 export function dockPresentation(
   placement: Placement | undefined,
   viewport: number,

@@ -24,6 +24,7 @@ import {
   useWorkbenchShortcut,
 } from '@/components/workbench/use-workbench-placement'
 import { WorkbenchDock } from '@/components/workbench/workbench-dock'
+import { Workbench } from '@/components/workbench/workbench'
 import { ThreadListPrimitive, useAuiState } from '@assistant-ui/react'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { WorkspaceCommands } from '@/components/workspace/workspace-commands'
@@ -144,7 +145,13 @@ function DockView() {
   const [ideLoaded, setIdeLoaded] = useState(ide)
   if (ide && !ideLoaded) setIdeLoaded(true)
   return (
-    <div className="relative h-full">
+    // The column the workbench attaches to at the bottom (workbench-dock.tsx):
+    // docked there, the column alone gives up room under itself, so the side
+    // panel beside it keeps its height.
+    <div
+      data-workbench-anchor=""
+      className="relative h-full pb-(--workbench-reserve,0px)"
+    >
       {/* Dockview layers its panels with z-index; isolate keeps them under the page. */}
       <div inert={ide} className={cn('isolate h-full', ide && HIDDEN_LAYER)}>
         <DockShell projectId={route.projectId} threadId={route.threadId} />
@@ -152,7 +159,10 @@ function DockView() {
       {ideLoaded && (
         <div
           inert={!ide}
-          className={cn('absolute inset-0', !ide && HIDDEN_LAYER)}
+          className={cn(
+            'absolute inset-x-0 top-0 bottom-(--workbench-reserve,0px)',
+            !ide && HIDDEN_LAYER,
+          )}
         >
           <OnIdePage value>
             <IdePageShown value={ide}>
@@ -373,6 +383,14 @@ function DesktopShell(route: DockRoute) {
   } = useWorkbenchPlacement()
   useWorkbenchShortcut(toggleWorkbench)
   const full = requestedPlacement === 'full'
+  // Only a docked side takes a place in the row; a drawer, or a card docked
+  // at the bottom, lies over the conversation column and moves nothing.
+  const dockedSide = useShell(
+    (s) => placement === 'side' && s.workbenchAttachment === 'docked',
+  )
+  // The row the workbench writes its sizes to (workbench-dock.tsx), kept as
+  // the element so the workbench has it in its first layout effects.
+  const [frame, setFrame] = useState<HTMLDivElement | null>(null)
   // Mounted on its first showing, then kept, hidden while closed, so its runs
   // and terminals carry on (components/workbench/workbench-dock.tsx).
   const [workbenchMounted, setWorkbenchMounted] = useState(
@@ -402,20 +420,18 @@ function DesktopShell(route: DockRoute) {
         <Rail collapsible />
       </div>
       {/* A docked cabinet reserves its width here (side-terminal sets
-          --cabinet-dock); an overlay reserves none. The workbench docks
-          beside or under the sheet in the same row or column, so moving it
-          never remounts it. */}
+          --cabinet-dock); an overlay reserves none. The workbench sits in the
+          same row whatever its placement, so moving it never remounts it: a
+          docked side beside the sheet, anything else over the sheet's
+          conversation column, never above or below the side panel. */}
       <div
-        className={cn(
-          'flex min-h-0 min-w-0 flex-1 me-(--cabinet-dock,0px) transition-[margin] duration-(--duration-glide) ease-glide',
-          placement === 'bottom' ? 'flex-col' : 'flex-row',
-        )}
+        ref={setFrame}
+        className="relative flex min-h-0 min-w-0 flex-1 flex-row me-(--cabinet-dock,0px) transition-[margin] duration-(--duration-glide) ease-glide"
       >
         <div
           className={cn(
             'relative my-(--sheet-inset) me-(--sheet-inset) min-h-0 min-w-0 flex-1 data-[covered]:opacity-40',
-            placement === 'side' && 'me-0',
-            placement === 'bottom' && 'mb-0',
+            dockedSide && 'me-0',
           )}
           data-appearance-part="sheet-frame"
           data-covered={covered || undefined}
@@ -459,10 +475,15 @@ function DesktopShell(route: DockRoute) {
           </div>
         </div>
         {workbenchMounted && (
-          <WorkbenchDock
-            placement={requestedPlacement}
-            projectId={route.projectId}
-          />
+          <WorkbenchDock placement={requestedPlacement} frame={frame}>
+            {({ shown, companion }) => (
+              <Workbench
+                projectId={route.projectId}
+                shown={shown}
+                companion={companion}
+              />
+            )}
+          </WorkbenchDock>
         )}
       </div>
       <NavigationDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
