@@ -108,3 +108,62 @@ test('a skill named from the + menu shows as a chip by its title', async () => {
   expect(container.textContent).toContain('Please ')
   expect(container.textContent).not.toContain('{name=')
 })
+
+test('an @ pick reads as a chip of its title, naming what it cites', async () => {
+  const { container } = await render(
+    <UserMarkdown
+      text={
+        'Ask :record[Noor Haddad]{name=record:Person/person:noor} about :document[Notes on the kiln visit]{name=document:doc:kiln} and :record{label="Studio [east]" name="record:Place/place:east"}. `:record[code]`'
+      }
+    />,
+  )
+  const chips = [
+    ...container.querySelectorAll('[data-slot="directive-text-chip"]'),
+  ].map((chip) => [
+    chip.textContent,
+    chip.getAttribute('data-directive-type'),
+    chip.getAttribute('data-directive-id'),
+  ])
+  expect(chips).toEqual([
+    ['Noor Haddad', 'record', 'record:Person/person:noor'],
+    ['Notes on the kiln visit', 'document', 'document:doc:kiln'],
+    ['Studio [east]', 'record', 'record:Place/place:east'],
+  ])
+  expect(container.textContent).not.toContain('{name=')
+  expect(container.querySelector('code')?.textContent).toBe(':record[code]')
+})
+
+test("a title's Markdown escapes stay out of its chip and the words after it stay", async () => {
+  const { container } = await render(
+    <UserMarkdown
+      text={
+        'Open :document[Road \\*map\\* \\_v2\\_]{name=document:doc:road} next, and :record{label="Studio \\[east] \\*b\\*" name="record:Place/place:east"} too.'
+      }
+    />,
+  )
+  const chips = [
+    ...container.querySelectorAll('[data-slot="directive-text-chip"]'),
+  ].map((chip) => [chip.textContent, chip.getAttribute('data-directive-id')])
+  expect(chips).toEqual([
+    ['Road *map* _v2_', 'document:doc:road'],
+    ['Studio [east] *b*', 'record:Place/place:east'],
+  ])
+  expect(container.textContent).toBe(
+    'Open Road *map* _v2_ next, and Studio [east] *b* too.',
+  )
+})
+
+test('a directive whose own brackets, braces or quotes are escaped stays literal', async () => {
+  const { container } = await render(
+    <UserMarkdown
+      text={
+        'See :document[Notes]\\{name=document:doc:notes}, :record[Noor\\]{name=x}, :record{label=\\"Studio [east]" name="x"} and :document[Real]{name=document:doc:real}.'
+      }
+    />,
+  )
+  const chips = [
+    ...container.querySelectorAll('[data-slot="directive-text-chip"]'),
+  ].map((chip) => chip.textContent)
+  expect(chips).toEqual(['Real'])
+  expect(container.textContent).toContain(':document[Notes]{name=document:doc:notes}')
+})

@@ -2167,6 +2167,28 @@
   color: var(--ink-faint);
 }
 
+/* A directive the composer wrote (a / tool, a + skill, an @ record or
+   document) reads as a chip of its label, as assistant-ui's directive-text
+   chip reads in the sent message. Its text stays in the document, unseen. */
+.theorem-composer .milkdown .ProseMirror .theorem-composer-directive {
+  font-size: 0;
+}
+
+.theorem-composer .milkdown .ProseMirror .theorem-composer-directive::after {
+  content: attr(data-label);
+  display: inline-block;
+  margin-inline: 1px;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  background: var(--color-secondary);
+  color: var(--color-secondary-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
 /* Editing an earlier message keeps that input's own measure, and no limit. */
 .aui-edit-composer-input.theorem-composer .milkdown .ProseMirror {
   min-height: 3.5rem;
