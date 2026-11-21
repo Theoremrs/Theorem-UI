@@ -622,7 +622,7 @@ export function Workbench({
         let loadingLayout: Effect['id'] | null | undefined
         const saveTerminalViews = () => {
           // A second reload during startup must leave the previous snapshot available.
-          if (loadingLayout !== null) return
+          if (loadingLayout !== null || watch.current !== account) return
           try {
             window.sessionStorage.setItem(terminalKey, surface.terminalViews())
           } catch {
@@ -656,6 +656,21 @@ export function Workbench({
               message.effect !== loadingLayout
             )
               return
+            // A retiring adapter answers in-flight effects with `uncertain` after
+            // the core has cleared the old account. Never restore that account here.
+            if (
+              watch.current !== account ||
+              message.outcome.status === 'uncertain'
+            )
+              return
+            if (
+              message.outcome.status === 'refused' &&
+              (message.outcome.code === 'signed_out' ||
+                message.outcome.code === 'forbidden')
+            ) {
+              loadingLayout = undefined
+              return
+            }
             loadingLayout = null
             try {
               const saved = window.sessionStorage.getItem(terminalKey)
