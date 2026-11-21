@@ -50,3 +50,5 @@ Fly updated the ingress machine to `sha256:ad96f6de5b1c2d346570454ac71988a1c360c
 The PR review reproduced a held-edit checkpoint lost while the workspace was hidden. The native workbench regression test failed before the visibility change and passed afterward. The terminal library passed all 236 tests with the change.
 
 The dock component tests now exercise Bottom overlay and Right docking in the same mounted shell. A restored focused terminal applies its saved maximize state after the account layout loads. Layout requests from retired accounts can no longer update the status shown by the active workspace. Searching the chat sidebar matches recovered titles as soon as the rows display them.
+
+The Composer contract's contrast check tabbed into the draft's code block, where Tab indents. It now uses Escape then Tab to leave the block and measures the same keyboard-focused Send button.
