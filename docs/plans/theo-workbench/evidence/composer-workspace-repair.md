@@ -52,3 +52,5 @@ The PR review reproduced a held-edit checkpoint lost while the workspace was hid
 The dock component tests now exercise Bottom overlay and Right docking in the same mounted shell. A restored focused terminal applies its saved maximize state after the account layout loads. Layout requests from retired accounts can no longer update the status shown by the active workspace. Searching the chat sidebar matches recovered titles as soon as the rows display them.
 
 The Composer contract's contrast check tabbed into the draft's code block, where Tab indents. It now uses Escape then Tab to leave the block and measures the same keyboard-focused Send button.
+
+The custom-palette test also sampled the new canvas with the previous mode's text color during a mode switch. A browser trace reproduced the mismatch and showed that the intended colors had resolved by the next paint. The test waits for the mode to paint before checking the same contrast thresholds.
