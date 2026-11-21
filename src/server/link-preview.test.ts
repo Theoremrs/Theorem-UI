@@ -220,6 +220,62 @@ describe('extractMetadata', () => {
     expect(metadata.title).toBeUndefined()
   })
 
+  test('raw-text closing tags use HTML ASCII whitespace instead of all Unicode whitespace', () => {
+    const lookalike = `<script>const example = "</script\u00a0><meta property='og:title' content='From script'>";</script>
+      <title>Real page title</title>`
+    expect(extractMetadata(lookalike, base).title).toBe('Real page title')
+
+    const realClosingTag = `<script>const example = "<meta property='og:title' content='From script'>";</script \t\n\f\r>
+      <title>Real page title</title>`
+    expect(extractMetadata(realClosingTag, base).title).toBe('Real page title')
+  })
+
+  test('nonbreaking spaces remain part of tag and attribute names', () => {
+    for (const tag of [
+      '<meta\u00a0 property="og:title" content="Not a meta tag">',
+      '<meta property\u00a0="og:title" content="Not the property attribute">',
+      '<meta property="og:title"\u00a0content="Not the content attribute">',
+    ]) {
+      expect(
+        extractMetadata(tag + '<title>Document title</title>', base).title,
+      ).toBe('Document title')
+    }
+  })
+
+  test('nonbreaking spaces stay inside unquoted values and rel tokens', () => {
+    const metadata = extractMetadata(
+      '<meta property=og:title content=Two\u00a0words><link rel="other\u00a0icon" href="/not-an-icon.png">',
+      base,
+    )
+    expect(metadata.title).toBe('Two\u00a0words')
+    expect(metadata.favicon).toBe('https://example.com/favicon.ico')
+  })
+
+  test('HTML tag names fold ASCII letters without folding Unicode lookalikes', () => {
+    expect(
+      extractMetadata('<lin\u212a rel="icon" href="/fake.ico">', base).favicon,
+    ).toBe('https://example.com/favicon.ico')
+    expect(
+      extractMetadata('<LINK rel="icon" href="/real.ico">', base).favicon,
+    ).toBe('https://example.com/real.ico')
+  })
+
+  test('decoded-empty metadata falls through while preserving title precedence', () => {
+    for (const [og, twitter, expected] of [
+      ['   ', 'Twitter title', 'Twitter title'],
+      ['&#32;&#x20;', '  ', 'Document title'],
+      ['  Open Graph title  ', 'Twitter title', 'Open Graph title'],
+    ]) {
+      const metadata = extractMetadata(
+        `<meta property="og:title" content="${og}">
+        <meta name="twitter:title" content="${twitter}">
+        <title>Document title</title>`,
+        base,
+      )
+      expect(metadata.title).toBe(expected)
+    }
+  })
+
   test('falls back to the title tag and the default favicon', () => {
     const html = '<html><head><title>Plain page</title></head></html>'
     const meta = extractMetadata(html, base)
@@ -532,6 +588,19 @@ describe('resolveLinkMetadata request lifecycle', () => {
     expect(request.destroyed).toBe(false)
     expect(response.destroyed).toBe(false)
     expect(response.listenerCount('data')).toBe(0)
+  })
+
+  test('resolves a useful document preview when higher-priority metadata is blank', async () => {
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    connection(0).response.emit(
+      'data',
+      Buffer.from(
+        '<meta property="og:title" content="&#32;"><title>Document preview</title>',
+      ),
+    )
+    connection(0).response.emit('end')
+    expect((await result)?.title).toBe('Document preview')
   })
 
   test('retains the bounded prefix of an oversized chunk and closes the stream', async () => {

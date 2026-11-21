@@ -511,69 +511,135 @@ test('every supporting passage opens in full and Escape returns to its trigger',
   expect(document.querySelector('[data-slot="source-entry"]')).not.toBeNull()
 })
 
-test('two anonymous passages remain separate composer references after reload', async () => {
-  const { useComposerReferences } = await import('./composer-references')
-  useComposerReferences.setState({ references: [] })
-  const messages: ThreadMessageLike[] = [
-    {
-      id: 'anonymous-evidence',
-      role: 'assistant',
-      content: [
-        {
-          type: 'data',
-          name: 'theorem-citation',
-          data: { provenance: { excerpt: 'First anonymous passage.' } },
+for (const { name, citations, passages } of [
+  {
+    name: 'two anonymous passages remain separate composer references after reload',
+    citations: [
+      { provenance: { excerpt: 'First anonymous passage.' } },
+      { provenance: { excerpt: 'Second anonymous passage.' } },
+    ],
+    passages: [['First anonymous passage.'], ['Second anonymous passage.']],
+  },
+  {
+    name: 'a reused URL retains distinct composer references after reload',
+    citations: [
+      {
+        label: 'Original source',
+        provenance: {
+          url: 'https://example.com/original',
+          excerpt: 'Initial evidence.',
         },
-        {
-          type: 'data',
-          name: 'theorem-citation',
-          data: { provenance: { excerpt: 'Second anonymous passage.' } },
+      },
+      {
+        sourceId: 'moving-source',
+        provenance: { url: 'https://example.com/original' },
+      },
+      {
+        sourceId: 'moving-source',
+        provenance: {
+          url: 'https://example.com/updated',
+          excerpt: 'Updated evidence.',
         },
-      ],
-    },
-  ]
-  try {
-    const { container, rerender } = await render(
-      <Harness messages={messages} />,
-    )
-    const trigger = await waitFor(() =>
-      container.querySelector('button[aria-label="List sources"]'),
-    )
-    await act(async () =>
-      trigger.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-    )
-    await waitFor(
-      () =>
-        document.querySelectorAll('[data-slot="source-entry"]').length === 2,
-    )
-    const addAll = async () => {
-      for (const entry of document.querySelectorAll(
-        '[data-slot="source-entry"]',
-      )) {
-        const add = [...entry.querySelectorAll('button')].find((button) =>
-          button.textContent.includes('Add to context'),
-        )!
-        await act(async () =>
-          add.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+      },
+      {
+        label: 'New source at the original URL',
+        provenance: {
+          url: 'https://example.com/original',
+          excerpt: 'Independent evidence.',
+        },
+      },
+    ],
+    passages: [
+      ['Initial evidence.', 'Updated evidence.'],
+      ['Independent evidence.'],
+    ],
+  },
+]) {
+  test(name, async () => {
+    const { referenceKey, useComposerReferences } =
+      await import('./composer-references')
+    useComposerReferences.setState({ references: [] })
+    const client = new QueryClient()
+    for (const citation of citations) {
+      if ('url' in citation.provenance)
+        client.setQueryData(
+          ['theorem', 'link-preview', citation.provenance.url],
+          null,
         )
-      }
     }
-    await addAll()
-    expect(useComposerReferences.getState().references).toHaveLength(2)
-    await rerender(<Harness messages={JSON.parse(JSON.stringify(messages))} />)
-    await addAll()
-    const references = useComposerReferences.getState().references
-    expect(references).toHaveLength(2)
-    expect(
-      references.map(
-        (reference) =>
-          JSON.parse(reference.excerpt!).citation.passages[0].excerpt,
-      ),
-    ).toEqual(['First anonymous passage.', 'Second anonymous passage.'])
-  } finally {
-    await act(async () => useComposerReferences.setState({ references: [] }))
-  }
-})
+    const messages: ThreadMessageLike[] = [
+      {
+        id: 'source-evidence',
+        role: 'assistant',
+        content: citations.map((data) => ({
+          type: 'data',
+          name: 'theorem-citation',
+          data,
+        })),
+      },
+    ]
+    const referencePassages = () =>
+      useComposerReferences
+        .getState()
+        .references.map((reference) =>
+          JSON.parse(reference.excerpt!).citation.passages.map(
+            (passage: { excerpt: string }) => passage.excerpt,
+          ),
+        )
+    try {
+      const { container, rerender } = await render(
+        <Harness messages={messages} client={client} />,
+      )
+      const trigger = await waitFor(() =>
+        container.querySelector('button[aria-label="List sources"]'),
+      )
+      await act(async () =>
+        trigger.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+      )
+      await waitFor(
+        () =>
+          document.querySelectorAll('[data-slot="source-entry"]').length === 2,
+      )
+      const addAll = async () => {
+        const entries = document.querySelectorAll('[data-slot="source-entry"]')
+        expect(entries).toHaveLength(2)
+        for (const entry of entries) {
+          const add = [...entry.querySelectorAll('button')].find((button) =>
+            button.textContent.includes('Add to context'),
+          )!
+          await act(async () =>
+            add.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+          )
+        }
+      }
+      await addAll()
+      const originalKeys = useComposerReferences
+        .getState()
+        .references.map(referenceKey)
+      expect(originalKeys).toHaveLength(2)
+      expect(new Set(originalKeys).size).toBe(2)
+      expect(referencePassages()).toEqual(passages)
+
+      await rerender(
+        <Harness
+          messages={JSON.parse(JSON.stringify(messages))}
+          client={client}
+        />,
+      )
+      await act(async () => useComposerReferences.setState({ references: [] }))
+      expect(useComposerReferences.getState().references).toHaveLength(0)
+      await addAll()
+      const references = useComposerReferences.getState().references
+      expect(references).toHaveLength(2)
+      expect(references.map(referenceKey)).toEqual(originalKeys)
+      expect(referencePassages()).toEqual(passages)
+      await addAll()
+      expect(useComposerReferences.getState().references).toEqual(references)
+    } finally {
+      await act(async () => useComposerReferences.setState({ references: [] }))
+    }
+  })
+}
 
 test('a source that arrives while Sources is open retains its focused fallback after metadata resolves', async () => {
   const client = new QueryClient()

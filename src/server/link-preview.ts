@@ -371,7 +371,8 @@ const entity = (text: string): string =>
     .replace(/&#(\d+);/g, (_, dec: string) => numericEntity(dec, 10))
     .trim()
 
-/** Read a tag's attributes with matching quotes and a monotonic cursor. */
+/** Read a tag's attributes with matching quotes and a monotonic cursor.
+ *  Only HTML ASCII whitespace delimits names/values; NBSP stays content. */
 function tagAttributes(
   html: string,
   start: number,
@@ -380,19 +381,20 @@ function tagAttributes(
   const attributes = new Map<string, string>()
   let cursor = start
   while (cursor < end) {
-    while (cursor < end && /[\s/]/.test(html.charAt(cursor))) cursor++
+    while (cursor < end && /[\t\n\f\r /]/.test(html.charAt(cursor))) cursor++
     const nameStart = cursor
-    while (cursor < end && !/[\s/="'<>]/.test(html.charAt(cursor))) cursor++
+    while (cursor < end && !/[\t\n\f\r /="'<>]/.test(html.charAt(cursor)))
+      cursor++
     if (cursor === nameStart) {
       cursor++
       continue
     }
     const name = html.slice(nameStart, cursor).toLowerCase()
-    while (cursor < end && /\s/.test(html.charAt(cursor))) cursor++
+    while (cursor < end && /[\t\n\f\r ]/.test(html.charAt(cursor))) cursor++
     let value = ''
     if (html.charAt(cursor) === '=') {
       cursor++
-      while (cursor < end && /\s/.test(html.charAt(cursor))) cursor++
+      while (cursor < end && /[\t\n\f\r ]/.test(html.charAt(cursor))) cursor++
       const quote = html.charAt(cursor)
       if (quote === '"' || quote === "'") {
         const valueStart = ++cursor
@@ -401,7 +403,8 @@ function tagAttributes(
         cursor++
       } else {
         const valueStart = cursor
-        while (cursor < end && !/\s/.test(html.charAt(cursor))) cursor++
+        while (cursor < end && !/[\t\n\f\r ]/.test(html.charAt(cursor)))
+          cursor++
         value = html.slice(valueStart, cursor)
       }
     }
@@ -424,7 +427,7 @@ function headFields(head: string): {
   const links = new Map<string, string>()
   let title: string | undefined
   let cursor = 0
-  const rawTextEnd = /<\/(title|script|style|textarea)\s*>/gi
+  const rawTextEnd = /<\/(title|script|style|textarea)[\t\n\f\r ]*>/gi
   while (cursor < head.length) {
     const opening = head.indexOf('<', cursor)
     if (opening === -1) break
@@ -438,9 +441,12 @@ function headFields(head: string): {
     const closing = head.charAt(cursor) === '/'
     if (closing) cursor++
     const nameStart = cursor
-    while (cursor < head.length && /[a-z0-9:-]/i.test(head.charAt(cursor)))
+    while (cursor < head.length && /[^\t\n\f\r />]/.test(head.charAt(cursor)))
       cursor++
-    const name = head.slice(nameStart, cursor).toLowerCase()
+    // HTML folds ASCII capitals only; Unicode lookalikes are different tags.
+    const name = head
+      .slice(nameStart, cursor)
+      .replace(/[A-Z]/g, (letter) => letter.toLowerCase())
     const attributesStart = cursor
     let quote = ''
     while (cursor < head.length) {
@@ -485,7 +491,7 @@ function headFields(head: string): {
       if (!href) continue
       for (const rel of (attributes.get('rel') ?? '')
         .toLowerCase()
-        .split(/\s+/))
+        .split(/[\t\n\f\r ]+/))
         if (rel && !links.has(rel)) links.set(rel, href)
     }
   }
@@ -497,8 +503,8 @@ function firstField(
   ...keys: string[]
 ): string | undefined {
   for (const key of keys) {
-    const value = fields.get(key)
-    if (value) return entity(value)
+    const value = entity(fields.get(key) ?? '')
+    if (value) return value
   }
   return undefined
 }

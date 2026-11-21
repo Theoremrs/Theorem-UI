@@ -64,12 +64,18 @@ The four Major findings are addressed through bounded metadata parsing, rejectio
 
 The suggestion to associate a fallback with a later durable citation solely by their shared label was not applied. Labels are display text and cannot establish source identity; that inference could combine unrelated evidence. Grouping uses supplied IDs or matching URLs. Entries lacking both retain separate citation identities, with regressions covering same-label documents and later durable records that have no shared identity.
 
+### Additional source identity and parsing cases
+
+The [review of `97b9359e`](https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001107996) identified four narrower cases. Source collection now reserves assigned context keys: a source that gains an ID and changes URL keeps its identity, while a new source at the former URL receives an unused citation key. Regression coverage exercises both collection and real Add-to-context actions. Reload assertions clear the composer first, then verify that the reloaded UI recreates the original references and exact passages.
+
+Metadata scanning uses HTML's ASCII whitespace at lexical boundaries, so a nonbreaking space inside raw text, an attribute or a relation token cannot act as an HTML delimiter. Candidate fields are decoded and trimmed before selection; an empty Open Graph field yields to Twitter or the document title. ASCII-only tag-name normalization also rejects Unicode lookalike tags while accepting real uppercase HTML names. The forward-only scan and the precedence of usable Open Graph metadata are preserved.
+
 ## Verification record
 
 | Gate                                                       | Verified result                                                                             |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Full repository TypeScript and focused changed-file ESLint | Passed                                                                                      |
-| Expanded composer/response suite                           | 1,000 tests, 99 files, 3,358 assertions, zero failures                                        |
+| Expanded composer/response suite                           | 1,008 tests, 99 files, 3,399 assertions, zero failures                                        |
 | Expanded appearance/settings suite                         | 174 tests, 15 files, 5,322 assertions, zero failures                                        |
 | Independent emitted-color audit                            | 119 edges, 10 modes, 2,390 predicates, zero failures                                                   |
 | Response-evidence browser oracle                           | 19/19 in Chromium 156.0.8078.4 and WebKit 27.2                                              |
@@ -77,6 +83,8 @@ The suggestion to associate a fallback with a later durable citation solely by t
 | Narrow light-mode touch probe (390 × 844, baseline)                  | 9/9, including exact values, expansion, viewport fit, Data continuity and no runtime errors |
 | Full Workers application Vite build                        | Passed; generated flags contain both strictly-public fetch and Node compatibility           |
 | Live local workerd transport probe (baseline)                         | Public metadata succeeds; private-address resolution/refetch is refused                     |
+
+The final source-key and metadata edge cases rerun the combined composer suite, repository typecheck and focused source/server tests. Browser captures and the local Workers build above are recorded baseline results from the preceding revision; current GitHub browser/build verification is tracked on the PR for the commit containing this record. Appearance code is unchanged by this final follow-up.
 
 The touch probe also verified that tapping 8px above the visible switch toggles it: its 44px hit area grows independently of its unchanged 38 × 22px track.
 

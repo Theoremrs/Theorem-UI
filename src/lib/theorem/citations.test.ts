@@ -82,6 +82,62 @@ test('explicit identities sharing one URL remain separate; anonymous repeats can
   expect(sources[0]?.key).toBe('url:https://example.com/source')
 })
 
+test('a reused URL cannot claim the key of an enriched source that moved', () => {
+  const originalUrl = 'https://example.com/original'
+  const updatedUrl = 'https://example.com/updated'
+  const parts = [
+    part({
+      label: 'Original source',
+      provenance: { url: originalUrl, excerpt: 'Initial evidence.' },
+    }),
+    part({
+      sourceId: 'moving-source',
+      provenance: { url: originalUrl },
+    }),
+    part({
+      sourceId: 'moving-source',
+      provenance: { url: updatedUrl, excerpt: 'Updated evidence.' },
+    }),
+    part({
+      label: 'New source at the original URL',
+      provenance: { url: originalUrl, excerpt: 'Independent evidence.' },
+    }),
+  ]
+  const originalKey = collectCitationSources(parts.slice(0, 1))[0]!.key
+  const sources = collectCitationSources(parts)
+  expect(sources).toHaveLength(2)
+  expect(sources[0]!.key).toBe(originalKey)
+  expect(collectCitationSources(parts.slice(0, 3))[0]!.key).toBe(originalKey)
+  expect(new Set(sources.map((source) => source.key)).size).toBe(2)
+  expect(sources).toMatchObject([
+    {
+      sourceId: 'moving-source',
+      url: updatedUrl,
+      passages: [
+        { excerpt: 'Initial evidence.' },
+        { excerpt: 'Updated evidence.' },
+      ],
+    },
+    {
+      url: originalUrl,
+      passages: [{ excerpt: 'Independent evidence.' }],
+    },
+  ])
+  const keys = sources.map((source) =>
+    citationReferenceKey(citationContextReference(source, 'thread', 'message')),
+  )
+  expect(new Set(keys).size).toBe(2)
+  const reloaded = collectCitationSources(JSON.parse(JSON.stringify(parts)))
+  expect(reloaded).toEqual(sources)
+  expect(
+    reloaded.map((source) =>
+      citationReferenceKey(
+        citationContextReference(source, 'thread', 'message'),
+      ),
+    ),
+  ).toEqual(keys)
+})
+
 test('citation context uses only supported reference fields and preserves source provenance', () => {
   const [source] = collectCitationSources([
     part({

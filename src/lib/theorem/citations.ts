@@ -57,6 +57,7 @@ export function collectCitationSources(
 ): CitationSource[] {
   const sources: CitationSource[] = []
   const byId = new Map<string, CitationSource>()
+  const reservedKeys = new Set<string>()
   let citationIndex = 0
   for (const part of content) {
     if (part.type !== 'data' || part.name !== 'theorem-citation') continue
@@ -80,8 +81,14 @@ export function collectCitationSources(
       )
     }
     if (!source) {
+      const preferredKey = sourceId
+        ? `id:${sourceId}`
+        : url
+          ? `url:${url}`
+          : fallbackKey
       source = {
-        key: sourceId ? `id:${sourceId}` : url ? `url:${url}` : fallbackKey,
+        // Enrichment keeps an earlier key even if its source changes URL.
+        key: reservedKeys.has(preferredKey) ? fallbackKey : preferredKey,
         label: label ?? (url && new URL(url).hostname) ?? 'Source',
         url,
         sourceId,
@@ -90,6 +97,7 @@ export function collectCitationSources(
         passages: [],
       }
       sources.push(source)
+      reservedKeys.add(source.key)
     }
     source.sourceId ??= sourceId
     source.sourceKind = sourceKind ?? source.sourceKind

@@ -1,15 +1,15 @@
 {
   "schema": "theorem.interactive-response-completion.v1",
-  "recordedAt": "2026-11-21T00:00:56.816605+00:00",
+  "recordedAt": "2026-11-21T00:22:01.270048+00:00",
   "pullRequest": 146,
   "baseRevision": "02b9783d9415c8424dd9323ee18a6db678d536ac",
   "scope": "Phase1 evidence responses; local and fixture verification, no production deployment or human visual seal",
   "unitSuites": {
     "composer": {
-      "passed": 1000,
+      "passed": 1008,
       "failed": 0,
       "files": 99,
-      "assertions": 3358
+      "assertions": 3399
     },
     "appearance": {
       "passed": 174,
@@ -51,7 +51,8 @@
         "the chart plots first": true,
         "the Data view shows the plot's own values": true,
         "units and provenance stay visible": true
-      }
+      },
+      "verificationScope": "Captured on 97b9359e. Subsequent source-key and parser edge cases have focused regressions; the current Chromium acceptance run is tracked on the PR."
     },
     {
       "id": "response-evidence",
@@ -77,7 +78,8 @@
         "the chart plots first": true,
         "the Data view shows the plot's own values": true,
         "units and provenance stay visible": true
-      }
+      },
+      "verificationScope": "Captured on 97b9359e. Subsequent source-key and parser edge cases have focused regressions; the current Chromium acceptance run is tracked on the PR."
     }
   ],
   "browserAppearance": {
@@ -89,7 +91,8 @@
       "a failing contrast pair is refused with its reason": true,
       "a refused edit paints nothing": true,
       "a valid edit applies as the custom palette": true
-    }
+    },
+    "verificationScope": "Recorded baseline; appearance code is unchanged by the final source/parser edge-case follow-up."
   },
   "browserTouch": {
     "engine": "webkit",
@@ -114,7 +117,8 @@
     "compatibilityFlags": [
       "global_fetch_strictly_public",
       "nodejs_compat"
-    ]
+    ],
+    "verificationScope": "Local build on 97b9359e. The Workers check for the final source/parser follow-up is tracked on the PR."
   },
   "workerRuntime": {
     "example.com": "Example Domain",
@@ -131,7 +135,8 @@
       "a failing contrast pair is refused with its reason": true,
       "a refused edit paints nothing": true,
       "a valid edit applies as the custom palette": true
-    }
+    },
+    "verificationScope": "Captured on 97b9359e; appearance code is unchanged by the final source/parser edge-case follow-up."
   },
   "ciSelectorFollowup": {
     "run": "https://github.com/Travis-Gilbert/Theorem-UI/actions/runs/44832200270",
@@ -176,5 +181,24 @@
     },
     "identityDecision": "Labels are display text, not proof of source identity. Entries without a shared ID or URL remain distinct.",
     "sourceMedia": "Untrusted metadata images and favicons are omitted at the rendering boundary, including cached metadata."
+  },
+  "reviewEdgeCases": {
+    "review": "https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001107996",
+    "previousHead": "97b9359ebcd4fa36265ccb0be6104f96ef26e609",
+    "sourceKeys": "Reserve assigned keys; URL changes preserve an existing source identity without giving it to a later source.",
+    "reload": "Clear composer state, then recreate both references with their original keys and all exact passages.",
+    "parser": "Use HTML ASCII whitespace and ASCII tag-name folding; skip decoded-empty metadata candidates.",
+    "sourceTests": {
+      "passed": 30,
+      "assertions": 148,
+      "failed": 0
+    },
+    "metadataTests": {
+      "passed": 43,
+      "assertions": 231,
+      "failed": 0
+    },
+    "freshCi": "Tracked on the pull request for the commit containing this record.",
+    "localStatus": "Passed: final combined composer suite, repository typecheck, focused source/server suites and lint."
   }
 }
