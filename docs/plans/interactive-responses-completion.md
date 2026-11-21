@@ -70,13 +70,19 @@ The [review of `97b9359e`](https://github.com/Travis-Gilbert/Theorem-UI/pull/146
 
 Metadata scanning uses HTML's ASCII whitespace at lexical boundaries, so a nonbreaking space inside raw text, an attribute or a relation token cannot act as an HTML delimiter. Candidate fields are decoded and trimmed before selection; an empty Open Graph field yields to Twitter or the document title. ASCII-only tag-name normalization also rejects Unicode lookalike tags while accepting real uppercase HTML names. The forward-only scan and the precedence of usable Open Graph metadata are preserved.
 
+### Complete color editing
+
+The [palette-editor review](https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001300983) identified two validated accent state colors without controls. Checking the whole contrast inventory found six further omitted existing roles. The editor now exposes user-message, artifact and hover surfaces; code ink; accent hover and pressed fills; and destructive-action fill and text.
+
+Every foreground and background used by contrast validation has a control in both light and dark mode. A regression starts with a rejected accent/text combination, repairs its hover and pressed fills through the visible controls, and applies the resulting valid custom palette. Palette values, contrast requirements and the validation schema are preserved.
+
 ## Verification record
 
 | Gate                                                       | Verified result                                                                             |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Full repository TypeScript and focused changed-file ESLint | Passed                                                                                      |
 | Expanded composer/response suite                           | 1,008 tests, 99 files, 3,399 assertions, zero failures                                        |
-| Expanded appearance/settings suite                         | 174 tests, 15 files, 5,322 assertions, zero failures                                        |
+| Expanded appearance/settings suite                         | 176 tests, 15 files, 5,435 assertions, zero failures                                        |
 | Independent emitted-color audit                            | 119 edges, 10 modes, 2,390 predicates, zero failures                                                   |
 | Response-evidence browser oracle                           | 19/19 in Chromium 156.0.8078.4 and WebKit 27.2                                              |
 | Appearance editor browser oracle                           | 4/4 in Chromium 156.0.8078.4 and WebKit 27.2                                                                          |
@@ -84,7 +90,7 @@ Metadata scanning uses HTML's ASCII whitespace at lexical boundaries, so a nonbr
 | Full Workers application Vite build                        | Passed; generated flags contain both strictly-public fetch and Node compatibility           |
 | Live local workerd transport probe (baseline)                         | Public metadata succeeds; private-address resolution/refetch is refused                     |
 
-The final source-key and metadata edge cases rerun the combined composer suite, repository typecheck and focused source/server tests. Browser captures and the local Workers build above are recorded baseline results from the preceding revision; current GitHub browser/build verification is tracked on the PR for the commit containing this record. Appearance code is unchanged by this final follow-up.
+The source-key and metadata edge cases reran the combined composer suite, repository typecheck and focused source/server tests. The subsequent editor inventory correction reran the full appearance suite, typecheck, focused lint and Chromium appearance story. Cross-browser response captures and the local Workers build above remain recorded baseline results; current GitHub verification is tracked on the PR for the commit containing this record.
 
 The touch probe also verified that tapping 8px above the visible switch toggles it: its 44px hit area grows independently of its unchanged 38 × 22px track.
 

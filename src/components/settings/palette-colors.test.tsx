@@ -8,7 +8,7 @@ import {
   EDITABLE_COLOR_ROLES,
   useAppearance,
 } from '@/lib/appearance'
-import { COLOR_ROLES } from '@/lib/appearance-policy'
+import { COLOR_PAIRS, COLOR_ROLES } from '@/lib/appearance-policy'
 import {
   appearanceTokens,
   modes,
@@ -156,4 +156,56 @@ test('legacy custom palettes edit their completed displayed colors', async () =>
       expect(field(container, label, mode).value).toBe(
         resolved[mode][rowToken(token)]!,
       )
+})
+
+test('accent hover and pressed fills can be repaired after changing their text color', async () => {
+  const { container } = await render(<PaletteColors />)
+  await enter(field(container, 'Accent'), '#ffffff')
+  await enter(field(container, 'On accent'), '#000000')
+  await click(buttonNamed(container, 'Apply colors')!)
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    'accent-hover',
+  )
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    'accent-pressed',
+  )
+  expect(useAppearance.getState().appearance.palette).toBe('github-sharp')
+
+  const hover = field(container, 'Accent hover')
+  const pressed = field(container, 'Accent pressed')
+  expect(hover).not.toBeNull()
+  expect(pressed).not.toBeNull()
+  await enter(hover, '#f0f0f0')
+  await enter(pressed, '#e0e0e0')
+  await click(buttonNamed(container, 'Apply colors')!)
+  expect(container.querySelector('[role="alert"]')).toBeNull()
+  expect(container.querySelector('[role="status"]')?.textContent).toBe(
+    'Custom palette applied.',
+  )
+  const { appearance, overrides } = useAppearance.getState()
+  expect(appearance.palette).toBe('custom')
+  expect(appearance.preset).toBe('calm')
+  expect(overrides.customPalette!.light).toMatchObject({
+    redwood: '#ffffff',
+    'on-redwood': '#000000',
+    'redwood-hover': '#f0f0f0',
+    'redwood-pressed': '#e0e0e0',
+  })
+})
+
+test('every validated foreground and background has an editable control in both modes', async () => {
+  const editable = new Map<string, (typeof EDITABLE_COLOR_ROLES)[number]>(
+    EDITABLE_COLOR_ROLES.map((role) => [rowToken(role.token), role]),
+  )
+  const validated = new Set(
+    COLOR_PAIRS.flatMap(({ foreground, background }) => [
+      COLOR_ROLES[foreground],
+      COLOR_ROLES[background],
+    ]),
+  )
+  expect([...editable.keys()]).toEqual(expect.arrayContaining([...validated]))
+  const { container } = await render(<PaletteColors />)
+  for (const token of validated)
+    for (const mode of ['light', 'dark'])
+      expect(field(container, editable.get(token)!.label, mode)).not.toBeNull()
 })

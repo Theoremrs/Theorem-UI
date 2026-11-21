@@ -95,6 +95,21 @@ export const EDITABLE_COLOR_ROLES = [
   },
   { token: 'surface-composer', label: 'Composer', hint: 'Where you write' },
   {
+    token: 'surface-user-message',
+    label: 'Your messages',
+    hint: 'The background behind your chat messages',
+  },
+  {
+    token: 'surface-artifact',
+    label: 'Artifacts',
+    hint: 'The background behind generated content',
+  },
+  {
+    token: 'surface-hover',
+    label: 'Hover surface',
+    hint: 'Rows and items under the pointer',
+  },
+  {
     token: 'surface-selected',
     label: 'Selection',
     hint: 'The chosen row or item',
@@ -102,9 +117,24 @@ export const EDITABLE_COLOR_ROLES = [
   { token: 'ink', label: 'Primary ink', hint: 'Body text' },
   { token: 'ink-muted', label: 'Secondary ink', hint: 'Labels and metadata' },
   {
+    token: 'attention-ink',
+    label: 'Code ink',
+    hint: 'Inline code on reading surfaces',
+  },
+  {
     token: 'redwood',
     label: 'Accent',
     hint: 'Brand, active selection, emphasis',
+  },
+  {
+    token: 'redwood-hover',
+    label: 'Accent hover',
+    hint: 'The accent fill under the pointer',
+  },
+  {
+    token: 'redwood-pressed',
+    label: 'Accent pressed',
+    hint: 'The accent fill while pressed',
   },
   { token: 'redwood-ink', label: 'Accent ink', hint: 'Links and accent text' },
   { token: 'on-redwood', label: 'On accent', hint: 'Text on the accent fill' },
@@ -145,6 +175,16 @@ export const EDITABLE_COLOR_ROLES = [
     token: 'error-container',
     label: 'Error fill',
     hint: 'Error as a background',
+  },
+  {
+    token: 'error-solid',
+    label: 'Destructive action',
+    hint: 'The fill for destructive buttons',
+  },
+  {
+    token: 'on-error',
+    label: 'On destructive action',
+    hint: 'Text on destructive buttons',
   },
   { token: 'focus', label: 'Focus ring', hint: 'Keyboard focus' },
   {

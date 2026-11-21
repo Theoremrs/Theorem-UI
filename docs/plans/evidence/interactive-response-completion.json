@@ -1,6 +1,6 @@
 {
   "schema": "theorem.interactive-response-completion.v1",
-  "recordedAt": "2026-11-21T00:22:01.270048+00:00",
+  "recordedAt": "2026-11-21T00:39:53.152271+00:00",
   "pullRequest": 146,
   "baseRevision": "02b9783d9415c8424dd9323ee18a6db678d536ac",
   "scope": "Phase1 evidence responses; local and fixture verification, no production deployment or human visual seal",
@@ -9,13 +9,14 @@
       "passed": 1008,
       "failed": 0,
       "files": 99,
-      "assertions": 3399
+      "assertions": 3399,
+      "verificationScope": "Recorded on 0372ce1d before the palette-editor inventory correction; final integrated CI is tracked on the PR."
     },
     "appearance": {
-      "passed": 174,
+      "passed": 176,
       "failed": 0,
       "files": 15,
-      "assertions": 5322
+      "assertions": 5435
     }
   },
   "typecheck": "passed",
@@ -92,7 +93,7 @@
       "a refused edit paints nothing": true,
       "a valid edit applies as the custom palette": true
     },
-    "verificationScope": "Recorded baseline; appearance code is unchanged by the final source/parser edge-case follow-up."
+    "verificationScope": "Recorded WebKit baseline; current Chromium editor verification covers the palette-control additions."
   },
   "browserTouch": {
     "engine": "webkit",
@@ -136,7 +137,7 @@
       "a refused edit paints nothing": true,
       "a valid edit applies as the custom palette": true
     },
-    "verificationScope": "Captured on 97b9359e; appearance code is unchanged by the final source/parser edge-case follow-up."
+    "verificationScope": "Rerun after adding every validated color role to the editor: all four checks passed."
   },
   "ciSelectorFollowup": {
     "run": "https://github.com/Travis-Gilbert/Theorem-UI/actions/runs/44832200270",
@@ -200,5 +201,35 @@
     },
     "freshCi": "Tracked on the pull request for the commit containing this record.",
     "localStatus": "Passed: final combined composer suite, repository typecheck, focused source/server suites and lint."
+  },
+  "paletteEditorInventory": {
+    "review": "https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001300983",
+    "previousHead": "0372ce1dce6e35aadcc4466e5773e96efd6f1d3f",
+    "addedExistingRoles": [
+      "surface-user-message",
+      "surface-artifact",
+      "surface-hover",
+      "attention-ink",
+      "redwood-hover",
+      "redwood-pressed",
+      "error-solid",
+      "on-error"
+    ],
+    "regressions": [
+      "Rejected accent/text colors can be repaired through hover and pressed controls and applied.",
+      "Every validated foreground/background has a visible control in both modes."
+    ],
+    "appearanceTests": {
+      "passed": 176,
+      "assertions": 5435,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "focusedLint": "passed",
+    "browserAppearanceChromium": {
+      "passed": 4,
+      "total": 4
+    },
+    "freshCi": "Tracked on the pull request for the commit containing this record."
   }
 }
