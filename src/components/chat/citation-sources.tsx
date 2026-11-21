@@ -204,20 +204,22 @@ function useUnresolvedSources(sources: CitationSource[]): CitationSource[] {
 const SourcesRow: FC<{ sources: CitationSource[] }> = ({ sources }) => {
   const unresolved = useUnresolvedSources(sources)
   const [open, setOpen] = useState(false)
-  const [openedKeys, setOpenedKeys] = useState<readonly string[]>([])
+  const [focused, setFocused] = useState(false)
+  const [retainedKeys, setRetainedKeys] = useState<readonly string[]>([])
   const rowRef = useRef<HTMLDivElement>(null)
   const resolvedFocus = useRef<HTMLAnchorElement>(null)
-  // Capture every newly displayed identity before commit. A later metadata
-  // update must not unmount a source streamed in after this panel was opened.
-  const addedKeys = open
-    ? unresolved.filter((source) => !openedKeys.includes(source.key))
+  // Keep displayed identities while the panel is open or the closed row owns
+  // focus, so metadata cannot remove a source or its invoking control.
+  const retain = open || focused
+  const addedKeys = retain
+    ? unresolved.filter((source) => !retainedKeys.includes(source.key))
     : []
   if (addedKeys.length > 0)
-    setOpenedKeys([...openedKeys, ...addedKeys.map((source) => source.key)])
-  const listed = open
+    setRetainedKeys([...retainedKeys, ...addedKeys.map((source) => source.key)])
+  const listed = retain
     ? sources.filter(
         (source) =>
-          openedKeys.includes(source.key) ||
+          retainedKeys.includes(source.key) ||
           unresolved.some((entry) => entry.key === source.key),
       )
     : unresolved
@@ -228,6 +230,22 @@ const SourcesRow: FC<{ sources: CitationSource[] }> = ({ sources }) => {
       ref={rowRef}
       data-slot="sources-row"
       className="flex items-center gap-0.5 text-sm"
+      onFocusCapture={(event) => {
+        if (
+          !open &&
+          event.currentTarget.contains(event.target) &&
+          !event.currentTarget.contains(event.relatedTarget)
+        ) {
+          setFocused(true)
+          setRetainedKeys(listed.map((source) => source.key))
+        }
+      }}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setFocused(false)
+          if (!open) setRetainedKeys([])
+        }
+      }}
     >
       <Icon.Link
         aria-hidden
@@ -274,7 +292,8 @@ const SourcesRow: FC<{ sources: CitationSource[] }> = ({ sources }) => {
                 '[data-slot="link-preview"] a',
               ) ?? null
           }
-          setOpenedKeys(next ? unresolved.map((source) => source.key) : [])
+          setFocused(false)
+          setRetainedKeys(next ? listed.map((source) => source.key) : [])
           setOpen(next)
         }}
       >

@@ -511,7 +511,7 @@ test('every supporting passage opens in full and Escape returns to its trigger',
   expect(document.querySelector('[data-slot="source-entry"]')).not.toBeNull()
 })
 
-for (const { name, citations, passages } of [
+for (const scenario of [
   {
     name: 'two anonymous passages remain separate composer references after reload',
     citations: [
@@ -587,14 +587,65 @@ for (const { name, citations, passages } of [
           excerpt: 'More unattributed evidence.',
         },
       },
+      {
+        sourceId: 'third-document',
+        label: 'Third document',
+        provenance: {
+          url: 'https://example.com/shared?edition=1#evidence',
+          excerpt: 'Third identified evidence.',
+        },
+      },
     ],
     passages: [
       ['First identified evidence.'],
       ['Second identified evidence.'],
       ['Unattributed evidence.', 'More unattributed evidence.'],
+      ['Third identified evidence.'],
+    ],
+  },
+  {
+    name: 'later ambiguity keeps earlier anonymous passages out of explicit composer references after reload',
+    initialCount: 2,
+    citations: [
+      {
+        sourceId: 'first-document',
+        label: 'First document',
+        provenance: {
+          url: 'https://example.com/shared',
+          excerpt: 'First identified evidence.',
+        },
+      },
+      {
+        label: 'Unattributed document',
+        provenance: {
+          url: 'https://example.com/shared',
+          excerpt: 'Unattributed evidence.',
+        },
+      },
+      {
+        sourceId: 'second-document',
+        label: 'Second document',
+        provenance: {
+          url: 'https://example.com/shared',
+          excerpt: 'Second identified evidence.',
+        },
+      },
+      {
+        label: 'Unattributed document',
+        provenance: {
+          url: 'https://example.com/shared',
+          excerpt: 'More unattributed evidence.',
+        },
+      },
+    ],
+    passages: [
+      ['First identified evidence.'],
+      ['Unattributed evidence.', 'More unattributed evidence.'],
+      ['Second identified evidence.'],
     ],
   },
 ]) {
+  const { name, citations, passages } = scenario
   test(name, async () => {
     const { referenceKey, useComposerReferences } =
       await import('./composer-references')
@@ -607,17 +658,23 @@ for (const { name, citations, passages } of [
           null,
         )
     }
+    const content = citations.map((data) => ({
+      type: 'data' as const,
+      name: 'theorem-citation',
+      data,
+    }))
     const messages: ThreadMessageLike[] = [
-      {
-        id: 'source-evidence',
-        role: 'assistant',
-        content: citations.map((data) => ({
-          type: 'data',
-          name: 'theorem-citation',
-          data,
-        })),
-      },
+      { id: 'source-evidence', role: 'assistant', content },
     ]
+    const initialMessages: ThreadMessageLike[] =
+      'initialCount' in scenario
+        ? [
+            {
+              ...messages[0]!,
+              content: content.slice(0, scenario.initialCount),
+            },
+          ]
+        : messages
     const referencePassages = () =>
       useComposerReferences
         .getState()
@@ -627,8 +684,8 @@ for (const { name, citations, passages } of [
           ),
         )
     try {
-      const { container, unmount } = await render(
-        <Harness messages={messages} client={client} />,
+      const { container, unmount, rerender } = await render(
+        <Harness messages={initialMessages} client={client} />,
       )
       const trigger = await waitFor(() =>
         container.querySelector('button[aria-label="List sources"]'),
@@ -637,6 +694,17 @@ for (const { name, citations, passages } of [
         trigger.dispatchEvent(new MouseEvent('click', { bubbles: true })),
       )
       await waitFor(() => document.querySelector('[data-slot="source-entry"]'))
+      if ('initialCount' in scenario) {
+        const entries = document.querySelectorAll('[data-slot="source-entry"]')
+        expect(entries).toHaveLength(1)
+        expect(entries[0]!.textContent).toContain('Unattributed evidence.')
+        await rerender(<Harness messages={messages} client={client} />)
+        await waitFor(
+          () =>
+            document.querySelectorAll('[data-slot="source-entry"]').length ===
+            passages.length,
+        )
+      }
       const addAll = async () => {
         const entries = document.querySelectorAll('[data-slot="source-entry"]')
         expect(entries).toHaveLength(passages.length)
@@ -772,6 +840,78 @@ test('a source that arrives while Sources is open retains its focused fallback a
     ),
   ).toBeNull()
 })
+
+for (const action of [
+  'retain until blur',
+  'open retained trigger',
+  'focus already elsewhere',
+] as const) {
+  test(`closed Sources row preserves focus when metadata resolves: ${action}`, async () => {
+    const client = new QueryClient()
+    const url = 'https://example.com/closed-source'
+    client.setQueryData(['theorem', 'link-preview', url], null)
+    const { container } = await render(
+      <>
+        <Harness
+          messages={toAssistantMessages([storedCitation(url)])}
+          client={client}
+        />
+        <button type="button" data-testid="outside-source-control">
+          Outside control
+        </button>
+      </>,
+    )
+    const trigger = await waitFor(() =>
+      container.querySelector<HTMLButtonElement>(
+        'button[aria-label="List sources"]',
+      ),
+    )
+    const outside = container.querySelector<HTMLButtonElement>(
+      '[data-testid="outside-source-control"]',
+    )!
+    await act(async () => trigger.focus())
+    if (action === 'focus already elsewhere')
+      await act(async () => outside.focus())
+    await act(async () =>
+      client.setQueryData(['theorem', 'link-preview', url], {
+        href: url,
+        title: 'Resolved while closed',
+        siteName: 'Example',
+      }),
+    )
+    const preview = await waitFor(() =>
+      container.querySelector<HTMLAnchorElement>(
+        '[data-slot="link-preview"] a',
+      ),
+    )
+    if (action === 'focus already elsewhere') {
+      await waitFor(() => !container.querySelector('[data-slot="sources-row"]'))
+      expect(document.activeElement === outside).toBe(true)
+      return
+    }
+    expect(trigger.isConnected).toBe(true)
+    expect(document.activeElement === trigger).toBe(true)
+    expect(document.querySelector('[data-slot="source-entry"]')).toBeNull()
+    if (action === 'retain until blur') {
+      await act(async () => outside.focus())
+      await waitFor(() => !container.querySelector('[data-slot="sources-row"]'))
+      expect(document.activeElement === outside).toBe(true)
+    } else {
+      await act(async () =>
+        trigger.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+      )
+      await waitFor(() => document.querySelector('[data-slot="source-entry"]'))
+      await act(async () => {
+        trigger.focus()
+        trigger.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, detail: 1 }),
+        )
+      })
+      await waitFor(() => !container.querySelector('[data-slot="sources-row"]'))
+      await waitFor(() => document.activeElement === preview)
+    }
+  })
+}
 
 for (const close of ['Escape', 'trigger click', 'outside click'] as const) {
   test(`${close} preserves focus when the resolved Sources trigger disappears`, async () => {

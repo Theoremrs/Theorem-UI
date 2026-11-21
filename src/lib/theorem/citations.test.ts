@@ -62,7 +62,7 @@ test('later citations enrich one source and retain every distinct exact passage 
   )
 })
 
-test('explicit identities sharing one URL remain separate; anonymous repeats can gain identity', () => {
+test('explicit IDs sharing a URL do not absorb a preceding anonymous record', () => {
   const url = 'https://example.com/source'
   const sources = collectCitationSources([
     part({ label: 'Shared page', provenance: { url } }),
@@ -77,8 +77,12 @@ test('explicit identities sharing one URL remain separate; anonymous repeats can
       provenance: { url, excerpt: 'Second.' },
     }),
   ])
-  expect(sources).toHaveLength(2)
-  expect(sources.map((source) => source.sourceId)).toEqual(['first', 'second'])
+  expect(sources).toHaveLength(3)
+  expect(sources.map((source) => source.sourceId)).toEqual([
+    undefined,
+    'first',
+    'second',
+  ])
   expect(sources[0]?.key).toBe('url:https://example.com/source')
 })
 
@@ -145,6 +149,112 @@ test('URL-only evidence merges with one matching source but stays independent wh
     )
   }
 })
+
+test('an ambiguous anonymous group cannot acquire a new third ID', () => {
+  const url = 'https://example.com/shared?edition=1#evidence'
+  const initial = [
+    part({
+      sourceId: 'first',
+      provenance: { url, excerpt: 'First identified evidence.' },
+    }),
+    part({
+      sourceId: 'second',
+      provenance: { url, excerpt: 'Second identified evidence.' },
+    }),
+    part({ provenance: { url, excerpt: 'Unattributed evidence.' } }),
+    part({ provenance: { url, excerpt: 'More unattributed evidence.' } }),
+  ]
+  const anonymousKey = collectCitationSources(initial)[2]!.key
+  const parts = [
+    ...initial,
+    part({
+      sourceId: 'third',
+      provenance: { url, excerpt: 'Third identified evidence.' },
+    }),
+  ]
+  const sources = collectCitationSources(parts)
+  expect(sources).toHaveLength(4)
+  expect(sources.map((source) => source.sourceId)).toEqual([
+    'first',
+    'second',
+    undefined,
+    'third',
+  ])
+  expect(sources[2]).toMatchObject({
+    key: anonymousKey,
+    passages: [
+      { excerpt: 'Unattributed evidence.' },
+      { excerpt: 'More unattributed evidence.' },
+    ],
+  })
+  expect(sources[3]!.passages.map((passage) => passage.excerpt)).toEqual([
+    'Third identified evidence.',
+  ])
+  const references = sources.map((source) =>
+    citationContextReference(source, 'thread', 'message'),
+  )
+  expect(new Set(references.map(citationReferenceKey)).size).toBe(4)
+  expect(JSON.parse(references[2]!.excerpt!).citation.sourceId).toBeUndefined()
+  expect(collectCitationSources(JSON.parse(JSON.stringify(parts)))).toEqual(
+    sources,
+  )
+})
+
+for (const anonymousFirst of [false, true]) {
+  test(`URL ambiguity appears later with anonymous evidence ${anonymousFirst ? 'before' : 'after'} the first ID`, () => {
+    const url = 'https://example.com/shared?edition=1#evidence'
+    const explicit = part({
+      sourceId: 'first',
+      provenance: { url, excerpt: 'First identified evidence.' },
+    })
+    const anonymous = part({
+      provenance: { url, excerpt: 'Unattributed evidence.' },
+    })
+    const initial = anonymousFirst
+      ? [anonymous, explicit]
+      : [explicit, anonymous]
+    const before = collectCitationSources(initial)
+    expect(before).toHaveLength(1)
+    expect(before[0]!.sourceId).toBe('first')
+    expect(before[0]!.key).toBe(anonymousFirst ? `url:${url}` : 'id:first')
+    const parts = [
+      ...initial,
+      part({
+        sourceId: 'second',
+        provenance: { url, excerpt: 'Second identified evidence.' },
+      }),
+      part({ provenance: { url, excerpt: 'More unattributed evidence.' } }),
+    ]
+    const sources = collectCitationSources(parts)
+    expect(sources).toHaveLength(3)
+    const first = sources.find((source) => source.sourceId === 'first')!
+    const unattributed = sources.find((source) => !source.sourceId)!
+    expect(first.key).toBe('id:first')
+    expect(first.passages.map((passage) => passage.excerpt)).toEqual([
+      'First identified evidence.',
+    ])
+    expect(unattributed).toMatchObject({
+      key: `url:${url}`,
+      url,
+      passages: [
+        { excerpt: 'Unattributed evidence.' },
+        { excerpt: 'More unattributed evidence.' },
+      ],
+    })
+    const references = sources.map((source) =>
+      citationContextReference(source, 'thread', 'message'),
+    )
+    expect(new Set(references.map(citationReferenceKey)).size).toBe(3)
+    expect(
+      JSON.parse(
+        citationContextReference(unattributed, 'thread', 'message').excerpt!,
+      ).citation.sourceId,
+    ).toBeUndefined()
+    expect(collectCitationSources(JSON.parse(JSON.stringify(parts)))).toEqual(
+      sources,
+    )
+  })
+}
 
 test('a reused URL cannot claim the key of an enriched source that moved', () => {
   const originalUrl = 'https://example.com/original'

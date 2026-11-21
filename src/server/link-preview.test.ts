@@ -17,6 +17,7 @@ import type { ClientRequest, IncomingMessage } from 'node:http'
 import https from 'node:https'
 import {
   extractMetadata,
+  linkPreviewHandler,
   publicAddress,
   publicHttpUrl,
   resolveLinkMetadata,
@@ -268,6 +269,38 @@ describe('extractMetadata', () => {
     expect(extractMetadata(realClosingTag, base).title).toBe('Real page title')
   })
 
+  test('raw-text end tags accept slash and attribute boundaries with matching quotes', () => {
+    for (const tag of ['script', 'style', 'textarea', 'title']) {
+      for (const suffix of [
+        '/',
+        ' data-note="a > with \'quotes\'"',
+        ' data-note=\'a > with "quotes"\'/',
+        " data-note=it's",
+      ]) {
+        const metadata = extractMetadata(
+          `<${tag}>Raw text</${tag}${suffix}><title>Document title</title>`,
+          base,
+        )
+        expect(metadata.title).toBe(
+          tag === 'title' ? 'Raw text' : 'Document title',
+        )
+      }
+    }
+    expect(
+      extractMetadata(
+        '<script>ignored</script data-note="><meta property=og:title content=False>"><title>Document title</title>',
+        base,
+      ).title,
+    ).toBe('Document title')
+  })
+
+  test('an unterminated raw-text closing tag stays within the bounded scan', () => {
+    const html = '<script>ignored</script data-note="' + '<meta '.repeat(6_000)
+    const started = performance.now()
+    expect(extractMetadata(html, base).title).toBeUndefined()
+    expect(performance.now() - started).toBeLessThan(750)
+  })
+
   test('nonbreaking spaces remain part of tag and attribute names', () => {
     for (const tag of [
       '<meta\u00a0 property="og:title" content="Not a meta tag">',
@@ -312,6 +345,48 @@ describe('extractMetadata', () => {
       )
       expect(metadata.title).toBe(expected)
     }
+  })
+
+  test('keeps the first usable value when duplicate metadata begins with a blank placeholder', () => {
+    const metadata = extractMetadata(
+      `<meta property="og:title" content=" &#32;&#x20; ">
+      <meta property="og:title" content="First usable &amp; title">
+      <meta property="og:title" content="Later title">
+      <meta name="description" content=" ">
+      <meta name="description" content="First description">
+      <meta name="description" content="Later description">
+      <meta property="og:image" content="&#32;">
+      <meta property="og:image" content="/first.png">
+      <meta property="og:site_name" content=" ">
+      <meta property="og:site_name" content="Example">
+      <link rel="icon" href="&#32;">
+      <link rel="icon" href="/first.ico">
+      <title>Document fallback</title>`,
+      base,
+    )
+    expect(metadata).toEqual({
+      href: base.href,
+      title: 'First usable & title',
+      description: 'First description',
+      image: 'https://example.com/first.png',
+      siteName: 'Example',
+      favicon: 'https://example.com/first.ico',
+    })
+  })
+
+  test('decodes entity spelling only once before choosing usable metadata', () => {
+    for (const html of [
+      '<meta property="og:title" content="&amp;lt;Report&amp;gt;">',
+      '<title>&amp;lt;Report&amp;gt;</title>',
+    ]) {
+      expect(extractMetadata(html, base).title).toBe('&lt;Report&gt;')
+    }
+    expect(
+      extractMetadata(
+        '<meta property="og:title" content="&amp;#32;"><meta property="og:title" content="Later title"><title>Fallback</title>',
+        base,
+      ).title,
+    ).toBe('&#32;')
   })
 
   test('falls back to the title tag and the default favicon', () => {
@@ -406,6 +481,13 @@ describe('resolveLinkMetadata request lifecycle', () => {
   let initialResponseDelay = 0
   let serial = 0
   const href = () => `https://preview-${++serial}.example.test/article`
+  const preview = (url: string) =>
+    linkPreviewHandler({
+      request: new Request(
+        'https://theorem.test/api/link-preview/v1/?url=' +
+          encodeURIComponent(url),
+      ),
+    })
 
   beforeEach(() => {
     jest.useFakeTimers()
@@ -603,6 +685,165 @@ describe('resolveLinkMetadata request lifecycle', () => {
     expect(dns.lookup).toHaveBeenCalledTimes(2)
   })
 
+  test('bounds distinct preview work while serving cache hits and coalesced requests, then recovers without caching overload', async () => {
+    const base = 'https://93.184.215.14/admission-' + ++serial
+    const cachedUrl = base + '?cached=1'
+    const cachedResult = resolveLinkMetadata(cachedUrl)
+    await flushPromises()
+    connection(0).response.emit('data', Buffer.from('<title>Cached</title>'))
+    connection(0).response.emit('end')
+    const cached = await cachedResult
+
+    const pending = Array.from({ length: 16 }, (_, index) =>
+      resolveLinkMetadata(base + '?slot=' + index),
+    )
+    const settled = Promise.allSettled(pending)
+    const responses: Promise<Response>[] = []
+    try {
+      await flushPromises()
+      expect(connections).toHaveLength(17)
+      expect(await resolveLinkMetadata(cachedUrl)).toBe(cached)
+      const joined = resolveLinkMetadata(base + '?slot=0#passage')
+      await flushPromises()
+      expect(connections).toHaveLength(17)
+
+      const rejectedUrl = base + '?overflow=1'
+      const overloadState = { settled: false }
+      const overloaded = preview(rejectedUrl).then((response) => {
+        overloadState.settled = true
+        return response
+      })
+      responses.push(overloaded)
+      await flushPromises()
+      const refusedBeforeBody = overloadState.settled
+      // Let the uncapped pre-fix request settle without waiting for a timeout.
+      if (!refusedBeforeBody) connection(17).response.emit('end')
+      const response = await overloaded
+      expect(response.status).toBe(503)
+      expect(response.headers.get('retry-after')).toBe('1')
+      expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(refusedBeforeBody).toBe(true)
+      expect(connections).toHaveLength(17)
+
+      connection(1).response.emit('data', Buffer.from('<title>Shared</title>'))
+      connection(1).response.emit('end')
+      expect((await pending[0])?.title).toBe('Shared')
+      expect((await joined)?.title).toBe('Shared')
+      expect(connections).toHaveLength(17)
+
+      const retry = preview(rejectedUrl)
+      responses.push(retry)
+      await flushPromises()
+      connection(17).response.emit(
+        'data',
+        Buffer.from('<title>Recovered</title>'),
+      )
+      connection(17).response.emit('end')
+      const recovered = await retry
+      expect(recovered.status).toBe(200)
+      expect(await recovered.json()).toMatchObject({ title: 'Recovered' })
+      expect(connections).toHaveLength(18)
+      expect(dns.lookup).not.toHaveBeenCalled()
+    } finally {
+      for (const { response } of connections) response.emit('end')
+      await settled
+      await Promise.allSettled(responses)
+    }
+  })
+
+  test('keeps native DNS work bounded after preview deadlines and releases it on actual resolution or rejection', async () => {
+    const lookups: Array<{
+      resolve: (records: LookupAddress[]) => void
+      reject: (error: Error) => void
+    }> = []
+    const lookup = (index: number) => {
+      const value = lookups[index]
+      if (!value) throw new Error('Missing DNS lookup ' + index)
+      return value
+    }
+    mockLookupAll().mockImplementation(
+      () =>
+        new Promise<LookupAddress[]>((resolve, reject) => {
+          lookups.push({ resolve, reject })
+        }),
+    )
+    const addresses = [{ address: '93.184.215.14', family: 4 }]
+    const pending = Array.from({ length: 16 }, () =>
+      resolveLinkMetadata(href()),
+    )
+    const settled = Promise.allSettled(pending)
+    const responses: Promise<Response>[] = []
+    try {
+      await flushPromises()
+      expect(dns.lookup).toHaveBeenCalledTimes(16)
+      jest.advanceTimersByTime(6_000)
+      await flushPromises()
+      for (const result of await settled)
+        expect(result).toEqual({ status: 'fulfilled', value: null })
+
+      const rejectedUrl = href()
+      const overloadState = { settled: false }
+      const overloaded = preview(rejectedUrl).then((response) => {
+        overloadState.settled = true
+        return response
+      })
+      responses.push(overloaded)
+      await flushPromises()
+      const refusedBeforeDns = overloadState.settled
+      // Settle only the extra pre-fix work so its failure is deterministic.
+      if (!refusedBeforeDns) {
+        lookup(16).resolve(addresses)
+        await flushPromises()
+        connection(0).response.emit('end')
+      }
+      expect((await overloaded).status).toBe(503)
+      expect(refusedBeforeDns).toBe(true)
+      expect(dns.lookup).toHaveBeenCalledTimes(16)
+      expect(connections).toHaveLength(0)
+
+      lookup(0).resolve(addresses)
+      lookup(1).reject(new Error('late DNS failure'))
+      await flushPromises()
+      expect(connections).toHaveLength(0)
+      const retry = preview(rejectedUrl)
+      const afterRejection = preview(href())
+      responses.push(retry, afterRejection)
+      await flushPromises()
+      expect(dns.lookup).toHaveBeenCalledTimes(18)
+      lookup(16).resolve(addresses)
+      lookup(17).resolve(addresses)
+      await flushPromises()
+      for (const { response } of connections) {
+        response.emit('data', Buffer.from('<title>DNS recovered</title>'))
+        response.emit('end')
+      }
+      expect((await retry).status).toBe(200)
+      expect((await afterRejection).status).toBe(200)
+      expect(connections).toHaveLength(2)
+    } finally {
+      for (const pendingLookup of lookups) pendingLookup.resolve(addresses)
+      await flushPromises()
+      for (const { response } of connections) response.emit('end')
+      await settled
+      await Promise.allSettled(responses)
+    }
+  })
+
+  test('synchronous DNS failures release admission and retain ordinary negative caching', async () => {
+    mockLookupAll().mockImplementation(() => {
+      throw new Error('synchronous resolver failure')
+    })
+    let lastUrl = ''
+    for (let index = 0; index < 17; index++) {
+      lastUrl = href()
+      expect((await preview(lastUrl)).status).toBe(404)
+    }
+    expect(dns.lookup).toHaveBeenCalledTimes(17)
+    expect((await preview(lastUrl)).status).toBe(404)
+    expect(dns.lookup).toHaveBeenCalledTimes(17)
+    expect(connections).toHaveLength(0)
+  })
+
   test('refuses special-purpose DNS answers before opening a connection', async () => {
     for (const address of [
       '198.18.0.1',
@@ -684,6 +925,19 @@ describe('resolveLinkMetadata request lifecycle', () => {
     )
     connection(0).response.emit('end')
     expect((await result)?.title).toBe('Document preview')
+  })
+
+  test('resolves a preview from a later usable duplicate title', async () => {
+    const result = resolveLinkMetadata(href())
+    await flushPromises()
+    connection(0).response.emit(
+      'data',
+      Buffer.from(
+        '<meta property="og:title" content="&#32;"><meta property="og:title" content="Usable preview">',
+      ),
+    )
+    connection(0).response.emit('end')
+    expect((await result)?.title).toBe('Usable preview')
   })
 
   test('retains the bounded prefix of an oversized chunk and closes the stream', async () => {

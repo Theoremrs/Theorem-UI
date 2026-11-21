@@ -1,15 +1,15 @@
 {
   "schema": "theorem.interactive-response-completion.v1",
-  "recordedAt": "2026-11-21T01:09:25.200938+00:00",
+  "recordedAt": "2026-11-21T01:40:11.770160+00:00",
   "pullRequest": 146,
   "baseRevision": "02b9783d9415c8424dd9323ee18a6db678d536ac",
   "scope": "Phase1 evidence responses; local and fixture verification, no production deployment or human visual seal",
   "unitSuites": {
     "composer": {
-      "passed": 1015,
+      "passed": 1030,
       "failed": 0,
       "files": 99,
-      "assertions": 3457
+      "assertions": 3598
     },
     "appearance": {
       "passed": 179,
@@ -52,7 +52,7 @@
         "the Data view shows the plot's own values": true,
         "units and provenance stay visible": true
       },
-      "verificationScope": "Rerun after ambiguous-source, focus, reload, and recovery fixes. Resource console diagnostics are recorded separately."
+      "verificationScope": "Rerun after whole-message source ownership and closed-row focus retention. Background resource diagnostics retain the limitation described in recoveryFollowup."
     },
     {
       "id": "response-evidence",
@@ -79,7 +79,7 @@
         "the Data view shows the plot's own values": true,
         "units and provenance stay visible": true
       },
-      "verificationScope": "Captured on 97b9359e. Subsequent source-key and parser edge cases have focused regressions; the current Chromium acceptance run is tracked on the PR."
+      "verificationScope": "Captured on 7b1abd67 in Composer run44848752325. Current follow-up acceptance is tracked on the PR."
     }
   ],
   "browserAppearance": {
@@ -296,5 +296,55 @@
         "scope": "One fresh WebKit load traced this background request; it is consistent with the original six per-scenario messages, whose logger omitted URLs. No preview or asset failure appeared in the attributed load."
       }
     }
+  },
+  "ownershipAndAdmissionFollowup": {
+    "review": "https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001725102",
+    "previousHead": "7b1abd67325b2921b1ce4d085436e17de0414678",
+    "previousComposerRun": "https://github.com/Travis-Gilbert/Theorem-UI/actions/runs/44848752325",
+    "previousComposerResult": "success: response19/19, appearance4/4, original browser oracles12/12",
+    "sourceTests": {
+      "passed": 41,
+      "assertions": 244,
+      "failed": 0
+    },
+    "metadataTests": {
+      "passed": 54,
+      "assertions": 334,
+      "failed": 0
+    },
+    "sourceOwnership": "Inspect explicit ID claims across the whole durable message. Ambiguous URLs keep anonymous passages separate from every explicit ID, even when ambiguity appears later or a third ID arrives.",
+    "identityTradeoff": "A formerly promoted URL-keyed group returns to anonymous ownership when ambiguity appears; its explicit source receives its id key. Previously selected composer references remain snapshots; current source actions use reconstructed attribution.",
+    "focus": "The closed Sources row remains mounted while it owns focus and disappears on blur; its retained trigger remains operable.",
+    "parser": "Appropriate raw-text end tags accept slash and attribute delimiters with matching quotes; first usable decoded metadata wins; supported entity references decode once.",
+    "admission": {
+      "distinctActivePreviews": 16,
+      "outstandingNativeDnsLookups": 16,
+      "scope": "Per process or Worker isolate; no deployment-wide rate-limit claim.",
+      "ordering": "Cached metadata and same-document coalescing are served before preview admission.",
+      "overload": {
+        "status": 503,
+        "retryAfterSeconds": 1,
+        "cacheControl": "no-store",
+        "queued": false,
+        "negativeCached": false
+      },
+      "dnsAccounting": "Reserved until actual native lookup settlement, including late resolution/rejection after the six-second preview deadline.",
+      "regressions": "Saturation prevents seventeenth starts; cache/coalescing work at capacity; the same rejected URL recovers; late DNS answers do not dial; synchronous throws release slots; ordinary missing metadata retains negative caching."
+    },
+    "typecheck": "passed",
+    "focusedLint": "passed",
+    "webkitResponse": {
+      "passed": 19,
+      "total": 19,
+      "version": "27.2"
+    },
+    "integratedComposer": {
+      "passed": 1030,
+      "failed": 0,
+      "files": 99,
+      "assertions": 3598,
+      "durationSeconds": 105.03
+    },
+    "freshCi": "Tracked on the pull request for the commit containing this record."
   }
 }

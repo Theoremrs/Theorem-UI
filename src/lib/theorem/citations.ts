@@ -55,6 +55,19 @@ const supplied = (value: Json): Json =>
 export function collectCitationSources(
   content: readonly CitationPart[],
 ): CitationSource[] {
+  // Inspect every explicit claim before assigning URL-only evidence. A later
+  // second ID invalidates an earlier weak URL association in this message.
+  const explicitIdsByUrl = new Map<string, Set<string>>()
+  for (const part of content) {
+    if (part.type !== 'data' || part.name !== 'theorem-citation') continue
+    const data = object(part.data)
+    const sourceId = str(data.sourceId)
+    const url = citationUrl(object(data.provenance).url)
+    if (!sourceId || !url) continue
+    const ids = explicitIdsByUrl.get(url) ?? new Set<string>()
+    ids.add(sourceId)
+    explicitIdsByUrl.set(url, ids)
+  }
   const sources: CitationSource[] = []
   const byId = new Map<string, CitationSource>()
   const reservedKeys = new Set<string>()
@@ -74,10 +87,14 @@ export function collectCitationSources(
     const excerpt = str(provenance.excerpt)
     let source = sourceId ? byId.get(sourceId) : undefined
     if (!source && url) {
+      const ambiguous = (explicitIdsByUrl.get(url)?.size ?? 0) > 1
       const matches = sources.filter(
         (candidate) =>
-          // A URL-bearing fallback can gain its durable ID later in the stream.
-          (!sourceId || !candidate.sourceId) && candidate.url === url,
+          candidate.url === url &&
+          // Ambiguous URLs group anonymous repeats, but never cross an ID boundary.
+          (ambiguous
+            ? !sourceId && !candidate.sourceId
+            : !sourceId || !candidate.sourceId),
       )
       // Keep repeated URL-only passages in their own unattributed group.
       // A URL alone cannot choose between several explicit source IDs.

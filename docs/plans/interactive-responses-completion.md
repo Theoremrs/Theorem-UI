@@ -86,12 +86,22 @@ Preview extraction excludes nested and unclosed template contents while continui
 
 The parser evaluation favored retaining the bounded forward scan for this change. On the local nested-tag probe at the existing 200,000-character limit, full-tree parse5 construction took about 2,242 ms and the existing scan about 10 ms. This is a workload-specific measurement, not a general parser benchmark; the template fix uses a single nesting counter.
 
+### Whole-message ownership and bounded preview work
+
+The [review of `7b1abd67`](https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001725102) identified three remaining source cases and two parser cases. Source collection now inspects every explicit URL/ID claim before grouping the message. When later citations make a URL ambiguous, earlier anonymous passages return to their own group; a newly arriving third ID cannot absorb them. Unique-ID enrichment and reserved-key handling remain supported. If a provisional URL-keyed group had acquired an ID, that URL key returns to the anonymous group and the identified source receives its explicit ID key. Previously selected composer references remain snapshots; current source actions use the corrected attribution.
+
+A closed Sources row stays mounted while it owns focus, including when its final metadata preview resolves. It disappears when focus leaves, and its retained trigger can still open the panel. Existing Escape, trigger-close and outside-click behavior remains covered.
+
+Raw-text closing tags now accept the appropriate slash or attribute boundary and consume complete quoted attributes with a forward-only scan. Blank decoded metadata placeholders yield to a later usable value with the same key. Supported entity references decode once, preserving deliberately escaped text rather than decoding it again during field selection.
+
+The review's availability concern was confirmed in the route: distinct uncached URLs previously had no aggregate admission bound. New distinct work is now limited to 16 active previews per process/Worker isolate, after cache hits and shared requests. A separate 16-lookup DNS budget remains occupied until the underlying native lookup actually settles, even after the preview deadline. Excess work receives an uncached 503 with `Retry-After: 1`; it is neither queued nor negative-cached. Saturation and recovery tests prove that the exact refused URL can succeed after capacity returns. These are local resource bounds, not a deployment-wide request-rate policy.
+
 ## Verification record
 
 | Gate                                                       | Verified result                                                                             |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Full repository TypeScript and focused changed-file ESLint | Passed                                                                                      |
-| Expanded composer/response suite                           | 1,015 tests, 99 files, 3,457 assertions, zero failures                                        |
+| Expanded composer/response suite                           | 1,030 tests, 99 files, 3,598 assertions, zero failures                                        |
 | Expanded appearance/settings suite                         | 179 tests, 15 files, 5,451 assertions, zero failures                                        |
 | Independent emitted-color audit                            | 119 edges, 10 modes, 2,390 predicates, zero failures                                                   |
 | Response-evidence browser oracle                           | 19/19 in Chromium 156.0.8078.4 and WebKit 27.2                                              |
@@ -100,7 +110,7 @@ The parser evaluation favored retaining the bounded forward scan for this change
 | Full Workers application Vite build                        | Passed; generated flags contain both strictly-public fetch and Node compatibility           |
 | Live local workerd transport probe (baseline)                         | Public metadata succeeds; private-address resolution/refetch is refused                     |
 
-The latest recovery follow-up reran the combined composer and appearance suites, repository typecheck, focused lint and WebKit response story. The Chromium response, appearance-browser, touch and local Workers measurements include recorded earlier evidence. Current GitHub verification is tracked on the PR for the commit containing this record.
+The preceding recovery follow-up passed both combined unit suites and the full GitHub acceptance on `7b1abd67`. The ownership/admission follow-up passed the combined composer suite, focused source and server regressions, repository typecheck and a fresh WebKit response story. The unchanged appearance suite retains its prior passing evidence. Fresh GitHub acceptance is tracked on the PR for the commit containing this record. The appearance-browser, touch and local Workers measurements include recorded earlier evidence.
 
 The latest WebKit response run passed all 19 checks and reported no JavaScript page errors. It logged six HTTP 503 resource messages. A separate single-load trace identified `/api/chat/v1/dictation/status` returning `theorem_unconfigured` because this isolated preview has no Theorem backend configured. That trace showed no preview or asset failure and is consistent with the one message per scenario in the original run. The test is not recorded as completely free of resource errors.
 

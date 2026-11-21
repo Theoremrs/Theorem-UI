@@ -27,9 +27,21 @@ const MAX_BYTES = 512 * 1024
 const TIMEOUT_MS = 6_000
 const MAX_REDIRECTS = 3
 const MAX_ADDRESSES = 8
+// Per process/Worker isolate: serve cached/shared work first, never queue new
+// distinct work. Native DNS has its own budget because lookup cannot abort.
+const MAX_CONCURRENT_PREVIEWS = 16
+const MAX_PENDING_LOOKUPS = 16
 
 const cache = new Map<string, { at: number; value: LinkMetadata | null }>()
 const inFlight = new Map<string, Promise<LinkMetadata | null>>()
+let pendingLookups = 0
+
+class PreviewOverloadedError extends Error {
+  constructor() {
+    super('Link preview capacity is temporarily full. Try again shortly.')
+    this.name = 'PreviewOverloadedError'
+  }
+}
 
 /** A hostname this server refuses to dial: loopback, private, link-local. */
 function blockedHost(host: string): boolean {
@@ -150,10 +162,18 @@ async function approvedAddresses(
     if (!publicAddress(name)) throw new Error('address refused')
     return [name]
   }
-  const records = await abortable(
-    dns.lookup(name, { all: true, verbatim: true }),
-    signal,
-  )
+  if (pendingLookups >= MAX_PENDING_LOOKUPS) throw new PreviewOverloadedError()
+  pendingLookups++
+  // Retain the reservation until native work settles, even when abortable
+  // stops waiting. The async try/finally also releases a synchronous throw.
+  const lookup = (async () => {
+    try {
+      return await dns.lookup(name, { all: true, verbatim: true })
+    } finally {
+      pendingLookups--
+    }
+  })()
+  const records = await abortable(lookup, signal)
   const addresses = records
     .map((record) => record.address)
     .filter(publicAddress)
@@ -360,16 +380,57 @@ function numericEntity(digits: string, radix: number): string {
     : '\uFFFD'
 }
 
+const namedEntities: Record<string, string> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&apos;': "'",
+}
+
+// Decode each reference once: decoded ampersands must not start another pass.
 const entity = (text: string): string =>
   text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;|&apos;/g, "'")
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => numericEntity(hex, 16))
-    .replace(/&#(\d+);/g, (_, dec: string) => numericEntity(dec, 10))
+    .replace(/&(?:amp|lt|gt|quot|apos|#[xX][0-9a-fA-F]+|#\d+);/g, (match) => {
+      if (match.charAt(1) !== '#') return namedEntities[match] ?? match
+      const hex = /[xX]/.test(match.charAt(2))
+      return numericEntity(match.slice(hex ? 3 : 2, -1), hex ? 16 : 10)
+    })
     .trim()
+
+/** Find a tag's closing angle bracket with a forward-only attribute scan.
+ *  Quotes delimit quoted values, but remain literal in unquoted values/names. */
+function tagEnd(html: string, cursor: number): number {
+  let state: 'beforeName' | 'name' | 'afterName' | 'beforeValue' | 'value' =
+    'beforeName'
+  let quote = ''
+  while (cursor < html.length) {
+    const character = html.charAt(cursor)
+    if (quote) {
+      if (character === quote) {
+        quote = ''
+        state = 'beforeName'
+      }
+    } else if (character === '>') {
+      return cursor
+    } else if (state === 'value') {
+      if (/[\t\n\f\r ]/.test(character)) state = 'beforeName'
+    } else if (state === 'beforeValue') {
+      if (character === '"' || character === "'") quote = character
+      else if (!/[\t\n\f\r ]/.test(character)) state = 'value'
+    } else if (/[\t\n\f\r ]/.test(character)) {
+      if (state === 'name') state = 'afterName'
+    } else if (character === '/') {
+      state = 'beforeName'
+    } else if (character === '=' && state !== 'beforeName') {
+      state = 'beforeValue'
+    } else {
+      state = 'name'
+    }
+    cursor++
+  }
+  return cursor
+}
 
 /** Read a tag's attributes with matching quotes and a monotonic cursor.
  *  Only HTML ASCII whitespace delimits names/values; NBSP stays content. */
@@ -428,7 +489,7 @@ function headFields(head: string): {
   let title: string | undefined
   let cursor = 0
   let templateDepth = 0
-  const rawTextEnd = /<\/(title|script|style|textarea)[\t\n\f\r ]*>/gi
+  const rawTextEnd = /<\/(title|script|style|textarea)(?=[\t\n\f\r />])/gi
   while (cursor < head.length) {
     const opening = head.indexOf('<', cursor)
     if (opening === -1) break
@@ -449,18 +510,7 @@ function headFields(head: string): {
       .slice(nameStart, cursor)
       .replace(/[A-Z]/g, (letter) => letter.toLowerCase())
     const attributesStart = cursor
-    let quote = ''
-    while (cursor < head.length) {
-      const character = head.charAt(cursor)
-      if (quote) {
-        if (character === quote) quote = ''
-      } else if (character === '"' || character === "'") {
-        quote = character
-      } else if (character === '>') {
-        break
-      }
-      cursor++
-    }
+    cursor = tagEnd(head, cursor)
     if (cursor === head.length) break
     const end = cursor++
     // Template contents belong to a separate document fragment, including
@@ -482,21 +532,24 @@ function headFields(head: string): {
         match = rawTextEnd.exec(head)
       } while (match && match[1]?.toLowerCase() !== name)
       if (!match) break
+      const closingEnd = tagEnd(head, rawTextEnd.lastIndex)
+      if (closingEnd === head.length) break
       if (name === 'title' && title === undefined && templateDepth === 0)
         title = head.slice(cursor, match.index)
-      cursor = rawTextEnd.lastIndex
+      cursor = closingEnd + 1
       continue
     }
     if (templateDepth > 0 || (name !== 'meta' && name !== 'link')) continue
     const attributes = tagAttributes(head, attributesStart, end)
     if (name === 'meta') {
+      const value = entity(attributes.get('content') ?? '')
+      if (!value) continue
       for (const attribute of ['property', 'name']) {
         const key = attributes.get(attribute)?.toLowerCase()
-        if (key && !metadata.has(key))
-          metadata.set(key, attributes.get('content') ?? '')
+        if (key && !metadata.has(key)) metadata.set(key, value)
       }
     } else {
-      const href = attributes.get('href')
+      const href = entity(attributes.get('href') ?? '')
       if (!href) continue
       for (const rel of (attributes.get('rel') ?? '')
         .toLowerCase()
@@ -512,7 +565,7 @@ function firstField(
   ...keys: string[]
 ): string | undefined {
   for (const key of keys) {
-    const value = entity(fields.get(key) ?? '')
+    const value = fields.get(key)
     if (value) return value
   }
   return undefined
@@ -613,7 +666,8 @@ async function fetchChecked(url: URL): Promise<PinnedResponse> {
   }
 }
 
-/** Resolve one URL's preview metadata; null when it cannot be read. */
+/** Resolve one URL's preview metadata; null when it cannot be read.
+ *  Temporary capacity exhaustion throws instead of caching a missing result. */
 export async function resolveLinkMetadata(
   href: string,
 ): Promise<LinkMetadata | null> {
@@ -627,6 +681,8 @@ export async function resolveLinkMetadata(
     return cached.value
   const pending = inFlight.get(url.href)
   if (pending) return pending
+  if (inFlight.size >= MAX_CONCURRENT_PREVIEWS)
+    throw new PreviewOverloadedError()
   // One request per URL prevents a late duplicate failure from replacing a
   // successful cache entry. Release the entry on both success and failure.
   const result = resolveUncachedMetadata(url)
@@ -654,7 +710,9 @@ async function resolveUncachedMetadata(url: URL): Promise<LinkMetadata | null> {
       // A page with no title at all is not a preview worth drawing.
       if (meta.title || meta.description || meta.image) value = meta
     }
-  } catch {
+  } catch (error) {
+    // Admission is temporary, not evidence that the page lacks metadata.
+    if (error instanceof PreviewOverloadedError) throw error
     value = null
   }
   cache.set(url.href, { at: Date.now(), value })
@@ -665,7 +723,8 @@ async function resolveUncachedMetadata(url: URL): Promise<LinkMetadata | null> {
   return value
 }
 
-/** GET /api/link-preview/v1?url=… — metadata, or 404 with a plain reason. */
+/** GET /api/link-preview/v1?url=… — metadata, 404 when unavailable,
+ *  or an uncached 503 when temporary preview capacity is exhausted. */
 export async function linkPreviewHandler({
   request,
 }: {
@@ -677,7 +736,19 @@ export async function linkPreviewHandler({
       { error: 'A public http(s) url query parameter is required.' },
       { status: 400 },
     )
-  const metadata = await resolveLinkMetadata(href)
+  let metadata: LinkMetadata | null
+  try {
+    metadata = await resolveLinkMetadata(href)
+  } catch (error) {
+    if (!(error instanceof PreviewOverloadedError)) throw error
+    return Response.json(
+      { error: error.message },
+      {
+        status: 503,
+        headers: { 'retry-after': '1', 'cache-control': 'no-store' },
+      },
+    )
+  }
   if (!metadata)
     return Response.json(
       { error: 'No preview metadata could be read for this URL.' },
