@@ -150,8 +150,8 @@ test('life context reads camelCase or snake_case, and a missing flag is false', 
   })
   expect(life.installed).toBe(true)
   expect(life.types).toEqual([
-    { nameSingular: 'Person', declared: true },
-    { nameSingular: 'Goal', declared: false },
+    { nameSingular: 'Person', declared: true, missingFields: [] },
+    { nameSingular: 'Goal', declared: false, missingFields: [] },
   ])
   expect(life.self).toEqual({
     state: 'bound',
