@@ -22,13 +22,14 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use ratatui::layout::{Direction, Rect};
+use serde::Deserialize;
 use serde_json::Value;
 use theorem_workbench_dock::{self as dock, GroupId, Hit, OpenAt, Tab};
 use theorem_workbench_text::visible::visible;
 
 use crate::completion::{Completion, CompletionPayload, Outcome};
 use crate::draft::SourceReference;
-use crate::effect::Effect;
+use crate::effect::{Effect, TerminalBackend};
 use crate::host::{HostMessage, ProgramReport};
 use crate::ids::{
     ActionId, Actor, EffectId, PanelInstanceId, PanelKind, ResourceKind, ResourceRef, Revision,
@@ -138,6 +139,18 @@ impl Model {
     pub fn dispatch(&mut self, inbound: Inbound) -> Vec<Effect> {
         update(self, inbound.into())
     }
+}
+
+/// A tab-local reference to a host process and where its pane was shown.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct TerminalView {
+    workspace: String,
+    session: String,
+    backend: TerminalBackend,
+    role: dock::Role,
+    focused: bool,
+    #[serde(default)]
+    maximized: bool,
 }
 
 /// What a call into a panel left behind.
@@ -1035,6 +1048,80 @@ impl Model {
     /// could emit an effect.
     pub(crate) fn open_panel(&mut self, kind: &PanelKind) -> Option<PanelInstanceId> {
         self.open_panel_with(kind, &Value::Null, None)
+    }
+
+    pub fn terminal_views(&self) -> Vec<TerminalView> {
+        let focused = self.focus_owner();
+        self.dock
+            .group_ids()
+            .into_iter()
+            .filter_map(|id| self.dock.group(id).map(|group| (id, group)))
+            .flat_map(|(group_id, group)| {
+                let focused = focused.as_ref();
+                group.tabs().iter().filter_map(move |tab| {
+                    let id = PanelInstanceId::new(tab.panel.0.clone());
+                    let entry = self.panels.get(&id)?;
+                    let ResourceRef::Terminal { workspace, session } = entry.binding().resource
+                    else {
+                        return None;
+                    };
+                    let state = entry.panel.serialize();
+                    let backend = TerminalBackend::deserialize(state.get("backend")?).ok()?;
+                    Some(TerminalView {
+                        workspace,
+                        session,
+                        backend,
+                        role: group.role(),
+                        focused: focused == Some(&id),
+                        maximized: self.dock.maximized() == Some(group_id),
+                    })
+                })
+            })
+            .collect()
+    }
+
+    /// Recreate views after the account layout has loaded. The process pane attaches on tick.
+    pub fn restore_terminal_views(&mut self, views: Vec<TerminalView>) {
+        let mut focus = self.focus_owner();
+        let mut maximize = false;
+        for view in views {
+            if view.workspace != self.workspace.workspace || view.session.is_empty() {
+                continue;
+            }
+            let target = OpenTarget::Terminal {
+                workspace: view.workspace,
+                session: view.session,
+                backend: view.backend,
+            };
+            let resource = target.resource();
+            let existing = self
+                .panels
+                .iter()
+                .find(|(_, entry)| entry.available && entry.binding().resource == resource)
+                .map(|(id, _)| id.clone());
+            let panel = existing.or_else(|| {
+                let kind = self.factories.opener_of(&target)?.clone();
+                self.open_panel_with(&kind, &target.state(), Some(view.role))
+            });
+            if view.focused && panel.is_some() {
+                focus = panel;
+                maximize = view.maximized;
+            }
+        }
+        if let Some(panel) = focus {
+            let result = self
+                .dock
+                .focus_panel(&Self::dock_id(&panel))
+                .and_then(|group| {
+                    if maximize {
+                        self.dock.maximize(group)
+                    } else {
+                        Ok(())
+                    }
+                });
+            self.dock_result(result);
+        }
+        self.settle();
     }
 
     /// Open a new panel of `kind` built from `state`, in `role`'s region or, by
