@@ -56,11 +56,12 @@ The only dependency added relative to this main baseline is the explicit `marked
 - Independent reply review verified preservation of App/check/calendar/approval rendering, alpha10 completion semantics, sources, attachments, and unknown content.
 - A one-off contract check against the actual installed Assistant UI core verified running send with startRun:false calls onNew exactly once, clears the sent draft, preserves a newer draft, leaves the run active, and never calls onCancel. Disabled/readiness/whitespace gates retain their expected behavior.
 - Regression coverage includes source consolidation, terminal status, stale approvals, bigint details, attachment identities/states, unknown content, streamed Markdown, and material availability/accessibility gates.
-- Current native simulator build evidence will be recorded after the final build completes.
+- Current native Debug simulator build passed with Xcode 27.2 / iPhoneSimulator SDK 27.2, targeting phone-composer on iOS 26.5. Clean CNG prebuild, CocoaPods installation, and direct xcodebuild completed successfully (BUILD SUCCEEDED, exit 0). Dependency and CocoaPods module-setting warnings remain; the build had no compiler errors.
+- The resulting rs.theorem.app installed over the existing simulator app and launched successfully through simctl (both exit 0). The startup capture showed Expo's development launcher with the existing localhost:8097 server, beneath the system Open in Theorem confirmation. This verifies installation and process launch; the capture did not show authenticated chat.
 
 ## Device review and remaining scope
 
-Authenticated chat interaction has not been exercised in the simulator or on a physical iPhone in this pass. The prior simulator session reached the sign-in screen. The host has not granted UI automation permission, so this work does not claim visual approval of the authenticated conversation, keyboard transitions, source sheet, dark theme, or Dynamic Type. Sign-in must use the normal app flow.
+Authenticated chat interaction has not been exercised in the simulator or on a physical iPhone in this pass. The current simulator startup remains at a system Open confirmation above the development launcher; an earlier build reached the sign-in screen. The host has not granted UI automation permission, so this work does not claim visual approval of the authenticated conversation, keyboard transitions, source sheet, dark theme, or Dynamic Type. Continue through the normal Open and sign-in flow for that review.
 
 The next review should open a real rich reply, verify code/table horizontal scrolling and source links, exercise Copy/Share and attachments, check Queue/Stop with a real run, and inspect the composer above the tabs with the keyboard open and closed. Check light/dark, Reduce Transparency, and larger text. Those observations are separate from automated and build results.
 
