@@ -14,6 +14,7 @@ import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highl
 import { DocumentApp } from '@/components/blocks/document-app'
 import { cn } from '@/lib/utils'
 import type { Distance } from '@/lib/artifacts/contributions'
+import { useArtifactMessageId } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 import { AppPreview } from './app-revision-frame'
 import { AppRevision } from './app-history'
@@ -23,8 +24,7 @@ import {
   UnreadableNotebook,
 } from './notebook-artifact'
 import { OpenUIArtifact } from './openui/renderer'
-import { SceneCard, SceneInReply } from '@/components/chat/scene-part'
-import { useSceneTheme } from '@/components/chat/scene-theme'
+import { SceneInConversation, SceneInReply } from '@/components/chat/scene-part'
 import {
   mountRenderers,
   rendererFor,
@@ -159,11 +159,19 @@ const SceneReplyArtifact: FC<RendererProps> = ({ artifact }) =>
     />
   )
 
-/** A scene filling a panel, in its full layout. */
+/**
+ * A scene filling a panel, in its full layout, wired to the same
+ * conversation as its reply: Ask refers to the reply that carries this
+ * revision, and Fix asks the agent in this thread.
+ */
 const SceneArtifact: FC<RendererProps> = ({ artifact }) => {
-  const theme = useSceneTheme()
+  const messageId = useArtifactMessageId(artifact)
   return artifact.scene ? (
-    <SceneCard scene={artifact.scene} theme={theme} placement="panel" />
+    <SceneInConversation
+      scene={artifact.scene}
+      messageId={messageId}
+      placement="panel"
+    />
   ) : (
     <TheoremCard
       artifact={artifact}

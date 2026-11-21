@@ -145,6 +145,48 @@ export function readSceneArtifact(data: unknown): TheoremArtifact | undefined {
   }
 }
 
+/** The artifact a data part carries, if it carries one. */
+function partArtifact(part: { name: string; data: unknown }) {
+  return part.name === ARTIFACT_PART
+    ? readArtifact(part.data)
+    : part.name === SCENE_PART
+      ? readSceneArtifact(part.data)
+      : undefined
+}
+
+/**
+ * The reply that carries this revision of the artifact: what a view away
+ * from the reply, such as a panel, names when it refers to the conversation.
+ */
+export function messageIdOf(
+  messages: readonly ThreadMessage[],
+  artifact: Pick<TheoremArtifact, 'artifactId' | 'revision'>,
+): string | undefined {
+  return messages.find(
+    (message) =>
+      message.role === 'assistant' &&
+      message.content.some((part) => {
+        if (part.type !== 'data') return false
+        const read = partArtifact(part)
+        return (
+          read?.artifactId === artifact.artifactId &&
+          read.revision === artifact.revision
+        )
+      }),
+  )?.id
+}
+
+/** The id of the reply in this thread that carries the artifact's revision. */
+export function useArtifactMessageId(
+  artifact: Pick<TheoremArtifact, 'artifactId' | 'revision'>,
+): string | undefined {
+  const messages = useAuiState((s) => s.thread.messages)
+  return useMemo(
+    () => messageIdOf(messages, artifact),
+    [messages, artifact.artifactId, artifact.revision],
+  )
+}
+
 /** Every artifact in `messages`, each with its revisions in patch order. */
 export function threadArtifacts(
   messages: readonly ThreadMessage[],
@@ -155,12 +197,7 @@ export function threadArtifacts(
       : [],
   )
   const read = parts.flatMap((part) => {
-    const artifact =
-      part.name === ARTIFACT_PART
-        ? readArtifact(part.data)
-        : part.name === SCENE_PART
-          ? readSceneArtifact(part.data)
-          : undefined
+    const artifact = partArtifact(part)
     return artifact ? [{ artifact, saved: part.name === SCENE_PART }] : []
   })
   // A scene the artifact contract carries is not listed again for a scene

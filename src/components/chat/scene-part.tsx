@@ -377,23 +377,31 @@ export function SceneCard({
 }
 
 /**
- * A scene in a reply, wired to its conversation: Fix sends the failure to
- * the agent as the next turn, and a pick becomes a reference to this reply
- * with what was picked as its excerpt. Drawn for a saved `theorem-scene` part
- * and for a scene artifact alike.
+ * A scene wired to its conversation: Fix sends the failure to the agent as
+ * the next turn, and a pick becomes a reference to the reply that carries
+ * the scene, with what was picked as its excerpt. Without the reply's id
+ * there is nothing to refer to, so Ask is left off; Fix still works.
  */
-export function SceneInReply({ scene }: { scene: Scene }) {
+export function SceneInConversation({
+  scene,
+  messageId,
+  placement = 'reply',
+}: {
+  scene: Scene
+  messageId: string | undefined
+  placement?: SceneCardProps['placement']
+}) {
   const aui = useAui()
   const theme = useSceneTheme()
   const threadId = useAuiState((s) => s.threadListItem.remoteId)
-  const messageId = useAuiState((s) => s.message.id)
   return (
     <SceneCard
       scene={scene}
       theme={theme}
+      placement={placement}
       onRepair={(error) => aui.thread.append(repairRequest(scene.title, error))}
       onAsk={
-        threadId
+        threadId && messageId
           ? (entity) =>
               askAbout({
                 label: `${scene.title ?? 'Scene'}: ${entity.label ?? entity.id}`,
@@ -409,6 +417,15 @@ export function SceneInReply({ scene }: { scene: Scene }) {
       }
     />
   )
+}
+
+/**
+ * A scene in a reply, wired to its conversation. Drawn for a saved
+ * `theorem-scene` part and for a scene artifact alike.
+ */
+export function SceneInReply({ scene }: { scene: Scene }) {
+  const messageId = useAuiState((s) => s.message.id)
+  return <SceneInConversation scene={scene} messageId={messageId} />
 }
 
 /** The line the code failed at, and Fix, which asks once per failure. */
