@@ -1,6 +1,7 @@
 // SOURCING: none: the list /stories.json serves and the story route looks up, kept free of components so the server route can read it. Each story's lane and reference are the license ledger's, docs/plans/evidence/ledger.md.
 import { ACTIVITY_STATES } from './fixtures/activity'
 import { ARTIFACT_STORIES } from './fixtures/artifacts'
+import { SCENE_STORIES } from './fixtures/scenes'
 import type { StoryRouteOptions } from './routes'
 import { PALETTE_STORIES } from './palette-matrix'
 
@@ -493,6 +494,12 @@ export const STORIES: readonly StoryMeta[] = [
     title: `Artifact: ${title}`,
     lane: 'original',
     viewport: { width: 760, height: 900 },
+  })),
+  ...SCENE_STORIES.map(({ id, title }): StoryMeta => ({
+    id,
+    title: `Scene: ${title}`,
+    lane: 'original',
+    viewport: { width: 1280, height: 900 },
   })),
   ...PALETTE_STORIES,
 ]

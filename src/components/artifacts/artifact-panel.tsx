@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { kindLabel, useThreadArtifacts } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 import { ArtifactActions } from './artifact-actions'
-import { isLive } from './artifact-registry'
+import { fillsPanel, isLive } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
 import { ArtifactReferrer } from './artifact-referrer'
 import { useArtifactView } from './artifact-view'
@@ -71,6 +71,7 @@ export function ArtifactPanel({
   const artifact = versions[index] ?? newest
   if (!artifact || !newest) return null
   const latest = artifact === newest
+  const fills = fillsPanel(artifact, 'interactive')
   // A live interactive artifact runs in the answer that wrote it; the panel
   // refers to that one runtime instead of mounting a second (PR #128 P1).
   const liveNewest = isLive(newest, 'interactive')
@@ -106,13 +107,27 @@ export function ArtifactPanel({
         onClose={onClose}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-(--appearance-expanded-measure) px-6 py-6">
+      <div
+        className={cn(
+          'min-h-0 flex-1',
+          fills ? 'flex flex-col' : 'overflow-y-auto',
+        )}
+      >
+        <div
+          className={cn(
+            fills
+              ? 'flex min-h-0 flex-1 flex-col'
+              : 'mx-auto w-full max-w-(--appearance-expanded-measure) px-6 py-6',
+          )}
+        >
           {/* The newest slot stays mounted while an older revision is shown,
               so the look back costs nothing on the way back. A passive body
               keeps its unsaved edit; a live interactive one is already kept
               by its answer, so this slot only refers there. */}
-          <div hidden={!latest}>
+          <div
+            hidden={!latest}
+            className={cn(fills && latest && 'min-h-0 flex-1')}
+          >
             {liveNewest ? (
               <ArtifactReferrer artifact={newest} />
             ) : (
@@ -120,12 +135,14 @@ export function ArtifactPanel({
             )}
           </div>
           {!latest && (
-            <ArtifactView
-              key={artifact.revision}
-              artifact={artifact}
-              distance="interactive"
-              latest={false}
-            />
+            <div className={cn(fills && 'min-h-0 flex-1')}>
+              <ArtifactView
+                key={artifact.revision}
+                artifact={artifact}
+                distance="interactive"
+                latest={false}
+              />
+            </div>
           )}
         </div>
       </div>

@@ -19,21 +19,27 @@
 // page tells the card which part was asked about. Inline, the card is wider
 // than the reading column (--spacing-artifact), centred on it.
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
 } from 'react'
+import { useAui, useAuiState } from '@assistant-ui/react'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { askAbout } from './composer-references'
 import {
   errorLine,
   readFrameMessage,
+  repairRequest,
   SCENE_HOST_PATH,
   SCENE_SANDBOX,
 } from './scene-model'
+import { useSceneTheme } from './scene-theme'
 import type {
   HostMessage,
   ModuleError,
@@ -55,6 +61,16 @@ function openInline(node: HTMLDialogElement) {
 /** How long the page may take to draw the package before the card gives up. */
 export const SCENE_MOUNT_TIMEOUT_MS = 20_000
 
+/**
+ * Where the scene page is loaded from and how long it may take to mount.
+ * The authority's page by default; the review stories serve a committed
+ * build of the same page.
+ */
+export const SceneHost = createContext({
+  path: SCENE_HOST_PATH,
+  mountTimeoutMs: SCENE_MOUNT_TIMEOUT_MS,
+})
+
 type Phase = 'loading' | 'ready' | 'failed'
 
 /** The error the agent's code stopped with, and whether Fix has asked about it. */
@@ -71,9 +87,22 @@ export type SceneCardProps = {
   onAsk?: (entity: SceneEntity) => void
   /** Asks the agent to fix the code that failed. */
   onRepair?: (error: ModuleError) => void
+  /**
+   * `reply`: in the conversation, inline with an Expand into the top layer.
+   * `panel`: filling a workspace panel in the full layout, with nothing to
+   * expand into.
+   */
+  placement?: 'reply' | 'panel'
 }
 
-export function SceneCard({ scene, theme, onAsk, onRepair }: SceneCardProps) {
+export function SceneCard({
+  scene,
+  theme,
+  onAsk,
+  onRepair,
+  placement = 'reply',
+}: SceneCardProps) {
+  const inPanel = placement === 'panel'
   const dialog = useRef<HTMLDialogElement>(null)
   const holder = useRef<HTMLDivElement>(null)
   const expandButton = useRef<HTMLButtonElement>(null)
@@ -82,9 +111,10 @@ export function SceneCard({ scene, theme, onAsk, onRepair }: SceneCardProps) {
   // What the current page last drew with; empty until it can take a mount.
   const drawnWith = useRef<string | undefined>(undefined)
   const [phase, setPhase] = useState<Phase>('loading')
-  const [layout, setLayout] = useState<SceneLayout>('inline')
+  const [layout, setLayout] = useState<SceneLayout>(inPanel ? 'full' : 'inline')
   const [fault, setFault] = useState<Fault>()
   const label = scene.title ?? 'Interactive scene'
+  const host = useContext(SceneHost)
   const asks = onAsk !== undefined
   // What a mount says besides the package: the colours, and whether the
   // callout on a picked part offers Ask.
@@ -121,10 +151,10 @@ export function SceneCard({ scene, theme, onAsk, onRepair }: SceneCardProps) {
   )
 
   const collapse = useCallback(() => {
-    if (latest.current.layout !== 'full') return
+    if (inPanel || latest.current.layout !== 'full') return
     place('inline')
     expandButton.current?.focus()
-  }, [place])
+  }, [place, inPanel])
 
   // Shown before the frame is added, so the page first lays out at its size.
   useLayoutEffect(() => {
@@ -156,11 +186,11 @@ export function SceneCard({ scene, theme, onAsk, onRepair }: SceneCardProps) {
         setFault({
           error: {
             stage: 'mount',
-            message: `mount did not return within ${SCENE_MOUNT_TIMEOUT_MS / 1000} seconds`,
+            message: `mount did not return within ${host.mountTimeoutMs / 1000} seconds`,
           },
           asked: false,
         })
-    }, SCENE_MOUNT_TIMEOUT_MS)
+    }, host.mountTimeoutMs)
     const onMessage = (event: MessageEvent) => {
       if (!element.contentWindow || event.source !== element.contentWindow)
         return
@@ -198,7 +228,7 @@ export function SceneCard({ scene, theme, onAsk, onRepair }: SceneCardProps) {
       }
     }
     window.addEventListener('message', onMessage)
-    element.src = SCENE_HOST_PATH
+    element.src = host.path
     parent.append(element)
     frame.current = element
     return () => {
@@ -209,7 +239,7 @@ export function SceneCard({ scene, theme, onAsk, onRepair }: SceneCardProps) {
     }
     // `label` names the frame when it is made; a later title does not remake it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sceneKey, post, collapse])
+  }, [sceneKey, host, post, collapse])
 
   // A palette or mode switch, or a conversation that starts or stops taking
   // questions: the page tears the run down and draws the package again, in
@@ -272,13 +302,19 @@ export function SceneCard({ scene, theme, onAsk, onRepair }: SceneCardProps) {
       data-layout={layout}
       data-phase={phase}
       className={cn(
-        // A shown dialog sits in the reply like any other card, wider than
-        // the reading column and centred on it.
-        'relative my-3 max-w-none flex-col overflow-hidden rounded-artifact border border-separator bg-artifact p-0 text-ink open:flex',
-        '[--scene-width:min(calc(100cqw-5rem),var(--spacing-artifact))] mx-[calc((100%-var(--scene-width))/2)] w-(--scene-width)',
-        // Expanded: the top layer, over the whole window.
-        '[&:modal]:fixed [&:modal]:inset-2 [&:modal]:m-0 [&:modal]:size-auto [&:modal]:max-h-none sm:[&:modal]:inset-6',
-        'backdrop:bg-black/40 supports-backdrop-filter:backdrop:backdrop-blur-xs',
+        'relative max-w-none flex-col overflow-hidden p-0 text-ink open:flex',
+        inPanel
+          ? // In a panel: the panel is the frame.
+            'static m-0 size-full max-h-none bg-transparent'
+          : [
+              // A shown dialog sits in the reply like any other card, wider
+              // than the reading column and centred on it.
+              'my-3 rounded-artifact border border-separator bg-artifact',
+              '[--scene-width:min(calc(100cqw-5rem),var(--spacing-artifact))] mx-[calc((100%-var(--scene-width))/2)] w-(--scene-width)',
+              // Expanded: the top layer, over the whole window.
+              '[&:modal]:fixed [&:modal]:inset-2 [&:modal]:m-0 [&:modal]:size-auto [&:modal]:max-h-none sm:[&:modal]:inset-6',
+              'backdrop:bg-black/40 supports-backdrop-filter:backdrop:backdrop-blur-xs',
+            ],
       )}
     >
       <div
@@ -314,7 +350,7 @@ export function SceneCard({ scene, theme, onAsk, onRepair }: SceneCardProps) {
           {scene.fallbackText && <p>{scene.fallbackText}</p>}
         </div>
       )}
-      {(!failed || full) && (
+      {!inPanel && (!failed || full) && (
         <Button
           ref={expandButton}
           type="button"
@@ -338,6 +374,58 @@ export function SceneCard({ scene, theme, onAsk, onRepair }: SceneCardProps) {
       )}
     </dialog>
   )
+}
+
+/**
+ * A scene wired to its conversation: Fix sends the failure to the agent as
+ * the next turn, and a pick becomes a reference to the reply that carries
+ * the scene, with what was picked as its excerpt. Without the reply's id
+ * there is nothing to refer to, so Ask is left off; Fix still works.
+ */
+export function SceneInConversation({
+  scene,
+  messageId,
+  placement = 'reply',
+}: {
+  scene: Scene
+  messageId: string | undefined
+  placement?: SceneCardProps['placement']
+}) {
+  const aui = useAui()
+  const theme = useSceneTheme()
+  const threadId = useAuiState((s) => s.threadListItem.remoteId)
+  return (
+    <SceneCard
+      scene={scene}
+      theme={theme}
+      placement={placement}
+      onRepair={(error) => aui.thread.append(repairRequest(scene.title, error))}
+      onAsk={
+        threadId && messageId
+          ? (entity) =>
+              askAbout({
+                label: `${scene.title ?? 'Scene'}: ${entity.label ?? entity.id}`,
+                excerpt: JSON.stringify({
+                  scene: { sceneId: scene.sceneId, title: scene.title },
+                  entity,
+                }),
+                location: {
+                  resource: { kind: 'message', threadId, messageId },
+                },
+              })
+          : undefined
+      }
+    />
+  )
+}
+
+/**
+ * A scene in a reply, wired to its conversation. Drawn for a saved
+ * `theorem-scene` part and for a scene artifact alike.
+ */
+export function SceneInReply({ scene }: { scene: Scene }) {
+  const messageId = useAuiState((s) => s.message.id)
+  return <SceneInConversation scene={scene} messageId={messageId} />
 }
 
 /** The line the code failed at, and Fix, which asks once per failure. */
