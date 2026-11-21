@@ -1,6 +1,15 @@
 import { afterEach, expect, test } from 'bun:test'
+import { act } from 'react'
+import type { ReactNode } from 'react'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { UserMarkdown } from './user-markdown'
-import { cleanup, render } from '../../../test/blocks/render'
+import { cleanup, render, waitFor } from '../../../test/blocks/render'
+import { OpenDocumentProvider } from '@/components/crm/open-document'
 
 afterEach(cleanup)
 
@@ -166,4 +175,76 @@ test('a directive whose own brackets, braces or quotes are escaped stays literal
   ].map((chip) => chip.textContent)
   expect(chips).toEqual(['Real'])
   expect(container.textContent).toContain(':document[Notes]{name=document:doc:notes}')
+})
+
+const PICKS =
+  'Ask :record[Noor Haddad]{name=record:Person/person:noor} about :document[Notes on the kiln visit]{name=document:doc:kiln} with :tool[search] and :skill[tidy].'
+
+async function inRouter(children: ReactNode) {
+  const router = createRouter({
+    routeTree: createRootRoute({ component: () => children }),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  await router.load()
+  const view = await render(<RouterProvider router={router} />)
+  await waitFor(() =>
+    view.container.querySelector('[data-slot="directive-text-chip"]'),
+  )
+  return { ...view, router }
+}
+
+const chip = (container: ParentNode, label: string) =>
+  [...container.querySelectorAll('[data-slot="directive-text-chip"]')].find(
+    (found) => found.textContent === label,
+  )!
+
+test('an @ pick in a sent message opens the record or document it cites', async () => {
+  const { container, router } = await inRouter(<UserMarkdown text={PICKS} />)
+  const record = chip(container, 'Noor Haddad')
+  const document = chip(container, 'Notes on the kiln visit')
+  expect(record.tagName).toBe('A')
+  expect(document.tagName).toBe('A')
+  // A / tool or + skill names no item to open.
+  expect(chip(container, 'search').tagName).toBe('SPAN')
+  expect(chip(container, 'tidy').tagName).toBe('SPAN')
+  expect(
+    new URL(record.getAttribute('href')!, 'http://x').searchParams.get('item'),
+  ).toBe('record:Person/person:noor')
+  expect(
+    new URL(document.getAttribute('href')!, 'http://x').searchParams.get(
+      'item',
+    ),
+  ).toBe('doc:kiln')
+  await act(async () => {
+    record.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+    )
+  })
+  await waitFor(() => router.state.location.pathname === '/index')
+  expect(router.state.location.search).toMatchObject({
+    item: 'record:Person/person:noor',
+  })
+})
+
+test('a document pick opens where the surrounding inspector opens documents', async () => {
+  const opened: string[] = []
+  const { container } = await inRouter(
+    <OpenDocumentProvider value={(id) => opened.push(id)}>
+      <UserMarkdown text={PICKS} />
+    </OpenDocumentProvider>,
+  )
+  const document = chip(container, 'Notes on the kiln visit')
+  expect(document.tagName).toBe('BUTTON')
+  await act(async () => {
+    document.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  })
+  expect(opened).toEqual(['doc:kiln'])
+  // A record still opens in the Index.
+  expect(chip(container, 'Noor Haddad').tagName).toBe('A')
+})
+
+test('with nowhere to open it, an @ pick stays a chip of text', async () => {
+  const { container } = await render(<UserMarkdown text={PICKS} />)
+  for (const label of ['Noor Haddad', 'Notes on the kiln visit'])
+    expect(chip(container, label).tagName).toBe('SPAN')
 })
