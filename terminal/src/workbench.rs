@@ -667,6 +667,16 @@ impl Core {
         update(&mut self.model, msg)
     }
 
+    fn receive(&mut self, msg: Msg, visible: bool) -> Vec<Effect> {
+        let settle_hidden = !visible && matches!(&msg, Msg::Completion(_));
+        let mut effects = self.update(msg);
+        // A completed request can free a queued checkpoint while no animation frame is running.
+        if settle_hidden {
+            effects.extend(self.update(Msg::Tick));
+        }
+        effects
+    }
+
     /// A saved layout replaces the default arrangement, which is then never opened.
     fn restore(&mut self, value: Value) -> Result<(), RestoreError> {
         self.touched = true;
@@ -1069,7 +1079,12 @@ impl WorkbenchHandle {
 
     /// A completion or a host message (JSON), as the adapter produces them.
     pub fn dispatch(&self, json: &str) -> Result<(), JsValue> {
-        self.send(inbound(json).map_err(js_error)?);
+        let msg = inbound(json).map_err(js_error)?;
+        let effects = self
+            .core
+            .borrow_mut()
+            .receive(msg, self.frames.visible.get());
+        deliver(&self.on_effect, &self.on_semantics, &effects, None);
         Ok(())
     }
 
@@ -1153,7 +1168,12 @@ impl WorkbenchHandle {
 
     /// Pauses rendering while the shell keeps the workspace and its sessions mounted.
     pub fn set_visible(&self, visible: bool) {
+        let was_visible = self.frames.visible.get();
         self.frames.set_visible(visible);
+        if was_visible && !visible {
+            // Let panels checkpoint held work before the next frame would have run.
+            self.send(Msg::Tick);
+        }
     }
 
     pub fn set_focused(&self, focused: bool) {
@@ -2187,6 +2207,10 @@ mod tests {
 
     /// The core after `name` was opened from the Files panel.
     fn opened_from_files(name: &str, editor_first: bool) -> Core {
+        opening_from_files(name, editor_first).0
+    }
+
+    fn opening_from_files(name: &str, editor_first: bool) -> (Core, Effect) {
         use theorem_workbench_core::{
             completion::{
                 Completion, CompletionPayload, FileEntry, FileKind, FileListing, Outcome,
@@ -2221,11 +2245,63 @@ mod tests {
             matches!(&e.body, EffectBody::DocumentOpen(_))
                 && matches!(&e.resource, theorem_workbench_core::ResourceRef::Document { resource_id, .. } if resource_id == name)
         };
-        assert!(
-            effects.iter().any(opens),
-            "the panel reads {name} through the core: {effects:?}"
+        let open = effects
+            .iter()
+            .find(|effect| opens(effect))
+            .unwrap_or_else(|| panic!("the panel reads {name} through the core: {effects:?}"));
+        (core, open.clone())
+    }
+
+    #[test]
+    fn a_hidden_workbench_keeps_edits_queued_behind_an_unanswered_checkpoint() {
+        use theorem_workbench_core::{
+            Revision,
+            completion::{Completion, CompletionPayload, DocumentOpened, Outcome},
+            effect::{EffectBody, EffectKind},
+        };
+
+        let (mut core, open) = opening_from_files("a.txt", false);
+        let ready = Completion::new(open.id, open.resource, Outcome::Accepted).with_payload(
+            CompletionPayload::DocumentOpened(DocumentOpened {
+                text: "hello".into(),
+                revision: Revision::Seq(1),
+                saved_revision: None,
+                dirty: false,
+                read_only: None,
+                pending: vec![],
+            }),
         );
-        core
+        core.receive(Msg::Completion(ready), true);
+        focus_panel(&mut core, "document");
+
+        let sent = core.update(Msg::Text("a".into()));
+        assert!(
+            sent.iter()
+                .any(|effect| effect.kind() == EffectKind::DocumentEdit)
+        );
+        core.update(Msg::Text("b".into()));
+        let checkpoint = core
+            .update(Msg::Tick)
+            .into_iter()
+            .find(|effect| effect.kind() == EffectKind::DocumentKeep)
+            .expect("the earlier held edit starts a checkpoint");
+        core.update(Msg::Text("c".into()));
+
+        let done = Completion::new(checkpoint.id, checkpoint.resource, Outcome::Accepted);
+        let effects = core.receive(Msg::Completion(done), false);
+        let kept = effects
+            .iter()
+            .find_map(|effect| match &effect.body {
+                EffectBody::DocumentKeep(keep) => Some(keep),
+                _ => None,
+            })
+            .expect("the hidden workbench sends the newer draft without a frame");
+        let inserts: Vec<_> = kept
+            .edits
+            .iter()
+            .flat_map(|edit| edit.edits.iter().map(|change| change.insert.as_str()))
+            .collect();
+        assert_eq!(inserts, ["b", "c"]);
     }
 
     #[test]
