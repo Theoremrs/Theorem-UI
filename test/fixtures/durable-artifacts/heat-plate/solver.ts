@@ -348,9 +348,10 @@ export function sampleAt(field: PlateField, x: number, y: number): number {
 /** How well a solved field satisfies the plate it was solved for. */
 export interface PlateCheck {
   /**
-   * The largest correction one more Gauss-Seidel update would make at a free
-   * node, in °C: how far the field is from solving its own equations, not a
-   * bound on its error against the converged field.
+   * The largest local equation correction at a free node, in °C: the gap
+   * between a node and the value its own equation gives from the current
+   * field, unrelaxed. Not a bound on how far the next (over-relaxed) sweep
+   * moves a node, nor on the field's error against the converged one.
    */
   residual: number
   /** Heat into the plate through each edge, per metre of depth, in W/m (negative leaves). */
