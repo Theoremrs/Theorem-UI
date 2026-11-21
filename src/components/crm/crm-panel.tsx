@@ -7,6 +7,7 @@ import { RECORDS_HOME_VIEW_ID } from '@/components/index/programs'
 import type { ObjectType } from '@/components/records/contract'
 import { recordTitle } from '@/components/records/model'
 import { Button } from '@/components/ui/button'
+import type { LifeContext } from './api'
 import { YouBadge } from './cells'
 import { CrmNavigationBoundary, useCrmScope } from './context'
 import { accessFor, personType, typeByName } from './model'
@@ -152,30 +153,57 @@ function Types() {
           onOpen={() => void openType(type)}
         />
       ))}
-      {life?.started && life.missing.length > 0 && (
-        <AddMissing missing={life.missing} />
-      )}
+      {life?.started &&
+        (life.missing.length > 0 || life.outdated.length > 0) && (
+          <AddMissing missing={life.missing} outdated={life.outdated} />
+        )}
     </>
   )
 }
 
+/** What the add row says: the types to add, the types to give new fields, or both. */
+export function addMissingWords(
+  missing: string[],
+  outdated: LifeContext['outdated'],
+) {
+  if (missing.length && outdated.length) return 'Update the record types'
+  if (outdated.length)
+    return outdated.length === 1
+      ? `Add new fields to ${outdated[0]!.nameSingular}`
+      : `Add new fields to ${outdated.length} record types`
+  return missing.length === 1
+    ? `Add the ${missing[0]} type`
+    : `Add ${missing.length} new record types`
+}
+
 /**
- * A workspace set up before a built-in type existed does not have it. Adding
- * declares only what is absent and leaves every existing type as it is.
+ * A workspace set up before a built-in type existed does not have it, and a
+ * built-in type installed before a field was added to it lacks that field.
+ * Adding declares only what is absent: a missing type, or a missing field of
+ * a type installed as built-in. Every field a type has is left as it is.
  */
-function AddMissing({ missing }: { missing: string[] }) {
+export function AddMissing({
+  missing,
+  outdated,
+}: {
+  missing: string[]
+  outdated: LifeContext['outdated']
+}) {
   const install = useInstallLifeContextTypes()
-  const what =
-    missing.length === 1
-      ? `Add the ${missing[0]} type`
-      : `Add ${missing.length} new record types`
+  const what = addMissingWords(missing, outdated)
+  const detail = [
+    ...missing,
+    ...outdated.map(
+      (type) => `${type.nameSingular}: ${type.missingFields.join(', ')}`,
+    ),
+  ]
   return (
     <>
       <button
         type="button"
         className={ROW}
         disabled={install.isPending}
-        title={missing.join(', ')}
+        title={detail.join('; ')}
         onClick={() => install.mutate()}
       >
         <Plus aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />

@@ -343,6 +343,8 @@ export type FixtureOptions = {
   unreadable?: string[]
   /** Singular names of built-in types this workspace was set up without. */
   missing?: string[]
+  /** Built-in fields, by type name and key, a type was installed without. */
+  missingFields?: Record<string, string[]>
 }
 
 type Body = { query?: string; variables?: Record<string, unknown> }
@@ -357,6 +359,10 @@ export function createFixtureServer(options: FixtureOptions = {}) {
   const state = {
     installed: options.installed ?? true,
     missing: new Set(options.missing ?? []),
+    missingFields: { ...(options.missingFields ?? {}) } as Record<
+      string,
+      string[]
+    >,
     self:
       options.self === 'unbound'
         ? null
@@ -388,6 +394,9 @@ export function createFixtureServer(options: FixtureOptions = {}) {
     types: types.map((type) => ({
       name_singular: type.name_singular,
       declared: declared().includes(type),
+      missing_fields: declared().includes(type)
+        ? (state.missingFields[type.name_singular] ?? [])
+        : [],
     })),
     self:
       state.self === undefined
@@ -565,6 +574,7 @@ export function createFixtureServer(options: FixtureOptions = {}) {
     if (query.includes('installLifeContextTypes')) {
       state.installed = true
       state.missing.clear()
+      state.missingFields = {}
       return { data: { installLifeContextTypes: life() } }
     }
     if (query.includes('bindSelfPerson')) {

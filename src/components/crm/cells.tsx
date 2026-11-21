@@ -19,6 +19,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { CrmRecord } from './api'
 import { useCrmScope } from './context'
+import { MadeValue, madeKind } from './made-links'
 import { builtInName, initials, isPrivate } from './model'
 import type { FieldEdit } from './queries'
 import { Avatar } from './twenty/avatar'
@@ -280,6 +281,9 @@ export function CrmFieldValue({
       />
     )
   if (isEmptyValue(value) && kind !== 'boolean') return null
+  const made = madeKind(type, field)
+  if (made && typeof value === 'string')
+    return <MadeValue kind={made} id={value} />
   if (
     field.field_type.kind === 'enum' ||
     field.field_type.kind === 'enum_many'
