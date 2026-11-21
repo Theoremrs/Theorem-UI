@@ -63,6 +63,8 @@ const untypedModules = (paths: DependencyDeclarations['paths'] = {}) => [
   `declare module '*.css' {}`,
   // A worker file imported with ?worker is a URL to start it from (export.ts).
   `declare module '*?worker' { const url: string; export default url }`,
+  // A file imported with ?implementation is the digest of its code (export.ts).
+  `declare module '*?implementation' { const digest: \`sha256:\${string}\`; export default digest }`,
   '',
 ].join('\n')
 

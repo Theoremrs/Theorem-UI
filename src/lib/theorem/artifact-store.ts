@@ -262,6 +262,112 @@ export function chunkBytes(
   return new TextEncoder().encode(`[${entries.join(',')}]`)
 }
 
+/** A stored run read back: its record, every moment it holds in order, and its checkpoints. */
+export interface ReopenedRun {
+  run: RunRef
+  /** Contiguous from index 0, each checked against its chunk and, when kept, its state's digest. */
+  observations: Array<RecordedObservation & { domain: string }>
+  checkpoints: Array<CheckpointRef>
+}
+
+/**
+ * The observations one chunk's bytes hold, read positionally against the
+ * references the chunk itself records (`chunkBytes` wrote them in this exact
+ * form). Each state is returned as its exact canonical JSON text, so its
+ * digest can be checked without re-encoding values JSON has no form for.
+ * Anything that does not read back exactly is refused rather than repaired.
+ */
+async function observationsOf(
+  chunk: TraceChunk,
+  bytes: Uint8Array,
+): Promise<Array<RecordedObservation>> {
+  const text = new TextDecoder().decode(bytes)
+  const refused = (why: string) =>
+    new ArtifactRefused(
+      502,
+      'artifact_chunk_mismatch',
+      `Chunk ${chunk.sequence} of run ${chunk.runId} ${why}.`,
+    )
+  if (!text.startsWith('[')) throw refused('is not a list of observations')
+  let at = 1
+  const read: Array<RecordedObservation> = []
+  for (const [position, ref] of chunk.observations.entries()) {
+    if (position > 0) {
+      if (text[at] !== ',') throw refused('has observations out of place')
+      at += 1
+    }
+    const head = `{"index":${canonicalJson(ref.index)}`
+    if (!text.startsWith(head, at))
+      throw refused(`does not hold observation ${ref.index} where it says`)
+    at += head.length
+    const tail = `,"stateDigest":${canonicalJson(ref.stateDigest)},"time":${canonicalJson(ref.time)}}`
+    let state: string | undefined
+    if (text.startsWith(',"state":', at)) {
+      const start = at + ',"state":'.length
+      const end = text.indexOf(tail, start)
+      if (end < 0)
+        throw refused(`does not hold observation ${ref.index} as it records it`)
+      state = text.slice(start, end)
+      if (
+        (await digestBytes(new TextEncoder().encode(state))) !== ref.stateDigest
+      )
+        throw refused(
+          `holds a state for observation ${ref.index} that is not the state its digest names`,
+        )
+      at = end
+    }
+    if (!text.startsWith(tail, at))
+      throw refused(`does not hold observation ${ref.index} as it records it`)
+    at += tail.length
+    read.push({ ...ref, ...(state !== undefined && { state }) })
+  }
+  if (at !== text.length - 1 || !text.endsWith(']'))
+    throw refused('holds more than the observations it records')
+  return read
+}
+
+/**
+ * Reads a stored run back as the moments it holds, for another thread, a
+ * later session, or another App: the run record, then each chunk's bytes
+ * (checked against their digest by `blob`) read against the chunk's own
+ * references. The moments must continue from index 0 with no gap; a run that
+ * does not is refused, never read as far as it happens to go.
+ */
+export async function reopenRun(
+  store: ArtifactStore,
+  runId: string,
+): Promise<ReopenedRun> {
+  const records = await store.openRun(runId)
+  if (records.run.id !== runId)
+    throw new ArtifactRefused(
+      502,
+      'artifact_run_mismatch',
+      `The run read is ${records.run.id}, not ${runId}.`,
+    )
+  const observations: ReopenedRun['observations'] = []
+  let next = 0n
+  for (const [position, chunk] of records.chunks.entries()) {
+    if (chunk.runId !== runId || BigInt(chunk.sequence) !== BigInt(position))
+      throw new ArtifactRefused(
+        502,
+        'artifact_chunk_mismatch',
+        `Chunk ${position} of run ${runId} is not in its place.`,
+      )
+    const bytes = await store.blob(chunk.blob)
+    for (const observation of await observationsOf(chunk, bytes)) {
+      if (BigInt(observation.index) !== next)
+        throw new ArtifactRefused(
+          502,
+          'artifact_chunk_mismatch',
+          `Run ${runId} continues at observation ${next}, not ${observation.index}.`,
+        )
+      observations.push({ ...observation, domain: chunk.domain })
+      next += 1n
+    }
+  }
+  return { run: records.run, observations, checkpoints: records.checkpoints }
+}
+
 const referenceOf = ({
   index,
   time,

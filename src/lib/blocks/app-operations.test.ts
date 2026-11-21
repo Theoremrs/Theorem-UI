@@ -6,9 +6,12 @@ import { onlineManager } from '@tanstack/react-query'
 import { KIT_OPERATIONS } from '@/lib/kit/operations'
 import { GENERATIVE_OPERATIONS } from '@/lib/generative/operations'
 import { useKitStage } from '@/lib/kit/stage'
+import { FACE_OPERATIONS } from '@/lib/face/operations'
+import { useFaceStage } from '@/lib/face/store'
 import { WORKBENCH_OPERATIONS } from '@/lib/workbench/agent/operations'
 import { clientSurfaceTurnOptions } from '@/lib/theorem/client-surface'
 import type { AppInspection } from './app-inspect'
+import { libraryDeclarations } from './check/theorem-app.generated'
 import {
   APP_OPERATIONS,
   answerAppRequest,
@@ -67,7 +70,7 @@ const assistant = (...content: Array<ReturnType<typeof operation>>) =>
   }) as unknown as ThreadMessage
 
 describe('the operations a turn declares', () => {
-  test('app.check is one, within what Theorem admits of a declaration', () => {
+  test('app.check, which also reads library declarations, is declared within what Theorem admits of a declaration', () => {
     expect(APP_OPERATIONS.map(({ name }) => name)).toEqual(['app.check'])
     for (const declared of APP_OPERATIONS) {
       expect(declared.name).toMatch(/^[a-z][a-z0-9_.]{2,63}$/)
@@ -101,8 +104,21 @@ describe('the operations a turn declares', () => {
       ])
       // Theorem admits at most 16 operations for a run.
       expect(options.clientOperations.length).toBeLessThanOrEqual(16)
+      // With Theo on screen too, every surface is declared and still within it.
+      useFaceStage.setState({ mounted: true })
+      const everything = clientSurfaceTurnOptions().clientOperations
+      expect(everything).toEqual([
+        ...KIT_OPERATIONS,
+        ...APP_OPERATIONS,
+        ...FACE_OPERATIONS,
+        ...WORKBENCH_OPERATIONS,
+        ...GENERATIVE_OPERATIONS,
+      ])
+      expect(everything.length).toBeLessThanOrEqual(16)
+      expect(new Set(everything.map(({ name }) => name)).size).toBe(everything.length)
     } finally {
       useKitStage.setState({ mounted: false })
+      useFaceStage.setState({ mounted: false })
     }
   })
 })
@@ -208,6 +224,8 @@ describe('answering a check', () => {
       'documentId',
       'runMs',
       'picture',
+      'library',
+      'file',
     ])
     // The server refuses a declaration whose description is over 1024 bytes.
     expect(
@@ -341,5 +359,54 @@ describe('serving requests', () => {
     await served
     expect(posted).toEqual(['serve-held', 'serve-next'])
     expect(page.inspected).toHaveLength(2)
+  })
+})
+
+describe('reading the declarations an App is checked against', () => {
+  const ask = (args: Record<string, unknown>) =>
+    answerAppRequest({
+      runId: 'run-1',
+      requestRef: 'ref-1',
+      operation: 'app.check',
+      args,
+      expectedRevision: 0,
+    })
+
+  test('a library is listed with its index, and a file is read exactly as the check holds it', async () => {
+    const listed = await ask({ library: '@theorem/runtime' })
+    expect(listed.outcome).toBe('applied')
+    const read = listed.result as {
+      digest: string
+      files: Array<{ name: string }>
+      file: string
+      text: string
+    }
+    expect(read.file).toBe('index.d.ts')
+    expect(read.files.map((file) => file.name)).toContain('operations.d.ts')
+    expect(read.text).toContain("from './operations'")
+    const operations = await ask({
+      library: '@theorem/runtime',
+      file: 'operations.d.ts',
+    })
+    expect((operations.result as { text: string }).text).toBe(
+      libraryDeclarations['@theorem/runtime']!['operations.d.ts']!,
+    )
+    // The same declarations are the same digest, whichever file is read.
+    expect((operations.result as { digest: string }).digest).toBe(read.digest)
+    const bridge = await ask({
+      library: 'window.theorem',
+      file: 'app-bridge.d.ts',
+    })
+    expect((bridge.result as { text: string }).text).toContain('artifacts: {')
+  })
+
+  test('a library or file that is not held is refused with what there is', async () => {
+    const library = await ask({ library: '@theorem/nothing' })
+    expect(library.outcome).toBe('rejected')
+    expect(library.reason).toContain('@theorem/runtime')
+    const file = await ask({ library: '@theorem/spatial', file: 'secret.ts' })
+    expect(file.outcome).toBe('rejected')
+    expect(file.reason).toContain('engine.d.ts')
+    expect((await ask({ library: '' })).outcome).toBe('rejected')
   })
 })
