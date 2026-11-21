@@ -11,12 +11,16 @@ import { appearancePair } from '@/lib/appearance-policy'
 
 const ToolText = createDirectiveText(defaultDirectiveFormatter)
 
-const QUOTED = String.raw`"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[\da-fA-F]{4})){1,1024}"`
+/** The inside of a JSON string, as assistant-ui writes a quoted label or id. */
+const QUOTED = String.raw`(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[\da-fA-F]{4})){1,1024}`
 
-/** The directives the composer writes, as they appear in the sent Markdown. */
+/**
+ * The directives the composer writes, as they appear in the sent Markdown.
+ * Each group is a title or id; everything outside the groups is syntax.
+ */
 const USER_DIRECTIVE = new RegExp(
-  String.raw`:tool\[[\p{L}\p{N}_.:/-]{1,1024}\]|:skill\[[^\]\n]{1,256}\](?:\{name=[^}\n]{1,1024}\})?|:(?:record|document)(?:\[[^\]\n]{1,1024}\](?:\{name=[^}\n]{1,1024}\})?|\{label=${QUOTED}(?: name=${QUOTED})?\})`,
-  'gu',
+  String.raw`:tool\[([\p{L}\p{N}_.:/-]{1,1024})\]|:skill\[([^\]\n]{1,256})\](?:\{name=([^}\n]{1,1024})\})?|:(?:record|document)(?:\[([^\]\n]{1,1024})\](?:\{name=([^}\n]{1,1024})\})?|\{label="(${QUOTED})"(?: name="(${QUOTED})")?\})`,
+  'dgu',
 )
 
 /** A character Markdown can escape with a backslash. */
@@ -77,13 +81,19 @@ const remarkUserTools: Plugin<[], Root> = () => (tree, file) => {
     // an @ pick writes `:record[title]{name=id}` or `:document[title]{name=id}`,
     // or `:record{label="..." name="..."}` when its title holds a `]`. Matching
     // the decoded text keeps a title's own escapes (`\*`, `\[`) out of its chip,
-    // while the directive's syntax must be written plainly: an escaped `:`,
-    // bracket or brace, or one written as a character reference, stays text.
+    // while every character of the directive's syntax must be written plainly:
+    // one escaped (`\:`, `\[`, `\{`) or written as a character reference stays
+    // text, and so does the whole directive.
     for (const match of node.value.matchAll(USER_DIRECTIVE)) {
       const from = match.index
       const to = from + match[0].length
-      const open = from + match[0].search(/[[{]/)
-      if (!written(from) || !written(open) || !written(to - 1)) continue
+      const titles = match.indices!.slice(1).filter((span) => span !== undefined)
+      const syntax = (at: number) =>
+        !titles.some(([first, last]) => at >= first && at < last)
+      let plain = true
+      for (let at = from; at < to && plain; at++)
+        plain = !syntax(at) || written(at)
+      if (!plain) continue
       // A literal Markdown link example is not an instruction to use a tool.
       if (node.value[to] === '(') continue
       if (from > cursor)

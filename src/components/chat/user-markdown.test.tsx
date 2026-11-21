@@ -152,3 +152,18 @@ test("a title's Markdown escapes stay out of its chip and the words after it sta
     'Open Road *map* _v2_ next, and Studio [east] *b* too.',
   )
 })
+
+test('a directive whose own brackets, braces or quotes are escaped stays literal', async () => {
+  const { container } = await render(
+    <UserMarkdown
+      text={
+        'See :document[Notes]\\{name=document:doc:notes}, :record[Noor\\]{name=x}, :record{label=\\"Studio [east]" name="x"} and :document[Real]{name=document:doc:real}.'
+      }
+    />,
+  )
+  const chips = [
+    ...container.querySelectorAll('[data-slot="directive-text-chip"]'),
+  ].map((chip) => chip.textContent)
+  expect(chips).toEqual(['Real'])
+  expect(container.textContent).toContain(':document[Notes]{name=document:doc:notes}')
+})
