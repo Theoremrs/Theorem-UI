@@ -115,7 +115,7 @@ beforeEach(() => {
     const rest = url.pathname.slice(CAPABILITIES.length + 1).split('/')
     if (rest.length === 2) return json(described)
     if (rest[2] === 'query') {
-      // A record is found by walking its collection: one page, no cursor.
+      // The page a locate-walk reads when nothing names the collection.
       return json({
         records: rows,
         total: rows.length,
@@ -123,6 +123,13 @@ beforeEach(() => {
         truncated: false,
         definitionId: 'capdef:abc',
       })
+    }
+    if (rest[2] === 'records') {
+      // One record, read by id. Absent and withheld are the same refusal.
+      const wanted = decodeURIComponent(rest[3] ?? '')
+      const found = rows.find((one) => one.id === wanted)
+      if (!found) return refusal(404, codes.RECORD_NOT_FOUND)
+      return json(found)
     }
     if (rest[2] === 'invoke') {
       if (invokeRefusal)
@@ -196,12 +203,14 @@ test('the fields come from the resolved schema, at the revision on screen', asyn
   expect(container.textContent).toContain('20')
   expect(container.textContent).toContain('Tasks · r6')
   expect(container.textContent).not.toContain('Sketch the page')
-  // One record is read by walking its collection through the query route.
+  // A record id named with no collection is located first: the definition's
+  // collections are walked, and the row itself comes from the record route.
   const queries = calls.filter((call) => call.path.endsWith('/query'))
   expect(queries[0]!.body).toMatchObject({
     instanceId: 'tracker/main',
     query: { collectionKey: 'tasks' },
   })
+  expect(calls.some((call) => call.path.endsWith('/records/rec-1'))).toBe(true)
   // What it shows is also its Selected output, with where the record came from.
   expect(outputs.selected?.at(-1)).toEqual({
     id: 'rec-1',
@@ -286,9 +295,12 @@ test('a record that is not in the collections says so', async () => {
   const { container } = await showRecord()
   await waitFor(() => container.textContent.includes('Not in this capability'))
   expect(container.textContent).toContain('rec-1')
+  // Withheld by a context policy, the instance answers the same way: the module
+  // says "not here" and never infers a permission it cannot see.
+  expect(container.textContent).toContain('withholds it from this caller')
 })
 
-test('a bound Item names the record, and its scope names the collection to walk', async () => {
+test('a bound Item names the collection, so the record is read direct', async () => {
   const { container } = await showRecord(
     { instanceId: 'tracker/main', recordId: '' },
     {
@@ -304,8 +316,11 @@ test('a bound Item names the record, and its scope names the collection to walk'
     },
   )
   await waitFor(() => container.textContent.includes('Sketch the page'))
-  const queries = calls.filter((call) => call.path.endsWith('/query'))
-  expect(queries[0]!.body).toMatchObject({ query: { collectionKey: 'tasks' } })
+  // The collection is already named, so nothing is walked: one read by id.
+  expect(calls.filter((call) => call.path.endsWith('/query')).length).toBe(0)
+  const read = calls.filter((call) => call.path.endsWith('/records/rec-2'))
+  expect(read.length).toBe(1)
+  expect(read[0]!.method).toBe('GET')
 })
 
 test('what it shows rides to the composer as context, at one revision', async () => {

@@ -101,6 +101,15 @@ export type LifecycleTransition = { from: string[]; to: string }
 
 export type CollectionLifecycle = {
   fieldKey: string
+  /**
+   * The values a create may write. Present means governed: a capability action
+   * that creates a record must write this field to one of these values, and an
+   * empty list means no create may write it. Absent means ungoverned: any value
+   * the field's declared type holds is allowed, because there is no current
+   * value to move from. An empty list is a declaration, not an omission — which
+   * is why this is `string[] | undefined` and never a default of `[]`.
+   */
+  initial?: string[]
   transitions: LifecycleTransition[]
 }
 

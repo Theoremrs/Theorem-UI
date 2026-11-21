@@ -17,11 +17,13 @@ import {
   describe as describeInstance,
   discover,
   isPermissionDenial,
+  isRecordMissing,
   isReloadConflict,
   invoke,
   query,
   queryPages,
   readRecord,
+  readRecordAnywhere,
   readReceipt,
   refusalCode,
   refusalMessage,
@@ -34,6 +36,7 @@ import {
   discoverResult,
   queryResult,
   row,
+  trackerDefinition,
 } from '@/components/capabilities/fixture'
 
 const page = (
@@ -77,6 +80,20 @@ const pages: QueryResult[] = [
   }),
   queryResult([row('rec-2', { title: 'Sketch the page' }, 3)], { total: 3 }),
 ]
+
+/** What each collection's rows are, for an ad-hoc query (a locate-walk). */
+const collectionRows: Record<string, QueryResult['records']> = {
+  tasks: pages.flatMap((one) => one.records),
+  people: [row('person-1', { name: 'Travis' }, 1)],
+}
+
+/** The record route's answer, by id. A record its context policy withholds is
+ * refused exactly like one that was never there, so the fake has no other shape. */
+const heldRows: Record<string, QueryResult['records'][number]> = {
+  'rec-1': pages[0]!.records[0]!,
+  'rec-2': pages[1]!.records[0]!,
+  'person-1': collectionRows.people![0]!,
+}
 
 const bodyOf = (call: Call) =>
   JSON.parse(call.body ?? '{}') as Record<string, unknown>
@@ -131,12 +148,33 @@ beforeEach(() => {
     switch (tail) {
       case 'query': {
         const asked = bodyOf(sent).cursor
+        // An ad-hoc query over one collection: the page a locate-walk reads, by
+        // collection. One page, no cursor: a collection that holds the record is
+        // named by its rows, not by a walk of many pages.
+        const collection = bodyOf(sent).query as
+          { collectionKey?: string } | undefined
+        if (collection) {
+          const held = collectionRows[collection.collectionKey ?? ''] ?? []
+          return json(queryResult(held, { total: held.length }))
+        }
         // A server that answers the same cursor it was given: the walk must stop
         // rather than read the same page for ever.
         if (bodyOf(sent).viewKey === 'echo')
           return json({ ...pages[0]!, nextCursor: asked ?? 'c2' })
         const at = asked === 'c2' ? 1 : 0
         return json(pages[at]!)
+      }
+      case 'records': {
+        // One record, read by id. Absent, and a record its context policy
+        // withholds from this caller, are the same refusal: the route never
+        // discloses which.
+        const wanted = decodeURIComponent(segments[3] ?? '')
+        const found = heldRows[wanted]
+        // Absent and withheld are the same refusal: the route never discloses
+        // which it was.
+        if (!found)
+          return problem(404, codes.RECORD_NOT_FOUND, 'No such record.')
+        return json(found)
       }
       case 'invoke': {
         if (staleCsrf) {
@@ -283,9 +321,13 @@ test('a stale session re-bootstraps and retries with the same key', async () => 
     sent[1]!.headers.get('Idempotency-Key'),
   )
   // The retry went through a fresh session bootstrap, and carries a token that
-  // bootstrap served.
-  expect(bootstraps).toBe(before + 1)
-  expect(served).toContain(sent[1]!.headers.get('X-CSRF-Token'))
+  // bootstrap served. How many bootstraps this run needs depends on whether an
+  // earlier call already seeded the module's memo, so the rule is "at least one
+  // more, and one it served" rather than an exact count or token.
+  expect(bootstraps).toBeGreaterThan(before)
+  const retried = sent[1]!.headers.get('X-CSRF-Token')
+  if (retried === null) throw new Error('the retry carried no CSRF token')
+  expect(served).toContain(retried)
   expect(receipt.status).toBe('finished')
 })
 
@@ -327,11 +369,69 @@ test('a server that echoes its cursor is not walked in a loop', async () => {
   expect(seen).toEqual([1, 1])
 })
 
-test('one record is found by walking the collection, and named absent when it is not', async () => {
-  const found = await readRecord('tracker/main', 'tasks', 'rec-2')
-  expect(found?.row.revision).toBe(3)
-  const missing = await readRecord('tracker/main', 'tasks', 'rec-nope')
+test('one record is read by id, and named absent when it is not there', async () => {
+  const found = await readRecord('tracker/main', 'rec-2')
+  expect(found.revision).toBe(3)
+  const sent = calls.filter((one) => one.path.endsWith('/records/rec-2'))[0]!
+  expect(sent.method).toBe('GET')
+  // The instance id carries a slash and the record id is one segment: both are
+  // encoded, and the route is a read (no CSRF, no idempotency key).
+  expect(sent.path).toBe(
+    `${CAPABILITIES}/instances/tracker%2Fmain/records/rec-2`,
+  )
+  expect(sent.headers.get('X-CSRF-Token')).toBeNull()
+  // A direct read asks for nothing else: no page of the collection is walked.
+  expect(calls.filter((one) => one.path.endsWith('/query')).length).toBe(0)
+
+  const missing = await readRecordAnywhere(
+    'tracker/main',
+    trackerDefinition,
+    'rec-nope',
+    'tasks',
+  )
   expect(missing).toBeUndefined()
+})
+
+test('a record the context policy withholds is refused as absent, not as denied', async () => {
+  // The route folds both into one code, so the caller cannot tell which it was.
+  const refusal = await readRecord('tracker/main', 'rec-private').catch(
+    (error: unknown) => error,
+  )
+  expect(refusalCode(refusal)).toBe(codes.RECORD_NOT_FOUND)
+  expect(isRecordMissing(refusal)).toBe(true)
+  expect(isPermissionDenial(refusal)).toBe(false)
+  expect(refusalMessage(refusal, 'This record')).toContain(
+    'not here for you to read',
+  )
+  // A module showing it says "not here" rather than treating it as a failure.
+  const shown = await readRecordAnywhere(
+    'tracker/main',
+    trackerDefinition,
+    'rec-private',
+    'tasks',
+  )
+  expect(shown).toBeUndefined()
+})
+
+test('with no collection named, the record’s own collection is located first', async () => {
+  const found = await readRecordAnywhere(
+    'tracker/main',
+    trackerDefinition,
+    'person-1',
+  )
+  // The walk stops at the collection that holds it, and the row comes from the
+  // record route on both paths.
+  expect(found?.collectionKey).toBe('people')
+  expect(found?.row.fields).toEqual({ name: 'Travis' })
+  const walked = calls
+    .filter((one) => one.path.endsWith('/query'))
+    .map(
+      (one) =>
+        (one.body ? bodyOf(one).query : undefined) as
+          { collectionKey?: string } | undefined,
+    )
+  expect(walked.map((one) => one?.collectionKey)).toEqual(['tasks', 'people'])
+  expect(calls.some((one) => one.path.endsWith('/records/person-1'))).toBe(true)
 })
 
 test('a stale definition base is a reload-and-retry state, not a permission state', async () => {

@@ -31,6 +31,8 @@ export const trackerDefinition: CapabilityDefinition = {
       },
       lifecycle: {
         fieldKey: 'status',
+        // Governed: a create must write 'next', and nothing else.
+        initial: ['next'],
         transitions: [
           { from: ['next', 'in_progress', 'waiting'], to: 'done' },
           { from: ['done'], to: 'next' },

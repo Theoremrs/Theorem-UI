@@ -5,10 +5,11 @@
 // Theorem's capabilities_api pins (docs/plans/user-authored-capabilities/README.md).
 import { mutate } from '@/lib/theorem/client'
 import { theoremJson } from '@/lib/theorem/passthrough'
-import { codes, matchAll, QUERY_LIMIT_DEFAULT } from './contract'
+import { codes, matchAll } from './contract'
 import type {
   AuthorResult,
   CapabilityDefinition,
+  CapabilityRecordRow,
   CreateInstanceRequest,
   DescribeResult,
   DiscoverResult,
@@ -131,28 +132,6 @@ export async function* queryPages(
   }
 }
 
-/**
- * The rows a query answers, walked through its cursors, with what only the
- * first page carries. Stops at `maxRows` so a caller that wants a handful of
- * rows never reads a whole collection.
- */
-export async function queryRows(
-  request: Omit<QueryRequest, 'cursor' | 'limit'>,
-  {
-    maxRows = 1_000,
-    limit = QUERY_LIMIT_DEFAULT,
-  }: { maxRows?: number; limit?: number } = {},
-) {
-  const rows: QueryResult['records'] = []
-  let first: QueryResult | undefined
-  for await (const page of queryPages({ ...request, limit })) {
-    first ??= page
-    rows.push(...page.records)
-    if (rows.length >= maxRows) break
-  }
-  return { rows, first }
-}
-
 // ── Invocation ──────────────────────────────────────────────────────────────
 
 /** A fresh idempotency key for one intended call. */
@@ -195,44 +174,59 @@ export const readReceipt = (
 // ── One record ──────────────────────────────────────────────────────────────
 
 /**
- * The contract has no route that reads one record by id: a record is named by
- * its row in a query. So a module showing one record walks its collection's
- * pages until the row turns up, bounded by `maxPages`, and says when it did not.
- * An indexed lookup by id is a recorded backend follow-up.
+ * One record, read by id through the instance's own route. It answers under the
+ * read grant and the collection's context policy, so a record this caller may
+ * not see is refused as `capability_record_not_found` rather than drawn empty.
  */
-export async function readRecord(
+export const readRecord = (
   instanceId: string,
-  collectionKey: string,
   recordId: string,
-  { maxPages = 20 }: { maxPages?: number } = {},
-) {
-  for await (const page of queryPages(
-    { instanceId, query: { collectionKey, filter: matchAll() } },
-    { maxPages },
-  )) {
-    const row = page.records.find((candidate) => candidate.id === recordId)
-    if (row) return { row, filtered: page.filtered, truncated: page.truncated }
-  }
-  return undefined
-}
+): Promise<CapabilityRecordRow> =>
+  read(`${CAPABILITIES}/instances/${id(instanceId)}/records/${id(recordId)}`)
 
 /**
- * The record a detail module shows, found across the definition's collections.
- * Without a named collection they are walked in definition order, so a bound
- * selection that carries its collection key costs one walk.
+ * The record a detail module shows, with the collection that holds it.
+ *
+ * The record route names no collection in its answer, and a module needs one:
+ * the resolved field schemas and the update actions are per collection. So a
+ * caller that names a collection reads the record straight away; one that names
+ * only a record id first finds which collection holds it by walking the
+ * definition's collections, bounded, then reads the row from the record route —
+ * which stays the one source of a row on both paths. A record that is absent, or
+ * that its context policy withholds from this caller, answers undefined: "not
+ * there" is an answer, not a failure. Locating a record's collection without a
+ * scan is a recorded backend follow-up.
  */
 export async function readRecordAnywhere(
   instanceId: string,
   definition: CapabilityDefinition,
   recordId: string,
   collectionKey?: string,
-) {
-  const keys = collectionKey
-    ? [collectionKey]
-    : definition.collections.map((collection) => collection.key)
-  for (const key of keys) {
-    const found = await readRecord(instanceId, key, recordId)
-    if (found) return { ...found, collectionKey: key }
+): Promise<{ row: CapabilityRecordRow; collectionKey: string } | undefined> {
+  /** The row by id, or undefined when the instance says it is not there. */
+  const byId = async () => {
+    try {
+      return await readRecord(instanceId, recordId)
+    } catch (error) {
+      if (isRecordMissing(error)) return undefined
+      throw error
+    }
+  }
+
+  if (collectionKey) {
+    const row = await byId()
+    return row ? { row, collectionKey } : undefined
+  }
+
+  for (const collection of definition.collections) {
+    for await (const page of queryPages({
+      instanceId,
+      query: { collectionKey: collection.key, filter: matchAll() },
+    })) {
+      if (!page.records.some((record) => record.id === recordId)) continue
+      const row = await byId()
+      return row ? { row, collectionKey: collection.key } : undefined
+    }
   }
   return undefined
 }
@@ -266,6 +260,14 @@ export const isPermissionDenial = (error: unknown) => {
 export const isMissing = (error: unknown) =>
   refusalCode(error) === codes.NOT_FOUND
 
+/**
+ * Whether the record itself is not there: absent, or held back from this caller
+ * by its collection's context policy. The contract folds both into one code, so
+ * a module says "not here" and never infers a permission it cannot see.
+ */
+export const isRecordMissing = (error: unknown) =>
+  refusalCode(error) === codes.RECORD_NOT_FOUND
+
 /** One line for each state class, so a module says what is true and what comes next. */
 export function refusalMessage(error: unknown, action: string): string {
   const code = refusalCode(error)
@@ -293,7 +295,7 @@ export function refusalMessage(error: unknown, action: string): string {
     case codes.TRANSITION_DENIED:
       return `The collection's lifecycle does not allow that change.`
     case codes.RECORD_NOT_FOUND:
-      return `That record is no longer in the collection.`
+      return `That record is not here for you to read: it is gone from the collection, or its context policy withholds it from this caller.`
     case codes.KEY_REUSED:
       return `This invocation key was already used for a different call.`
     case codes.EFFECT_UNKNOWN:

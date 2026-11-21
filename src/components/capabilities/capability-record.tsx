@@ -195,11 +195,13 @@ function CapabilityRecordBody({
             purpose: definition.purpose,
             label: `${definition.name} · ${rowTitle(fields, row)}`,
             selected: [{ id: row.id, revision: row.revision }],
-            filtered: found.data?.filtered ?? false,
-            truncated: found.data?.truncated ?? false,
+            // The record was named, not paged: no view filter narrowed it and no
+            // page cut it short, so the agent reads this one row at this revision.
+            filtered: false,
+            truncated: false,
           })
         : undefined,
-    [row, shown, instanceId, key, pageId, definition, fields, found.data],
+    [row, shown, instanceId, key, pageId, definition, fields],
   )
 
   // What this module shows is also what the page can wire onward: its Selected
@@ -315,9 +317,12 @@ function CapabilityRecordBody({
         <EmptyHeader>
           <EmptyTitle>Not in this capability</EmptyTitle>
           <EmptyDescription>
-            No record with id{' '}
-            <code className="font-mono text-xs">{recordId}</code> is in{' '}
-            {definition.name}'s collections, within the pages read.
+            The instance has no record{' '}
+            <code className="font-mono text-xs">{recordId}</code> for you to
+            read. Either it is not in {definition.name}'s collections, or its
+            collection's context policy withholds it from this caller — the
+            contract answers both with one code, so which it is cannot be told
+            from here.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>

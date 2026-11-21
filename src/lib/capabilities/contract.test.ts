@@ -12,6 +12,7 @@ import {
 } from '@/components/capabilities/fixture'
 import { matchAll } from './contract'
 import type {
+  CollectionLifecycle,
   CreateInstanceRequest,
   DefinitionPatch,
   Grant,
@@ -57,6 +58,8 @@ test('the definition wire is camelCase and survives the trip unchanged', () => {
     'status',
   )
   expect(pick(sent, 'collections', 0, 'lifecycle', 'fieldKey')).toBe('status')
+  // The governed create value, as the Rust fixture declares it.
+  expect(pick(sent, 'collections', 0, 'lifecycle', 'initial')).toEqual(['next'])
   expect(
     pick(sent, 'collections', 0, 'lifecycle', 'transitions', 1, 'from'),
   ).toEqual(['done'])
@@ -237,4 +240,40 @@ test('a grant separates invoke from author', () => {
     author: false,
   })
   expect((wire(ownerGrant) as Grant).invoke).toEqual(['*'])
+})
+
+// The Rust owner's `lifecycle_initial_is_additive_on_the_wire`: a lifecycle
+// written before `initial` existed still reads, and one without it carries no
+// such key. On this side that is the same two rules: a body omits the key
+// rather than sending null, and an empty list is read as a declaration.
+test('lifecycle initial is additive on the wire', () => {
+  const before = {
+    fieldKey: 'status',
+    transitions: [{ from: ['done'], to: 'next' }],
+  }
+  // A lifecycle written before `initial` existed reads without inventing one.
+  const absent = before as CollectionLifecycle
+  expect(absent.initial).toBeUndefined()
+  expect('initial' in absent).toBe(false)
+  // And it goes back out exactly as it came in: no key, not a null, not a `[]`.
+  expect(wire(absent)).toEqual(before)
+
+  const present: CollectionLifecycle = {
+    fieldKey: 'status',
+    initial: ['next'],
+    transitions: [{ from: ['done'], to: 'next' }],
+  }
+  expect(wire(present)).toEqual({
+    fieldKey: 'status',
+    initial: ['next'],
+    transitions: [{ from: ['done'], to: 'next' }],
+  })
+
+  // An empty `initial` is a declaration, not an omission: it means no create may
+  // write the field. It must stay distinguishable from the absent case above.
+  const empty: CollectionLifecycle = { ...present, initial: [] }
+  const sent = wire(empty) as CollectionLifecycle
+  expect(sent.initial).toEqual([])
+  expect('initial' in sent).toBe(true)
+  expect(sent).not.toEqual(wire(absent))
 })

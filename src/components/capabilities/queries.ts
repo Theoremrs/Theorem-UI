@@ -140,7 +140,12 @@ export function useCapabilityPickers(
   })
 }
 
-/** One record a detail module shows, found through the definition's collections. */
+/**
+ * The record a detail module shows: read by id through the record route, with
+ * the collection that holds it. Absent, or withheld by its context policy,
+ * answers null — the contract folds both into one code, and "not there" is an
+ * answer, not a failure.
+ */
 export function useCapabilityRecord(
   instanceId: string | undefined,
   definition: CapabilityDefinition | undefined,
