@@ -655,7 +655,10 @@ export function Workbench({
             loadingLayout = null
             try {
               const saved = window.sessionStorage.getItem(terminalKey)
-              if (saved) surface.restoreTerminalViews(saved)
+              if (saved) {
+                surface.restoreTerminalViews(saved)
+                window.sessionStorage.removeItem(terminalKey)
+              }
             } catch {
               // Unavailable storage or an unreadable snapshot leaves the account layout in place.
             }
