@@ -286,7 +286,7 @@ export function CrmFieldValue({
   if (isEmptyValue(value) && kind !== 'boolean') return null
   const made = madeKind(type, field)
   if (made && !plain && typeof value === 'string')
-    return <MadeValue kind={made} id={value} />
+    return <MadeValue kind={made} id={value} tabIndex={tabIndex} />
   if (
     field.field_type.kind === 'enum' ||
     field.field_type.kind === 'enum_many'

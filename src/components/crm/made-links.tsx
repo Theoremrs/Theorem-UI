@@ -10,10 +10,12 @@ import { useOpenDocumentHandler } from './open-document'
 export function DocumentLink({
   documentId,
   className,
+  tabIndex,
   children,
 }: {
   documentId: string
   className: string
+  tabIndex?: number
   children: ReactNode
 }) {
   const openDocument = useOpenDocumentHandler()
@@ -21,6 +23,7 @@ export function DocumentLink({
     <button
       type="button"
       className={className}
+      tabIndex={tabIndex}
       onClick={(event) => {
         event.stopPropagation()
         openDocument(documentId)
@@ -33,6 +36,7 @@ export function DocumentLink({
       to="/index"
       search={(prev) => ({ ...prev, item: documentId })}
       className={className}
+      tabIndex={tabIndex}
       onClick={(event) => event.stopPropagation()}
     >
       {children}
@@ -44,10 +48,12 @@ export function DocumentLink({
 export function WorkItemLink({
   itemId,
   className,
+  tabIndex,
   children,
 }: {
   itemId: string
   className: string
+  tabIndex?: number
   children: ReactNode
 }) {
   return (
@@ -55,6 +61,7 @@ export function WorkItemLink({
       to="/index"
       search={(prev) => ({ ...prev, item: workItemId(itemId) })}
       className={className}
+      tabIndex={tabIndex}
       onClick={(event) => event.stopPropagation()}
     >
       {children}
@@ -86,14 +93,26 @@ export function madeKind(
 const MADE_LINK =
   'truncate font-medium underline decoration-ink-faint underline-offset-2 hover:text-ink'
 
-/** The task or draft a commitment names, as a link to it. */
-export function MadeValue({ kind, id }: { kind: MadeKind; id: string }) {
+/**
+ * The task or draft a commitment names, as a link to it. Inside a grid cell
+ * `tabIndex` is -1, as for a relation's chips: the grid's own keys move between
+ * cells, and the link is reached by pointer or on the record's page.
+ */
+export function MadeValue({
+  kind,
+  id,
+  tabIndex,
+}: {
+  kind: MadeKind
+  id: string
+  tabIndex?: number
+}) {
   return kind === 'task' ? (
-    <WorkItemLink itemId={id} className={MADE_LINK}>
+    <WorkItemLink itemId={id} className={MADE_LINK} tabIndex={tabIndex}>
       Open the task
     </WorkItemLink>
   ) : (
-    <DocumentLink documentId={id} className={MADE_LINK}>
+    <DocumentLink documentId={id} className={MADE_LINK} tabIndex={tabIndex}>
       Open the draft
     </DocumentLink>
   )
