@@ -1,6 +1,10 @@
 "use client";
 
-import { useThreadDisplayTitle } from '@/lib/theorem/thread-title'
+import {
+  threadDisplayTitle,
+  useRecoveredSearchTitles,
+  useThreadDisplayTitle,
+} from '@/lib/theorem/thread-title'
 import { useGlideHighlight, useLayoutSprings } from "@/components/motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -282,19 +286,22 @@ export const useThreadListGroups = (searchQuery = "") => {
   const threadItems = useAuiState((s) => s.threads.threadItems);
 
   const query = searchQuery.trim().toLowerCase();
+  const recoveredTitles = useRecoveredSearchTitles(Boolean(query));
   const startOfToday = useStartOfToday();
 
   return useMemo(() => {
     const itemsById = new Map(threadItems.map((item) => [item.id, item]));
     const matches = threadIds
       .map((id, index) => ({ id, index }))
-      .filter(
-        ({ id }) =>
-          !query ||
-          (itemsById.get(id)?.title || "New Chat")
-            .toLowerCase()
-            .includes(query),
-      );
+      .filter(({ id }) => {
+        if (!query) return true;
+        const item = itemsById.get(id);
+        const recovered = item?.remoteId
+          ? recoveredTitles?.get(item.remoteId)?.title
+          : undefined;
+        const title = threadDisplayTitle(item?.title, recovered) || "New Chat";
+        return title.toLowerCase().includes(query);
+      });
 
     const idByRemoteId = new Map<string, string>();
     for (const { id } of matches) {
@@ -347,7 +354,7 @@ export const useThreadListGroups = (searchQuery = "") => {
       }
     }
     return { threadIds, filteredIndices, groups: result, childrenOf };
-  }, [threadIds, threadItems, query, startOfToday]);
+  }, [threadIds, threadItems, query, recoveredTitles, startOfToday]);
 };
 
 /** The listed threads forked or continued from each thread, by its list id. */

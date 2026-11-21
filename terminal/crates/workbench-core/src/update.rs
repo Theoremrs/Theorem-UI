@@ -1116,6 +1116,7 @@ impl Model {
                     if maximize {
                         self.dock.maximize(group)
                     } else {
+                        self.dock.unmaximize();
                         Ok(())
                     }
                 });

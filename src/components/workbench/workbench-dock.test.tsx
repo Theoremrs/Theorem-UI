@@ -1,11 +1,17 @@
 // SOURCING: none — bun:test over ./dock-geometry and ./workbench-dock, rendered into happy-dom through test/blocks/render with the real shell state; a stub stands in for the wasm workbench
 import { afterEach, describe, expect, test } from 'bun:test'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { act, useState } from 'react'
 import { useShell } from '@/components/shell/shell-state'
 import { dockMaxWidth, dockMinWidth } from './dock-geometry'
 import type { Placement } from './placement'
 import { WorkbenchDock } from './workbench-dock'
-import { cleanup, render } from '../../../test/blocks/render'
+import { cleanup, click, render } from '../../../test/blocks/render'
 
 test('the resize bounds keep the conversation minimum at a narrow viewport', () => {
   expect(dockMaxWidth(700)).toBe(280)
@@ -57,7 +63,14 @@ const doubleClick = (element: Element) =>
 async function open(placement: Placement) {
   let view: View | undefined
   useShell.getState().setWorkbench(placement)
-  await render(<Shell seen={(next) => (view = next)} />)
+  const router = createRouter({
+    routeTree: createRootRoute({
+      component: () => <Shell seen={(next) => (view = next)} />,
+    }),
+    history: createMemoryHistory(),
+  })
+  await router.load()
+  await render(<RouterProvider router={router} />)
   const by = (id: string) =>
     document.querySelector(`[data-testid="${id}"]`) as HTMLElement
   return {
@@ -89,28 +102,36 @@ describe('the Workspace is a drawer unless the person makes it part of the scree
     expect(drawer.view()).toEqual({ shown: true, companion: false })
     await cleanup()
     useShell.getState().setWorkbenchAttachment('docked')
-    const docked = await open('bottom')
+    const docked = await open('side')
     expect(docked.view()).toEqual({ shown: true, companion: true })
   })
 
   test('as part of the screen it stays open on a double-click outside', async () => {
     useShell.getState().setWorkbenchAttachment('docked')
-    const { conversation } = await open('bottom')
+    const { conversation } = await open('side')
     await doubleClick(conversation)
-    expect(useShell.getState().workbench).toBe('bottom')
+    expect(useShell.getState().workbench).toBe('side')
   })
 
-  test('docked at the bottom, the conversation alone gives up room under it; a drawer or a right-hand dock takes none', async () => {
-    const reserve = (frame: HTMLElement) =>
-      frame.style.getPropertyValue('--workbench-reserve')
-    const drawer = await open('bottom')
-    expect(reserve(drawer.frame)).toBe('0px')
-    await cleanup()
+  test('Bottom overlays the frame while preserving the Right docking preference', async () => {
     useShell.getState().setWorkbenchAttachment('docked')
     const side = await open('side')
-    expect(reserve(side.frame)).toBe('0px')
-    await cleanup()
-    const bottom = await open('bottom')
-    expect(reserve(bottom.frame)).toContain('var(--dock-height)')
+    const region = side.frame.querySelector('[data-workbench-placement]')!
+    const choose = (label: string) =>
+      click(
+        [...region.querySelectorAll('button')].find(
+          (button) => button.textContent === label,
+        )!,
+      )
+
+    await choose('Bottom')
+    expect(region.getAttribute('data-workbench-attachment')).toBe('drawer')
+    expect(region.classList.contains('absolute')).toBe(true)
+    expect(side.view()).toEqual({ shown: true, companion: false })
+    expect(useShell.getState().workbenchAttachment).toBe('docked')
+
+    await choose('Right')
+    expect(region.getAttribute('data-workbench-attachment')).toBe('docked')
+    expect(side.view()).toEqual({ shown: true, companion: true })
   })
 })

@@ -564,11 +564,12 @@ export function Workbench({
         // One store per account: the layout checkpoint and the document drafts share it.
         const store = createLocalStore({ directory, account })
         const checkpoints = createCheckpoints({ directory, account, store })
+        let stopped = false
         const layout = createLayout({
           environment,
           checkpoints,
           onStatus: (status) => {
-            if (!disposed) setLayoutStatus(status)
+            if (!disposed && !stopped) setLayoutStatus(status)
           },
         })
         // The terminal owner and its live stream come from the environment's own SDK build.
@@ -693,6 +694,7 @@ export function Workbench({
             adapter.perform(effect)
           },
           stop() {
+            stopped = true
             window.removeEventListener('focus', refresh)
             window.removeEventListener('pagehide', saveTerminalViews)
             watch.dispose()

@@ -59,6 +59,17 @@ export function rememberTitle(thread: Theorem.Thread, title: string) {
   useRecoveredTitles.setState({ titles })
 }
 
+export function threadDisplayTitle(
+  title: string | undefined,
+  recovered: string | undefined,
+) {
+  return isUntitledTitle(title) && recovered ? recovered : title
+}
+
+export function useRecoveredSearchTitles(searching: boolean) {
+  return useRecoveredTitles((state) => (searching ? state.titles : undefined))
+}
+
 /** Show a recovered title as soon as it arrives, without a second list request. */
 export function useThreadDisplayTitle() {
   const title = useAuiState((state) => state.threadListItem.title)
@@ -66,5 +77,5 @@ export function useThreadDisplayTitle() {
   const recovered = useRecoveredTitles((state) =>
     id ? state.titles.get(id)?.title : undefined,
   )
-  return isUntitledTitle(title) && recovered ? recovered : title
+  return threadDisplayTitle(title, recovered)
 }
