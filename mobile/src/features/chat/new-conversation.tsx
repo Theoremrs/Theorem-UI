@@ -13,6 +13,7 @@ import {
   type ThreadMessageLike,
 } from '@assistant-ui/react-native'
 import { readDraft, writeDraft } from '@/lib/drafts'
+import type { IntakeItem } from '@/features/intake/model'
 import { useShowTerminal } from '@/lib/preferences'
 import { describeError } from '@/lib/theorem'
 import { useRequest } from '@/lib/use-request'
@@ -70,10 +71,21 @@ function whenReady(threadId: string, lease: ReturnType<ReturnType<typeof convers
   })
 }
 
-export function NewConversation({ onOpen }: { onOpen: (opened: Opened) => void }) {
+export function NewConversation({
+  onOpen,
+  project,
+}: {
+  onOpen: (opened: Opened) => void
+  /** The project this composer was opened from, so the first message goes there. */
+  project?: { projectId: string; title: string }
+}) {
   const projects = useRequest(loadProjects, [])
   const showTerminal = useShowTerminal()
-  const [destination, setDestination] = useState<Destination | undefined>(lastDestination)
+  // Opened from a project's New conversation action, the recipient starts there;
+  // otherwise the last choice is remembered. The person can still change it.
+  const [destination, setDestination] = useState<Destination | undefined>(() =>
+    project ? { kind: 'theorem', projectId: project.projectId, projectTitle: project.title } : lastDestination(),
+  )
   const [picking, setPicking] = useState(false)
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<unknown>()
@@ -164,6 +176,26 @@ export function NewConversation({ onOpen }: { onOpen: (opened: Opened) => void }
   }
 
   const runtimeRef = useRef<ReturnType<typeof useExternalStoreRuntime>>(undefined)
+
+  /**
+   * Starts a conversation with a file. Intake only delivers into a thread that
+   * exists, so the chosen project's thread is created first (under the same
+   * idempotency key a text start uses), the composer words become its draft so
+   * they are not lost, and intake opens for it. Agents cannot receive files, so
+   * this is offered only for a Theorem project.
+   */
+  const attachToThread = async (_items: IntakeItem[]) => {
+    if (!chosen || chosen.kind !== 'theorem') return
+    rememberDestination(chosen)
+    createKey.current ??= Crypto.randomUUID()
+    const thread = await createThread(chosen.projectId, createKey.current)
+    createKey.current = undefined
+    const words = runtimeRef.current?.thread.composer.getState().text ?? ''
+    if (words) writeDraft(thread.threadId, words)
+    writeDraft(DRAFT, '')
+    onOpen({ kind: 'theorem', threadId: thread.threadId })
+    router.push({ pathname: '/intake', params: { thread: thread.threadId } })
+  }
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages: [],
     convertMessage: (message) => message,
@@ -232,7 +264,7 @@ export function NewConversation({ onOpen }: { onOpen: (opened: Opened) => void }
         placeholder={chosen ? `Message ${destinationName(chosen)}` : 'Message'}
         notes={notes}
         sendBlocked={!chosen || !!busy || !!waiting}
-        controls={<AttachButton />}
+        controls={chosen?.kind === 'theorem' ? <AttachButton onAcquire={attachToThread} /> : null}
         empty={
           <EmptyConversation
             title={chosen ? destinationName(chosen) : 'New conversation'}

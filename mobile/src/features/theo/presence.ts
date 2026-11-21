@@ -78,13 +78,17 @@ export function theoStateOf(signals: TheoSignals): TheoState | undefined {
   const { phase } = conversation
   if (phase === 'detached') return undefined
 
+  // A failed delivery stops speaking for the conversation once newer work has
+  // replaced it: a run under way or finished means the person moved on, and an
+  // old failure must not keep Theo at "Cannot continue" over a live state.
+  const deliveryFailed = delivery?.stage === 'refused' || delivery?.stage === 'failed'
+  const newerRun = phase === 'running' || phase === 'completed'
   if (
     phase === 'failed' ||
     phase === 'authentication-required' ||
     phase === 'cancelled' ||
     phase === 'interrupted' ||
-    delivery?.stage === 'refused' ||
-    delivery?.stage === 'failed'
+    (deliveryFailed && !newerRun)
   )
     return 'cannot-continue'
   if (phase === 'requires-action' || approvalsPending(conversation) || decisionsPending > 0)

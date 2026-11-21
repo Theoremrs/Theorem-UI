@@ -75,7 +75,18 @@ function Material({
   )
 }
 
-export function AttachButton({ threadId }: { threadId?: string }) {
+export function AttachButton({
+  threadId,
+  onAcquire,
+}: {
+  threadId?: string
+  /**
+   * Takes the chosen items instead of opening intake for an existing thread.
+   * The new-conversation composer uses it to create the thread first. The items
+   * are already staged when this is called.
+   */
+  onAcquire?: (items: IntakeItem[]) => void | Promise<void>
+}) {
   const { palette, reduceMotion } = useTheme()
   const glass = useGlass()
   const anchor = useRef<ComponentRef<typeof View>>(null)
@@ -100,12 +111,13 @@ export function AttachButton({ threadId }: { threadId?: string }) {
         const items = await choice.acquire()
         if (items.length === 0) return
         stage(items)
-        router.push({ pathname: '/intake', params: threadId ? { thread: threadId } : {} })
+        if (onAcquire) await onAcquire(items)
+        else router.push({ pathname: '/intake', params: threadId ? { thread: threadId } : {} })
       } catch (error) {
         Alert.alert(`Cannot use ${choice.label.toLowerCase()}`, describeError(error))
       }
     },
-    [close, threadId],
+    [close, threadId, onAcquire],
   )
 
   return (

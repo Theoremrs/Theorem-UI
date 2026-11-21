@@ -54,6 +54,15 @@ describe('what Theo says, from the event behind it', () => {
     expect(theoStateOf(signals('ready', { delivery: { stage: 'refused' } }))).toBe('cannot-continue')
   })
 
+  test('an old delivery failure stops speaking once a newer run replaces it', () => {
+    // A run under way or finished is newer activity than the failed delivery.
+    expect(theoStateOf(signals('running', { delivery: { stage: 'failed' } }))).toBe('working')
+    expect(theoStateOf(signals('completed', { delivery: { stage: 'failed' } }))).toBe('done')
+    expect(theoStateOf(signals('running', { delivery: { stage: 'refused' } }))).toBe('working')
+    // With no newer run, the failure still stands.
+    expect(theoStateOf(signals('ready', { delivery: { stage: 'failed' } }))).toBe('cannot-continue')
+  })
+
   test('an unreachable host waits, a reachable one changes nothing', () => {
     expect(theoStateOf(signals('running', { host: { reachable: false } }))).toBe('waiting-for-host')
     expect(theoStateOf(signals('running', { host: { reachable: true } }))).toBe('working')
