@@ -8,11 +8,15 @@ import { resourceKey } from '@theoremharness/sdk'
 import { create } from 'zustand'
 import type { RecordReference } from '@/components/crm/reference'
 import { Icon } from '@/components/icons'
+import type { CapabilityContextReference } from '@/lib/capabilities/reference'
 import type { DelegationReference } from '@/lib/theorem/delegations'
 import { citationReferenceKey } from '@/lib/theorem/citations'
 
 export type ComposerReference =
-  TheoremContextReference | DelegationReference | RecordReference
+  | TheoremContextReference
+  | DelegationReference
+  | RecordReference
+  | CapabilityContextReference
 
 export function referenceKey(reference: ComposerReference): string {
   const { location } = reference
@@ -32,6 +36,12 @@ export function referenceKey(reference: ComposerReference): string {
     // A saved record: the turn reads it at the revision saved when it is sent.
     case 'record':
       return `record:${resource.objectType}/${resource.objectId}`
+    // A capability selection: the turn re-reads it through the instance's query,
+    // so one envelope per instance and view, refreshed in place as it moves.
+    case 'capability':
+      return `capability:${resource.instanceId}/${resource.collectionKey}${
+        resource.viewKey ? `/${resource.viewKey}` : ''
+      }`
     default:
       return `${resourceKey(resource)}${at}`
   }
@@ -122,6 +132,10 @@ function referenceLabel({ label, location }: ComposerReference): string {
       return resource.objectType ?? 'Graph object'
     case 'record':
       return resource.objectType
+    case 'capability':
+      return resource.selected.length
+        ? `${resource.collectionKey} · ${resource.selected.length} selected`
+        : resource.collectionKey
   }
 }
 
