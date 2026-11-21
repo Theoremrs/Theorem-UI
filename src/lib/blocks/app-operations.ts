@@ -14,9 +14,18 @@ import { appDocumentFor } from '@/lib/theorem/apps'
 import { hasStatus, mutate, theorem } from '@/lib/theorem/client'
 import { MAX_RUN_MS, inspectApp } from './app-inspect'
 import type { AppInspection } from './app-inspect'
+import { canonicalJson, digestBytes } from './artifact-runtime'
+import {
+  libraryDeclarations,
+  theoremAppDeclarations,
+} from './check/theorem-app.generated'
 
 /** The operation that checks an App, as the turn's tool `app__check`. */
 export const APP_CHECK = 'app.check'
+/** The operation that reads the declarations an App is checked against, as `app__library`. */
+export const APP_LIBRARY = 'app.library'
+/** What `app.library` calls the declarations of `window.theorem` itself. */
+export const BRIDGE_LIBRARY = 'window.theorem'
 
 /** The largest App a check is given, as the server allows one to be. */
 const MAX_HTML = 1024 * 1024
@@ -62,7 +71,82 @@ export const APP_OPERATIONS = [
       },
     },
   },
+  {
+    name: APP_LIBRARY,
+    description:
+      "Reads the TypeScript declarations an App is checked against in this page's build, on demand: `window.theorem` (pass library \"window.theorem\") and Theorem's App libraries (@theorem/runtime for exact source, run, result and evaluation references and Operations; @theorem/spatial; @theorem/annotate). Without `file`, it lists the library's declaration files with their sizes and returns index.d.ts; with `file`, it returns that file. `digest` identifies the declarations as a whole, so a later read with the same digest is the same API. Read the parts you use instead of guessing their shape; these are exactly what the App check enforces.",
+    effect: 'read',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['library'],
+      properties: {
+        library: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 100,
+          description:
+            'window.theorem, @theorem/runtime, @theorem/spatial or @theorem/annotate.',
+        },
+        file: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 100,
+          description:
+            'One declaration file the listing names, such as operations.d.ts.',
+        },
+      },
+    },
+  },
 ] as const
+
+/** A library's declaration files as the App check reads them, by file name. */
+const declarationsOf = (library: string): Record<string, string> | undefined =>
+  library === BRIDGE_LIBRARY
+    ? theoremAppDeclarations
+    : Object.hasOwn(libraryDeclarations, library)
+      ? libraryDeclarations[library]
+      : undefined
+
+/** What `app.library` answers: the library's files, its identity, and the text asked for. */
+export interface AppLibraryRead {
+  library: string
+  digest: string
+  files: Array<{ name: string; bytes: number }>
+  file: string
+  text: string
+}
+
+/**
+ * Reads one library's declarations as the page's App check holds them, so
+ * what the agent reads is what an App it writes is checked against. Answers
+ * undefined, with the libraries there are, for a library or file not held.
+ */
+export async function readAppLibrary(
+  library: string,
+  file = 'index.d.ts',
+): Promise<AppLibraryRead | { missing: string }> {
+  const files = declarationsOf(library)
+  if (!files)
+    return {
+      missing: `There is no library ${library}; there are ${[BRIDGE_LIBRARY, ...Object.keys(libraryDeclarations)].join(', ')}.`,
+    }
+  if (!Object.hasOwn(files, file))
+    return {
+      missing: `${library} has no file ${file}; it has ${Object.keys(files).join(', ')}.`,
+    }
+  const encoder = new TextEncoder()
+  return {
+    library,
+    digest: await digestBytes(encoder.encode(canonicalJson(files))),
+    files: Object.entries(files).map(([name, text]) => ({
+      name,
+      bytes: encoder.encode(text).length,
+    })),
+    file,
+    text: files[file]!,
+  }
+}
 
 /** What a send carries so the turn can check Apps. */
 export const appTurnOptions = () => ({ clientOperations: APP_OPERATIONS })
@@ -147,10 +231,12 @@ type Outcome = 'applied' | 'rejected' | 'failed'
 export interface AppAnswer {
   readonly outcome: Outcome
   readonly reason?: string
-  readonly result?: AppInspection & {
-    /** The saved revision that was checked, when a published App was. */
-    revision?: string
-  }
+  readonly result?:
+    | (AppInspection & {
+        /** The saved revision that was checked, when a published App was. */
+        revision?: string
+      })
+    | AppLibraryRead
 }
 
 /** What answering needs of the page: the check, and an App's saved source. */
@@ -178,6 +264,18 @@ export async function answerAppRequest(
   request: AppRequest,
   host: AppOperationHost = pageHost,
 ): Promise<AppAnswer> {
+  if (request.operation === APP_LIBRARY) {
+    const { library, file } = request.args
+    if (typeof library !== 'string' || !library)
+      return { outcome: 'rejected', reason: 'Name the library to read.' }
+    const read = await readAppLibrary(
+      library,
+      typeof file === 'string' && file ? file : undefined,
+    )
+    return 'missing' in read
+      ? { outcome: 'rejected', reason: read.missing }
+      : { outcome: 'applied', result: read }
+  }
   if (request.operation !== APP_CHECK)
     return {
       outcome: 'rejected',

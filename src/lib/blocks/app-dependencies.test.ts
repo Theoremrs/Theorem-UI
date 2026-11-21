@@ -378,6 +378,39 @@ test('a ?worker import is that file bundled on its own, started from a blob URL'
   expect((failure as AppBuildError).problems[0]).toMatchObject({ kind: 'build', file: 'work.ts' })
 }, 120_000)
 
+test('a ?implementation import is the digest of that file and everything it imports, and nothing else', async () => {
+  const files = {
+    'main.ts': [
+      'import solver from "./solver.ts?implementation";',
+      'import { colors } from "./colors";',
+      'export const keys = { solver, colors };',
+    ].join('\n'),
+    'solver.ts': 'import { step } from "./step"\nexport const solve = (n: number) => step(n)',
+    'step.ts': 'export const step = (n: number) => n + 1',
+    'colors.ts': 'export const colors = ["red"]',
+  }
+  const digestIn = async (given: Record<string, string>) => {
+    const bundle = await bundleAppSources({ entry: 'main.ts', files: given }, esbuild, new AppDependencies({}, modules({}).request))
+    const found = /"(sha256:[0-9a-f]{64})"/.exec(bundle.code)
+    expect(found).not.toBeNull()
+    // The solver's code itself is not pulled into the App by asking for its digest.
+    expect(bundle.code).not.toContain('n + 1')
+    return found![1]!
+  }
+  const first = await digestIn(files)
+  // A presentation change elsewhere in the App leaves the solver's implementation alone.
+  expect(await digestIn({ ...files, 'colors.ts': 'export const colors = ["blue"]' })).toBe(first)
+  expect(await digestIn({ ...files, 'main.ts': `${files['main.ts']}\nexport const shown = 1` })).toBe(first)
+  // A change to the solver, or to anything it imports at any depth, is a new one.
+  expect(await digestIn({ ...files, 'solver.ts': files['solver.ts'].replace('step(n)', 'step(n) * 2') })).not.toBe(first)
+  expect(await digestIn({ ...files, 'step.ts': 'export const step = (n: number) => n + 2' })).not.toBe(first)
+  // It checks as the digest it is.
+  const sources = { entry: 'main.ts', files: { ...files, 'main.ts': `${files['main.ts']}\nconst wrong: number = solver\nexport { wrong }` } }
+  const declarations = await dependencyDeclarations(sources, new AppDependencies({}, modules({}).request))
+  const result = await checkAppSources(sources, tsc, library, {}, declarations)
+  expect(result.problems.map((p) => [p.file, p.line, p.code])).toEqual([['main.ts', 4, 'TS2322']])
+}, 120_000)
+
 describe('a library Theorem ships', () => {
   const SPATIAL_APP = `import { mount, parts, type Part } from '@theorem/spatial'
 const lamp: Part = {

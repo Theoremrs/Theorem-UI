@@ -177,6 +177,19 @@ export interface PageMethods {
   'artifacts.source': { params: Record<string, never>; result: unknown }
   /** A kept result (a ResultRef) by id, with its bytes, both checked against their digests. */
   'artifacts.open': { params: { id: string }; result: { result: unknown; bytes: Uint8Array } }
+  /**
+   * A kept run (a RunRef) by id, with every moment it holds in order from
+   * index 0 and its checkpoints; each moment is checked against its stored
+   * chunk, and a kept state against its digest.
+   */
+  'artifacts.run': { params: { id: string }; result: ReopenedRun }
+}
+
+/** A kept run as it is read back, from this or any other conversation or App. */
+export interface ReopenedRun {
+  run: unknown
+  observations: Array<ArtifactObservation & { domain: string }>
+  checkpoints: Array<unknown>
 }
 
 /** One observation of a run as it is kept: its place, its time and its state's digest. */

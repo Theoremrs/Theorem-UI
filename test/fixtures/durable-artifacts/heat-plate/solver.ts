@@ -133,19 +133,98 @@ export interface PlateField {
   units: typeof UNITS
 }
 
+/** The most nodes along one side: past this a sweep is too slow to run in a page. */
+export const MAX_NODES = 401
+
+/** What is wrong with a plate before it is solved, by the field that is wrong. */
+export interface PlateProblem {
+  field: string
+  message: string
+}
+
 /**
- * The plate's steady field. A fixed edge holds its temperature (where two
- * edges meet, a fixed one wins); an insulated or convective edge uses a
- * ghost node through its face.
+ * Every value a person can set, checked against the range the model holds
+ * for: dimensions and conductivity positive, node counts whole and bounded,
+ * h not negative, temperatures above absolute zero. A plate with problems is
+ * not solved, so a mistyped control is shown as itself instead of as a field.
  */
-export function solvePlate(input: PlateInput): PlateField {
+export function plateProblems(input: PlateInput): Array<PlateProblem> {
+  const problems: Array<PlateProblem> = []
+  const positive = (field: string, value: number, unit: string) => {
+    if (!(Number.isFinite(value) && value > 0))
+      problems.push({
+        field,
+        message: `${field} is a positive number of ${unit}.`,
+      })
+  }
+  positive('width', input.width, UNITS.length)
+  positive('height', input.height, UNITS.length)
+  positive('conductivity', input.conductivity, UNITS.conductivity)
+  for (const field of ['nx', 'ny'] as const) {
+    const value = input[field]
+    if (!(Number.isInteger(value) && value >= 3 && value <= MAX_NODES))
+      problems.push({
+        field,
+        message: `${field} is a whole number of nodes from 3 to ${MAX_NODES}.`,
+      })
+  }
+  const temperature = (field: string, value: number) => {
+    if (!(Number.isFinite(value) && value >= -273.15))
+      problems.push({
+        field,
+        message: `${field} is a temperature at or above -273.15 ${UNITS.temperature}.`,
+      })
+  }
+  for (const side of ['left', 'right', 'bottom', 'top'] as const) {
+    const boundary = input[side]
+    if (boundary.kind === 'fixed')
+      temperature(`${side}.temperature`, boundary.temperature)
+    if (boundary.kind === 'convective') {
+      if (!(Number.isFinite(boundary.h) && boundary.h >= 0))
+        problems.push({
+          field: `${side}.h`,
+          message: `${side}.h is zero or a positive number of ${UNITS.convection}.`,
+        })
+      temperature(`${side}.ambient`, boundary.ambient)
+    }
+  }
+  if (
+    input.tolerance !== undefined &&
+    !(Number.isFinite(input.tolerance) && input.tolerance > 0)
+  )
+    problems.push({
+      field: 'tolerance',
+      message: `tolerance is a positive number of ${UNITS.temperature}.`,
+    })
+  if (
+    input.maxSweeps !== undefined &&
+    !(Number.isInteger(input.maxSweeps) && input.maxSweeps >= 1)
+  )
+    problems.push({
+      field: 'maxSweeps',
+      message: 'maxSweeps is a whole number of at least 1.',
+    })
+  return problems
+}
+
+/** A plate refused before it was solved, with every problem it has. */
+export class PlateRefused extends Error {
+  constructor(readonly problems: Array<PlateProblem>) {
+    super(problems.map((problem) => problem.message).join(' '))
+    this.name = 'PlateRefused'
+  }
+}
+
+/**
+ * The discrete equations of a plate: which nodes are held, and the relaxed
+ * target of every other node from its neighbours (`gauss`), the value that
+ * would satisfy its own equation exactly. Solving and checking share it, so a
+ * check measures the equations the sweep solved, not a second copy of them.
+ */
+function plateEquations(input: PlateInput) {
   const { width, height, nx, ny, conductivity } = input
-  if (nx < 3 || ny < 3)
-    throw new Error('A plate needs at least 3 nodes each way.')
   const dx = width / (nx - 1)
   const dy = height / (ny - 1)
-  const tolerance = input.tolerance ?? 1e-10
-  const maxSweeps = input.maxSweeps ?? 200_000
   const fixedAt = (i: number, j: number): number | undefined => {
     const sides: Array<[boolean, Boundary]> = [
       [i === 0, input.left],
@@ -163,9 +242,6 @@ export function solvePlate(input: PlateInput): PlateField {
       ) / fixed.length
     )
   }
-  const t = Array.from({ length: ny }, (_, j) =>
-    Array.from({ length: nx }, (_unused, i) => fixedAt(i, j) ?? 0),
-  )
   // One neighbour across an edge, as `constant + slope * here`: what it owes
   // the node's own equation, split from what it owes to the node it faces.
   // Insulated is the case h = 0, where the ghost mirrors the inner neighbour.
@@ -185,6 +261,55 @@ export function solvePlate(input: PlateInput): PlateField {
   }
   const wx = 1 / (dx * dx)
   const wy = 1 / (dy * dy)
+  /** The value that satisfies node (i, j)'s own equation, given its neighbours now. */
+  const gauss = (t: Array<Array<number>>, i: number, j: number): number => {
+    const row = t[j]!
+    const west =
+      i > 0
+        ? { constant: row[i - 1]!, slope: 0 }
+        : ghost(input.left, row[1]!, dx)
+    const east =
+      i < nx - 1
+        ? { constant: row[i + 1]!, slope: 0 }
+        : ghost(input.right, row[nx - 2]!, dx)
+    const south =
+      j > 0
+        ? { constant: t[j - 1]![i]!, slope: 0 }
+        : ghost(input.bottom, t[1]![i]!, dy)
+    const north =
+      j < ny - 1
+        ? { constant: t[j + 1]![i]!, slope: 0 }
+        : ghost(input.top, t[ny - 2]![i]!, dy)
+    // Summing wx (west + east - 2 here) + wy (south + north - 2 here) = 0
+    // for here, with the convective slopes gathered onto the diagonal:
+    // the same fixed point as before, and a contraction for any Bi.
+    const slope =
+      wx * (west.slope + east.slope) + wy * (south.slope + north.slope)
+    return (
+      (wx * (west.constant + east.constant) +
+        wy * (south.constant + north.constant)) /
+      (2 * wx + 2 * wy - slope)
+    )
+  }
+  return { dx, dy, fixedAt, gauss }
+}
+
+/**
+ * The plate's steady field. A fixed edge holds its temperature (where two
+ * edges meet, a fixed one wins); an insulated or convective edge uses a
+ * ghost node through its face. A plate with any problem (plateProblems) is
+ * refused with all of them, never solved with a value clamped or guessed.
+ */
+export function solvePlate(input: PlateInput): PlateField {
+  const problems = plateProblems(input)
+  if (problems.length > 0) throw new PlateRefused(problems)
+  const { nx, ny } = input
+  const { dx, dy, fixedAt, gauss } = plateEquations(input)
+  const tolerance = input.tolerance ?? 1e-10
+  const maxSweeps = input.maxSweeps ?? 200_000
+  const t = Array.from({ length: ny }, (_, j) =>
+    Array.from({ length: nx }, (_unused, i) => fixedAt(i, j) ?? 0),
+  )
   const omega = 2 / (1 + Math.sin(Math.PI / Math.max(nx, ny)))
   let change = Infinity
   let sweeps = 0
@@ -196,32 +321,7 @@ export function solvePlate(input: PlateInput): PlateField {
         if (fixedAt(i, j) !== undefined) continue
         const row = t[j]!
         const here = row[i]!
-        const west =
-          i > 0
-            ? { constant: row[i - 1]!, slope: 0 }
-            : ghost(input.left, row[1]!, dx)
-        const east =
-          i < nx - 1
-            ? { constant: row[i + 1]!, slope: 0 }
-            : ghost(input.right, row[nx - 2]!, dx)
-        const south =
-          j > 0
-            ? { constant: t[j - 1]![i]!, slope: 0 }
-            : ghost(input.bottom, t[1]![i]!, dy)
-        const north =
-          j < ny - 1
-            ? { constant: t[j + 1]![i]!, slope: 0 }
-            : ghost(input.top, t[ny - 2]![i]!, dy)
-        // Summing wx (west + east - 2 here) + wy (south + north - 2 here) = 0
-        // for here, with the convective slopes gathered onto the diagonal:
-        // the same fixed point as before, and a contraction for any Bi.
-        const slope =
-          wx * (west.slope + east.slope) + wy * (south.slope + north.slope)
-        const gauss =
-          (wx * (west.constant + east.constant) +
-            wy * (south.constant + north.constant)) /
-          (2 * wx + 2 * wy - slope)
-        const next = here + omega * (gauss - here)
+        const next = here + omega * (gauss(t, i, j) - here)
         change = Math.max(change, Math.abs(next - here))
         row[i] = next
       }
@@ -243,4 +343,79 @@ export function sampleAt(field: PlateField, x: number, y: number): number {
   const i = Math.round(x / field.dx)
   const j = Math.round(y / field.dy)
   return field.t[j]![i]!
+}
+
+/** How well a solved field satisfies the plate it was solved for. */
+export interface PlateCheck {
+  /** The largest distance of a free node from the value its own equation wants, in °C. */
+  residual: number
+  /** Heat into the plate through each edge, per metre of depth, in W/m (negative leaves). */
+  edges: Record<'left' | 'right' | 'bottom' | 'top', number>
+  /** The sum of the edges' heat, in W/m: zero for a steady plate with no source. */
+  imbalance: number
+  /** |imbalance| over the heat that crosses the boundary in either direction. */
+  relativeImbalance: number
+}
+
+/**
+ * Checks a field against the physics it claims, independently of how the
+ * sweep stopped: the discrete equations' residual at every free node, and the
+ * steady heat balance (what enters through the edges must leave through
+ * them). Edge heat is integrated by the trapezoid rule from Newton cooling on
+ * a convective edge and a second-order one-sided gradient on a fixed edge; an
+ * insulated edge passes none. The balance is a discretization check, so it
+ * tightens as the grid is refined; where two held edges meet at different
+ * temperatures the true flux is singular and no grid closes the balance.
+ */
+export function checkPlate(input: PlateInput, field: PlateField): PlateCheck {
+  const { nx, ny, conductivity: k } = input
+  const { fixedAt, gauss } = plateEquations(input)
+  const { t, dx, dy } = field
+  let residual = 0
+  for (let j = 0; j < ny; j++)
+    for (let i = 0; i < nx; i++)
+      if (fixedAt(i, j) === undefined)
+        residual = Math.max(residual, Math.abs(gauss(t, i, j) - t[j]![i]!))
+  // Values along an edge from its boundary node inward: depth 0 is the edge.
+  const along = {
+    left: (n: number, depth: number) => t[n]![depth]!,
+    right: (n: number, depth: number) => t[n]![nx - 1 - depth]!,
+    bottom: (n: number, depth: number) => t[depth]![n]!,
+    top: (n: number, depth: number) => t[ny - 1 - depth]![n]!,
+  }
+  const edgeHeat = (side: keyof typeof along): number => {
+    const boundary = input[side]
+    if (boundary.kind === 'insulated') return 0
+    const vertical = side === 'left' || side === 'right'
+    const count = vertical ? ny : nx
+    const spacing = vertical ? dy : dx
+    const inward = vertical ? dx : dy
+    let total = 0
+    for (let n = 0; n < count; n++) {
+      const edge = along[side](n, 0)
+      const q =
+        boundary.kind === 'convective'
+          ? boundary.h * (boundary.ambient - edge)
+          : // -k dT/dn into the plate, dT/dn one-sided to second order.
+            (-k * (-3 * edge + 4 * along[side](n, 1) - along[side](n, 2))) /
+            (2 * inward)
+      total += (n === 0 || n === count - 1 ? 0.5 : 1) * q * spacing
+    }
+    return total
+  }
+  const edges = {
+    left: edgeHeat('left'),
+    right: edgeHeat('right'),
+    bottom: edgeHeat('bottom'),
+    top: edgeHeat('top'),
+  }
+  const flows = Object.values(edges)
+  const imbalance = flows.reduce((sum, q) => sum + q, 0)
+  const crossing = flows.reduce((sum, q) => sum + Math.abs(q), 0)
+  return {
+    residual,
+    edges,
+    imbalance,
+    relativeImbalance: crossing === 0 ? 0 : Math.abs(imbalance) / crossing,
+  }
 }

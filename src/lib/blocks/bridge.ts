@@ -28,6 +28,7 @@ import type {
   ListedFile,
   ModelTrace,
   PageMethods,
+  ReopenedRun,
   Rpc,
   RunRequestResult,
   SandboxMethods,
@@ -113,6 +114,8 @@ export interface AppArtifacts {
   source: () => unknown
   /** A kept result and its bytes, checked against their digests. */
   open: (id: string) => Promise<{ result: unknown; bytes: Uint8Array }>
+  /** A kept run with every moment it holds, checked against its chunks and digests. */
+  run: (id: string) => Promise<ReopenedRun>
 }
 
 /** The most bytes one App result carries across the bridge; the store's blob bound. */
@@ -227,6 +230,7 @@ const params = {
   }),
   resolve: z.strictObject({ subject: z.record(z.string(), z.json()) }),
   openResult: z.strictObject({ id: z.string().regex(/^sha256:[0-9a-f]{64}$/) }),
+  openRun: z.strictObject({ id: z.string().min(1).max(256) }),
   trace: z.strictObject({
     recordingId: z.string().trim().min(1).max(200),
     frames: z.array(
@@ -494,6 +498,9 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
   serve<PageMethods, 'artifacts.source'>(rpc, 'artifacts.source', () => artifacts().source())
   serve<PageMethods, 'artifacts.open'>(rpc, 'artifacts.open', async (raw) =>
     artifacts().open(params.openResult.parse(raw).id),
+  )
+  serve<PageMethods, 'artifacts.run'>(rpc, 'artifacts.run', async (raw) =>
+    artifacts().run(params.openRun.parse(raw).id),
   )
 
   serve<PageMethods, 'trace.recording'>(rpc, 'trace.recording', async (raw) => {

@@ -7,15 +7,17 @@
 // solves again.
 import { createRoot } from 'react-dom/client'
 import { useEffect, useRef, useState } from 'react'
-import {
-  Operations,
-  canonicalJson,
-  digestOf,
-  readResultRef,
-} from '@theorem/runtime'
+import { Operations, canonicalJson, readResultRef } from '@theorem/runtime'
 import type { ArtifactSourceRef } from '@theorem/runtime'
-import { SOLVER, UNITS, solvePlate } from './solver'
-import type { Boundary, PlateField, PlateInput } from './solver'
+import { SOLVER, UNITS, checkPlate, plateProblems, solvePlate } from './solver'
+import type {
+  Boundary,
+  PlateCheck,
+  PlateField,
+  PlateInput,
+  PlateProblem,
+} from './solver'
+import solverImplementation from './solver.ts?implementation'
 import { COLORMAP, colorAt } from './colormap'
 import './look.css'
 
@@ -51,8 +53,9 @@ async function operationsFor(source: ArtifactSourceRef) {
     representation: { schema: 'theorem.example.plate-field', version: '1' },
     reproducibility: 'deterministic',
     recovery: ['rerun', 'reopen'],
-    // The solver is what a field depends on; a colormap or layout is not.
-    implementation: await digestOf(SOLVER),
+    // The solver's code, as this revision's build read it (with everything it
+    // imports), is what a field depends on; a colormap or layout is not.
+    implementation: solverImplementation,
     dependencies: ['solver.ts'],
     run: (plate: PlateInput) => solvePlate(plate),
   })
@@ -132,7 +135,7 @@ function BoundaryControl(props: {
   )
 }
 
-function Field({ field }: { field: PlateField }) {
+function Field({ field, check }: { field: PlateField; check: PlateCheck }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const element = canvas.current
@@ -165,13 +168,26 @@ function Field({ field }: { field: PlateField }) {
         {COLORMAP.name}. {field.converged ? 'Converged' : 'Not converged'} after{' '}
         {field.sweeps} sweeps.
       </figcaption>
+      <p className={field.converged ? 'check' : 'check warning'}>
+        {field.converged
+          ? null
+          : `The sweep stopped before converging: the field can be off by up to ${check.residual.toPrecision(2)} ${UNITS.temperature}. `}
+        Heat in and out through the edges agrees to{' '}
+        {(check.relativeImbalance * 100).toPrecision(2)}% (
+        {check.imbalance.toPrecision(3)} W/m unbalanced).
+      </p>
     </figure>
   )
 }
 
 function App() {
   const [plate, setPlate] = useState<PlateInput>(DEFAULT)
-  const [field, setField] = useState<PlateField | null>(null)
+  // The field with its check, both of the plate it was solved for.
+  const [field, setField] = useState<{
+    field: PlateField
+    check: PlateCheck
+  } | null>(null)
+  const [problems, setProblems] = useState<Array<PlateProblem>>([])
   const [reused, setReused] = useState<string>('')
   const operations = useRef<Operations | null>(null)
   const state = useRef<Awaited<ReturnType<typeof theorem.state>> | null>(null)
@@ -228,10 +244,14 @@ function App() {
     const operations_ = operations.current
     if (!operations_) return
     const run = { stale: false }
+    // A control out of range is shown as itself; nothing is solved for it.
+    const wrong = plateProblems(plate)
+    setProblems(wrong)
+    if (wrong.length > 0) return
     void (async () => {
       const done = await operations_.invoke<PlateField>('solve', plate)
       if (run.stale) return
-      setField(done.output)
+      setField({ field: done.output, check: checkPlate(plate, done.output) })
       if (done.reused) setReused('Reused the field solved earlier.')
       await state.current?.set('input', plate)
       if (!done.reused) {
@@ -290,7 +310,17 @@ function App() {
         {side('bottom', 'Bottom edge')}
         {side('top', 'Top edge')}
       </div>
-      {field ? <Field field={field} /> : <p>Solving…</p>}
+      {problems.length > 0 ? (
+        <ul className="problems" role="alert">
+          {problems.map((problem) => (
+            <li key={problem.field}>{problem.message}</li>
+          ))}
+        </ul>
+      ) : field ? (
+        <Field field={field.field} check={field.check} />
+      ) : (
+        <p>Solving…</p>
+      )}
       {reused && <p className="reuse">{reused}</p>}
     </main>
   )

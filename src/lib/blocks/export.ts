@@ -24,6 +24,7 @@ import { toBase64 } from './state'
 import { importMap } from './vendor/manifest'
 import { vendorModules } from './vendor/modules'
 import { libraryModule } from './app-library-sources'
+import { canonicalJson, digestBytes } from './artifact-runtime'
 
 type Bundler = Pick<typeof Esbuild, 'build'>
 
@@ -67,6 +68,42 @@ const NAMESPACE = {
   dependency: 'theorem-app-dependency',
   library: 'theorem-library',
   worker: 'theorem-app-worker',
+  implementation: 'theorem-app-implementation',
+}
+
+/**
+ * The digest of the modules a build read (esbuild's metafile inputs, as
+ * `namespace:path`): an App file or library module by the SHA-256 of its text,
+ * anything else by its path, which for a dependency is its exact pinned URL.
+ */
+export async function implementationDigest(
+  files: Record<string, string>,
+  inputs: Array<string>,
+): Promise<`sha256:${string}`> {
+  const encoder = new TextEncoder()
+  const read: Record<string, string> = {}
+  for (const input of inputs) {
+    const colon = input.indexOf(':')
+    const namespace = colon < 0 ? '' : input.slice(0, colon)
+    const path = colon < 0 ? input : input.slice(colon + 1)
+    if (
+      (namespace === NAMESPACE.app || namespace === NAMESPACE.worker) &&
+      Object.hasOwn(files, path)
+    ) {
+      read[input] = await digestBytes(encoder.encode(files[path]))
+      continue
+    }
+    if (namespace === NAMESPACE.library) {
+      const slash = path.lastIndexOf('/')
+      const module = libraryModule(path.slice(0, slash), path.slice(slash + 1))
+      if (module) {
+        read[input] = await digestBytes(encoder.encode(module.source))
+        continue
+      }
+    }
+    read[input] = input
+  }
+  return digestBytes(encoder.encode(canonicalJson(read)))
 }
 
 /** A bare import, through the import map, to the vendored file that serves it. */
@@ -328,6 +365,19 @@ function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies):
           ? { path: found, namespace }
           : { errors: [{ text: `No file "${path}" in this App` }] }
       }
+      // `import digest from './solver.ts?implementation'`: the SHA-256 of what
+      // that file runs, so an operation's key follows its code and not a name
+      // someone remembered to bump (artifact-runtime Operation.implementation).
+      // It is the canonical JSON of every module the file's own build reads,
+      // each App file and library module by the digest of its text and each
+      // pinned dependency by its exact URL, so a change to anything it
+      // imports, at any depth, is a new implementation and a change elsewhere
+      // in the App is not.
+      build.onResolve(
+        { filter: /^\.\.?\/.*\?implementation$/, namespace: NAMESPACE.app },
+        ({ path, importer }) =>
+          appFile(importer, path.slice(0, -'?implementation'.length), NAMESPACE.implementation),
+      )
       // `import url from './work.ts?worker'`, as in Vite: that file is bundled
       // on its own and handed over as a blob URL for `new Worker(url)`. A
       // module worker from a blob does not start in the App's sandboxed frame
@@ -342,6 +392,23 @@ function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies):
         { filter: /^\.\.?\//, namespace: NAMESPACE.app },
         ({ path, importer }) => appFile(importer, path, NAMESPACE.app),
       )
+      build.onLoad({ filter: /.*/, namespace: NAMESPACE.implementation }, async ({ path }) => {
+        try {
+          const result = await build.esbuild.build({
+            ...build.initialOptions,
+            outfile: 'implementation.js',
+            sourcemap: false,
+            metafile: true,
+            // The same build an App of only this file would be, from `theorem:app`.
+            plugins: [appPlugin({ files, entry: path }, dependencies)],
+          })
+          return { contents: `export default ${JSON.stringify(await implementationDigest(files, Object.keys(result.metafile.inputs)))}`, loader: 'js' }
+        } catch (error) {
+          const errors = (error as Partial<Esbuild.BuildFailure>).errors
+          if (!errors?.length) throw error
+          return { errors }
+        }
+      })
       build.onLoad({ filter: /.*/, namespace: NAMESPACE.worker }, async ({ path }) => {
         try {
           const result = await build.esbuild.build({

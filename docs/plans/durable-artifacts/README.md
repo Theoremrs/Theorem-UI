@@ -198,6 +198,53 @@ follow-up **from evidence**, not assumed unrelated. Three were established
 `test:composer` (912/912) and `oracle:interactions` (exit 0) pass on HEAD;
 `oracle:custom-background` is intermittently red pending the hardening above.
 
+## 2026-11-21: reopen elsewhere, plate checks, build fingerprints, library reads
+
+Evidence class for all four: source-implemented + unit/component-tested. None
+is observed in a signed-in product session.
+
+- **Reopen a run in another App (package 5).** `window.theorem.artifacts.run(id)`
+  (`artifact-store.ts` `reopenRun`, `app-artifacts.ts`, bridge + protocol)
+  reads a kept run back with every moment in order from index 0, each read
+  positionally against its chunk's own references and each kept state checked
+  against its digest; the run keeps naming the revision that ran it. A chunk
+  whose bytes, state or extra moments disagree is refused, never repaired. The
+  test reopens from a second App over the same store after the writer closed.
+  `artifacts.open(id)` reopens a result the same way. Not yet: a surface that
+  calls this on load (the spatial trace still starts empty), checkpoint
+  retention and engine resume.
+- **Plate checks (review 4.7 remainder).** `plateProblems` refuses every
+  out-of-range control by name; `checkPlate` reports the residual of the
+  sweep's own equations and the edge heat balance. The App shows problems
+  instead of a field, and a warning with the residual when a sweep stops
+  early. An insulated-sides plate matches the series-resistance heat
+  (181.82 W/m) edge for edge; a cooled top closes the balance at about second
+  order.
+- **Fingerprints from the build (package 7, first part).** `import digest from
+  './solver.ts?implementation'` is the SHA-256 over every module that file's
+  own build reads (App files and library modules by text, pinned dependencies
+  by URL). A presentation edit keeps it; an edit to the file or anything it
+  imports changes it. The heat fixture's `solve` uses it instead of the
+  hand-named `SOLVER`. Not yet: a persisted lock, operation-key to result
+  lookup through the result owners, and cold/reused measurement.
+- **Library declarations on demand (W0).** The `app.library` client operation
+  answers the exact declarations the App check holds (`window.theorem`,
+  `@theorem/runtime`, `@theorem/spatial`, `@theorem/annotate`) by file, with
+  a digest of the set, through the same client-operation path as `app.check`.
+  Theorem's conversation App guidance names it and the new `artifacts.run`.
+
+| Check | Result |
+| --- | --- |
+| `bun test src/lib/theorem/app-artifacts.test.ts` | 5 pass (3 new: reopen in another App, tampered chunks refused, result reopened) |
+| `bun test test/blocks/durable-examples.test.ts` | 19 pass (4 new plate checks; reuse keyed by `?implementation`; both Apps still check and build) |
+| `bun test src/lib/blocks/app-dependencies.test.ts -t implementation` | 1 pass |
+| `bun test src/lib/blocks/app-operations.test.ts src/lib/face/operations.test.ts` | 41 pass (16-operation limit holds) |
+| `tsc --noEmit` | clean except the pre-existing terminal-wasm module |
+
+Still not run: the two agent-built examples and the transfer experiment
+(package 6, review G4). Both need a signed-in Theorem conversation, which
+this cloud session cannot reach (theorem.rs is outside its network policy).
+
 ## Not done yet (dependency-ordered, per the 2026-11-19 review)
 
 The review's packages 1–12 map onto W0–W12; this is the delivery order, not a
