@@ -8,8 +8,9 @@ const signals = (
   phase: ConversationPhase,
   more: Omit<TheoSignals, 'conversation'> = {},
   approvals: Record<string, unknown>[] = [],
+  conv: { runId?: string; lastActivityMs?: number } = {},
 ): TheoSignals => ({
-  conversation: { phase, projection: { approvals } as never },
+  conversation: { phase, projection: { approvals } as never, ...conv },
   ...more,
 })
 
@@ -54,13 +55,29 @@ describe('what Theo says, from the event behind it', () => {
     expect(theoStateOf(signals('ready', { delivery: { stage: 'refused' } }))).toBe('cannot-continue')
   })
 
-  test('an old delivery failure stops speaking once a newer run replaces it', () => {
-    // A run under way or finished is newer activity than the failed delivery.
-    expect(theoStateOf(signals('running', { delivery: { stage: 'failed' } }))).toBe('working')
-    expect(theoStateOf(signals('completed', { delivery: { stage: 'failed' } }))).toBe('done')
-    expect(theoStateOf(signals('running', { delivery: { stage: 'refused' } }))).toBe('working')
-    // With no newer run, the failure still stands.
+  test('an old delivery failure stops speaking once a newer turn replaces it', () => {
+    // A run newer than the delivery's own run.
+    expect(
+      theoStateOf(signals('running', { delivery: { stage: 'failed', runId: 'run-1' } }, [], { runId: 'run-2' })),
+    ).toBe('working')
+    expect(
+      theoStateOf(signals('completed', { delivery: { stage: 'failed', runId: 'run-1' } }, [], { runId: 'run-2' })),
+    ).toBe('done')
+    // A message newer than a failure that started no run.
+    expect(
+      theoStateOf(signals('running', { delivery: { stage: 'failed', updatedAtMs: 100 } }, [], { lastActivityMs: 200 })),
+    ).toBe('working')
+    // With no newer turn, the failure still stands.
     expect(theoStateOf(signals('ready', { delivery: { stage: 'failed' } }))).toBe('cannot-continue')
+  })
+
+  test('a new attachment failure is not hidden by an older finished run', () => {
+    // The reply finished (run-1); a newer attachment failed during upload, starting no run.
+    expect(
+      theoStateOf(
+        signals('completed', { delivery: { stage: 'failed', updatedAtMs: 200 } }, [], { runId: 'run-1', lastActivityMs: 100 }),
+      ),
+    ).toBe('cannot-continue')
   })
 
   test('an unreachable host waits, a reachable one changes nothing', () => {

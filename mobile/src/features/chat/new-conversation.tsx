@@ -92,11 +92,28 @@ export function NewConversation({
   const [waiting, setWaiting] = useState<Waiting>()
   // One key per intended thread, so a press after a lost response repeats the same create.
   const createKey = useRef<string>(undefined)
+  // Whether the person explicitly chose a recipient (vs. a default), and whether
+  // the opening project has been applied once it resolves.
+  const touched = useRef(false)
+  const appliedProject = useRef(false)
+  const destinationRef = useRef<Destination | undefined>(undefined)
 
   // Until the person chooses, a new conversation goes to Theorem in the first project.
   const first = projects.data?.[0]
   const chosen: Destination | undefined =
     destination ?? (first ? { kind: 'theorem', projectId: first.projectId, projectTitle: first.title } : undefined)
+  destinationRef.current = destination
+
+  // The opening project can resolve after the first render (projects still
+  // loading). Apply the first resolved project as the recipient unless the
+  // person has explicitly chosen one; a useState initializer alone would keep
+  // the lastDestination() fallback forever.
+  useEffect(() => {
+    if (project && !touched.current && !appliedProject.current) {
+      appliedProject.current = true
+      setDestination({ kind: 'theorem', projectId: project.projectId, projectTitle: project.title })
+    }
+  }, [project?.projectId, project?.title])
 
   /**
    * Looks for the session's log until it turns up or this look's time runs out.
@@ -130,14 +147,21 @@ export function NewConversation({
   }
 
   const start = async (text: string) => {
-    if (!chosen) return
+    const target = chosen
+    if (!target) return
+    const startDestination = destinationRef.current
     setError(undefined)
-    rememberDestination(chosen)
-    if (chosen.kind === 'theorem') {
+    rememberDestination(target)
+    if (target.kind === 'theorem') {
       setBusy('Starting the conversation…')
       createKey.current ??= Crypto.randomUUID()
-      const thread = await createThread(chosen.projectId, createKey.current)
+      const thread = await createThread(target.projectId, createKey.current)
       createKey.current = undefined
+      // The recipient may have changed while the thread was being created. Do
+      // not write drafts or open a thread for a recipient the person left; the
+      // words go back to the composer (onNew's catch) instead.
+      if (destinationRef.current !== startDestination)
+        throw new Error('The recipient changed while the conversation was being created. Your words are back in the box.')
       // The words survive whatever happens next: they are the new thread's draft until sent.
       writeDraft(thread.threadId, text)
       writeDraft(DRAFT, '')
@@ -152,26 +176,26 @@ export function NewConversation({
       }
       return
     }
-    setBusy(`Starting ${agentName[chosen.agent]} on ${chosen.computerName}…`)
-    const session = `theorem-${chosen.agent}-${Crypto.randomUUID().slice(0, 8)}`
+    setBusy(`Starting ${agentName[target.agent]} on ${target.computerName}…`)
+    const session = `theorem-${target.agent}-${Crypto.randomUUID().slice(0, 8)}`
     const lines = afterMark(
-      await runnerFor(chosen.computerId)(startScript(chosen.agent, chosen.folder, text, session, Crypto.randomUUID())),
+      await runnerFor(target.computerId)(startScript(target.agent, target.folder, text, session, Crypto.randomUUID())),
     )
     const [kind, what, , epoch] = lines?.[0]?.split('\t') ?? []
     if (kind === 'missing')
       throw new Error(
         what === 'folder'
-          ? `${chosen.folder} is not a folder on ${chosen.computerName}.`
+          ? `${target.folder} is not a folder on ${target.computerName}.`
           : what === 'tmux'
-            ? `${chosen.computerName} has no tmux. Install it there, then try again.`
-            : `${agentName[chosen.agent]} is not installed on ${chosen.computerName}, or not on its PATH.`,
+            ? `${target.computerName} has no tmux. Install it there, then try again.`
+            : `${agentName[target.agent]} is not installed on ${target.computerName}, or not on its PATH.`,
       )
-    if (kind !== 'started') throw new Error(`${chosen.computerName} did not confirm the start.`)
+    if (kind !== 'started') throw new Error(`${target.computerName} did not confirm the start.`)
     // Started: from here on the message has been given to the agent, so it is never sent again.
     writeDraft(DRAFT, '')
-    const wait: Waiting = { destination: chosen, session, since: Number(epoch) || Math.floor(Date.now() / 1000) }
+    const wait: Waiting = { destination: target, session, since: Number(epoch) || Math.floor(Date.now() / 1000) }
     setWaiting(wait)
-    setBusy(`Waiting for ${agentName[chosen.agent]} to begin…`)
+    setBusy(`Waiting for ${agentName[target.agent]} to begin…`)
     await findLog(wait)
   }
 
@@ -185,16 +209,28 @@ export function NewConversation({
    * this is offered only for a Theorem project.
    */
   const attachToThread = async (_items: IntakeItem[]) => {
-    if (!chosen || chosen.kind !== 'theorem') return
-    rememberDestination(chosen)
-    createKey.current ??= Crypto.randomUUID()
-    const thread = await createThread(chosen.projectId, createKey.current)
-    createKey.current = undefined
-    const words = runtimeRef.current?.thread.composer.getState().text ?? ''
-    if (words) writeDraft(thread.threadId, words)
-    writeDraft(DRAFT, '')
-    onOpen({ kind: 'theorem', threadId: thread.threadId })
-    router.push({ pathname: '/intake', params: { thread: thread.threadId } })
+    const target = chosen
+    if (!target || target.kind !== 'theorem') return
+    const startDestination = destinationRef.current
+    setBusy('Starting the conversation…')
+    try {
+      rememberDestination(target)
+      createKey.current ??= Crypto.randomUUID()
+      const thread = await createThread(target.projectId, createKey.current)
+      createKey.current = undefined
+      // The recipient may have changed while the thread was being created; do
+      // not read the composer, write drafts, or navigate for a recipient the
+      // person left. Throwing lets the attach control unstage the items cleanly.
+      if (destinationRef.current !== startDestination)
+        throw new Error('The recipient changed while the conversation was being created.')
+      const words = runtimeRef.current?.thread.composer.getState().text ?? ''
+      if (words) writeDraft(thread.threadId, words)
+      writeDraft(DRAFT, '')
+      onOpen({ kind: 'theorem', threadId: thread.threadId })
+      router.push({ pathname: '/intake', params: { thread: thread.threadId } })
+    } finally {
+      setBusy(undefined)
+    }
   }
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages: [],
@@ -259,7 +295,7 @@ export function NewConversation({
         recipient={{
           name: chosen ? destinationName(chosen) : 'Theorem',
           detail: chosen ? destinationDetail(chosen) : 'Loading…',
-          onPress: waiting ? undefined : () => setPicking(true),
+          onPress: waiting || busy ? undefined : () => setPicking(true),
         }}
         placeholder={chosen ? `Message ${destinationName(chosen)}` : 'Message'}
         notes={notes}
@@ -283,6 +319,7 @@ export function NewConversation({
         current={chosen}
         projects={projects.data}
         onChoose={(next) => {
+          touched.current = true
           setDestination(next)
           setPicking(false)
         }}

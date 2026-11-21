@@ -179,13 +179,25 @@ describe('queue reducer', () => {
   test('restored messages wait in order and go when the conversation is free', () => {
     const blocked = run([
       { type: 'availability', availability: 'busy' },
-      { type: 'restore', items: [msg('a'), msg('b')] },
+      { type: 'restore', items: [msg('a'), msg('b')], paused: false },
     ])
     expect(blocked.sent).toEqual([])
     expect(blocked.state.items.map((item) => item.id)).toEqual(['a', 'b'])
     const freed = run([{ type: 'availability', availability: 'idle' }], blocked.state)
     expect(freed.sent).toEqual(['a'])
     expect(freed.state.items.map((item) => item.id)).toEqual(['b'])
+  })
+
+  test('a restored pause holds the queue until an explicit send', () => {
+    const restored = run([
+      { type: 'availability', availability: 'idle' },
+      { type: 'restore', items: [msg('a')], paused: true },
+    ])
+    expect(restored.sent).toEqual([])
+    expect(restored.state.paused).toBe(true)
+    const resumed = run([{ type: 'submit', message: msg('b') }], restored.state)
+    expect(resumed.sent).toEqual(['a'])
+    expect(resumed.state.paused).toBe(false)
   })
 
   test('an unrelated settle changes nothing', () => {

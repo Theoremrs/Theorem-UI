@@ -9,12 +9,15 @@ import type { QueuedMessage } from './queue'
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 /** An in-memory stand-in for the SQLite store, so persistence is testable here. */
-function memoryStore(): OutboxStore & { data: Map<string, QueuedMessage[]> } {
-  const data = new Map<string, QueuedMessage[]>()
+function memoryStore(): OutboxStore & { data: Map<string, { items: QueuedMessage[]; paused: boolean }> } {
+  const data = new Map<string, { items: QueuedMessage[]; paused: boolean }>()
   return {
     data,
-    load: () => [...data].map(([threadId, items]) => ({ threadId, items })),
-    save: (threadId, items) => void data.set(threadId, items),
+    load: () =>
+      [...data]
+        .map(([threadId, { items, paused }]) => ({ threadId, items, paused }))
+        .filter((entry) => entry.items.length > 0 || entry.paused),
+    save: (threadId, items, paused) => void data.set(threadId, { items, paused }),
     clear: () => data.clear(),
   }
 }
@@ -180,15 +183,42 @@ describe('Outbox', () => {
     phase('running')
     const id = outbox.submit('th', 'kept')
     // Synchronous: the words are already kept, so the caller may clear the draft.
-    expect(store.load()).toEqual([{ threadId: 'th', items: [{ id, text: 'kept' }] }])
+    expect(store.load()).toEqual([{ threadId: 'th', items: [{ id, text: 'kept' }], paused: false }])
+  })
+
+  test('the dispatched message stays durable until its send resolves', async () => {
+    const store = memoryStore()
+    const { outbox } = harness({ store })
+    const id = outbox.submit('th', 'going')
+    // While the send is in flight the row is kept: a termination here loses nothing.
+    expect(store.load()[0]?.items.map((item) => item.id)).toEqual([id])
+    await settle()
+    // Once the send resolves the SDK journal owns it; the row goes.
+    expect(store.load()).toEqual([])
+  })
+
+  test('a failed save on submit keeps the draft and leaves nothing inflight', () => {
+    const store = memoryStore()
+    store.save = () => {
+      throw new Error('disk full')
+    }
+    const { outbox } = harness({ store })
+    expect(() => outbox.submit('th', 'words')).toThrow('disk full')
+    // Nothing was published: no inflight message that no completion can clear.
+    expect(outbox.snapshot('th').inflight).toBeUndefined()
+    expect(outbox.snapshot('th').items).toEqual([])
   })
 
   test('waiting messages survive termination and return under their original ids', async () => {
     const store = memoryStore()
-    store.save('th', [
-      { id: 'saved-1', text: 'one' },
-      { id: 'saved-2', text: 'two' },
-    ])
+    store.save(
+      'th',
+      [
+        { id: 'saved-1', text: 'one' },
+        { id: 'saved-2', text: 'two' },
+      ],
+      false,
+    )
     const { calls, outbox, phase } = harness({ store })
     await settle()
     expect(calls).toEqual(['send:saved-1:one'])
@@ -196,6 +226,25 @@ describe('Outbox', () => {
     phase('completed')
     await settle()
     expect(calls).toEqual(['send:saved-1:one', 'send:saved-2:two'])
+  })
+
+  test('a Stop pause survives termination and blocks automatic dispatch', async () => {
+    const store = memoryStore()
+    const { outbox, phase } = harness({ store })
+    phase('running')
+    const id = outbox.submit('th', 'stopped')
+    await outbox.stop('th')
+    expect(store.load()).toEqual([{ threadId: 'th', items: [{ id, text: 'stopped' }], paused: true }])
+
+    // A relaunch restores the pause: an idle conversation does not send on its own.
+    const relaunched = harness({ store })
+    await settle()
+    expect(relaunched.calls).toEqual([])
+    expect(relaunched.outbox.snapshot('th').paused).toBe(true)
+    // An explicit send re-arms and the stopped message goes under its original id.
+    relaunched.outbox.submit('th', 'again')
+    await settle()
+    expect(relaunched.calls.filter((call) => call.startsWith('send:'))).toEqual([`send:${id}:stopped`])
   })
 
   test('signing out clears the saved queue', () => {

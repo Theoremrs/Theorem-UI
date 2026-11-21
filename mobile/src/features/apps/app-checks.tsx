@@ -31,28 +31,38 @@ type Answer = (runId: string, request: AppRequest) => Promise<void>
 
 const AnswerContext = createContext<Answer | undefined>(undefined)
 
+/** A readiness deferred that can resolve (host ready) or reject (host failed). */
+function makeReady() {
+  let resolve = () => {}
+  let reject = (_error: Error) => {}
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  // No check may be awaiting when the host fails; do not leave an unhandled rejection.
+  promise.catch(() => {})
+  return { promise, resolve, reject }
+}
+
 /** Holds the hidden App host for the conversation screen and checks Apps in it, one at a time. */
 export function AppChecks({ children }: { children: ReactNode }) {
   const host = useRef<AppHostHandle>(null)
-  const ready = useRef<{ promise: Promise<void>; resolve: () => void; reject: (error: Error) => void }>(undefined)
-  if (!ready.current) {
-    let resolve = () => {}
-    let reject = (_error: Error) => {}
-    const promise = new Promise<void>((res, rej) => {
-      resolve = res
-      reject = rej
-    })
-    // No check may be awaiting when the host fails; do not leave an unhandled rejection.
-    promise.catch(() => {})
-    ready.current = { promise, resolve, reject }
-  }
+  const ready = useRef<ReturnType<typeof makeReady>>(undefined)
+  if (!ready.current) ready.current = makeReady()
   const waiting = useRef(new Map<string, (answer: AppAnswer) => void>())
   const queue = useRef<Promise<unknown>>(Promise.resolve())
   const answered = useRef(new Map<string, Promise<void>>())
   const disposed = useRef(false)
+  // Bumped on each lifecycle so completions from a previous one send no receipt.
+  const lifecycle = useRef(0)
 
   const check = useCallback((operation: string, args: Record<string, unknown>): Promise<AppAnswer> => {
+    const gen = lifecycle.current
     const run = queue.current.then(() => {
+      // A queued check whose screen has gone (or refreshed) settles at once,
+      // without leaving a timer or waiter behind for a host that will not answer.
+      if (disposed.current || gen !== lifecycle.current)
+        return { outcome: 'failed', reason: 'The App host closed before the check finished.' }
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
       return new Promise<AppAnswer>((resolve) => {
         // The deadline starts here, before the wait for readiness, so a host that
@@ -68,7 +78,8 @@ export function AppChecks({ children }: { children: ReactNode }) {
         })
         ready.current!.promise.then(
           () => {
-            if (!disposed.current) host.current?.send({ type: 'check', id, operation, args })
+            if (!disposed.current && gen === lifecycle.current)
+              host.current?.send({ type: 'check', id, operation, args })
           },
           (error: Error) => waiting.current.get(id)?.({ outcome: 'failed', reason: error.message }),
         )
@@ -88,12 +99,13 @@ export function AppChecks({ children }: { children: ReactNode }) {
   const answer = useCallback<Answer>(
     (runId, request) => {
       const key = `${runId}:${request.requestRef}`
+      const gen = lifecycle.current
       let sent = answered.current.get(key)
       if (!sent) {
         sent = check(request.operation, request.args).then((result) => {
-          // Abandoned local work sends no receipt: a reopened screen retries the
-          // request under the same idempotency key rather than inheriting a failure.
-          if (disposed.current) return
+          // Abandoned or previous-lifecycle work sends no receipt: a reopened or
+          // refreshed screen retries under the same idempotency key instead.
+          if (disposed.current || gen !== lifecycle.current) return
           return mutate(`receipt:${key}`, (headers) =>
             theorem().chat.runs.command({
               runId,
@@ -117,6 +129,13 @@ export function AppChecks({ children }: { children: ReactNode }) {
   // conversation creates a fresh readiness wait and can answer again. The run
   // on Theorem is not stopped.
   useEffect(() => {
+    // A restart (Fast Refresh) keeps refs but reruns this effect: the retained
+    // readiness was rejected by cleanup, so make a fresh one that later `ready`
+    // messages can resolve, and mark a new lifecycle for the receipt guard.
+    if (disposed.current) {
+      lifecycle.current += 1
+      ready.current = makeReady()
+    }
     disposed.current = false
     return () => {
       disposed.current = true

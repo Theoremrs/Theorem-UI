@@ -63,8 +63,8 @@ export const emptyQueue: QueueState = {
 export type QueueEvent =
   | { type: 'availability'; availability: Availability }
   | { type: 'submit'; message: QueuedMessage }
-  /** Restores messages saved on this device, in order, without re-arming a pause. */
-  | { type: 'restore'; items: QueuedMessage[] }
+  /** Restores messages saved on this device, in order, with the queue's pause. */
+  | { type: 'restore'; items: QueuedMessage[]; paused: boolean }
   | { type: 'stopped' }
   /** The send of the in-flight message was admitted; its run may still be going. */
   | { type: 'sent'; id: string }
@@ -103,7 +103,7 @@ export function reduce(state: QueueState, event: QueueEvent): Step {
       // An explicit send re-arms a paused queue and keeps the order of what is waiting.
       return drain({ ...state, paused: false, items: [...state.items, event.message] })
     case 'restore':
-      return drain({ ...state, items: [...state.items, ...event.items] })
+      return drain({ ...state, items: [...state.items, ...event.items], paused: event.paused })
     case 'stopped':
       return { state: { ...state, paused: true } }
     case 'sent':

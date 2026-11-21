@@ -21,7 +21,7 @@ import { GlassContainer, GlassView, isLiquidGlassAvailable } from 'expo-glass-ef
 import { router } from 'expo-router'
 import { fromCamera, fromFiles, fromLibrary } from '@/features/intake/acquire'
 import type { IntakeItem } from '@/features/intake/model'
-import { stage } from '@/features/intake/staged'
+import { stage, unstage } from '@/features/intake/staged'
 import { describeError } from '@/lib/theorem'
 import { radius, space, touchTarget } from '@/theme/tokens'
 import { Text } from '@/ui/text'
@@ -107,13 +107,18 @@ export function AttachButton({
   const choose = useCallback(
     async (choice: Choice) => {
       close()
+      let batch: IntakeItem[] = []
       try {
         const items = await choice.acquire()
         if (items.length === 0) return
+        batch = items
         stage(items)
         if (onAcquire) await onAcquire(items)
         else router.push({ pathname: '/intake', params: threadId ? { thread: threadId } : {} })
       } catch (error) {
+        // A failed hand-off must not leave its batch staged, or a retry would
+        // stage the same selection again and intake would show it twice.
+        if (batch.length) unstage(batch)
         Alert.alert(`Cannot use ${choice.label.toLowerCase()}`, describeError(error))
       }
     },

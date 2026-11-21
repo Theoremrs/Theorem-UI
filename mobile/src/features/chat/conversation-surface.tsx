@@ -176,7 +176,11 @@ function QueuedChip({
     <View style={[styles.queued, { backgroundColor: palette.raised, borderColor: palette.lineControl }]}>
       {/* Only the body is grouped; Edit and Remove stay separate controls, so
         VoiceOver can reach them (an accessible parent hides nested elements). */}
-      <View style={styles.queuedBody} accessible accessibilityLabel={`Queued message: ${item.text}`}>
+      <View
+        style={styles.queuedBody}
+        accessible
+        accessibilityLabel={`${item.uncertain ? 'Unconfirmed queued message' : 'Queued message'}: ${item.text}`}
+      >
         <Text variant="label" tone="faint">
           {item.uncertain ? 'Not confirmed yet' : 'Queued'}
         </Text>

@@ -43,16 +43,26 @@ const settled = (state: ConversationState): boolean =>
   state.projection?.terminal === true ||
   ['completed', 'cancelled', 'interrupted', 'failed'].includes(state.phase)
 
+/**
+ * The words still owed a send: the waiting ones plus the dispatched one. The
+ * dispatched message stays durable until its send resolves and the SDK journal
+ * owns it, so a termination in that interval loses nothing; restoration retries
+ * the same command id, which the journal deduplicates.
+ */
+const durableItems = (state: QueueState): QueuedMessage[] =>
+  state.inflight ? [state.inflight, ...state.items] : state.items
+
 export class Outbox {
   private readonly entries = new Map<string, Entry>()
 
   constructor(private readonly options: OutboxOptions) {
     // Carry on with what was waiting when the app last stopped, under the same
-    // command ids, so a message is never lost and never sent twice under two ids.
-    for (const { threadId, items } of options.store?.load() ?? []) {
-      if (!items.length) continue
+    // command ids and the same pause, so a message is never lost, never sent
+    // twice under two ids, and never sent past a Stop without another Send.
+    for (const { threadId, items, paused } of options.store?.load() ?? []) {
+      if (!items.length && !paused) continue
       this.attach(threadId)
-      this.apply(threadId, { type: 'restore', items })
+      this.apply(threadId, { type: 'restore', items, paused })
     }
   }
 
@@ -155,10 +165,23 @@ export class Outbox {
     const previous = entry.state
     const { state, dispatch } = reduce(previous, event)
     const changed = state !== previous
+    const durableChanged =
+      state.items !== previous.items || state.inflight !== previous.inflight || state.paused !== previous.paused
+    // Admitting new words must be durable before they are published or dispatched.
+    // If storage fails, submit throws and the caller keeps the draft; nothing is
+    // left inflight that no completion can clear.
+    if (event.type === 'submit' && durableChanged)
+      this.options.store?.save(threadId, durableItems(state), state.paused)
     entry.state = state
-    // Keep the waiting words durable. The inflight send is the journal's; these
-    // are the words still owed a send, saved before the draft is cleared.
-    if (state.items !== previous.items) this.options.store?.save(threadId, state.items)
+    // Later lifecycle changes are best-effort: the words are already durable, and
+    // a stale row only re-dispatches under the same command id, which deduplicates.
+    if (event.type !== 'submit' && durableChanged) {
+      try {
+        this.options.store?.save(threadId, durableItems(state), state.paused)
+      } catch {
+        // Keep the prior durable queue; a recovered write retries the same id.
+      }
+    }
     if (dispatch) void this.dispatch(threadId, entry, dispatch)
     if (changed) for (const listener of entry.listeners) listener()
     this.settle(threadId, entry)
