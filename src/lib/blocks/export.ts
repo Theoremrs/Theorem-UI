@@ -13,7 +13,7 @@ import type { StateCollections } from './bridge'
 import { AppBuildError } from './app-source'
 import type { AppProblem, AppSources } from './app-source'
 import { appDependencies } from './app-dependencies'
-import type { AppDependencies } from './app-dependencies'
+import type { AppDependencies, AppModule } from './app-dependencies'
 import { compileCell } from './compile'
 import type { CompiledCell } from './compile'
 import { BLOCK_DOCUMENT_STYLE } from './document'
@@ -73,12 +73,18 @@ const NAMESPACE = {
 
 /**
  * The digest of the modules a build read (esbuild's metafile inputs, as
- * `namespace:path`): an App file or library module by the SHA-256 of its text,
- * anything else by its path, which for a dependency is its exact pinned URL.
+ * `namespace:path`): an App file or library module by the SHA-256 of its
+ * text, a `?worker` or `?implementation` file by the digest of its own build
+ * (`nested`, so what it imports at any depth counts), a remote dependency by
+ * the SHA-256 of the bytes the build was given for it (`load`, so a mutable
+ * URL that serves new code is a new implementation), and anything else, the
+ * vendored modules Theorem ships, by its path.
  */
 export async function implementationDigest(
   files: Record<string, string>,
   inputs: Array<string>,
+  nested: ReadonlyMap<string, string> = new Map(),
+  load?: (url: string) => Promise<AppModule>,
 ): Promise<`sha256:${string}`> {
   const encoder = new TextEncoder()
   const read: Record<string, string> = {}
@@ -86,10 +92,14 @@ export async function implementationDigest(
     const colon = input.indexOf(':')
     const namespace = colon < 0 ? '' : input.slice(0, colon)
     const path = colon < 0 ? input : input.slice(colon + 1)
-    if (
-      (namespace === NAMESPACE.app || namespace === NAMESPACE.worker) &&
-      Object.hasOwn(files, path)
-    ) {
+    if (namespace === NAMESPACE.worker || namespace === NAMESPACE.implementation) {
+      const built = nested.get(input)
+      if (built === undefined)
+        throw new Error(`No fingerprint for "${path}", which this build read`)
+      read[input] = built
+      continue
+    }
+    if (namespace === NAMESPACE.app && Object.hasOwn(files, path)) {
       read[input] = await digestBytes(encoder.encode(files[path]))
       continue
     }
@@ -100,6 +110,11 @@ export async function implementationDigest(
         read[input] = await digestBytes(encoder.encode(module.source))
         continue
       }
+    }
+    if (namespace === NAMESPACE.dependency && load) {
+      const module = await load(path)
+      read[input] = await digestBytes(module.bytes ?? encoder.encode(module.source))
+      continue
     }
     read[input] = input
   }
@@ -337,7 +352,22 @@ export function jsxDEV(type, props, key, isStatic, source) {
  * Resolves the App's files and browser-compatible npm/HTTPS dependencies.
  * Vendored modules remain an offline fast path, not an import ceiling.
  */
-function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies): Esbuild.Plugin {
+/**
+ * What the nested builds of one App share: the `?worker` and `?implementation`
+ * files being built around this one, outermost first, so a file that reaches
+ * itself is refused instead of building forever, and the fingerprint of each
+ * nested build already made, by its metafile input name.
+ */
+interface NestedBuilds {
+  ancestry: ReadonlyArray<string>
+  fingerprints: Map<string, string>
+}
+
+function appPlugin(
+  { files, entry }: AppSources,
+  dependencies: AppDependencies,
+  nested: NestedBuilds = { ancestry: [], fingerprints: new Map() },
+): Esbuild.Plugin {
   return {
     name: 'theorem-app',
     setup(build) {
@@ -392,17 +422,45 @@ function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies):
         { filter: /^\.\.?\//, namespace: NAMESPACE.app },
         ({ path, importer }) => appFile(importer, path, NAMESPACE.app),
       )
+      // A nested build of `path`, refused when `path` is already being built
+      // around it, and the fingerprint of what it read, kept for the builds
+      // around it: theirs include it.
+      const nestedBuild = async (
+        path: string,
+        namespace: string,
+        options: Esbuild.BuildOptions,
+      ) => {
+        if (nested.ancestry.includes(path))
+        {
+          const text = `"${path}" imports itself: ${[...nested.ancestry, path].join(' imports ')}`
+          throw Object.assign(new Error(text), { errors: [{ text }] })
+        }
+        const result = await build.esbuild.build({
+          ...build.initialOptions,
+          ...options,
+          sourcemap: false,
+          metafile: true,
+          // The same build an App of only this file would be, from `theorem:app`.
+          plugins: [appPlugin({ files, entry: path }, dependencies, {
+            ancestry: [...nested.ancestry, path],
+            fingerprints: nested.fingerprints,
+          })],
+        })
+        const fingerprint = await implementationDigest(
+          files,
+          Object.keys(result.metafile.inputs),
+          nested.fingerprints,
+          (url) => dependencies.load(url),
+        )
+        nested.fingerprints.set(`${namespace}:${path}`, fingerprint)
+        return { result, fingerprint }
+      }
       build.onLoad({ filter: /.*/, namespace: NAMESPACE.implementation }, async ({ path }) => {
         try {
-          const result = await build.esbuild.build({
-            ...build.initialOptions,
+          const { fingerprint } = await nestedBuild(path, NAMESPACE.implementation, {
             outfile: 'implementation.js',
-            sourcemap: false,
-            metafile: true,
-            // The same build an App of only this file would be, from `theorem:app`.
-            plugins: [appPlugin({ files, entry: path }, dependencies)],
           })
-          return { contents: `export default ${JSON.stringify(await implementationDigest(files, Object.keys(result.metafile.inputs)))}`, loader: 'js' }
+          return { contents: `export default ${JSON.stringify(fingerprint)}`, loader: 'js' }
         } catch (error) {
           const errors = (error as Partial<Esbuild.BuildFailure>).errors
           if (!errors?.length) throw error
@@ -411,12 +469,9 @@ function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies):
       })
       build.onLoad({ filter: /.*/, namespace: NAMESPACE.worker }, async ({ path }) => {
         try {
-          const result = await build.esbuild.build({
-            ...build.initialOptions,
+          const { result } = await nestedBuild(path, NAMESPACE.worker, {
             outfile: 'worker.js',
-            sourcemap: false,
             define: { 'import.meta.url': 'self.location.href' },
-            plugins: [appPlugin({ files, entry: path }, dependencies)],
           })
           const code = (result.outputFiles?.find((file) => file.path.endsWith('worker.js'))?.text ?? '')
             // What the worker file exports has no one to go to.

@@ -411,6 +411,55 @@ test('a ?implementation import is the digest of that file and everything it impo
   expect(result.problems.map((p) => [p.file, p.line, p.code])).toEqual([['main.ts', 4, 'TS2322']])
 }, 120_000)
 
+test('a ?implementation fingerprint follows nested workers and fingerprints, and a remote module by its bytes', async () => {
+  const files = {
+    'main.ts': 'import solver from "./solver.ts?implementation";\nexport { solver }',
+    'solver.ts': [
+      'import url from "./work.ts?worker";',
+      'import inner from "./inner.ts?implementation";',
+      'export const start = () => [new Worker(url), inner]',
+    ].join('\n'),
+    'work.ts': 'import { step } from "./step"\nself.onmessage = () => postMessage(step(1))',
+    'step.ts': 'export const step = (n: number) => n + 1',
+    'inner.ts': 'import { deep } from "./deep"\nexport const inner = deep',
+    'deep.ts': 'export const deep = 1',
+  }
+  const digestIn = async (given: Record<string, string>, request = modules({}).request) => {
+    const bundle = await bundleAppSources({ entry: 'main.ts', files: given }, esbuild, new AppDependencies({}, request))
+    // Only the solver's digest reaches the App; its nested builds stay inside it.
+    const found = [...bundle.code.matchAll(/"(sha256:[0-9a-f]{64})"/g)].map((match) => match[1])
+    expect(found).toHaveLength(1)
+    return found[0]!
+  }
+  const first = await digestIn(files)
+  // A worker's own import, and a nested fingerprint's import, are part of the solver.
+  expect(await digestIn({ ...files, 'step.ts': 'export const step = (n: number) => n + 2' })).not.toBe(first)
+  expect(await digestIn({ ...files, 'deep.ts': 'export const deep = 2' })).not.toBe(first)
+  expect(await digestIn(files)).toBe(first)
+
+  // The same URL serving other code is another implementation.
+  const url = 'https://modules.test/solver-core.js'
+  const remote = { ...files, 'deep.ts': `export { deep } from "${url}"` }
+  const serving = (source: string) => modules({ [url]: { source } }).request
+  const before = await digestIn(remote, serving('export const deep = 1'))
+  expect(await digestIn(remote, serving('export const deep = 1'))).toBe(before)
+  expect(await digestIn(remote, serving('export const deep = 2'))).not.toBe(before)
+}, 120_000)
+
+test('a ?implementation or ?worker file that reaches itself is refused, not built forever', async () => {
+  const build = (files: Record<string, string>) =>
+    bundleAppSources({ entry: 'main.ts', files }, esbuild, new AppDependencies({}, modules({}).request))
+  await expect(build({
+    'main.ts': 'import a from "./a.ts?implementation"\nexport { a }',
+    'a.ts': 'import a from "./a.ts?implementation"\nexport { a }',
+  })).rejects.toThrow(/"a\.ts" imports itself/)
+  await expect(build({
+    'main.ts': 'import a from "./a.ts?implementation"\nexport { a }',
+    'a.ts': 'import b from "./b.ts?worker"\nexport { b }',
+    'b.ts': 'import a from "./a.ts?implementation"\nexport { a }',
+  })).rejects.toThrow(/"a\.ts" imports itself: a\.ts imports b\.ts imports a\.ts/)
+}, 120_000)
+
 describe('a library Theorem ships', () => {
   const SPATIAL_APP = `import { mount, parts, type Part } from '@theorem/spatial'
 const lamp: Part = {

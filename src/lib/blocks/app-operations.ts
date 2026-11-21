@@ -22,9 +22,7 @@ import {
 
 /** The operation that checks an App, as the turn's tool `app__check`. */
 export const APP_CHECK = 'app.check'
-/** The operation that reads the declarations an App is checked against, as `app__library`. */
-export const APP_LIBRARY = 'app.library'
-/** What `app.library` calls the declarations of `window.theorem` itself. */
+/** What `app.check` with `library` calls the declarations of `window.theorem` itself. */
 export const BRIDGE_LIBRARY = 'window.theorem'
 
 /** The largest App a check is given, as the server allows one to be. */
@@ -37,8 +35,10 @@ const MAX_HTML = 1024 * 1024
 export const APP_OPERATIONS = [
   {
     name: APP_CHECK,
+    // One operation for both, since a send admits sixteen and Kit, the face,
+    // the workbench and the present one take the rest (client-surface.ts).
     description:
-      "Builds and checks an App in the person's browser and returns what is wrong with it. Pass `html`, a complete App document exactly as it would be published, to check a draft before publishing it; or pass `documentId` to check a published App as it is saved now. The result says whether it built, lists its build, type and runtime problems with file, line and column, and gives what the App showed: its text, and `outline`, each thing on the page by role, name and state as assistive technology reads it, with the source place that made it. Pass `picture: true` to also get `picture`, an image of the App as drawn, if you read images. Nothing is changed and nothing is shown to the person: the App runs hidden for a moment, reaching the network as it would on the page, with empty state and an empty in-memory database, so records it reads are not the person's.",
+      "Builds and checks an App in the person's browser and returns what is wrong with it. Pass `html`, a complete App document exactly as it would be published, to check a draft, or `documentId` to check a published App as saved now. The result says whether it built, lists build, type and runtime problems by file, line and column, and gives what the App showed: its text, and `outline`, each thing on the page by role, name and state with the source place that made it. `picture: true` adds an image of the App as drawn, if you read images. Nothing is changed or shown to the person: the App runs hidden for a moment with empty state and an empty in-memory database. Pass `library` instead to read the TypeScript declarations an App is checked against: window.theorem, @theorem/runtime, @theorem/spatial, @theorem/annotate. It lists the files, returns index.d.ts or `file`, and a `digest` of the whole API. Read what you use instead of guessing its shape.",
     effect: 'read',
     inputSchema: {
       type: 'object',
@@ -68,32 +68,19 @@ export const APP_OPERATIONS = [
           description:
             'Also return an image of what the App showed. Only a model that reads images is shown it.',
         },
-      },
-    },
-  },
-  {
-    name: APP_LIBRARY,
-    description:
-      "Reads the TypeScript declarations an App is checked against in this page's build, on demand: `window.theorem` (pass library \"window.theorem\") and Theorem's App libraries (@theorem/runtime for exact source, run, result and evaluation references and Operations; @theorem/spatial; @theorem/annotate). Without `file`, it lists the library's declaration files with their sizes and returns index.d.ts; with `file`, it returns that file. `digest` identifies the declarations as a whole, so a later read with the same digest is the same API. Read the parts you use instead of guessing their shape; these are exactly what the App check enforces.",
-    effect: 'read',
-    inputSchema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['library'],
-      properties: {
         library: {
           type: 'string',
           minLength: 1,
           maxLength: 100,
           description:
-            'window.theorem, @theorem/runtime, @theorem/spatial or @theorem/annotate.',
+            'Read declarations instead of checking: window.theorem, @theorem/runtime, @theorem/spatial or @theorem/annotate.',
         },
         file: {
           type: 'string',
           minLength: 1,
           maxLength: 100,
           description:
-            'One declaration file the listing names, such as operations.d.ts.',
+            'With library: one declaration file its listing names, such as operations.d.ts.',
         },
       },
     },
@@ -108,7 +95,7 @@ const declarationsOf = (library: string): Record<string, string> | undefined =>
       ? libraryDeclarations[library]
       : undefined
 
-/** What `app.library` answers: the library's files, its identity, and the text asked for. */
+/** What `app.check` with `library` answers: the library's files, its identity, and the text asked for. */
 export interface AppLibraryRead {
   library: string
   digest: string
@@ -264,7 +251,12 @@ export async function answerAppRequest(
   request: AppRequest,
   host: AppOperationHost = pageHost,
 ): Promise<AppAnswer> {
-  if (request.operation === APP_LIBRARY) {
+  if (request.operation !== APP_CHECK)
+    return {
+      outcome: 'rejected',
+      reason: `This page has no operation ${request.operation}.`,
+    }
+  if (request.args.library !== undefined) {
     const { library, file } = request.args
     if (typeof library !== 'string' || !library)
       return { outcome: 'rejected', reason: 'Name the library to read.' }
@@ -276,11 +268,6 @@ export async function answerAppRequest(
       ? { outcome: 'rejected', reason: read.missing }
       : { outcome: 'applied', result: read }
   }
-  if (request.operation !== APP_CHECK)
-    return {
-      outcome: 'rejected',
-      reason: `This page has no operation ${request.operation}.`,
-    }
   const { html, documentId, runMs, picture } = request.args
   const options = {
     ...(typeof runMs === 'number' ? { runMs } : {}),

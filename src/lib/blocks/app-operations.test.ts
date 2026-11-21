@@ -6,6 +6,8 @@ import { onlineManager } from '@tanstack/react-query'
 import { KIT_OPERATIONS } from '@/lib/kit/operations'
 import { GENERATIVE_OPERATIONS } from '@/lib/generative/operations'
 import { useKitStage } from '@/lib/kit/stage'
+import { FACE_OPERATIONS } from '@/lib/face/operations'
+import { useFaceStage } from '@/lib/face/store'
 import { WORKBENCH_OPERATIONS } from '@/lib/workbench/agent/operations'
 import { clientSurfaceTurnOptions } from '@/lib/theorem/client-surface'
 import type { AppInspection } from './app-inspect'
@@ -68,11 +70,8 @@ const assistant = (...content: Array<ReturnType<typeof operation>>) =>
   }) as unknown as ThreadMessage
 
 describe('the operations a turn declares', () => {
-  test('app.check and app.library are declared within what Theorem admits of a declaration', () => {
-    expect(APP_OPERATIONS.map(({ name }) => name)).toEqual([
-      'app.check',
-      'app.library',
-    ])
+  test('app.check, which also reads library declarations, is declared within what Theorem admits of a declaration', () => {
+    expect(APP_OPERATIONS.map(({ name }) => name)).toEqual(['app.check'])
     for (const declared of APP_OPERATIONS) {
       expect(declared.name).toMatch(/^[a-z][a-z0-9_.]{2,63}$/)
       expect(declared.description.length).toBeLessThanOrEqual(1024)
@@ -105,8 +104,21 @@ describe('the operations a turn declares', () => {
       ])
       // Theorem admits at most 16 operations for a run.
       expect(options.clientOperations.length).toBeLessThanOrEqual(16)
+      // With Theo on screen too, every surface is declared and still within it.
+      useFaceStage.setState({ mounted: true })
+      const everything = clientSurfaceTurnOptions().clientOperations
+      expect(everything).toEqual([
+        ...KIT_OPERATIONS,
+        ...APP_OPERATIONS,
+        ...FACE_OPERATIONS,
+        ...WORKBENCH_OPERATIONS,
+        ...GENERATIVE_OPERATIONS,
+      ])
+      expect(everything.length).toBeLessThanOrEqual(16)
+      expect(new Set(everything.map(({ name }) => name)).size).toBe(everything.length)
     } finally {
       useKitStage.setState({ mounted: false })
+      useFaceStage.setState({ mounted: false })
     }
   })
 })
@@ -212,6 +224,8 @@ describe('answering a check', () => {
       'documentId',
       'runMs',
       'picture',
+      'library',
+      'file',
     ])
     // The server refuses a declaration whose description is over 1024 bytes.
     expect(
@@ -353,7 +367,7 @@ describe('reading the declarations an App is checked against', () => {
     answerAppRequest({
       runId: 'run-1',
       requestRef: 'ref-1',
-      operation: 'app.library',
+      operation: 'app.check',
       args,
       expectedRevision: 0,
     })
@@ -375,7 +389,7 @@ describe('reading the declarations an App is checked against', () => {
       file: 'operations.d.ts',
     })
     expect((operations.result as { text: string }).text).toBe(
-      libraryDeclarations['@theorem/runtime']!['operations.d.ts'],
+      libraryDeclarations['@theorem/runtime']!['operations.d.ts']!,
     )
     // The same declarations are the same digest, whichever file is read.
     expect((operations.result as { digest: string }).digest).toBe(read.digest)
@@ -393,6 +407,6 @@ describe('reading the declarations an App is checked against', () => {
     const file = await ask({ library: '@theorem/spatial', file: 'secret.ts' })
     expect(file.outcome).toBe('rejected')
     expect(file.reason).toContain('engine.d.ts')
-    expect((await ask({})).outcome).toBe('rejected')
+    expect((await ask({ library: '' })).outcome).toBe('rejected')
   })
 })

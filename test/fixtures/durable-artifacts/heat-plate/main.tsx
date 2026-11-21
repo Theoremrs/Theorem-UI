@@ -171,7 +171,7 @@ function Field({ field, check }: { field: PlateField; check: PlateCheck }) {
       <p className={field.converged ? 'check' : 'check warning'}>
         {field.converged
           ? null
-          : `The sweep stopped before converging: the field can be off by up to ${check.residual.toPrecision(2)} ${UNITS.temperature}. `}
+          : `The sweep stopped before converging: one more sweep would still move a node by up to ${check.residual.toPrecision(2)} ${UNITS.temperature}, so the field is not yet the plate's. `}
         Heat in and out through the edges agrees to{' '}
         {(check.relativeImbalance * 100).toPrecision(2)}% (
         {check.imbalance.toPrecision(3)} W/m unbalanced).
