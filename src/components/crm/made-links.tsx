@@ -31,7 +31,7 @@ export function DocumentLink({
   ) : (
     <Link
       to="/index"
-      search={{ item: documentId }}
+      search={(prev) => ({ ...prev, item: documentId })}
       className={className}
       onClick={(event) => event.stopPropagation()}
     >
@@ -40,7 +40,7 @@ export function DocumentLink({
   )
 }
 
-/** A work item in the tracker, opened as the Index's item. */
+/** A work item in the tracker, opened as the Index's item over the table the person is at. */
 export function WorkItemLink({
   itemId,
   className,
@@ -53,7 +53,7 @@ export function WorkItemLink({
   return (
     <Link
       to="/index"
-      search={{ item: workItemId(itemId) }}
+      search={(prev) => ({ ...prev, item: workItemId(itemId) })}
       className={className}
       onClick={(event) => event.stopPropagation()}
     >

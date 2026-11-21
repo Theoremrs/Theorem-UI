@@ -123,6 +123,8 @@ export function fixtureTypes(): ObjectType[] {
       text('due', 'Due'),
       choice('status', 'Status', ['open', 'done', 'dropped']),
       long('details', 'Details'),
+      text('task', 'Task'),
+      text('draft', 'Draft'),
     ]),
     builtIn('Interaction', 'Interactions', 'summary', [
       text('summary', 'Summary', { required: true }),
@@ -421,6 +423,10 @@ export function createFixtureServer(options: FixtureOptions = {}) {
   const model = (): DataModel => ({
     objectTypes: declared().map((type) => ({
       ...type,
+      // A type installed before a built-in field existed does not have it.
+      fields: type.fields.filter(
+        (spec) => !state.missingFields[type.name_singular]?.includes(spec.key),
+      ),
       record_count: state.nodes.filter((n) =>
         n.labels.includes(type.node_label),
       ).length,

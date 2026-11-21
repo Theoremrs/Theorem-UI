@@ -260,6 +260,7 @@ export function CrmFieldValue({
   onOpenRelated,
   onToggle,
   tabIndex,
+  plain,
 }: {
   type: ObjectType
   record: CrmRecord
@@ -269,6 +270,8 @@ export function CrmFieldValue({
   onToggle?: (value: unknown) => void
   /** For the chips of a relation: -1 inside a grid cell. */
   tabIndex?: number
+  /** Draw a task or draft id as text, for a value inside a control of its own. */
+  plain?: boolean
 }) {
   const kind = field.field_type.kind
   if (kind === 'relation')
@@ -282,7 +285,7 @@ export function CrmFieldValue({
     )
   if (isEmptyValue(value) && kind !== 'boolean') return null
   const made = madeKind(type, field)
-  if (made && typeof value === 'string')
+  if (made && !plain && typeof value === 'string')
     return <MadeValue kind={made} id={value} />
   if (
     field.field_type.kind === 'enum' ||
