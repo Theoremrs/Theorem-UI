@@ -603,6 +603,11 @@ await ac('AC-30', async () => {
 // ---- AC-32: reload ---------------------------------------------------------------------------
 
 await ac('AC-32', async () => {
+  // A saved arrangement can change the focused group while the workspace starts.
+  await a.getByRole('status')
+    .filter({ hasText: /^(Using the default layout|Layout saved to account|Using this device’s layout copy|Could not restore layout)$/ })
+    .first()
+    .waitFor({ state: 'visible' })
   const mine = await attachFresh(a, 'wb-reload')
   await inputWorks(a)
   await say(a, 'echo WBPID=$$=')
