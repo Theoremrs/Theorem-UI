@@ -70,6 +70,8 @@ import { SemanticOverlay } from './semantic-overlay'
 import { settle, typedSince } from './semantic-overlay/mirror'
 import type { InputMirror } from './semantic-overlay/mirror'
 import { WORKBENCH_LABEL } from './label'
+import { WorkspaceLayoutStatus } from './layout-status'
+import type { LayoutStatus } from '@/lib/workbench/layout/status'
 
 /** What the surface lets an adapter's builder do to the mounted core besides answering effects. */
 export interface SurfaceHost {
@@ -307,10 +309,15 @@ export function WorkbenchSurface({
       textSize.disconnect()
       element.removeEventListener('wheel', wheel)
       adapter?.dispose()
+      handle.current?.set_visible(false)
       handle.current = undefined
       setMountedHandle(undefined)
     }
   }, [feed, icons])
+
+  useEffect(() => {
+    mountedHandle?.set_visible(shown)
+  }, [mountedHandle, shown])
 
   // A run's agent reaches the workbench only while the person can see it: a
   // closed one is opened first (lib/workbench/agent/operations.ts).
@@ -509,6 +516,11 @@ export function Workbench({
   const [side, setSide] = useState(ownSideChats)
   if (side.projectId !== projectId) setSide(ownSideChats())
   const sideChats = side.chats
+  const surfaceHost = useRef<SurfaceHost>(undefined)
+  const [layoutStatus, setLayoutStatus] = useState<LayoutStatus>({
+    kind: 'pending',
+    operation: 'restore',
+  })
   const [access, setAccess] = useState<{
     code: 'signed_out' | 'forbidden'
     reason: string
@@ -516,6 +528,7 @@ export function Workbench({
   const connect = useCallback(
     (dispatch: Dispatch, surface: SurfaceHost): Adapter => {
       let disposed = false
+      surfaceHost.current = surface
       let current: Owners | undefined
       /** Effects asked for while no adapter serves (before the account is known, or between accounts). */
       let waiting: Effect[] = []
@@ -551,7 +564,13 @@ export function Workbench({
         // One store per account: the layout checkpoint and the document drafts share it.
         const store = createLocalStore({ directory, account })
         const checkpoints = createCheckpoints({ directory, account, store })
-        const layout = createLayout({ environment, checkpoints })
+        const layout = createLayout({
+          environment,
+          checkpoints,
+          onStatus: (status) => {
+            if (!disposed) setLayoutStatus(status)
+          },
+        })
         // The terminal owner and its live stream come from the environment's own SDK build.
         const { host, stop: stopTerminal } = connectTerminalHost(environment)
         const files = createFiles(environment)
@@ -733,6 +752,7 @@ export function Workbench({
         },
         dispose() {
           disposed = true
+          if (surfaceHost.current === surface) surfaceHost.current = undefined
           stopTelling()
           waiting = []
           current?.stop()
@@ -750,20 +770,28 @@ export function Workbench({
       />
     )
   return (
-    <WorkbenchSurface
-      key={projectId}
-      connect={connect}
-      project={{ id: projectId, title: projectTitle }}
-      shown={shown}
-      companion={companion}
-    >
-      {(feed, parts) => (
-        <>
-          <sideChats.Hosts />
-          <SemanticOverlay feed={feed} parts={parts} />
-          {children?.(feed)}
-        </>
-      )}
-    </WorkbenchSurface>
+    <div className="flex h-full min-h-0 flex-col">
+      <WorkspaceLayoutStatus
+        status={layoutStatus}
+        recover={(type) => surfaceHost.current?.arrangement({ type })}
+      />
+      <div className="min-h-0 flex-1">
+        <WorkbenchSurface
+          key={projectId}
+          connect={connect}
+          project={{ id: projectId, title: projectTitle }}
+          shown={shown}
+          companion={companion}
+        >
+          {(feed, parts) => (
+            <>
+              <sideChats.Hosts />
+              <SemanticOverlay feed={feed} parts={parts} />
+              {children?.(feed)}
+            </>
+          )}
+        </WorkbenchSurface>
+      </div>
+    </div>
   )
 }

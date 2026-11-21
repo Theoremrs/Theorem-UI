@@ -7,6 +7,7 @@ import { createCheckpoints } from './checkpoint'
 import type { CheckpointDatabase } from './checkpoint'
 import { createLayout, WORKBENCH_SCHEMA } from './layout'
 import type { LayoutClient, LayoutDocument } from './layout'
+import type { LayoutStatus } from './status'
 
 interface Saved {
   request: Record<string, unknown>
@@ -104,13 +105,15 @@ async function setup(
     open: async () => database,
     now: () => 1234,
   })
+  const statuses: LayoutStatus[] = []
   const layout = createLayout({
     environment: environment as unknown as Parameters<
       typeof createLayout
     >[0]['environment'],
     checkpoints,
+    onStatus: (status) => statuses.push(status),
   })
-  return { layout, server, database, checkpoints, environment }
+  return { layout, server, database, checkpoints, environment, statuses }
 }
 
 const DOC: LayoutDocument = {
@@ -129,22 +132,49 @@ describe('load', () => {
   })
 
   test('no record yet is revision 0 with no document, not a failure', async () => {
-    const { layout } = await setup()
+    const { layout, statuses } = await setup()
     const done = await layout.load()
     expect(done).toMatchObject({
       outcome: 'accepted',
       value: { revision: 0, document: undefined },
     })
+    expect(statuses.at(-1)).toEqual({ kind: 'account', revision: 0 })
   })
 
   test('a 404 that is not workbench_not_found is refused, not an empty record', async () => {
-    const { layout, server } = await setup()
+    const { layout, server, statuses } = await setup()
     server.workbench.get = async () => {
       throw new HttpError(404, { code: 'route_missing' })
     }
     const done = await layout.load()
     expect(done).toMatchObject({ outcome: 'refused', code: 'route_missing' })
+    expect(statuses.at(-1)).toMatchObject({
+      kind: 'failed',
+      operation: 'restore',
+      recovery: 'restore',
+      diagnostic: { httpStatus: 404, problemCode: 'route_missing' },
+    })
   })
+
+  test.each([401, 403])(
+    'HTTP %i refuses restore without displaying a checkpoint',
+    async (status) => {
+      const { layout, server, statuses } = await setup({
+        revision: 4,
+        document: DOC,
+      })
+      await layout.load()
+      server.workbench.get = async () => {
+        throw new HttpError(status)
+      }
+      expect((await layout.load()).outcome).toBe('refused')
+      expect(statuses.at(-1)).toMatchObject({
+        kind: 'failed',
+        operation: 'restore',
+        diagnostic: { httpStatus: status },
+      })
+    },
+  )
 
   test('an unreachable server is a failed read', async () => {
     const { layout, server } = await setup()
@@ -202,8 +232,11 @@ describe('save', () => {
     expect(server.held()).toEqual({ revision: 5, document: DOC })
   })
 
-  test('a save is not retried when the answer is lost: uncertain', async () => {
-    const { layout, server } = await setup({ revision: 1, document: DOC })
+  test('an uncertain save offers an account check without another write', async () => {
+    const { layout, server, statuses } = await setup({
+      revision: 1,
+      document: DOC,
+    })
     server.workbench.save = async (request) => {
       server.saves.push({ request, options: undefined })
       throw new HttpError(503)
@@ -211,6 +244,11 @@ describe('save', () => {
     const done = await layout.save(DOC, { baseRevision: 1 })
     expect(done.outcome).toBe('uncertain')
     expect(server.saves).toHaveLength(1)
+    expect(statuses.at(-1)).toMatchObject({
+      kind: 'failed',
+      operation: 'save',
+      recovery: 'check',
+    })
   })
 
   test('a save with no revision to base it on is refused without being sent', async () => {

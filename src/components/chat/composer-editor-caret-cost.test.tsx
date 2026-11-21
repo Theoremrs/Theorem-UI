@@ -379,7 +379,7 @@ test('a slash in a block quote opens the menu and picks', async () => {
   expect(composer.getState().text).toBe('> quote :tool[recall] ')
 })
 
-test('a slash in a code block opens the menu and picks', async () => {
+test('a slash in a code block stays literal and leaves the tool picker closed', async () => {
   const editor = await mount('```ts\nconst x = 1\n```')
   const code = await waitFor(() =>
     editor.querySelector<HTMLElement>('.cm-content'),
@@ -404,12 +404,7 @@ test('a slash in a code block opens the menu and picks', async () => {
     await Bun.sleep(50)
   })
   expect(composer.getState().text).toBe('```ts\nconst x = 1 /\n```')
-  await waitFor(() => options().length > 0)
-  expect(options().length).toBe(2)
-  await pickFirst()
-  expect(composer.getState().text).toBe(
-    '```ts\nconst x = 1 :tool[recall] \n```',
-  )
+  expect(options().length).toBe(0)
 })
 
 test('a caret move closes the menu and moving back reopens it', async () => {

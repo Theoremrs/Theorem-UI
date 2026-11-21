@@ -1,5 +1,6 @@
 "use client";
 
+import { useThreadDisplayTitle } from '@/lib/theorem/thread-title'
 import { useGlideHighlight, useLayoutSprings } from "@/components/motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -621,7 +622,7 @@ export const ThreadListItem: FC = () => {
                 className="focus-visible:before:outline-focus min-w-0 truncate text-start outline-none before:absolute before:inset-0 before:rounded-md focus-visible:before:outline-2 focus-visible:before:-outline-offset-2"
               >
                 {origin && <OriginMark kind={origin.kind} />}
-                <ThreadListItemPrimitive.Title fallback="New Chat" />
+                <ThreadDisplayTitle />
                 {origin && <span className="sr-only">, {originLabel[origin.kind]}</span>}
                 {status && <span className="sr-only">, {statusLabel[status]}</span>}
               </ThreadListItemPrimitive.Trigger>
@@ -804,11 +805,14 @@ export const OriginMark: FC<{ kind: Theorem.ThreadOrigin["kind"] }> = ({ kind })
     />
   );
 };
+function ThreadDisplayTitle() {
+  return useThreadDisplayTitle() || "New Chat";
+}
 const ThreadListItemRename: FC<{
   onDone: (restoreFocus: boolean) => void;
 }> = ({ onDone }) => {
   const aui = useAui();
-  const title = useAuiState((s) => s.threadListItem.title) ?? "";
+  const title = useThreadDisplayTitle() ?? "";
   const [value, setValue] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
   const settledRef = useRef(false);

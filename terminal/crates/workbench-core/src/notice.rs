@@ -75,9 +75,9 @@ pub const DEVICE_COPY: &str = "Layout: this device's copy, not your account's";
 pub(crate) fn describe(notice: &Notice) -> Option<(String, NoticeSeverity)> {
     use NoticeSeverity::{Error, Info, Warning};
     Some(match notice {
-        Notice::Refused(
-            Refusal::Unavailable { reason } | Refusal::InvalidArgs { reason },
-        ) => (reason.clone(), Warning),
+        Notice::Refused(Refusal::Unavailable { reason } | Refusal::InvalidArgs { reason }) => {
+            (reason.clone(), Warning)
+        }
         Notice::Refused(Refusal::UnknownPanel(panel)) => (
             format!("There is no open panel \"{}\".", panel.as_str()),
             Error,
@@ -145,7 +145,11 @@ fn describe_arrangement(told: &ArrangementNotice) -> Option<(String, NoticeSever
         N::BadName { reason } => (format!("Layout: name refused ({reason})"), Warning),
         N::NameTaken { name } => (format!("Layout: {name} is already taken"), Warning),
         N::StoreFull { limit } => (format!("Layout: {limit} layouts are kept already"), Warning),
-        N::NotSaved { reason } => (format!("Layout: not saved ({reason})"), Error),
+        N::NotRestored { reason } => (format!("Could not restore layout ({reason})"), Error),
+        N::NotSaved { reason } => (
+            format!("Layout changes could not be saved ({reason})"),
+            Error,
+        ),
         N::NeedsAccountLoad { reason } => (format!("Layout: not saved ({reason})"), Warning),
         N::LoadedWithLoss { skipped, reason } => (
             format!("Layout: {skipped} entries skipped ({reason})"),

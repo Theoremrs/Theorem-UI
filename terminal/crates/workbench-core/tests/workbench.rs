@@ -2859,18 +2859,12 @@ fn tab_overflow_is_drawn_on_both_sides_of_the_strip() {
     assert!(line.trim_end().ends_with('\u{203a}'), "{line:?}");
     // With room to spare, it also counts what is out of sight.
     let mut counted = false;
-    for width in 150..230u16 {
-        send(
-            &mut m,
-            Msg::Resize {
-                area: Rect::new(0, 0, width, 50),
-                metrics: CellMetrics::new(8.0, 16.0),
-            },
-        );
+    for _ in 0..20 {
+        chord(&mut m, Key::Char(']'), CA);
         let g = tools_group(&m);
         let last = g.tabs.last().map_or(g.tab_strip.x, |t| t.rect.right());
         if g.tabs_after > 0 && last + 3 <= g.tab_strip.right() {
-            let buf = draw(&m, width, 50);
+            let buf = draw(&m, 200, 50);
             let line = row(&buf, g.tab_strip.y, g.tab_strip.x, g.tab_strip.right());
             assert!(
                 line.trim_end()
@@ -4189,6 +4183,8 @@ fn the_keyboard_resizes_the_focused_group_in_steps_and_maximises_it() {
         let f = m.frame().unwrap();
         f.group(m.focus().group).unwrap().rect.width
     };
+    // Start above the inspector's default minimum to test both directions.
+    chord(&mut m, Key::Char(']'), CA);
     let w = width(&m);
     chord(&mut m, Key::Char(']'), CA);
     assert_eq!(width(&m), w + 2);

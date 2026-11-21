@@ -7,3 +7,5 @@ A web-only implementation specification incorporating Herdr layout reuse and Cor
 **48 requirements · 62 acceptance cases · evidence is recorded per case; live-only gates remain explicit.**
 
 [Main specification](SPEC-THEO-WEB-TERMINAL-WORKBENCH-1.0.md) · [Herdr integration](herdr-integration.md) · [Technical requirements](technical-requirements.md) · [Sources](SOURCES.md)
+
+[Composer and workspace repair evidence](evidence/composer-workspace-repair.md)

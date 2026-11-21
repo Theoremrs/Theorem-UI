@@ -2730,6 +2730,7 @@ fn clipboard_reason(error: &JsValue) -> String {
 /// The mounted terminal. React calls these from its own event handlers.
 #[wasm_bindgen]
 pub struct TerminalHandle {
+    _frames: Rc<FrameLoop>,
     app: Rc<RefCell<App>>,
     on_action: js_sys::Function,
 }
@@ -3037,29 +3038,66 @@ impl Drop for Screen {
     }
 }
 
-/// Draws a frame on every animation frame until the element leaves the page.
-fn run_frames<D: Drawn + 'static>(mut screen: Screen, app: Rc<RefCell<D>>) {
-    type Frame = Rc<RefCell<Option<Closure<dyn FnMut()>>>>;
-    let next: Frame = Rc::new(RefCell::new(None));
-    let scheduled = next.clone();
-    *next.borrow_mut() = Some(Closure::new(move || {
-        if !screen.parent.is_connected() {
-            // Dropping the closure ends the loop and frees the terminal.
-            scheduled.borrow_mut().take();
+/// One outstanding animation callback while the mounted surface is visible.
+struct FrameLoop {
+    window: web_sys::Window,
+    callback: Closure<dyn FnMut()>,
+    pending: Cell<Option<i32>>,
+    visible: Cell<bool>,
+}
+
+impl FrameLoop {
+    fn schedule(&self) {
+        if !self.visible.get() || self.pending.get().is_some() {
             return;
         }
-        if let Err(error) = screen.frame(&mut *app.borrow_mut()) {
-            web_sys::console::error_1(&JsValue::from_str(&format!("terminal: {error}")));
-        }
-        if let Some(callback) = scheduled.borrow().as_ref() {
-            let _ = screen
-                .window
-                .request_animation_frame(callback.as_ref().unchecked_ref());
-        }
-    }));
-    if let (Some(window), Some(callback)) = (web_sys::window(), next.borrow().as_ref()) {
-        let _ = window.request_animation_frame(callback.as_ref().unchecked_ref());
+        self.pending.set(
+            self.window
+                .request_animation_frame(self.callback.as_ref().unchecked_ref())
+                .ok(),
+        );
     }
+
+    fn set_visible(&self, visible: bool) {
+        self.visible.set(visible);
+        if visible {
+            self.schedule();
+        } else if let Some(id) = self.pending.take() {
+            let _ = self.window.cancel_animation_frame(id);
+        }
+    }
+}
+
+impl Drop for FrameLoop {
+    fn drop(&mut self) {
+        self.set_visible(false);
+    }
+}
+
+fn run_frames<D: Drawn + 'static>(mut screen: Screen, app: Rc<RefCell<D>>) -> Rc<FrameLoop> {
+    let window = screen.window.clone();
+    let frames = Rc::new_cyclic(|frames: &std::rc::Weak<FrameLoop>| {
+        let weak = frames.clone();
+        let callback = Closure::new(move || {
+            let Some(frames) = weak.upgrade() else { return };
+            frames.pending.set(None);
+            if !frames.visible.get() || !screen.parent.is_connected() {
+                return;
+            }
+            if let Err(error) = screen.frame(&mut *app.borrow_mut()) {
+                web_sys::console::error_1(&JsValue::from_str(&format!("terminal: {error}")));
+            }
+            frames.schedule();
+        });
+        FrameLoop {
+            window,
+            callback,
+            pending: Cell::new(None),
+            visible: Cell::new(true),
+        }
+    });
+    frames.schedule();
+    frames
 }
 
 /// Mounts the terminal into the element with `parent_id`, which it fills and
@@ -3075,8 +3113,12 @@ pub fn mount(
 ) -> Result<TerminalHandle, JsValue> {
     let screen = Screen::new(parent_id)?;
     let app = Rc::new(RefCell::new(App::new(tabbed)));
-    run_frames(screen, app.clone());
-    Ok(TerminalHandle { app, on_action })
+    let frames = run_frames(screen, app.clone());
+    Ok(TerminalHandle {
+        _frames: frames,
+        app,
+        on_action,
+    })
 }
 
 /// Renders one artifact preview (the worker calls this). `source_json` is a
