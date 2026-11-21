@@ -47,6 +47,7 @@ import {
   openCodeFence,
   pasteMarkdownCode,
 } from './composer-code'
+import { composerDirectivesPlugin } from './composer-directives'
 import { serializeComposerText } from './composer-markdown'
 import { useCrepeMarkdown } from '@/components/notes/crepe-markdown'
 import { cn } from '@/lib/utils'
@@ -316,6 +317,8 @@ function Editor({
             })
           }),
         )
+        // A tool, skill or @ pick reads as a chip of its label while it is written.
+        .use($prose(() => composerDirectivesPlugin()))
       // An empty line is an empty line, not a `<br />`, and a dropped or
       // pasted file is an attachment, not an image in the text.
       void crepe.editor.remove(remarkPreserveEmptyLinePlugin)

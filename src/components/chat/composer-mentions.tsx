@@ -1,5 +1,6 @@
 // SOURCING: assistant-ui ComposerPrimitive.TriggerPopover through the vendored registry element ComposerTriggerPopover in directive mode (the editor writes the pick at the caret and calls onInserted), with its TriggerAdapter and TriggerMatcher seams and the popover's scope context for the typed query; the composer's context references (./composer-references), which the runtime sends as the turn's contextReferences, kept in step with the composer's text (useAuiState) and its composer.send event, in a zustand store of the chips an @ added; the Index's items binding (q, the Index's own search) for documents and a bounded title search of the CRM's readable records of each declared type (useCrmRecordSearch, which leaves out types this sign-in cannot read); TanStack Query, with no earlier query's results kept for a later one
 import {
+  defaultDirectiveFormatter,
   unstable_useTriggerPopoverScopeContext,
   useAuiEvent,
   useAuiState,
@@ -43,13 +44,13 @@ export const mentionMatcher: TriggerMatcher = (text, _char, cursor) => {
 }
 
 /**
- * A pick reads `@Title` in the message, so what the person wrote still says
- * who or what they meant; the reference beside it is what Theorem reads.
+ * A pick is written as assistant-ui's directive, `:record[Title]{name=item}`
+ * or `:document[Title]{name=document:id}`: the composer and the sent message
+ * show it as a chip of its title, and it names exactly the record or document
+ * meant, however many share the title. The reference beside it is what
+ * Theorem reads into the turn.
  */
-export const MENTION_FORMATTER: DirectiveFormatter = {
-  serialize: (item) => `@${item.label}`,
-  parse: (text) => [{ kind: 'text', text }],
-}
+export const MENTION_FORMATTER: DirectiveFormatter = defaultDirectiveFormatter
 
 /** How well `title` answers `query`: lower is better, undefined is no match. */
 export function mentionRank(title: string, query: string): number | undefined {
@@ -226,7 +227,7 @@ const NO_TYPES: ObjectType[] = []
  * one of them, so deleting words never takes away a chip they did not make.
  */
 type MentionCite = {
-  /** The words in the message, `@Title`. */
+  /** The words in the message: the pick's directive. */
   words: string
   /** Whether the message has held them yet: a chip goes only once they are gone. */
   seen: boolean
@@ -262,8 +263,8 @@ const WORD = /[\p{L}\p{N}_]/u
 /**
  * Which cites still have their words in `plain`. Each cite takes its own
  * occurrence: the longest words claim theirs first and the characters are
- * used up, so `@Noor` is not found inside the `@Noor Haddad` of another cite
- * or inside a longer word, and two cites with the same words need two.
+ * used up, so one directive is never found inside another's, and two cites
+ * with the same words need two.
  */
 function presentMentions(
   plain: string,
@@ -372,10 +373,11 @@ const DIRECTIVE = { formatter: MENTION_FORMATTER, onInserted: citeMention }
 
 /**
  * The "@" list in the main composer: the person's saved records and Index
- * documents. A pick writes `@Title` into the message and adds the record or
- * document to the turn's context, the same reference "Ask about" adds, so
- * Theorem reads it for the model when the turn is sent. Deleting the words
- * removes the chip they added; removing the chip leaves the words as text.
+ * documents. A pick writes its directive into the message, shown as a chip
+ * of the title, and adds the record or document to the turn's context, the
+ * same reference "Ask about" adds, so Theorem reads it for the model when the
+ * turn is sent. Deleting the directive removes the reference it added;
+ * removing the reference leaves the directive in the message.
  */
 export function ComposerMentionTrigger() {
   useMentionCitesFollowText()
