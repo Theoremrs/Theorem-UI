@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { converter, wcagContrast } from 'culori'
 import {
-  PALETTES_CSS,
+  palettesCssUrl,
   palettesCss,
   modeTokens,
   modes as authoredModes,
@@ -43,7 +43,7 @@ function blocks(css: string): Record<string, Record<string, string>> {
   )
 }
 
-const css = await Bun.file(PALETTES_CSS).text()
+const css = await Bun.file(palettesCssUrl()).text()
 /** The palette modes' own blocks: not the Calm fallbacks (whose selectors
  *  carry :where) nor the custom palette's var() passthroughs. */
 const modes = Object.fromEntries(
