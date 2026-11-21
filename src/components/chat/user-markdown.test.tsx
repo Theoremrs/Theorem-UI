@@ -132,3 +132,23 @@ test('an @ pick reads as a chip of its title, naming what it cites', async () =>
   expect(container.textContent).not.toContain('{name=')
   expect(container.querySelector('code')?.textContent).toBe(':record[code]')
 })
+
+test("a title's Markdown escapes stay out of its chip and the words after it stay", async () => {
+  const { container } = await render(
+    <UserMarkdown
+      text={
+        'Open :document[Road \\*map\\* \\_v2\\_]{name=document:doc:road} next, and :record{label="Studio \\[east] \\*b\\*" name="record:Place/place:east"} too.'
+      }
+    />,
+  )
+  const chips = [
+    ...container.querySelectorAll('[data-slot="directive-text-chip"]'),
+  ].map((chip) => [chip.textContent, chip.getAttribute('data-directive-id')])
+  expect(chips).toEqual([
+    ['Road *map* _v2_', 'document:doc:road'],
+    ['Studio [east] *b*', 'record:Place/place:east'],
+  ])
+  expect(container.textContent).toBe(
+    'Open Road *map* _v2_ next, and Studio [east] *b* too.',
+  )
+})

@@ -61,11 +61,17 @@ export function documentDirectives(state: EditorState): ComposerDirective[] {
     if (node.type.spec.code) return false
     if (!node.isTextblock) return true
     // Text with marks is split into several nodes, and a directive can span
-    // them; an inline leaf (a hard break) is one character no directive holds.
+    // them. An inline leaf (a hard break), inline code and a link's text are
+    // each a boundary no directive crosses: they read as line breaks, which no
+    // directive holds, so code examples and link labels stay as written.
     let text = ''
     const position: number[] = []
     node.forEach((child, offset) => {
-      const run = child.isText ? child.text! : '\uFFFC'
+      const literal = child.marks.some(
+        (mark) => mark.type.spec.code || mark.type.name === 'link',
+      )
+      const run =
+        child.isText && !literal ? child.text! : '\n'.repeat(child.nodeSize)
       for (let i = 0; i < run.length; i++) position.push(pos + 1 + offset + i)
       text += run
     })
