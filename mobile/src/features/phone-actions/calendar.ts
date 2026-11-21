@@ -7,6 +7,8 @@
 // person takes longer than that to decide. What they decided reaches the
 // agent in their next message.
 
+import { APP_OPERATIONS } from '../apps/operations'
+
 export const PROPOSE_EVENT = 'phone.calendar.propose_event'
 
 export const PHONE_OPERATIONS = [
@@ -106,7 +108,10 @@ export type Receipt = {
 let revision = 0
 
 /** What a send carries so the turn can reach the phone. The revision counts the requests this app has answered. */
-export const phoneTurnOptions = () => ({ clientOperations: PHONE_OPERATIONS, clientSurface: { revision } })
+export const phoneTurnOptions = () => ({
+  clientOperations: [...PHONE_OPERATIONS, ...APP_OPERATIONS],
+  clientSurface: { revision },
+})
 
 /** The answer to one request: shown, or refused with what was wrong. Never "saved". */
 export function receiptFor(parsed: Parsed): Receipt {

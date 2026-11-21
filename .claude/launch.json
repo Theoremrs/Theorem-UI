@@ -35,6 +35,20 @@
       ],
       "port": 3102,
       "url": "http://localhost:3102"
+    },
+    {
+      "name": "theorem-ui-lan",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js",
+        "dev",
+        "--port",
+        "3010",
+        "--strictPort",
+        "--host",
+        "0.0.0.0"
+      ],
+      "port": 3010
     }
   ]
 }

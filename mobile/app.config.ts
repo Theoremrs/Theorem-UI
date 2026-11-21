@@ -12,6 +12,9 @@ const oauthClientId = process.env.THEOREM_OAUTH_CLIENT_ID ?? 'theorem-ios'
 // claimed HTTPS callback (ASWebAuthenticationSession, iOS 17.4+). The app
 // must be associated with this host: see docs/sign-in.md.
 const oauthRedirectUri = process.env.THEOREM_OAUTH_REDIRECT_URI ?? 'https://theorem.rs/auth/ios/callback'
+// The web app's App host (Theorem-UI src/routes/app-host.tsx): Apps run in it, in a WebView, as the web runs them.
+// A development build may point it at a local web server, e.g. http://<this Mac>:3000/app-host.
+const appHost = process.env.THEOREM_APP_HOST ?? 'https://theorem.rs/app-host'
 const bundleIdentifier = process.env.THEOREM_IOS_BUNDLE_ID ?? 'rs.theorem.app'
 // One App Group holds what the app and its extensions pass each other (shared
 // items today). The share extension's identifier is the app's with a suffix.
@@ -37,7 +40,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // multitasking windows collapse to the selected detail.
     supportsTablet: true,
     requireFullScreen: false,
-    associatedDomains: [`webcredentials:${new URL(oauthRedirectUri).host}`],
+    // The `mode=developer` entry lets a device in Developer Mode (with
+    // Associated Domains Development on) read the association straight from
+    // the host instead of Apple's CDN, which caches it for hours. Other
+    // devices ignore that entry and use the plain one.
+    associatedDomains: [
+      `webcredentials:${new URL(oauthRedirectUri).host}`,
+      `webcredentials:${new URL(oauthRedirectUri).host}?mode=developer`,
+    ],
     infoPlist: {
       // Standard TLS and SSH only, the same declaration Remux makes; review before App Store submission.
       ITSAppUsesNonExemptEncryption: false,
@@ -58,6 +68,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
   },
   plugins: [
+    // Listed first because Xcode project mods run in reverse order: this one runs after
+    // expo-sharing and expo-widgets and gives their extension groups their own Info.plist
+    // reference, which Xcode 27.2 requires (see the plugin).
+    './plugins/own-group-file-references.js',
     'expo-router',
     [
       'expo-splash-screen',
@@ -142,7 +156,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ],
   experiments: { typedRoutes: true, inlineModules: { watchedDirectories: ['app-intents'] } },
   extra: {
-    theorem: { authority, oauthClientId, oauthRedirectUri },
+    theorem: { authority, oauthClientId, oauthRedirectUri, appHost },
     eas: { projectId: easProjectId },
   },
 })
