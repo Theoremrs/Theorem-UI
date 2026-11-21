@@ -1218,6 +1218,17 @@ impl WorkbenchHandle {
         Value::Array(list).to_string()
     }
 
+    /// Process bindings for this browser tab, kept independently of saved arrangements.
+    pub fn terminal_views(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.core.borrow().model.terminal_views()).map_err(js_error)
+    }
+
+    pub fn restore_terminal_views(&self, json: &str) -> Result<(), JsValue> {
+        let views = serde_json::from_str(json).map_err(js_error)?;
+        self.core.borrow_mut().model.restore_terminal_views(views);
+        Ok(())
+    }
+
     /// The measured cell in CSS pixels as JSON `{width, height}`, once a frame has measured it.
     pub fn cell_size(&self) -> Option<String> {
         let core = self.core.borrow();

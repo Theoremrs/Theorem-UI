@@ -79,6 +79,8 @@ export interface SurfaceHost {
   arrangement: (message: ArrangementMsg) => void
   /** The presets and the account's saved arrangements, as the core lists them. */
   arrangements: () => { name: string; builtin: boolean }[]
+  terminalViews: () => string
+  restoreTerminalViews: (json: string) => void
   /** The person's key overrides (the core's `Overrides`, JSON): what the key table is rebuilt from. */
   setKeys: (overridesJson: string) => void
 }
@@ -252,6 +254,10 @@ export function WorkbenchSurface({
               name: string
               builtin: boolean
             }[],
+          terminalViews: () => mounted.terminal_views(),
+          restoreTerminalViews: (json) => {
+            if (!disposed) mounted.restore_terminal_views(json)
+          },
           setKeys: (json) => {
             if (!disposed) mounted.set_keys(json)
           },
@@ -465,7 +471,11 @@ export function WorkbenchSurface({
 }
 
 /** What `Workbench` owns for one signed-in account; all of it lets go together. */
-type Owners = { adapter: AccountAdapter; stop: () => void }
+type Owners = {
+  adapter: AccountAdapter
+  perform: (effect: Effect) => void
+  stop: () => void
+}
 
 /**
  * The workbench of a project: the environment, then every owner that has a module (files, documents,
@@ -608,6 +618,18 @@ export function Workbench({
         })
         const refresh = () => void watch.refresh()
         window.addEventListener('focus', refresh)
+        const terminalKey = `theorem-terminal-views.1:${JSON.stringify([account, workspaceId])}`
+        let loadingLayout: Effect['id'] | null | undefined
+        const saveTerminalViews = () => {
+          // A second reload during startup must leave the previous snapshot available.
+          if (loadingLayout !== null) return
+          try {
+            window.sessionStorage.setItem(terminalKey, surface.terminalViews())
+          } catch {
+            // Storage can be disabled or full. The workspace still works for this page load.
+          }
+        }
+        window.addEventListener('pagehide', saveTerminalViews)
         const adapter = createAdapter({
           environment,
           files,
@@ -627,14 +649,34 @@ export function Workbench({
           delegations: createDelegationsPort(delegations),
           clipboard: createClipboardPort(),
           appearance: createAppearancePort(useAppearance),
-          dispatch,
+          dispatch(message) {
+            dispatch(message)
+            if (
+              message.channel !== 'completion' ||
+              message.effect !== loadingLayout
+            )
+              return
+            loadingLayout = null
+            try {
+              const saved = window.sessionStorage.getItem(terminalKey)
+              if (saved) surface.restoreTerminalViews(saved)
+            } catch {
+              // Unavailable storage or an unreadable snapshot leaves the account layout in place.
+            }
+          },
           account: watch,
           retiring: [store, { retire: () => documentOwner.dispose() }],
         })
         return {
           adapter,
+          perform(effect) {
+            if (loadingLayout === undefined && effect.kind === 'layoutLoad')
+              loadingLayout = effect.id
+            adapter.perform(effect)
+          },
           stop() {
             window.removeEventListener('focus', refresh)
+            window.removeEventListener('pagehide', saveTerminalViews)
             watch.dispose()
             unsubscribe()
             adapter.dispose()
@@ -678,7 +720,7 @@ export function Workbench({
           if (retirement.code === 'account_changed') void start(true)
           else setAccess(retirement)
         })
-        for (const effect of waiting.splice(0)) owners.adapter.perform(effect)
+        for (const effect of waiting.splice(0)) owners.perform(effect)
         // The new account's saved arrangements. The old adapter already told the core the
         // account changed; the core is not told again.
         surface.arrangement({ type: 'load' })
@@ -687,7 +729,7 @@ export function Workbench({
 
       return {
         perform(effect) {
-          if (current) current.adapter.perform(effect)
+          if (current) current.perform(effect)
           else waiting.push(effect)
         },
         dispose() {
