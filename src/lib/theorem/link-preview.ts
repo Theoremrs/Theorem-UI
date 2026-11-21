@@ -22,15 +22,98 @@ export const linkMetadataQueryKey = (url: string) =>
 const MAX_OVERLOAD_RETRIES = 3
 const MAX_RETRY_DELAY_MS = 10_000
 
+const HTTP_MONTHS = 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ')
+const HTTP_WEEKDAYS = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+]
+
+// All three case-sensitive wire forms from RFC 9110 section 5.6.7.
+// Date.parse also accepts non-HTTP syntax and normalizes impossible dates.
+// https://www.rfc-editor.org/rfc/rfc9110.html#section-5.6.7
+function httpDateTimestamp(value: string, now: number): number {
+  const namedDate =
+    /^([A-Z][a-z]{2}), (\d{2}) ([A-Z][a-z]{2}) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(
+      value,
+    ) ??
+    /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (\d{2})-([A-Z][a-z]{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(
+      value,
+    )
+  const asctime = namedDate
+    ? null
+    : /^([A-Z][a-z]{2}) ([A-Z][a-z]{2}) (\d{2}| \d) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(
+        value,
+      )
+  const parts =
+    namedDate?.slice(1) ??
+    (asctime
+      ? [
+          asctime[1],
+          asctime[3],
+          asctime[2],
+          asctime[7],
+          asctime[4],
+          asctime[5],
+          asctime[6],
+        ]
+      : null)
+  if (!parts) return NaN
+  const [
+    weekday = '',
+    dayText = '',
+    monthText = '',
+    yearText = '',
+    hourText = '',
+    minuteText = '',
+    secondText = '',
+  ] = parts
+  const month = HTTP_MONTHS.indexOf(monthText)
+  const day = Number(dayText)
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+  const second = Number(secondText)
+  if (month < 0 || hour > 23 || minute > 59 || second > 60) return NaN
+  let year = Number(yearText)
+  const clockParts = [month, day, hour, minute, Math.min(second, 59)] as const
+  const leapSecond = second === 60 ? 1_000 : 0
+
+  if (yearText.length === 2) {
+    // RFC850 uses a rolling fifty-year window, not JavaScript's fixed pivot.
+    const boundary = new Date(now)
+    boundary.setUTCFullYear(boundary.getUTCFullYear() + 50)
+    year += Math.floor(boundary.getUTCFullYear() / 100) * 100
+    if (Date.UTC(year, ...clockParts) + leapSecond > boundary.getTime())
+      year -= 100
+  }
+
+  // Validate the original calendar day before normalizing a leap second.
+  const date = new Date(Date.UTC(year, ...clockParts))
+  const expectedWeekday = HTTP_WEEKDAYS[date.getUTCDay()]
+  if (
+    year < 1900 ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month ||
+    date.getUTCDate() !== day ||
+    !expectedWeekday ||
+    (yearText.length === 2 ? expectedWeekday : expectedWeekday.slice(0, 3)) !==
+      weekday
+  )
+    return NaN
+  return date.getTime() + leapSecond
+}
+
 function retryAfterDelay(hint: string | null): number {
-  const value = hint?.trim()
+  // Only HTTP optional whitespace may surround a field value.
+  const value = hint?.replace(/^[\t ]+|[\t ]+$/g, '')
   if (!value) return 0
   if (/^\d+$/.test(value)) return Number(value) * 1_000
-  // HTTP dates start with a weekday. Do not let Date.parse reinterpret a
-  // malformed numeric hint (such as "1.5") as a calendar date.
-  if (!/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*[, ]/i.test(value)) return 0
   const now = Date.now()
-  const date = Date.parse(value)
+  const date = httpDateTimestamp(value, now)
   return Number.isFinite(date) ? Math.max(0, date - now) : 0
 }
 

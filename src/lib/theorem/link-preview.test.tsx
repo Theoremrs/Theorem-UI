@@ -189,10 +189,30 @@ describe('temporary preview overload recovery', () => {
     expect(attempts).toHaveLength(4)
   })
 
-  for (const format of ['seconds', 'date']) {
+  for (const [format, now, hint] of [
+    ['seconds', '2026-11-21T12:00:00Z', '5'],
+    ['IMF-fixdate', '2026-11-21T12:00:00Z', 'Sat, 21 Nov 2026 12:00:05 GMT'],
+    ['RFC850', '2026-11-21T12:00:00Z', 'Saturday, 21-Nov-26 12:00:05 GMT'],
+    ['asctime in UTC', '2026-11-21T12:00:00Z', 'Sat Nov 21 12:00:05 2026'],
+    ['asctime padded day', '2026-11-07T12:00:00Z', 'Sat Nov  7 12:00:05 2026'],
+    [
+      'RFC850 past the JS pivot',
+      '2049-12-31T23:59:55Z',
+      'Saturday, 01-Jan-50 00:00:00 GMT',
+    ],
+    [
+      'RFC850 across centuries',
+      '2099-12-31T23:59:55Z',
+      'Friday, 01-Jan-00 00:00:00 GMT',
+    ],
+    [
+      'HTTP leap second',
+      '2016-12-31T23:59:55Z',
+      'Sat, 31 Dec 2016 23:59:60 GMT',
+    ],
+  ] as const) {
     test(`respects a reasonable Retry-After ${format} hint`, async () => {
-      const hint =
-        format === 'seconds' ? '5' : new Date(Date.now() + 5_000).toUTCString()
+      jest.setSystemTime(new Date(now))
       const attempts = scriptedFetch((attempt) =>
         attempt === 1 ? overload(hint) : success(),
       )
@@ -235,6 +255,80 @@ describe('temporary preview overload recovery', () => {
       expect(container.textContent).toBe('Recovered source')
     })
   }
+
+  test('a non-HTTP Date.toString hint cannot suppress mounted recovery', async () => {
+    const hint = new Date(Date.now() + 11_000).toString()
+    const attempts = scriptedFetch((attempt) =>
+      attempt === 1 ? overload(hint) : success(),
+    )
+    const { container } = await mountedMetadata()
+    await advance(999)
+    expect(attempts).toEqual([0])
+    await advance(1)
+    expect(attempts).toEqual([0, 1_000])
+    expect(container.textContent).toBe('Recovered source')
+  })
+
+  test('non-HTTP surrounding whitespace cannot suppress mounted recovery', async () => {
+    const hint = `\u00a0${new Date(Date.now() + 11_000).toUTCString()}\u00a0`
+    const attempts = scriptedFetch((attempt) =>
+      attempt === 1 ? overload(hint) : success(),
+    )
+    const { container } = await mountedMetadata()
+    await advance(999)
+    expect(attempts).toEqual([0])
+    await advance(1)
+    expect(attempts).toEqual([0, 1_000])
+    expect(container.textContent).toBe('Recovered source')
+  })
+
+  for (const [invalid, hint] of [
+    ['overflowing day', 'Tue, 31 Nov 2026 12:00:11 GMT'],
+    ['non-leap February', 'Monday, 29-Feb-27 12:00:11 GMT'],
+    ['wrong weekday', 'Sun, 21 Nov 2026 12:00:11 GMT'],
+    ['overflowing hour', 'Sat Nov 21 24:00:00 2026'],
+    ['overflowing minute', 'Sat, 21 Nov 2026 12:60:11 GMT'],
+    ['overflowing second', 'Sat, 21 Nov 2026 12:00:61 GMT'],
+    ['wrong capitalization', 'sat, 21 Nov 2026 12:00:11 GMT'],
+    ['non-HTTP timezone', 'Sat, 21 Nov 2026 12:00:11 UTC'],
+    ['extra internal space', 'Sat, 21  Nov 2026 12:00:11 GMT'],
+  ] as const) {
+    test(`a date with ${invalid} uses the paced fallback`, async () => {
+      const attempts = scriptedFetch((attempt) =>
+        attempt === 1 ? overload(hint) : success(),
+      )
+      const { container } = await mountedMetadata()
+      await advance(999)
+      expect(attempts).toEqual([0])
+      await advance(1)
+      expect(attempts).toEqual([0, 1_000])
+      expect(container.textContent).toBe('Recovered source')
+    })
+  }
+
+  test('an RFC850 date exactly fifty years ahead remains future and exceeds the budget', async () => {
+    const attempts = scriptedFetch(() =>
+      overload('Saturday, 21-Nov-76 12:00:00 GMT'),
+    )
+    const { client } = await mountedMetadata()
+    await advance(60_000)
+    expect(attempts).toEqual([0])
+    expect(client.getQueryState(linkMetadataQueryKey(url))?.status).toBe(
+      'error',
+    )
+  })
+
+  test('an RFC850 date more than fifty years ahead resolves to the past and observes the floor', async () => {
+    const attempts = scriptedFetch((attempt) =>
+      attempt === 1 ? overload('Sunday, 21-Nov-76 12:00:01 GMT') : success(),
+    )
+    const { container } = await mountedMetadata()
+    await advance(999)
+    expect(attempts).toEqual([0])
+    await advance(1)
+    expect(attempts).toEqual([0, 1_000])
+    expect(container.textContent).toBe('Recovered source')
+  })
 
   test('an expired date hint still observes the retry floor', async () => {
     const hint = new Date(Date.now() - 60_000).toUTCString()
