@@ -16,8 +16,10 @@ import {
   history,
   instantiateTemplate,
   invokeTargets,
+  isMissing,
   listTemplates,
   readTemplate,
+  refusalCode,
   refusalMessage,
   repin,
   saveTemplate,
@@ -297,5 +299,49 @@ test('a missing template says so', () => {
   const error = { body: { code: codes.TEMPLATE_NOT_FOUND } }
   expect(refusalMessage(error, 'The template')).toBe(
     'That template is not there: it was never saved, or it is not yours to read.',
+  )
+})
+
+test('exactly as many targets as one call may name are sent', async () => {
+  const most = Array.from({ length: INVOKE_TARGETS_MAX }, (_, at) =>
+    row(`rec-${at}`, {}, 1),
+  )
+  // The stand-in answers for two records only; what matters is that it was asked.
+  await invokeTargets({
+    instanceId: 'tracker/main',
+    actionKey: 'complete',
+    rows: most,
+    inputs: {},
+  }).catch(() => undefined)
+  expect(writes().length).toBe(1)
+  expect((writes()[0]!.body as { targets: unknown[] }).targets.length).toBe(
+    INVOKE_TARGETS_MAX,
+  )
+})
+
+test('a refusal that is not a problem body carries no code', () => {
+  for (const error of [null, 'offline', new Error('offline'), { body: null }])
+    expect(refusalCode(error)).toBeUndefined()
+  expect(isMissing({ body: { code: codes.NOT_FOUND } })).toBe(true)
+  expect(isMissing({ body: { code: codes.GRANT_DENIED } })).toBe(false)
+})
+
+test('a refusal with no known code says what the server said, else that it failed', () => {
+  const said = (body: unknown) => refusalMessage({ body }, 'Saving')
+  expect(said({ code: 'other', detail: ' The disk is full. ' })).toBe(
+    'The disk is full.',
+  )
+  expect(said({ title: 'Too large' })).toBe('Too large')
+  expect(said({ detail: '   ' })).toBe('Saving could not be completed.')
+  // A detail, even an empty one, is what the server chose to say; its title is not read.
+  expect(said({ detail: '', title: 'Too large' })).toBe(
+    'Saving could not be completed.',
+  )
+  expect(said({ detail: 404 })).toBe('Saving could not be completed.')
+  expect(said(null)).toBe('Saving could not be completed.')
+  expect(said('the disk is full')).toBe('Saving could not be completed.')
+  expect(refusalMessage(null, 'Saving')).toBe('Saving could not be completed.')
+  expect(refusalMessage('offline', 'Saving')).toBe(
+    'Saving could not be completed.',
   )
 })

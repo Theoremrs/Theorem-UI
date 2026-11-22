@@ -228,3 +228,25 @@ test('a condition with no field is a problem the editor names before saving', ()
   tree = addCondition(tree, tree.id, { fieldKey: '', op: 'eq', value: '' })
   expect(treeProblems(tree)).toEqual(['condition 1 names no field'])
 })
+
+test('a malformed node is kept whole as it came, never half read', () => {
+  const malformed = [
+    null,
+    { op: 'and' },
+    { op: 'not', condition: 'done' },
+    { op: 'not', condition: [{ op: 'eq', fieldKey: 'status', value: 'done' }] },
+  ] as unknown as QueryFilter[]
+  for (const filter of malformed) {
+    expect(editTree(filter).kind).toBe('opaque')
+    expect(back(filter)).toEqual(filter)
+  }
+})
+
+test('a condition the editor cannot show still counts toward the numbering', () => {
+  let tree = editTree({
+    op: 'and',
+    conditions: [{ op: 'within', fieldKey: 'place' } as unknown as QueryFilter],
+  })
+  tree = addCondition(tree, tree.id, { fieldKey: '', op: 'eq', value: '' })
+  expect(treeProblems(tree)).toEqual(['condition 2 names no field'])
+})
