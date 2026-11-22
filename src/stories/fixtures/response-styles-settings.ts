@@ -4,26 +4,31 @@ import { theoremJson } from '@/lib/theorem/passthrough'
 const ROOT = '/api/chat/v1/response-styles'
 
 const MINE = 'Release notes tone'
+const FORMAL = 'theorem.style.formal'
 
 /**
  * Puts the fake in a state worth looking at: the shipped Formal edited by the
  * person (the story's routes mark it as having a newer shipped version), and
- * one style of their own. It checks before it writes, so a remount does not
- * repeat it.
+ * one style of their own. It checks each step before it writes, so a remount does
+ * not repeat one, and a seed that stopped partway resumes where it stopped.
  */
 export async function seedResponseStylesSettings() {
-  const listed = await theoremJson<{ styles: { name: string }[] }>(ROOT)
-  if (listed.styles.some((style) => style.name === MINE)) return
-  await theoremJson(`${ROOT}/styles/theorem.style.formal`, {
-    method: 'PUT',
-    headers: { 'If-Match': '0' },
-    body: {
-      name: 'Formal',
-      description: 'Precise, for a reader who will quote it.',
-      body: 'Write for a reader who will quote this. Define terms before using them, number the steps of any procedure, and keep claims to what the sources support.',
-      frameworks: ['theorem.framework.explanation'],
-    },
-  })
+  const { styles } = await theoremJson<{
+    styles: { id: string; name: string; revision: number }[]
+  }>(ROOT)
+  // Formal is edited only while it is still the shipped text (revision 0).
+  if (styles.find((style) => style.id === FORMAL)?.revision === 0)
+    await theoremJson(`${ROOT}/styles/${FORMAL}`, {
+      method: 'PUT',
+      headers: { 'If-Match': '0' },
+      body: {
+        name: 'Formal',
+        description: 'Precise, for a reader who will quote it.',
+        body: 'Write for a reader who will quote this. Define terms before using them, number the steps of any procedure, and keep claims to what the sources support.',
+        frameworks: ['theorem.framework.explanation'],
+      },
+    })
+  if (styles.some((style) => style.name === MINE)) return
   await theoremJson(`${ROOT}/styles`, {
     method: 'POST',
     body: {

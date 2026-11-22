@@ -1068,3 +1068,190 @@ test('describing a change returns a modified draft and saves nothing', async () 
     code: 'response_draft_unavailable',
   })
 })
+
+// -- body and id handling, as the server does it ---------------------------------
+
+/** Sends text as it is, which `theoremJson` would not: a body that is cut off or is not an object. */
+const raw = (method: string, path: string, text: string, ifMatch?: number) =>
+  fetch(`http://localhost:3000${ROOT}${path}`, {
+    method,
+    headers: {
+      'content-type': 'application/json',
+      ...(ifMatch === undefined ? {} : { 'If-Match': String(ifMatch) }),
+    },
+    body: text,
+  })
+const problemBody = async (response: Response) =>
+  (await response.json()) as { code?: string; status?: number }
+
+test('a body that is cut off is 400 and writes nothing, a body that is not an object is 422, and a valid partial edit still passes', async () => {
+  const id = 'theorem.style.concise'
+  const cut = await raw('PUT', `/styles/${id}`, '{"description": "Short', 0)
+  expect(cut.status).toBe(400)
+  expect(await problemBody(cut)).toMatchObject({ code: 'invalid_chat_request' })
+  for (const text of ['[]', 'null', '"text"', '3']) {
+    const response = await raw('PUT', `/styles/${id}`, text, 0)
+    expect(response.status).toBe(422)
+    expect(await problemBody(response)).toMatchObject({
+      code: 'invalid_chat_request',
+    })
+  }
+  // Nothing was saved, so the revision the person held is still current.
+  expect((await get<ResponseStyleDetail>(`/styles/${id}`)).revision).toBe(0)
+  expect(
+    await send<ResponseStyleDetail>(
+      'PUT',
+      `/styles/${id}`,
+      { description: 'Shorter.' },
+      0,
+    ),
+  ).toMatchObject({ revision: 1, description: 'Shorter.' })
+
+  // Every route that reads a body refuses one the same way, before it acts on it.
+  for (const [method, path, ifMatch] of [
+    ['POST', '/styles', undefined],
+    ['POST', `/styles/${id}/restore`, 1],
+    ['PUT', '/selection', undefined],
+    ['PUT', '/suggestions', undefined],
+    ['POST', '/preview', undefined],
+  ] as const) {
+    expect((await raw(method, path, '{', ifMatch)).status).toBe(400)
+    expect((await raw(method, path, '[]', ifMatch)).status).toBe(422)
+  }
+  expect((await get<ResponseStyleDetail>(`/styles/${id}`)).revision).toBe(1)
+})
+
+test('a framework id in a body is compared as written, an empty one is refused, and the path is decoded once', async () => {
+  const id = 'theorem.style.concise'
+  const draft = { name: 'Concise', description: '', body: 'Be short.' }
+  // URI-encoded text in JSON is just a different id, not the one it decodes to.
+  for (const frameworks of [
+    ['theorem%2Eframework%2Eexplanation'],
+    [''],
+    ['theorem.framework.explanation', ''],
+  ]) {
+    expect(
+      await refusal(send('PUT', `/styles/${id}`, { ...draft, frameworks }, 0)),
+    ).toEqual({ status: 422, code: 'response_framework_unknown' })
+  }
+  expect((await get<ResponseStyleDetail>(`/styles/${id}`)).revision).toBe(0)
+  // A style may list none, and the exact id is accepted.
+  expect(
+    await send<ResponseStyleDetail>(
+      'PUT',
+      `/styles/${id}`,
+      { ...draft, frameworks: [] },
+      0,
+    ),
+  ).toMatchObject({ revision: 1, frameworks: [] })
+  expect(
+    await send<ResponseStyleDetail>(
+      'PUT',
+      `/styles/${id}`,
+      { ...draft, frameworks: ['theorem.framework.explanation'] },
+      1,
+    ),
+  ).toMatchObject({ frameworks: ['theorem.framework.explanation'] })
+  // The path is the one place a client encodes an id.
+  expect(
+    await get<ResponseFrameworkDetail>(
+      '/frameworks/theorem%2Eframework%2Eexplanation',
+    ),
+  ).toMatchObject({
+    id: 'theorem.framework.explanation',
+    usedBy: expect.arrayContaining([{ id, name: 'Concise' }]),
+  })
+})
+
+test('restoring revision 0 is the same reset as asking for the shipped text, and clears the update on offer', async () => {
+  const id = 'theorem.style.concise'
+  fake({ updatesAvailable: [id] })
+  const offered = async () =>
+    (await get<ResponseStyleDetail>(`/styles/${id}`)).shipped?.updateAvailable
+  // Unedited, revision 0 writes nothing, as shipped does.
+  expect(
+    await send<ResponseStyleDetail>(
+      'POST',
+      `/styles/${id}/restore`,
+      { revision: 0 },
+      0,
+    ),
+  ).toMatchObject({ revision: 0 })
+  await send('PUT', `/styles/${id}`, { description: 'One.' }, 0)
+  await send('PUT', `/styles/${id}`, { description: 'Two.' }, 1)
+  // A later revision of the person's own text keeps the offer.
+  await send('POST', `/styles/${id}/restore`, { revision: 1 }, 2)
+  expect(await offered()).toBe(true)
+  const reset = await send<ResponseStyleDetail>(
+    'POST',
+    `/styles/${id}/restore`,
+    { revision: 0 },
+    3,
+  )
+  expect(reset).toMatchObject({
+    revision: 4,
+    shipped: { updateAvailable: false },
+  })
+  expect(await offered()).toBe(false)
+  const { revisions } = await get<{ revisions: RevisionSummary[] }>(
+    `/styles/${id}/revisions`,
+  )
+  expect(revisions[0]?.cause).toBe('reset')
+  // As with `shipped`, an edit after it starts from the file Theorem ships now.
+  await send('PUT', `/styles/${id}`, { description: 'Three.' }, 4)
+  expect(await offered()).toBe(false)
+})
+
+test('restoring an older style revision does not check its framework links, as the server does not', async () => {
+  const made = await send<{
+    framework: ResponseFrameworkDetail
+    style?: ResponseStyleDetail
+  }>('POST', '/frameworks', { name: 'Short lived', body: 'Briefly.' })
+  const style = await send<ResponseStyleDetail>('POST', '/styles', {
+    name: 'Linked',
+    body: 'Say it.',
+    frameworks: [made.framework.id],
+  })
+  await send('PUT', `/styles/${style.id}`, { frameworks: [] }, 1)
+  await send('DELETE', `/frameworks/${made.framework.id}`, undefined, 1)
+  // Theorem's restore stages the old document as it was; a link that has gone
+  // dangling since is left for the reader to skip, so the fake keeps it too.
+  const restored = await send<ResponseStyleDetail>(
+    'POST',
+    `/styles/${style.id}/restore`,
+    { revision: 1 },
+    2,
+  )
+  expect(restored).toMatchObject({
+    revision: 3,
+    frameworks: [made.framework.id],
+  })
+})
+
+test('a catalog read sent while a framework copy is being written sees the copy and the relinked style together', async () => {
+  await send(
+    'PUT',
+    '/styles/theorem.style.concise',
+    {
+      frameworks: ['theorem.framework.explanation'],
+    },
+    0,
+  )
+  const write = send<{ framework: ResponseFrameworkDetail }>(
+    'POST',
+    '/frameworks',
+    {
+      from: 'theorem.framework.explanation',
+      forStyle: 'theorem.style.concise',
+      name: 'Explanation for Concise',
+    },
+  )
+  // Sent before the write has answered, as a page refetching mid-save would.
+  const read = get<ResponseStyleCatalog>('')
+  const [{ framework }, catalog] = await Promise.all([write, read])
+  const concise = catalog.styles.find(
+    (candidate) => candidate.id === 'theorem.style.concise',
+  )
+  expect(catalog.frameworks.map((item) => item.id)).toContain(framework.id)
+  expect(concise?.frameworks).toEqual([framework.id])
+})

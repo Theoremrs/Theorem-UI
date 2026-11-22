@@ -8,6 +8,7 @@ import { Thread } from '@/components/assistant-ui/elements/thread.aui'
 import { useResponseDetails } from '@/components/chat/response-style-details'
 import { TheoremPartRenderers } from '@/components/chat/theorem-parts'
 import { ResponseStylesPage } from '@/components/settings/styles/response-styles-page'
+import { Button } from '@/components/ui/button'
 import { seedResponseStylesSettings } from './fixtures/response-styles-settings'
 
 const MESSAGE_ID = 'message-response-details'
@@ -99,21 +100,48 @@ export function ResponseDetailsStory() {
 }
 
 export function ResponseStylesSettingsStory() {
-  const [ready, setReady] = useState(false)
+  const [status, setStatus] = useState<'seeding' | 'ready' | 'failed'>(
+    'seeding',
+  )
+  const [attempt, setAttempt] = useState(0)
+  // One seed per attempt, shared by a remount; a failed one is dropped so Retry starts afresh.
   const seed = useRef<Promise<void> | undefined>(undefined)
   useEffect(() => {
-    seed.current ??= seedResponseStylesSettings()
+    const running = (seed.current ??= seedResponseStylesSettings())
     let active = true
-    void seed.current.then(() => {
-      if (active) setReady(true)
-    })
+    running.then(
+      () => {
+        if (active) setStatus('ready')
+      },
+      () => {
+        if (seed.current === running) seed.current = undefined
+        if (active) setStatus('failed')
+      },
+    )
     return () => {
       active = false
     }
-  }, [])
+  }, [attempt])
   return (
     <div className="mx-auto flex max-w-[680px] flex-col gap-6 bg-sheet px-6 py-8">
-      {ready && <ResponseStylesPage />}
+      {status === 'ready' && <ResponseStylesPage />}
+      {status === 'failed' && (
+        <div role="alert" className="flex flex-col items-start gap-3">
+          <p className="text-sm text-error-ink">
+            The story could not set up its example styles.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setStatus('seeding')
+              setAttempt((count) => count + 1)
+            }}
+          >
+            Try again
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

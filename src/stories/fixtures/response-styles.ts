@@ -137,6 +137,15 @@ const problem = (
 const invalid = (field: string, detail: string) =>
   problem(422, 'response_style_invalid', 'That is not valid', detail, field)
 
+/** A body that is not JSON at all, which the server answers before it reads a field. */
+const unreadable = () =>
+  problem(
+    400,
+    'invalid_chat_request',
+    'Invalid JSON request',
+    'The request body is not valid JSON.',
+  )
+
 /** A body that does not deserialize: a field of the wrong type, or the scope of a selection left out or unknown. */
 const malformed = () =>
   problem(
@@ -349,7 +358,7 @@ export function createResponseStylesFake(
   const live = (kind: Kind) =>
     [...stored.values()].filter((item) => item.kind === kind && !item.deleted)
   const find = (kind: Kind, id: string) => {
-    const item = stored.get(decodeURIComponent(id))
+    const item = stored.get(id)
     return item && item.kind === kind && !item.deleted ? item : undefined
   }
   const usedBy = (frameworkId: string) =>
@@ -566,7 +575,7 @@ export function createResponseStylesFake(
           `A style lists at most ${MAX_FRAMEWORKS} frameworks.`,
         )
       const unknown = ids.find((id) => !find('framework', id))
-      if (unknown) return missing('framework', unknown, 422)
+      if (unknown !== undefined) return missing('framework', unknown, 422)
       content.frameworks = ids
     }
     if (kind === 'framework' && body.references !== undefined) {
@@ -646,12 +655,17 @@ export function createResponseStylesFake(
   // -- routes ------------------------------------------------------------------
 
   type Handler = (params: Record<string, string>, request: Request) => unknown
-  const once =
-    (handler: Handler): Handler =>
-    async (params, request) => {
-      await ready
-      return handler(params, request)
-    }
+  /** Path parameters arrive as the URL spells them; ids in JSON bodies are already exact. */
+  const decoded = (params: Record<string, string>) =>
+    Object.fromEntries(
+      Object.entries(params).map(([name, value]) => {
+        try {
+          return [name, decodeURIComponent(value)]
+        } catch {
+          return [name, value]
+        }
+      }),
+    )
   /**
    * A write, answered only after every write before it, as Theorem's store
    * answers them: each one checks the revision it was sent and chooses its id
@@ -662,12 +676,31 @@ export function createResponseStylesFake(
   const write =
     (handler: Handler): Handler =>
     (params, request) => {
-      const answer = written.then(() => handler(params, request))
+      const answer = written.then(() => handler(decoded(params), request))
       written = answer.catch(() => undefined)
       return answer
     }
-  const bodyOf = async (request: Request) =>
-    record(await request.json().catch(() => ({})))
+  /**
+   * A read, answered after the writes sent before it have settled, so it never
+   * sees half of one (a framework copy added but its style not yet relinked).
+   * It does not hold up the writes behind it.
+   */
+  const once =
+    (handler: Handler): Handler =>
+    async (params, request) => {
+      await written
+      return handler(decoded(params), request)
+    }
+  /** The JSON object a request carries, or the problem that refuses it, before anything it says is applied. */
+  async function bodyOf(
+    request: Request,
+  ): Promise<Record<string, unknown> | Response> {
+    const parsed: unknown = await request.json().catch(() => undefined)
+    if (parsed === undefined) return unreadable()
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : malformed()
+  }
   const created = (body: unknown) =>
     new Response(JSON.stringify(body), {
       status: 201,
@@ -691,13 +724,11 @@ export function createResponseStylesFake(
       [`PUT ${base}/:id`]: write(async ({ id = '' }, request) => {
         const item = find(kind, id)
         if (!item) return missing(kind, id)
+        const body = await bodyOf(request)
+        if (body instanceof Response) return body
         const refused = revisionGuard(request, item)
         if (refused) return refused
-        const content = contentFrom(
-          kind,
-          await bodyOf(request),
-          contentOf(current(item)),
-        )
+        const content = contentFrom(kind, body, contentOf(current(item)))
         if (content instanceof Response) return content
         await append(item, content, 'edit')
         return detail(item)
@@ -762,9 +793,10 @@ export function createResponseStylesFake(
       [`POST ${base}/:id/restore`]: write(async ({ id = '' }, request) => {
         const item = find(kind, id)
         if (!item) return missing(kind, id)
+        const body = await bodyOf(request)
+        if (body instanceof Response) return body
         const refused = revisionGuard(request, item)
         if (refused) return refused
-        const body = await bodyOf(request)
         const shipped = body.shipped === true
         if (shipped === (typeof body.revision === 'number'))
           return invalid(
@@ -786,14 +818,15 @@ export function createResponseStylesFake(
               : `${item.id} has no revision ${String(body.revision)}.`,
           )
         // A shipped resource the person never edited already is its baseline.
-        if (shipped && current(item).revision === 0) return detail(item)
+        if (version.revision === 0 && current(item).revision === 0)
+          return detail(item)
         await append(
           item,
           contentOf(version),
           version.revision === 0 ? 'reset' : 'restore',
         )
-        // Taking the shipped text takes the file Theorem ships now, so no update is left on offer.
-        if (shipped) item.overrides = version.revisionId
+        // Taking the shipped text takes the file Theorem ships now, so no update is left on offer. Revision 0 is that baseline however it was asked for.
+        if (version.revision === 0) item.overrides = version.revisionId
         return detail(item)
       }),
     }
@@ -815,6 +848,7 @@ export function createResponseStylesFake(
       ...resourceRoutes('framework'),
       [`POST ${ROOT}/styles`]: write(async (_, request) => {
         const body = await bodyOf(request)
+        if (body instanceof Response) return body
         const from = str(body.from)
         const source = from ? find('style', from) : undefined
         if (from && !source) return missing('style', from, 422)
@@ -830,6 +864,7 @@ export function createResponseStylesFake(
       }),
       [`POST ${ROOT}/frameworks`]: write(async (_, request) => {
         const body = await bodyOf(request)
+        if (body instanceof Response) return body
         const from = str(body.from)
         const forStyle = str(body.forStyle)
         const source = from ? find('framework', from) : undefined
@@ -874,6 +909,7 @@ export function createResponseStylesFake(
       ),
       [`PUT ${ROOT}/selection`]: write(async (_, request) => {
         const body = await bodyOf(request)
+        if (body instanceof Response) return body
         const scope = str(body.scope)
         const threadId = str(body.threadId)
         const projectId = str(body.projectId)
@@ -901,6 +937,7 @@ export function createResponseStylesFake(
       }),
       [`PUT ${ROOT}/suggestions`]: write(async (_, request) => {
         const body = await bodyOf(request)
+        if (body instanceof Response) return body
         if (
           (body.enabled !== undefined && typeof body.enabled !== 'boolean') ||
           ('model' in body &&
@@ -936,6 +973,7 @@ export function createResponseStylesFake(
             'Theorem has no usable chat model to write a preview with.',
           )
         const body = await bodyOf(request)
+        if (body instanceof Response) return body
         const variants = Array.isArray(body.variants)
           ? body.variants.map(record)
           : []
@@ -997,6 +1035,7 @@ export function createResponseStylesFake(
             'Theorem has no usable chat model to write a draft with.',
           )
         const body = await bodyOf(request)
+        if (body instanceof Response) return body
         const currentText = record(body.current)
         const instruction = str(body.instruction)?.trim()
         if (body.kind !== 'style' && body.kind !== 'framework')

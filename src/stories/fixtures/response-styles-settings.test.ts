@@ -53,3 +53,44 @@ test('seeding twice changes nothing the second time', async () => {
       ?.revision,
   ).toBe(1)
 })
+
+test('a seed that stopped after editing Formal resumes with the missing style, without editing Formal again', async () => {
+  const fake = createResponseStylesFake({
+    updatesAvailable: ['theorem.style.formal'],
+  })
+  let failPost = true
+  restore = installFakeTheorem({
+    ...fake.routes,
+    [`POST ${ROOT}/styles`]: (params, request) => {
+      if (!failPost)
+        return fake.routes[`POST ${ROOT}/styles`]?.(params, request)
+      failPost = false
+      return new Response(
+        JSON.stringify({ title: 'Store unavailable', code: 'unavailable' }),
+        {
+          status: 503,
+          headers: { 'content-type': 'application/problem+json' },
+        },
+      )
+    },
+  })
+  await expect(seedResponseStylesSettings()).rejects.toBeDefined()
+  let catalog = await theoremJson<ResponseStyleCatalog>(ROOT)
+  expect(
+    catalog.styles.find((style) => style.id === 'theorem.style.formal')
+      ?.revision,
+  ).toBe(1)
+  expect(catalog.styles.some((style) => style.origin === 'user')).toBe(false)
+
+  await seedResponseStylesSettings()
+  catalog = await theoremJson<ResponseStyleCatalog>(ROOT)
+  expect(
+    catalog.styles.find((style) => style.id === 'theorem.style.formal')
+      ?.revision,
+  ).toBe(1)
+  expect(
+    catalog.styles
+      .filter((style) => style.origin === 'user')
+      .map((s) => s.name),
+  ).toEqual(['Release notes tone'])
+})
