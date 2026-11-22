@@ -351,3 +351,106 @@ test('an instance made from a template beside a bound Instance input leaves the 
     bind: { instanceId: { from: 'which', port: 'text' } },
   })
 })
+
+// ── A custom module's fallback, on the page ─────────────────────────────────
+
+/** A vault module whose fallback shows the tracker's Next view, placed on the page. */
+async function openFallbackPage() {
+  const manifest = {
+    schema: 'theorem.module/1',
+    id: 'vault.focus',
+    label: 'Focus',
+    settings: [{ name: 'minutes', label: 'Minutes', kind: 'number' }],
+    capabilities: {
+      instances: [
+        { instanceId: 'tracker/main', methods: ['describe', 'query'] },
+      ],
+    },
+    fallback: {
+      kind: 'capability-records',
+      instanceId: 'tracker/main',
+      viewKey: 'next',
+    },
+    implementation: { kind: 'sandboxed-html', entry: 'index.html' },
+  }
+  const layout: LayoutData = {
+    root: { props: {} },
+    content: [instance('vault.focus', 'focus-1', { minutes: 25 })],
+  }
+  const fake = fakeWorkspace({
+    'Modules/focus/module.json': JSON.stringify(manifest),
+    'Modules/focus/index.html': '<!doctype html><main>Focus</main>',
+    'Pages/Desk.page.json': pageText({ ...newPage('Desk'), layout }),
+  })
+  const [entry] = (await fake.client.tree()).filter(
+    (e) => e.path === 'Pages/Desk.page.json',
+  )
+  const shown = await render(
+    <VaultPage client={fake.client} entryId={entry!.id} />,
+  )
+  const saved = () =>
+    parsePage('Pages/Desk.page.json', fake.text('Pages/Desk.page.json')!)
+  // The fake vault cannot read the module's files for its frame, so the
+  // module says so and its fallback stands in.
+  await waitFor(() => shown.container.textContent.includes('Write the plan'), {
+    timeout: 10_000,
+  })
+  return { ...shown, saved }
+}
+
+test('a view picked in a custom module’s fallback switches the fallback and writes nothing into the module', async () => {
+  const { container, saved } = await openFallbackPage()
+  expect(current(container)).toBe('Next')
+  await act(async () => button(container, 'All tasks')?.click())
+  await waitFor(
+    () =>
+      current(container) === 'All tasks' ||
+      container.textContent.includes('Unsaved changes'),
+  )
+  // The module's props are its own: nothing to save, and the file is as it was.
+  expect(container.textContent).not.toContain('Unsaved changes')
+  expect(current(container)).toBe('All tasks')
+  await waitFor(() => queried.includes('all'))
+  expect(findComponent(saved().layout, 'focus-1')?.props).toEqual({
+    id: 'focus-1',
+    minutes: 25,
+  })
+})
+
+test('an instance made from a template inside a custom module’s fallback opens nothing and writes nothing into the module', async () => {
+  library = [
+    {
+      templateId: 'captpl:reading',
+      name: 'Reading list',
+      description: 'Books to read',
+      definition: describeResult().definition,
+      declareTypes: [],
+      requirements: { modules: [] },
+      savedBy: 'user:travis',
+      savedAtMs: 1,
+    },
+  ]
+  const { container, saved } = await openFallbackPage()
+  await act(async () => button(container, 'Customize')?.click())
+  await act(async () => button(document.body, 'Templates')?.click())
+  const id = await waitFor(() =>
+    document.querySelector<HTMLInputElement>(
+      'input[aria-label="New instance id"]',
+    ),
+  )
+  type(id, 'reading/home')
+  await act(async () => button(document.body, 'Create instance')?.click())
+  await waitFor(() =>
+    document.body.textContent.includes(
+      'Created reading/home from Reading list.',
+    ),
+  )
+  expect(container.textContent).not.toContain('Unsaved changes')
+  expect(document.body.textContent).toContain(
+    "Created reading/home from Reading list. Name it in a capability module's Instance setting to open it.",
+  )
+  expect(findComponent(saved().layout, 'focus-1')?.props).toEqual({
+    id: 'focus-1',
+    minutes: 25,
+  })
+})
