@@ -10,6 +10,7 @@ import {
 } from '@/lib/theorem/response-styles'
 import type {
   FrameworkDraft,
+  ResponseFramework,
   ResponseFrameworkDetail,
   RestoreTarget,
 } from '@/lib/theorem/response-styles'
@@ -29,6 +30,9 @@ import {
   sameFrameworkDraft,
   toFrameworkDraft,
 } from './style-text'
+
+const usageKey = (usedBy: ResponseFramework['usedBy']) =>
+  JSON.stringify(usedBy.map(({ id }) => id).sort())
 
 /**
  * One framework's text and its references. A framework can be listed by many
@@ -70,7 +74,9 @@ export function FrameworkEditor({
       : undefined
   const busy =
     create.isPending || save.isPending || restore.isPending || refreshing
-  const shared = base.usedBy.length > 1
+  // Use the latest usage without replacing unsaved text or its base revision.
+  const usedBy = initial.usedBy
+  const shared = usedBy.length > 1
 
   const edit = (patch: Partial<FrameworkDraft>) =>
     setDraft((current) => ({ ...current, ...patch }))
@@ -86,7 +92,17 @@ export function FrameworkEditor({
     setDraft(toFrameworkDraft(detail))
   }
 
-  const submit = () => {
+  const checkUsage = async () => {
+    const fresh = await fetchFresh()
+    if (!fresh) return false
+    if (usageKey(fresh.usedBy) === usageKey(usedBy)) return true
+    setRefreshError(
+      new Error('Framework usage changed. Review the styles above before continuing.'),
+    )
+    return false
+  }
+  const submit = async () => {
+    if (!(await checkUsage())) return
     clear()
     save.mutate(
       { id: base.id, revision: base.revision, ...draft },
@@ -98,7 +114,8 @@ export function FrameworkEditor({
       },
     )
   }
-  const doRestore = (to: RestoreTarget) => {
+  const doRestore = async (to: RestoreTarget) => {
+    if (!(await checkUsage())) return
     clear()
     restore.mutate(
       { id: base.id, revision: base.revision, to },
@@ -160,7 +177,8 @@ export function FrameworkEditor({
         <SaveBar
           dirty={dirty}
           saving={save.isPending}
-          canSave={complete && !busy}
+          busy={busy}
+          canSave={complete}
           problem={
             complete ? undefined : 'A framework needs a name and instructions.'
           }
@@ -173,11 +191,11 @@ export function FrameworkEditor({
         />
         {shared && (
           <p className="text-sm text-ink-muted">
-            Saving changes this framework for {base.usedBy.length} styles:{' '}
-            {base.usedBy.map((style) => style.name).join(', ')}.
+            Saving changes this framework for {usedBy.length} styles:{' '}
+            {usedBy.map((style) => style.name).join(', ')}.
           </p>
         )}
-        {base.usedBy.length === 0 && (
+        {usedBy.length === 0 && (
           <p className="text-sm text-ink-muted">
             No style lists this framework yet.
           </p>
@@ -191,7 +209,7 @@ export function FrameworkEditor({
                 ' Save or discard your changes first: a copy starts from the saved text.'}
             </p>
             <div className="flex flex-wrap gap-2">
-              {base.usedBy.map((style) => (
+              {usedBy.map((style) => (
                 <Button
                   key={style.id}
                   size="xs"

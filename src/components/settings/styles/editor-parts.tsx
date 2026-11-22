@@ -159,6 +159,7 @@ export function LeaveGuard({ dirty }: { dirty: boolean }) {
 export function SaveBar({
   dirty,
   saving,
+  busy,
   canSave,
   problem,
   savedAs,
@@ -168,6 +169,7 @@ export function SaveBar({
 }: {
   dirty: boolean
   saving: boolean
+  busy: boolean
   canSave: boolean
   /** Why Save is unavailable, in words. */
   problem?: string
@@ -178,10 +180,10 @@ export function SaveBar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button disabled={!dirty || !canSave || saving} onClick={onSave}>
+      <Button disabled={!dirty || !canSave || busy} onClick={onSave}>
         {saving ? 'Saving' : saveLabel}
       </Button>
-      <Button variant="outline" disabled={!dirty || saving} onClick={onDiscard}>
+      <Button variant="outline" disabled={!dirty || busy} onClick={onDiscard}>
         Discard changes
       </Button>
       <span role="status" className="text-sm text-ink-muted">

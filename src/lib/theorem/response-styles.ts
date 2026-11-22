@@ -765,12 +765,13 @@ export function useSelectionMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (change: SelectionChange) => {
-      // A choice on a durable thread replaces any pick held for its first send,
-      // regardless of which UI submitted the change.
-      if (change.scope === 'conversation' && change.threadId)
-        usePendingStyle.getState().chooseHeld(change.threadId, undefined)
       const key = choiceKey(change)
       const save = async () => {
+        const threadId =
+          change.scope === 'conversation' ? change.threadId : undefined
+        const held = threadId
+          ? usePendingStyle.getState().held[threadId]
+          : undefined
         const selection = await mutate((headers) =>
           theoremJson<StyleSelection>(`${ROOT}/selection`, {
             method: 'PUT',
@@ -778,6 +779,10 @@ export function useSelectionMutation() {
             headers,
           }),
         )
+        // Keep the first-send pick if the server refuses its replacement.
+        const picks = usePendingStyle.getState()
+        if (threadId && held && picks.held[threadId] === held)
+          picks.chooseHeld(threadId, undefined)
         showSelection(queryClient, change)
         return selection
       }

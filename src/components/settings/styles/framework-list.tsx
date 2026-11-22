@@ -51,6 +51,7 @@ export function FrameworkList({
                     size="xs"
                     variant="outline"
                     aria-label={`Edit ${framework.name}`}
+                    disabled={busy}
                     onClick={() => onOpen(framework.id)}
                   >
                     Edit

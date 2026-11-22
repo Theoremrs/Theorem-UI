@@ -159,7 +159,7 @@ export function ResponseDetailsDialog() {
   if (!part) return null
   return (
     <Dialog open={open} onOpenChange={(next) => !next && show(undefined)}>
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Response details</DialogTitle>
           <DialogDescription>How Theorem set up this reply.</DialogDescription>

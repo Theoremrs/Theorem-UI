@@ -186,7 +186,8 @@ export function StyleEditor({
       <SaveBar
         dirty={dirty}
         saving={create.isPending || save.isPending}
-        canSave={complete && !busy}
+        busy={busy}
+        canSave={complete}
         problem={
           complete ? undefined : 'A style needs a name and instructions.'
         }

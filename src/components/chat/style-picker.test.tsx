@@ -445,7 +445,11 @@ test('the picker links to the style editor through the router', async () => {
   await waitFor(() => router.state.location.pathname === '/settings/styles')
 })
 
-test('a choice Theorem refuses is said in words, and the trigger keeps the style in use', async () => {
+test.each([
+  ['Default', undefined],
+  ['Formal', 'theorem.style.formal'],
+] as const)('a refused choice shows the error and keeps %s', async (name, held) => {
+  if (held) usePendingStyle.getState().chooseHeld('t1', held)
   backend(
     {},
     {
@@ -479,7 +483,8 @@ test('a choice Theorem refuses is said in words, and the trigger keeps the style
   expect(toast.textContent).toContain('Could not change the response style')
   expect(toast.textContent).toContain('Pick another style.')
   expect(toast.textContent).not.toContain('response_style_unknown')
-  expect(trigger(container)?.textContent).toBe('Default')
+  expect(trigger(container)?.textContent).toBe(name)
+  expect(usePendingStyle.getState().held.t1).toBe(held)
 })
 
 test('the composer mounts the picker beside the model and effort pickers', async () => {

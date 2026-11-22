@@ -534,6 +534,7 @@ test('restoring a version asks first, says it makes a new revision, and does', a
   backend({})
   await mount()
   await editConcise('Answer in one line.')
+  await type(await waitField('Instructions'), 'Unsaved wording.')
   await waitFor(() => byLabel('Restore revision 0'))
 
   await click(byLabel('Restore revision 0')!)
@@ -542,7 +543,13 @@ test('restoring a version asks first, says it makes a new revision, and does', a
   expect(confirm.textContent).toContain('Nothing is deleted')
   expect(writes('POST')).toHaveLength(0)
 
+  let answer = () => {}
+  slow = new Promise<void>((resolve) => { answer = resolve })
   await click(inDialog('Restore this version')!)
+  await waitFor(() => writes('POST').length === 1)
+  expect(button('Discard changes')?.disabled).toBe(true)
+  expect(button('Save')?.disabled).toBe(true)
+  await act(async () => answer())
   await waitText('Saved as revision 2.')
   const [restored] = writes('POST')
   expect(restored?.path).toBe(`${API}/styles/theorem.style.concise/restore`)
@@ -1139,6 +1146,34 @@ test('saving a framework sends its revision, and says it changes every style tha
   )
   expect(put?.ifMatch).toBe('0')
   expect(put?.body.body).toBe('Look wider.')
+})
+
+test('framework save stops if the affected styles changed while editing', async () => {
+  backend({})
+  await mount()
+  await openFramework('Research related questions')
+  await waitText('Saving changes this framework for 3 styles:')
+  await type(await waitField('Instructions'), 'Look wider.')
+
+  await elsewhere(
+    'POST',
+    '/styles',
+    {
+      name: 'Another style',
+      description: '',
+      body: 'Answer the question.',
+      frameworks: ['theorem.framework.related-questions'],
+    },
+  )
+  await click(button('Save')!)
+  await waitText('Framework usage changed')
+  await waitText('Saving changes this framework for 4 styles:')
+  expect(writes('PUT')).toHaveLength(0)
+  expect(field('Instructions')?.value).toBe('Look wider.')
+
+  await click(button('Save')!)
+  await waitText('Saved as revision 1.')
+  expect(writes('PUT')).toHaveLength(1)
 })
 
 // -- the page itself ------------------------------------------------------------

@@ -15,13 +15,18 @@ const head = ({ name, description }: Prose) =>
 export const proseText = (prose: Prose) =>
   `${head(prose)}\n${prose.body.trimEnd()}\n`
 
-/** A style as the person reads it: its frameworks by name, then its instructions. */
+/** Include framework IDs so links to different, identically named frameworks still diff. */
 export function styleText(
   draft: StyleDraft,
   frameworkName: (id: string) => string,
 ) {
   const frameworks = draft.frameworks.length
-    ? draft.frameworks.map(frameworkName).join(', ')
+    ? draft.frameworks
+        .map((id) => {
+          const name = frameworkName(id)
+          return name === id ? id : `${name} (${id})`
+        })
+        .join(', ')
     : 'none'
   return `${head(draft)}Frameworks: ${frameworks}\n\n${draft.body.trimEnd()}\n`
 }

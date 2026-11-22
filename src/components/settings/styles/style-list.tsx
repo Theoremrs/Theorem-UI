@@ -29,7 +29,7 @@ export function StyleList({
       title="Styles"
       description="How Theorem writes its answers. Shipped styles come with Theorem; yours are the ones you make."
       action={
-        <Button size="sm" variant="outline" onClick={onNew}>
+        <Button size="sm" variant="outline" disabled={busy} onClick={onNew}>
           New style
         </Button>
       }
@@ -56,6 +56,7 @@ export function StyleList({
                     size="xs"
                     variant="outline"
                     aria-label={`Edit ${style.name}`}
+                    disabled={busy}
                     onClick={() => onOpen(style.id)}
                   >
                     Edit
