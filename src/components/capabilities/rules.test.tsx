@@ -312,3 +312,36 @@ test('a rule saved unchanged goes back as it was, whatever its trigger and its s
     await waitFor(() => !button(screen(), 'Save rule'))
   }
 })
+
+test('a schedule rule saved unchanged keeps its start time, in any time zone', async () => {
+  const rule: RuleSpec = {
+    key: 'morning_review',
+    label: 'Morning review',
+    trigger: {
+      kind: 'schedule',
+      intervalMinutes: 1440,
+      startAtMs: Date.UTC(2026, 10, 23, 14, 0),
+    },
+    actionKey: 'add',
+    inputs: { title: { source: 'literal', value: 'Review the day' } },
+  }
+  // bun test runs in UTC, where local and UTC wall times agree; a person's
+  // browser seldom does.
+  const zone = process.env.TZ
+  process.env.TZ = 'America/Detroit'
+  try {
+    const described = withRules()
+    await openRules({
+      ...described,
+      definition: { ...described.definition, rules: [rule] },
+    })
+    await press(named('Edit Morning review'))
+    expect(input('Starting at')?.value).toBe('2026-11-23T09:00')
+    await press(button(screen(), 'Save rule'))
+    await waitFor(() => authored().length === 1)
+    expect(authored()[0]?.ops).toEqual([{ op: 'replace_rule', rule }])
+  } finally {
+    if (zone === undefined) delete process.env.TZ
+    else process.env.TZ = zone
+  }
+})

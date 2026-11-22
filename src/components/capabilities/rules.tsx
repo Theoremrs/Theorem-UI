@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/coss/checkbox'
 import { Switch } from '@/components/coss/switch'
 import { Icon } from '@/components/icons'
 import { fieldControl } from '@/components/pages/resource-field'
+import { localDateTimeText } from '@/components/records/fields'
 import { Segmented } from '@/components/records/field-form'
 import { Button } from '@/components/ui/button'
 import {
@@ -107,7 +108,7 @@ function draftOf(
       trigger?.kind === 'schedule' ? String(trigger.intervalMinutes) : '60',
     start:
       trigger?.kind === 'schedule' && trigger.startAtMs !== undefined
-        ? new Date(trigger.startAtMs).toISOString().slice(0, 16)
+        ? localDateTimeText(trigger.startAtMs)
         : '',
     actionKey: rule?.actionKey ?? '',
     sources,

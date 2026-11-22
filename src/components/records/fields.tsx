@@ -753,6 +753,12 @@ function TextEditor({
   )
 }
 
+/** An instant as a datetime-local input shows it: the person's wall time, to the minute. */
+export function localDateTimeText(ms: number) {
+  const offset = new Date(ms).getTimezoneOffset() * 60_000
+  return new Date(ms - offset).toISOString().slice(0, 16)
+}
+
 /** Dates travel as ISO strings: a date as YYYY-MM-DD, a timestamp in UTC. */
 function DateEditor({
   field,
@@ -768,8 +774,7 @@ function DateEditor({
     const d = new Date(value)
     if (Number.isNaN(d.getTime())) return ''
     if (!withTime) return d.toISOString().slice(0, 10)
-    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000)
-    return local.toISOString().slice(0, 16)
+    return localDateTimeText(d.getTime())
   })()
   const [text, setText] = useState(initial)
   const [refused, setRefused] = useState(false)
