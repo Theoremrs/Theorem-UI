@@ -65,6 +65,7 @@ import type {
 import { capabilityContextReference } from '@/lib/capabilities/reference'
 import type { ModuleViewProps } from '@/lib/modules/registry'
 import { useModuleAction } from '../pages/page-runtime'
+import { useOwnSettings } from '../pages/page-settings'
 import { usePageId } from '../pages/page-route'
 import { ActionForm } from './action-form'
 import type { PickerOptions } from './action-form'
@@ -460,10 +461,13 @@ function CapabilityTableBody({
   view,
   described,
   start,
+  onOpenInstance,
 }: {
   view: ModuleViewProps
   described: DescribeResult
   start: ViewSpec
+  /** Switch this module to another instance; absent where its setting cannot be written. */
+  onOpenInstance?: (instanceId: string) => void
 }) {
   const { output, emit } = view
   const pageId = usePageId()
@@ -471,6 +475,14 @@ function CapabilityTableBody({
   const definition = described.definition
   const grant = described.callerGrant
   const [pickedKey, setPickedKey] = useState<string>()
+  // A picked view is written into the page, so it opens there next time. Where
+  // the setting cannot be written (no page, a composite, a bound View input)
+  // the pick holds for as long as the module is shown.
+  const own = useOwnSettings(view)
+  const pick = (next: ViewSpec) =>
+    own && !('viewKey' in view.inputs)
+      ? own({ viewKey: next.key })
+      : setPickedKey(next.key)
   const spec =
     (pickedKey
       ? definition.views.find((one) => one.key === pickedKey)
@@ -752,7 +764,7 @@ function CapabilityTableBody({
       <ViewBar
         views={views}
         current={spec}
-        onPick={(next) => setPickedKey(next.key)}
+        onPick={pick}
         authoring={grant.author}
         onAuthor={() => setAuthoring(true)}
         asking={!!context}
@@ -929,6 +941,7 @@ function CapabilityTableBody({
             setAuthoring(false)
             askAbout(shown)
           }}
+          onOpenInstance={onOpenInstance}
         />
       )}
     </div>
@@ -980,7 +993,16 @@ function NoInstance({
 export function CapabilityTableModule(view: ModuleViewProps) {
   const instanceId = instanceIdOf(view.settings.instanceId)
   const described = useCapabilityDescribe(instanceId || undefined)
-  if (!instanceId) return <NoInstance arranging={view.arranging} />
+  const own = useOwnSettings(view)
+  // A new instance opens at its first view; a bound Instance input is not ours to change.
+  const openInstance =
+    own && !('instanceId' in view.inputs)
+      ? (next: string) => own({ instanceId: next, viewKey: '' })
+      : undefined
+  if (!instanceId)
+    return (
+      <NoInstance arranging={view.arranging} onOpenInstance={openInstance} />
+    )
   if (described.isPending) return <Loading />
   // Beyond pending, a result either refused or answered: the caller's grant, the
   // definition and the resolved schemas come together or not at all.
@@ -1011,6 +1033,7 @@ export function CapabilityTableModule(view: ModuleViewProps) {
       view={view}
       described={described.data}
       start={start}
+      onOpenInstance={openInstance}
     />
   )
 }

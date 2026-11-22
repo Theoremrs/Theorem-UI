@@ -347,6 +347,18 @@ test('what it shows rides to the composer as context, at one revision', async ()
   expect(container.textContent).toContain('Ask Theorem')
 })
 
+test('a view bound in from a connected table is named by the envelope', async () => {
+  const { outputs } = await showRecord(undefined, { viewKey: 'next' })
+  const context = await waitFor(
+    () => outputs.context?.at(-1) as CapabilityContextReference,
+  )
+  expect(context.location.resource).toMatchObject({
+    instanceId: 'tracker/main',
+    viewKey: 'next',
+    selected: [{ id: 'rec-1', revision: 6 }],
+  })
+})
+
 test('a grant without read is a permission state, and nothing is walked', async () => {
   const { container } = await showRecord(
     { instanceId: 'tracker/main', recordId: 'rec-1' },

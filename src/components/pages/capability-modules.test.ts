@@ -5,6 +5,9 @@
 // keyed, deduped, and readable by the module wiring.
 import { describe, expect, test } from 'bun:test'
 import { BUILTIN_MODULES } from './builtins'
+import { SPLIT_TYPE } from './puck-config'
+import type { ComponentData, LayoutData } from '@/lib/modules/contract'
+import { COMPOSITE_INPUT, extractComposite } from '@/lib/modules/layout'
 import { moduleById } from '@/lib/modules/registry'
 import { isReference } from '@/lib/modules/values'
 import {
@@ -57,6 +60,8 @@ describe('the catalog', () => {
     ])
     expect(record.inputs.map((port) => [port.name, port.type])).toEqual([
       ['record', 'item'],
+      ['instanceId', 'text'],
+      ['viewKey', 'text'],
     ])
     expect(table.events.map((port) => port.name)).toEqual(['opened', 'context'])
     expect(table.actions.map((port) => port.name)).toEqual([
@@ -79,6 +84,71 @@ describe('the catalog', () => {
       write: [],
       state: [],
       net: [],
+    })
+  })
+})
+
+describe('instance and view as inputs', () => {
+  test('both modules take their instance and view as text inputs under the settings’ names', () => {
+    expect(table.inputs.map((port) => [port.name, port.type])).toEqual([
+      ['instanceId', 'text'],
+      ['viewKey', 'text'],
+    ])
+    // A bound input of a setting's name takes that setting's place, so each
+    // input names a setting the module already reads (the record's view is
+    // read by its envelope instead).
+    for (const port of table.inputs)
+      expect(table.settings.map((setting) => setting.name)).toContain(port.name)
+    expect(record.settings.map((setting) => setting.name)).toContain(
+      'instanceId',
+    )
+  })
+
+  test('a composite over a capability table exposes its instance and view as inputs', () => {
+    const lookup = (id: string) => moduleById(id)
+    const component = (
+      type: string,
+      id: string,
+      props: Record<string, unknown> = {},
+    ): ComponentData => ({ type, props: { id, ...props } })
+    const layout: LayoutData = {
+      root: { props: {} },
+      content: [
+        component('theorem.text', 'which', { text: 'tracker/main' }),
+        component('theorem.text', 'pick', { text: 'all' }),
+        component(SPLIT_TYPE, 'box', {
+          first: [
+            component('theorem.capability.table', 'table', {
+              instanceId: '',
+              viewKey: '',
+              bind: {
+                instanceId: { from: 'which', port: 'text' },
+                viewKey: { from: 'pick', port: 'text' },
+              },
+            }),
+          ],
+          second: [],
+        }),
+      ],
+    }
+    const extracted = extractComposite(layout, 'box', 'acme.tracker', lookup)!
+    // The ports the module declares, by their own labels and types; an
+    // undeclared input would come through as a bare json port.
+    expect(extracted.inputs).toEqual([
+      { name: 'instanceId', label: 'Capability instance', type: 'text' },
+      { name: 'viewKey', label: 'View', type: 'text' },
+    ])
+    const inner = (extracted.content[0]!.props.first as ComponentData[])[0]!
+    expect(inner.props.bind).toEqual({
+      instanceId: { from: COMPOSITE_INPUT, port: 'instanceId' },
+      viewKey: { from: COMPOSITE_INPUT, port: 'viewKey' },
+    })
+    const placed = extracted.layout.content.find(
+      (one) => one.type === 'acme.tracker',
+    )!
+    expect(placed.props.bind).toEqual({
+      instanceId: { from: 'which', port: 'text' },
+      viewKey: { from: 'pick', port: 'text' },
     })
   })
 })

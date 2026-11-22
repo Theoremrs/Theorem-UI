@@ -151,6 +151,9 @@ function CapabilityRecordBody({
   const { output, emit } = view
   const pageId = usePageId()
   const instanceId = text(view.settings.instanceId)
+  // The view a connected table shows, when one is bound in: the envelope then
+  // names it, so the agent knows where the record was picked from.
+  const viewKey = text(view.inputs.viewKey) || undefined
   const definition = described.definition
   const grant = described.callerGrant
   const found = useCapabilityRecord(
@@ -192,6 +195,7 @@ function CapabilityRecordBody({
             instanceId,
             collectionKey: key,
             pageId,
+            viewKey,
             purpose: definition.purpose,
             label: `${definition.name} · ${rowTitle(fields, row)}`,
             selected: [{ id: row.id, revision: row.revision }],
@@ -201,7 +205,7 @@ function CapabilityRecordBody({
             truncated: false,
           })
         : undefined,
-    [row, shown, instanceId, key, pageId, definition, fields],
+    [row, shown, instanceId, key, pageId, viewKey, definition, fields],
   )
 
   // What this module shows is also what the page can wire onward: its Selected
@@ -500,8 +504,9 @@ function CapabilityRecordBody({
 
 /**
  * The module: it shows the record its Item input names, else the one its
- * Record setting does. The instance comes from this module's own setting, so a
- * selection wired from another page cannot reach across instances.
+ * Record setting does. The instance comes from this module's own setting or
+ * its Instance input, never from the record item, so a selection wired from
+ * another page cannot reach across instances.
  */
 export function CapabilityRecordModule(view: ModuleViewProps) {
   const instanceId = text(view.settings.instanceId)

@@ -25,6 +25,16 @@ const json = (name: string, label: string) => ({
   type: 'json' as const,
 })
 
+/**
+ * The instance and view as inputs too, under the settings' names: a bound
+ * value takes the setting's place, so a composite over a capability module can
+ * take which instance and view it shows from the page around it.
+ */
+const instanceInputs = [
+  { name: 'instanceId', label: 'Capability instance', type: 'text' as const },
+  { name: 'viewKey', label: 'View', type: 'text' as const },
+]
+
 /** Which instance a module reads, and nothing else: the definition decides its views. */
 const instanceSetting = {
   name: 'instanceId',
@@ -50,9 +60,10 @@ export const CAPABILITY_MODULES: ReadonlyArray<ModuleDefinition> = [
         kind: 'text',
         default: '',
         description:
-          "Which of the definition's views to open on; empty starts at its first.",
+          "Which of the definition's views to open on; empty starts at its first. Picking a view on the page writes it here.",
       },
     ],
+    inputs: instanceInputs,
     outputs: [
       item('selected', 'Selected record'),
       json('selection', 'Selected records, at their revisions'),
@@ -85,7 +96,7 @@ export const CAPABILITY_MODULES: ReadonlyArray<ModuleDefinition> = [
           'The record id to show when none is connected. A connected Item names its own collection as well.',
       },
     ],
-    inputs: [item('record', 'Record')],
+    inputs: [item('record', 'Record'), ...instanceInputs],
     outputs: [
       item('selected', 'Shown record'),
       reference('context', 'Page context'),
