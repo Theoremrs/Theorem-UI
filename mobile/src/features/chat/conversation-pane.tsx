@@ -39,6 +39,12 @@ export function ConversationPane({
   const delivery = useDeliveries()
     .filter((entry) => entry.receiver.threadId === threadId)
     .sort((a, b) => b.updatedAtMs - a.updatedAtMs)[0]
+  // When the person last spoke, so presence can order a later turn against a
+  // failed delivery. Only their own messages count: the run already going keeps
+  // producing assistant messages after an upload fails, and those clear nothing.
+  const lastUserTurnMs =
+    state.snapshot?.messages.reduce((latest, m) => (m.role === 'user' ? Math.max(latest, m.createdAtMs) : latest), 0) ||
+    undefined
   // "Continue the conversation" from a Shortcut or the Action button opens this one.
   useEffect(() => rememberLastThread(threadId), [threadId])
   const title = state.snapshot ? threadTitle(state.snapshot.thread) : 'Conversation'
@@ -92,7 +98,7 @@ export function ConversationPane({
         placeholder="Reply to Theo"
         notes={notes}
         theo={{
-          conversation: { phase: state.phase, projection: state.projection, runId: state.journal?.runId },
+          conversation: { phase: state.phase, projection: state.projection, runId: state.journal?.runId, lastUserTurnMs },
           delivery,
         }}
         queue={{ items: queued, paused, onRemove: removeQueued, onEdit: editQueued }}

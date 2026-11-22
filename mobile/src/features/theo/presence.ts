@@ -31,9 +31,11 @@ export type TheoSignals = {
   conversation: Pick<ConversationState, 'phase' | 'projection'> & {
     /** The run the conversation is currently on, if any. */
     runId?: string
+    /** When the person's own newest message arrived: orders a later turn against a delivery. */
+    lastUserTurnMs?: number
   }
   /** The person's newest delivery to this conversation, if one is in flight or just ended. */
-  delivery?: Pick<Delivery, 'stage'> & { runId?: string }
+  delivery?: Pick<Delivery, 'stage'> & { runId?: string; updatedAtMs?: number }
   /** True while the composer has focus or a draft: the person is speaking to Theo. */
   composing?: boolean
   /** From the computer screen once it reports one: the host a task runs on, and whether it answers. */
@@ -78,17 +80,21 @@ const approvalsPending = (conversation: TheoSignals['conversation']) =>
  */
 export function theoStateOf(signals: TheoSignals): TheoState | undefined {
   const { conversation, delivery, composing, host, decisionsPending = 0 } = signals
-  const { phase, runId } = conversation
+  const { phase, runId, lastUserTurnMs } = conversation
   if (phase === 'detached') return undefined
 
   // A failed delivery speaks for the conversation unless a newer turn replaced
-  // it: a run other than the delivery's own. A later message is not a newer
-  // turn — the run already going keeps producing messages after an attachment
-  // fails during upload, and that failure must stay visible — and phase alone
-  // is not enough either: a reply can finish and a new attachment fail without
-  // starting another run, leaving the phase completed.
+  // it: a run other than the delivery's own, or the person's own newer message.
+  // Anything else the run already going produces is not a newer turn — after an
+  // attachment fails during upload the run keeps answering, and that failure must
+  // stay visible — and phase alone is not enough either: a reply can finish and a
+  // new attachment fail without starting another run, leaving the phase completed.
+  // A delivery that failed before admission has no runId of its own, so only the
+  // person's next message can clear it.
   const deliveryFailed = delivery?.stage === 'refused' || delivery?.stage === 'failed'
-  const newerTurn = !!delivery?.runId && !!runId && delivery.runId !== runId
+  const newerTurn =
+    (!!delivery?.runId && !!runId && delivery.runId !== runId) ||
+    (!!lastUserTurnMs && !!delivery?.updatedAtMs && lastUserTurnMs > delivery.updatedAtMs)
   if (
     phase === 'failed' ||
     phase === 'authentication-required' ||

@@ -53,6 +53,11 @@ export function conversations(): ConversationBinding {
 
 let outgoing: Outbox | undefined
 
+/** Bumped by resetConversations: every session was thrown away, so mounted views
+ * must drop their stale leases and retain again for the account now on the device. */
+let generation = 0
+const generationListeners = new Set<() => void>()
+
 /** The app's one outbox: messages wait here during a run and go when the conversation is free. */
 export function outbox(): Outbox {
   outgoing ??= new Outbox({
@@ -67,6 +72,8 @@ export function outbox(): Outbox {
 export function resetConversations() {
   outgoing?.reset()
   shared?.reset()
+  generation += 1
+  for (const listener of generationListeners) listener()
 }
 
 /** Who the current bearer is, per Theorem's own session; undefined when it cannot be
@@ -113,6 +120,17 @@ export function useConversation(threadId: string): ConversationView {
   const [stopError, setStopError] = useState<unknown>()
   const [recoveryError, setRecoveryError] = useState<unknown>()
 
+  // A reset (sign-out, or an in-place sign-in that changed the account) leaves this
+  // view holding a stale lease for the old session; hearing the new generation runs
+  // the retain effect again and the view attaches under the current account.
+  const gen = useSyncExternalStore(
+    useCallback((listener) => {
+      generationListeners.add(listener)
+      return () => generationListeners.delete(listener)
+    }, []),
+    () => generation,
+  )
+
   useEffect(() => {
     const next = conversations().retain(threadId)
     setLease(next)
@@ -122,7 +140,7 @@ export function useConversation(threadId: string): ConversationView {
       unsubscribe()
       next.release()
     }
-  }, [threadId])
+  }, [threadId, gen])
 
   const queue: QueueState = useSyncExternalStore(
     useCallback((listener) => outbox().subscribe(threadId, listener), [threadId]),
@@ -218,19 +236,24 @@ export function useConversation(threadId: string): ConversationView {
       try {
         if (recovery === 'sign-in') {
           // Signing in again replaces the tokens in place, without a signed-out
-          // transition, so the account-change cleanup in _layout does not run. If
-          // the new bearer is another person, nothing the old account queued, drafted
-          // or journaled may carry over or go out under the new credentials: clear
-          // it exactly as a sign-out does. When the current principal cannot be
-          // established (the token is already refused), the 401 path signs out and
-          // that cleanup covers it instead.
+          // transition, so the account-change cleanup in _layout does not run.
+          // Nothing the old account queued, drafted or journaled may carry over
+          // or go out under the new credentials: clear it exactly as a sign-out
+          // does, unless both bearers are proved to be the same person. When an
+          // identity cannot be established — the old token already refused, or a
+          // transient failure on either lookup — the clear is the safe answer:
+          // it costs the person's own leftovers at worst, while skipping it could
+          // send one account's queue under another. No reconnect follows an
+          // unproven identity: reconnecting without a verified account is what
+          // would dispatch the queue under it.
           const before = await currentPrincipal()
           await signIn()
           const after = await currentPrincipal()
-          if (before && after && before !== after) {
+          if (!before || !after || before !== after) {
             resetConversations()
             clearAccountData()
             intake.reset()
+            return
           }
         }
         conversations().reconnect(threadId)

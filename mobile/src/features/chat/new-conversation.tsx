@@ -73,14 +73,18 @@ function whenReady(threadId: string, lease: ReturnType<ReturnType<typeof convers
 
 export function NewConversation({
   onOpen,
-  projectId,
+  project,
+  requested,
 }: {
   onOpen: (opened: Opened) => void
-  /** The id of the project this composer was opened from, known from the first
-   * render. The first message goes there; until that project resolves the
-   * composer has no recipient, so Send waits for the opening project instead of
-   * offering a fallback a later load would replace. */
-  projectId?: string
+  /** The project this conversation shows, once it resolves: the composer's default
+   * recipient, so the chip agrees with the header and the thread list. */
+  project?: { projectId: string; title: string }
+  /** True when the person opened the composer from a specific project (the URL
+   * names it, so this is known from the first render). Until that project
+   * resolves there is no recipient: Send waits for the opening project instead
+   * of offering a fallback the resolution would replace under a send in flight. */
+  requested?: boolean
 }) {
   const projects = useRequest(loadProjects, [])
   const showTerminal = useShowTerminal()
@@ -97,19 +101,21 @@ export function NewConversation({
   const touched = useRef(false)
   const destinationRef = useRef<Destination | undefined>(undefined)
 
-  // The recipient: an explicit choice always wins; a composer opened from a
-  // project is that project once it resolves and nothing before that; otherwise
-  // the remembered destination, or the first project when none is remembered.
-  // Derived rather than stored, so a recipient is fixed from the moment a start
-  // begins: it changes only when the person changes it, which keeps an identity
-  // check on the send honest.
+  // The recipient: an explicit choice always wins; next the project the screen
+  // shows, whenever it has resolved; a specifically-requested project that has
+  // not resolved yet leaves no recipient at all; and with no project in view
+  // (a pushed composer, projects failed) the remembered destination, or the
+  // first project when none is remembered. Derived rather than stored, so a
+  // recipient is fixed from the moment a start begins: it changes only when the
+  // person changes it, which keeps the identity check on the send honest.
   const first = projects.data?.[0]
-  const opening = projectId ? projects.data?.find((item) => item.projectId === projectId) : undefined
   const chosen: Destination | undefined = touched.current
     ? destination
-    : projectId
-      ? opening && { kind: 'theorem', projectId: opening.projectId, projectTitle: opening.title }
-      : destination ?? (first ? { kind: 'theorem', projectId: first.projectId, projectTitle: first.title } : undefined)
+    : project
+      ? { kind: 'theorem', projectId: project.projectId, projectTitle: project.title }
+      : requested
+        ? undefined
+        : destination ?? (first ? { kind: 'theorem', projectId: first.projectId, projectTitle: first.title } : undefined)
   destinationRef.current = destination
 
   /**
@@ -286,7 +292,7 @@ export function NewConversation({
   if (projects.status === 'failed' && !chosen) notes.push({ tone: 'error', text: describeError(projects.error) })
   // Opened from a project that no longer loads: the composer has no recipient to
   // wait for, so say so instead of showing "Loading…" while Send stays blocked.
-  if (projectId && !opening && !touched.current && projects.status === 'ready')
+  if (requested && !project && projects.status === 'ready')
     notes.push({ tone: 'error', text: 'That project is no longer available. Choose a recipient to send somewhere else.' })
 
   return (

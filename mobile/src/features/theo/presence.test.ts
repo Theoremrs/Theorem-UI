@@ -8,7 +8,7 @@ const signals = (
   phase: ConversationPhase,
   more: Omit<TheoSignals, 'conversation'> = {},
   approvals: Record<string, unknown>[] = [],
-  conv: { runId?: string } = {},
+  conv: { runId?: string; lastUserTurnMs?: number } = {},
 ): TheoSignals => ({
   conversation: { phase, projection: { approvals } as never, ...conv },
   ...more,
@@ -63,20 +63,42 @@ describe('what Theo says, from the event behind it', () => {
     expect(
       theoStateOf(signals('completed', { delivery: { stage: 'failed', runId: 'run-1' } }, [], { runId: 'run-2' })),
     ).toBe('done')
-    // The same run going on is not a newer turn: after an attachment fails during
-    // upload the run keeps producing messages, and the failure must stay visible.
+    // A delivery that failed before admission has no run of its own: the person's
+    // next message is what clears it.
     expect(
-      theoStateOf(signals('running', { delivery: { stage: 'failed', runId: 'run-1' } }, [], { runId: 'run-1' })),
+      theoStateOf(
+        signals('completed', { delivery: { stage: 'failed', updatedAtMs: 200 } }, [], {
+          runId: 'run-1',
+          lastUserTurnMs: 300,
+        }),
+      ),
+    ).toBe('done')
+    // The same run going on is not a newer turn: after an attachment fails during
+    // upload it keeps producing messages, and the failure must stay visible.
+    expect(
+      theoStateOf(
+        signals('running', { delivery: { stage: 'failed', runId: 'run-1', updatedAtMs: 200 } }, [], {
+          runId: 'run-1',
+          lastUserTurnMs: 100,
+        }),
+      ),
     ).toBe('cannot-continue')
     // With no newer turn, the failure still stands.
     expect(theoStateOf(signals('ready', { delivery: { stage: 'failed' } }))).toBe('cannot-continue')
   })
 
   test('a new attachment failure is not hidden by an older finished run', () => {
-    // The reply finished (run-1); a newer attachment failed during upload, starting no run.
-    expect(theoStateOf(signals('completed', { delivery: { stage: 'failed' } }, [], { runId: 'run-1' }))).toBe(
-      'cannot-continue',
-    )
+    // The reply finished (run-1); a newer attachment failed during upload, starting
+    // no run, and the person has not spoken since. Their old message (100) predates
+    // the failure (200), so it clears nothing.
+    expect(
+      theoStateOf(
+        signals('completed', { delivery: { stage: 'failed', updatedAtMs: 200 } }, [], {
+          runId: 'run-1',
+          lastUserTurnMs: 100,
+        }),
+      ),
+    ).toBe('cannot-continue')
     // A run that has no id at all (nothing recorded) supersedes nothing.
     expect(theoStateOf(signals('completed', { delivery: { stage: 'refused', runId: 'run-1' } }))).toBe(
       'cannot-continue',
