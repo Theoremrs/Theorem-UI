@@ -138,6 +138,112 @@ function Discoverable({
   )
 }
 
+/** What stops the grant list being saved: a grant naming no principal, or a principal with two. */
+function grantProblems(rows: Grant[]) {
+  const problems: string[] = []
+  rows.forEach((grant, at) => {
+    const principal = grant.principal.trim()
+    if (!principal) problems.push(`grant ${at + 1} names no principal`)
+    else if (rows.findIndex((one) => one.principal.trim() === principal) !== at)
+      problems.push(`${principal} has two grants`)
+  })
+  return problems
+}
+
+/** The actions a grant's ticks name: every declared one, then any key the definition no longer declares. */
+function invokeKeys(definition: CapabilityDefinition, grant: Grant) {
+  const declared = definition.actions.map((action) => action.key)
+  return [
+    ...declared,
+    ...grant.invoke.filter((key) => key !== ALL && !declared.includes(key)),
+  ]
+}
+
+/** One grant: its principal, what it may read, invoke and author, and the way to remove it. */
+function GrantRow({
+  grant,
+  n,
+  definition,
+  onChange,
+  onRemove,
+}: {
+  grant: Grant
+  n: number
+  definition: CapabilityDefinition
+  onChange: (change: Partial<Grant>) => void
+  onRemove: () => void
+}) {
+  const all = grant.invoke.includes(ALL)
+  return (
+    <fieldset className="flex flex-col gap-1.5 rounded-md border border-separator p-2">
+      <div className="flex items-center gap-1.5">
+        <input
+          aria-label={`Principal ${n}`}
+          className={fieldControl}
+          value={grant.principal}
+          placeholder="user:someone"
+          onChange={(event) => onChange({ principal: event.target.value })}
+        />
+        <Button
+          size="xs"
+          variant="ghost"
+          aria-label={`Remove grant ${n}`}
+          onClick={onRemove}
+        >
+          ×
+        </Button>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <Tick
+          label={`Grant ${n} reads`}
+          text="Read records"
+          checked={grant.read}
+          onChange={(read) => onChange({ read })}
+        />
+        <Tick
+          label={`Grant ${n} authors`}
+          text="Author the definition"
+          checked={grant.author}
+          onChange={(author) => onChange({ author })}
+        />
+      </div>
+      <Tick
+        label={`Grant ${n} invokes every action`}
+        text="Invoke every action"
+        checked={all}
+        onChange={(on) => onChange({ invoke: on ? [ALL] : [] })}
+      />
+      {!all && (
+        <div className="flex flex-wrap gap-3 ps-4">
+          {invokeKeys(definition, grant).map((key) => {
+            const action = definition.actions.find((one) => one.key === key)
+            return (
+              <Tick
+                key={key}
+                label={`Grant ${n} invokes ${key}`}
+                text={action?.label ?? key}
+                checked={grant.invoke.includes(key)}
+                onChange={(on) =>
+                  onChange({
+                    invoke: on
+                      ? [...grant.invoke.filter((one) => one !== key), key]
+                      : grant.invoke.filter((one) => one !== key),
+                  })
+                }
+              />
+            )
+          })}
+        </div>
+      )}
+      {grant.background && (
+        <Note>
+          May also run background behavior; this editor keeps that as it is.
+        </Note>
+      )}
+    </fieldset>
+  )
+}
+
 function GrantsEditor({
   definition,
   grants,
@@ -156,14 +262,7 @@ function GrantsEditor({
     setRows((held) =>
       held.map((one, i) => (i === at ? { ...one, ...change } : one)),
     )
-
-  const problems: string[] = []
-  rows.forEach((grant, at) => {
-    const principal = grant.principal.trim()
-    if (!principal) problems.push(`grant ${at + 1} names no principal`)
-    else if (rows.findIndex((one) => one.principal.trim() === principal) !== at)
-      problems.push(`${principal} has two grants`)
-  })
+  const problems = grantProblems(rows)
 
   return (
     <div className="flex flex-col gap-2">
@@ -171,101 +270,16 @@ function GrantsEditor({
         Saving replaces the whole grant list. Reading, invoking and authoring
         are separate: invoking never implies authoring.
       </Note>
-      {rows.map((grant, at) => {
-        const n = at + 1
-        const all = grant.invoke.includes(ALL)
-        const declared = definition.actions.map((action) => action.key)
-        // A key the definition no longer declares is still this grant's.
-        const keys = [
-          ...declared,
-          ...grant.invoke.filter(
-            (key) => key !== ALL && !declared.includes(key),
-          ),
-        ]
-        return (
-          <fieldset
-            key={at}
-            className="flex flex-col gap-1.5 rounded-md border border-separator p-2"
-          >
-            <div className="flex items-center gap-1.5">
-              <input
-                aria-label={`Principal ${n}`}
-                className={fieldControl}
-                value={grant.principal}
-                placeholder="user:someone"
-                onChange={(event) => set(at, { principal: event.target.value })}
-              />
-              <Button
-                size="xs"
-                variant="ghost"
-                aria-label={`Remove grant ${n}`}
-                onClick={() =>
-                  setRows((held) => held.filter((_, i) => i !== at))
-                }
-              >
-                ×
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Tick
-                label={`Grant ${n} reads`}
-                text="Read records"
-                checked={grant.read}
-                onChange={(read) => set(at, { read })}
-              />
-              <Tick
-                label={`Grant ${n} authors`}
-                text="Author the definition"
-                checked={grant.author}
-                onChange={(author) => set(at, { author })}
-              />
-            </div>
-            <Tick
-              label={`Grant ${n} invokes every action`}
-              text="Invoke every action"
-              checked={all}
-              onChange={(on) =>
-                set(at, {
-                  invoke: on ? [ALL] : [],
-                })
-              }
-            />
-            {!all && (
-              <div className="flex flex-wrap gap-3 ps-4">
-                {keys.map((key) => {
-                  const action = definition.actions.find(
-                    (one) => one.key === key,
-                  )
-                  return (
-                    <Tick
-                      key={key}
-                      label={`Grant ${n} invokes ${key}`}
-                      text={action?.label ?? key}
-                      checked={grant.invoke.includes(key)}
-                      onChange={(on) =>
-                        set(at, {
-                          invoke: on
-                            ? [
-                                ...grant.invoke.filter((one) => one !== key),
-                                key,
-                              ]
-                            : grant.invoke.filter((one) => one !== key),
-                        })
-                      }
-                    />
-                  )
-                })}
-              </div>
-            )}
-            {grant.background && (
-              <Note>
-                May also run background behavior; this editor keeps that as it
-                is.
-              </Note>
-            )}
-          </fieldset>
-        )
-      })}
+      {rows.map((grant, at) => (
+        <GrantRow
+          key={at}
+          grant={grant}
+          n={at + 1}
+          definition={definition}
+          onChange={(change) => set(at, change)}
+          onRemove={() => setRows((held) => held.filter((_, i) => i !== at))}
+        />
+      ))}
       <Button
         size="xs"
         variant="outline"
