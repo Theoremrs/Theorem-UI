@@ -258,6 +258,109 @@ const samePage = (a: PageDocument, b: PageDocument) =>
 /** A save the vault refused: what was being saved, and what is there now. */
 type Conflict = { page: PageDocument; currentHash: string | null }
 
+/** The page's History button, where its vault keeps a history and the page is shown, not arranged. */
+function HistoryButton({
+  client,
+  path,
+  current,
+  arranging,
+  onPreview,
+}: {
+  client: WorkspaceClient
+  path: string
+  /** The revision on screen, if it has been saved. */
+  current: string | null
+  arranging: boolean
+  onPreview: (revision: PageRevision) => void
+}) {
+  if (!hasPageHistory(client) || current === null || arranging) return null
+  return (
+    <PageHistory
+      client={client}
+      path={path}
+      current={current}
+      onPreview={onPreview}
+    />
+  )
+}
+
+/**
+ * An earlier version shown in place of the page: its title, the bar that
+ * restores it or goes back, and the version drawn as the page in use is.
+ * Until the version is read, the heading keeps the page's own title.
+ */
+function VersionPreview({
+  path,
+  revision,
+  previewed,
+  title,
+  dirty,
+  restore,
+  conflict,
+  config,
+  lookup,
+  onRestore,
+  onBack,
+  onTakeTheirs,
+}: {
+  path: string
+  revision: PageRevision
+  previewed: ReturnType<typeof usePageRevision>
+  title: string
+  dirty: boolean
+  restore: ReturnType<typeof useRestorePage>
+  /** The page changed in the vault since the revision on screen was read. */
+  conflict: boolean
+  config: ReturnType<typeof usePageConfig>
+  lookup: (type: string) => ReturnType<typeof moduleById>
+  onRestore: () => void
+  onBack: () => void
+  onTakeTheirs: () => void
+}) {
+  const version = previewed.data?.page
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex shrink-0 items-center gap-2 border-b border-separator px-4 py-2">
+        <h1 className="min-w-0 flex-1 truncate font-heading text-[18px] font-medium">
+          {version?.title ?? title}
+        </h1>
+      </header>
+      <RevisionPreviewBar
+        revision={revision}
+        blocked={
+          dirty ? 'Save or discard your changes to this page first.' : undefined
+        }
+        restoring={restore.isPending}
+        failed={restore.error && !conflict ? restore.error.message : undefined}
+        conflict={conflict}
+        onRestore={onRestore}
+        onBack={onBack}
+        onTakeTheirs={onTakeTheirs}
+      />
+      <div className="min-h-0 flex-1 overflow-auto">
+        {previewed.error ? (
+          <PageStatus
+            title="This version did not open"
+            detail={previewed.error.message}
+          />
+        ) : !version ? (
+          <PageSkeleton />
+        ) : (
+          <PageScopeProvider layout={version.layout}>
+            <Render
+              config={config}
+              data={prepareLayout(version.layout, lookup, (type) =>
+                LAYOUT_TYPES.has(type),
+              )}
+              metadata={{ arranging: false, page: path } satisfies PageMetadata}
+            />
+          </PageScopeProvider>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function PageEditor({
   client,
   loaded,
@@ -443,14 +546,13 @@ function PageEditor({
       extra={
         <>
           {extra}
-          {hasPageHistory(client) && held.hash !== null && !arranging && (
-            <PageHistory
-              client={client}
-              path={loaded.path}
-              current={held.hash}
-              onPreview={showVersion}
-            />
-          )}
+          <HistoryButton
+            client={client}
+            path={loaded.path}
+            current={held.hash}
+            arranging={arranging}
+            onPreview={showVersion}
+          />
           <SaveAsTemplate client={client} page={shown} />
         </>
       }
@@ -485,65 +587,27 @@ function PageEditor({
     />
   )
 
-  if (preview) {
-    const version = previewed.data?.page
+  if (preview)
     return (
       <ContentRendererContext.Provider value={renderContent}>
-        <div className="flex h-full min-h-0 flex-col">
-          <header className="flex shrink-0 items-center gap-2 border-b border-separator px-4 py-2">
-            <h1 className="min-w-0 flex-1 truncate font-heading text-[18px] font-medium">
-              {version?.title ?? shown.title}
-            </h1>
-          </header>
-          <RevisionPreviewBar
-            revision={preview}
-            blocked={
-              dirty
-                ? 'Save or discard your changes to this page first.'
-                : undefined
-            }
-            restoring={restore.isPending}
-            failed={
-              restore.error && !restoreConflict
-                ? restore.error.message
-                : undefined
-            }
-            conflict={restoreConflict}
-            onRestore={() => void restoreVersion(preview)}
-            onBack={() => setPreview(null)}
-            onTakeTheirs={() =>
-              void takeTheirs().then(() => setRestoreConflict(false))
-            }
-          />
-          <div className="min-h-0 flex-1 overflow-auto">
-            {previewed.error ? (
-              <PageStatus
-                title="This version did not open"
-                detail={previewed.error.message}
-              />
-            ) : !version ? (
-              <PageSkeleton />
-            ) : (
-              <PageScopeProvider layout={version.layout}>
-                <Render
-                  config={config}
-                  data={prepareLayout(version.layout, lookup, (type) =>
-                    LAYOUT_TYPES.has(type),
-                  )}
-                  metadata={
-                    {
-                      arranging: false,
-                      page: loaded.path,
-                    } satisfies PageMetadata
-                  }
-                />
-              </PageScopeProvider>
-            )}
-          </div>
-        </div>
+        <VersionPreview
+          path={loaded.path}
+          revision={preview}
+          previewed={previewed}
+          title={shown.title}
+          dirty={dirty}
+          restore={restore}
+          conflict={restoreConflict}
+          config={config}
+          lookup={lookup}
+          onRestore={() => void restoreVersion(preview)}
+          onBack={() => setPreview(null)}
+          onTakeTheirs={() =>
+            void takeTheirs().then(() => setRestoreConflict(false))
+          }
+        />
       </ContentRendererContext.Provider>
     )
-  }
 
   if (arranging)
     return (
