@@ -101,6 +101,145 @@ function fieldTypeOf(
   }
 }
 
+/** The fields section: which change to make to a collection's fields, and its form. */
+function FieldsSection({
+  definition,
+  schemas,
+  tab,
+  busy,
+  onTab,
+  onSubmit,
+}: {
+  definition: DescribeResult['definition']
+  schemas: CollectionSchema[]
+  tab: Tab
+  busy: boolean
+  onTab: (tab: Tab) => void
+  onSubmit: Submit
+}) {
+  const collections = definition.collections.map((collection) => ({
+    value: collection.key,
+    label: collection.label,
+  }))
+  const one = (what: string) => (op: PatchOp) => void onSubmit([op], what)
+  return (
+    <>
+      <Segmented
+        value={tab}
+        options={[...TABS]}
+        onChange={onTab}
+        label="What to change"
+      />
+      {tab === 'add' && (
+        <AddField
+          collections={collections}
+          schemas={schemas}
+          busy={busy}
+          onSubmit={one('Field added')}
+        />
+      )}
+      {tab === 'rename' && (
+        <RenameField
+          collections={collections}
+          schemas={schemas}
+          busy={busy}
+          onSubmit={one('Field renamed')}
+        />
+      )}
+      {tab === 'variant' && (
+        <AddVariant
+          definition={definition}
+          schemas={schemas}
+          busy={busy}
+          onSubmit={onSubmit}
+        />
+      )}
+      {tab === 'lifecycle' && (
+        <LifecycleEditor
+          definition={definition}
+          schemas={schemas}
+          busy={busy}
+          onSubmit={onSubmit}
+        />
+      )}
+    </>
+  )
+}
+
+/** What the chosen section of the authoring dialog shows. */
+function SectionBody({
+  section,
+  tab,
+  instanceId,
+  described,
+  viewKey,
+  busy,
+  onTab,
+  onSubmit,
+  onRepin,
+  onAsk,
+  onOpenInstance,
+}: {
+  section: Section
+  tab: Tab
+  instanceId: string
+  described: DescribeResult
+  viewKey: string
+  busy: boolean
+  onTab: (tab: Tab) => void
+  onSubmit: Submit
+  onRepin: (definitionId: string) => void
+  onAsk?: () => void
+  onOpenInstance?: (instanceId: string) => void
+}) {
+  const { definition, collectionSchemas: schemas } = described
+  return (
+    <>
+      {section === 'fields' && (
+        <FieldsSection
+          definition={definition}
+          schemas={schemas}
+          tab={tab}
+          busy={busy}
+          onTab={onTab}
+          onSubmit={onSubmit}
+        />
+      )}
+      {section === 'views' && (
+        <ViewEditor
+          definition={definition}
+          schemas={schemas}
+          startViewKey={viewKey}
+          busy={busy}
+          onSubmit={onSubmit}
+        />
+      )}
+      {section === 'agent' && (
+        <AgentAccess
+          definition={definition}
+          grants={described.grants}
+          busy={busy}
+          onSubmit={onSubmit}
+          onAsk={onAsk}
+        />
+      )}
+      {section === 'history' && (
+        <DefinitionHistoryPanel
+          instanceId={instanceId}
+          busy={busy}
+          onRepin={onRepin}
+        />
+      )}
+      {section === 'templates' && (
+        <div className="flex flex-col gap-4">
+          <SaveTemplate instanceId={instanceId} definition={definition} />
+          <NewFromTemplate onOpen={onOpenInstance} />
+        </div>
+      )}
+    </>
+  )
+}
+
 /**
  * The authoring controls for one instance, opened from the table module that
  * shows its rows. A patch names the definition id describe answered with; a
@@ -131,13 +270,8 @@ export function AuthoringDialog({
   const authoring = useCapabilityAuthor(instanceId)
   const repinning = useCapabilityRepin(instanceId)
   const client = useQueryClient()
-  const { definition, collectionSchemas: schemas } = described
+  const { definition } = described
   const expectedDefinitionId = described.definitionId
-
-  const collections = definition.collections.map((collection) => ({
-    value: collection.key,
-    label: collection.label,
-  }))
 
   const submit: Submit = async (ops, what) => {
     if (!expectedDefinitionId) {
@@ -176,7 +310,6 @@ export function AuthoringDialog({
       return false
     }
   }
-  const one = (what: string) => (op: PatchOp) => void submit([op], what)
 
   /** Pin an earlier definition again. It names the version, not a base: no conflict to read back. */
   const repin = async (definitionId: string) => {
@@ -219,79 +352,19 @@ export function AuthoringDialog({
         <StatusLine status={status} />
 
         <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
-          {section === 'fields' && (
-            <>
-              <Segmented
-                value={tab}
-                options={[...TABS]}
-                onChange={setTab}
-                label="What to change"
-              />
-              {tab === 'add' && (
-                <AddField
-                  collections={collections}
-                  schemas={schemas}
-                  busy={busy}
-                  onSubmit={one('Field added')}
-                />
-              )}
-              {tab === 'rename' && (
-                <RenameField
-                  collections={collections}
-                  schemas={schemas}
-                  busy={busy}
-                  onSubmit={one('Field renamed')}
-                />
-              )}
-              {tab === 'variant' && (
-                <AddVariant
-                  definition={definition}
-                  schemas={schemas}
-                  busy={busy}
-                  onSubmit={submit}
-                />
-              )}
-              {tab === 'lifecycle' && (
-                <LifecycleEditor
-                  definition={definition}
-                  schemas={schemas}
-                  busy={busy}
-                  onSubmit={submit}
-                />
-              )}
-            </>
-          )}
-          {section === 'views' && (
-            <ViewEditor
-              definition={definition}
-              schemas={schemas}
-              startViewKey={viewKey}
-              busy={busy}
-              onSubmit={submit}
-            />
-          )}
-          {section === 'agent' && (
-            <AgentAccess
-              definition={definition}
-              grants={described.grants}
-              busy={busy}
-              onSubmit={submit}
-              onAsk={onAsk}
-            />
-          )}
-          {section === 'history' && (
-            <DefinitionHistoryPanel
-              instanceId={instanceId}
-              busy={busy}
-              onRepin={(definitionId) => void repin(definitionId)}
-            />
-          )}
-          {section === 'templates' && (
-            <div className="flex flex-col gap-4">
-              <SaveTemplate instanceId={instanceId} definition={definition} />
-              <NewFromTemplate onOpen={onOpenInstance} />
-            </div>
-          )}
+          <SectionBody
+            section={section}
+            tab={tab}
+            instanceId={instanceId}
+            described={described}
+            viewKey={viewKey}
+            busy={busy}
+            onTab={setTab}
+            onSubmit={submit}
+            onRepin={(definitionId) => void repin(definitionId)}
+            onAsk={onAsk}
+            onOpenInstance={onOpenInstance}
+          />
         </div>
 
         <DialogFooter>
