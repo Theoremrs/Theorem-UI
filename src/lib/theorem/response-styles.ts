@@ -399,7 +399,7 @@ const catalogKey = (scope: StyleScope) =>
   ] as const
 
 const retry = (count: number, error: unknown) =>
-  !isResponseStylesAbsent(error) && count < 2
+  !(error instanceof z.ZodError) && !isResponseStylesAbsent(error) && count < 2
 
 /**
  * Styles, frameworks, the selection for this conversation and project, and the
