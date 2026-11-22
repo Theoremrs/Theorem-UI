@@ -175,3 +175,55 @@ test('a module whose frame reports an error gives way to its fallback until it i
   await waitFor(() => container.querySelector('iframe'))
   expect(container.textContent).not.toContain('tasks is not defined')
 })
+
+test('a running module says so; Stop gives way to its fallback, Run starts it again, and an error says it stopped', async () => {
+  const { container } = await place()
+  await press(button(container, 'Run it'))
+  await frameOf(container)
+  // What the module's bar says it is doing.
+  const says = (text: string) =>
+    [...container.querySelectorAll('span')].some(
+      (one) => one.textContent === text,
+    )
+  expect(says('Running in a sandbox')).toBe(true)
+  expect(button(container, 'Run')).toBeUndefined()
+  expect(button(container, 'Revoke')).toBeTruthy()
+
+  await press(button(container, 'Stop'))
+  expect(says('Stopped')).toBe(true)
+  expect(container.querySelector('iframe')).toBeNull()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  expect(button(container, 'Stop')).toBeUndefined()
+
+  await press(button(container, 'Run'))
+  const frame = await frameOf(container)
+  expect(says('Running in a sandbox')).toBe(true)
+  expect(container.textContent).not.toContain('Write the plan')
+
+  await call<PageMethods, 'frame.error'>(frame, 'frame.error', {
+    message: 'tasks is not defined',
+    name: 'ReferenceError',
+  })
+  await waitFor(() => says('Stopped by an error'))
+  expect(container.textContent).toContain('Focus stopped: tasks is not defined')
+  expect(button(container, 'Stop')).toBeUndefined()
+})
+
+test('a module with no fallback keeps running when its frame reports an error', async () => {
+  const { container } = await place({ fallback: undefined })
+  await press(button(container, 'Run it'))
+  const frame = await frameOf(container)
+  await call<PageMethods, 'frame.error'>(frame, 'frame.error', {
+    message: 'tasks is not defined',
+    name: 'ReferenceError',
+  })
+  // The error reached the host: had it been heard, the frame would be gone by now.
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(container.querySelector('iframe')).toBeTruthy()
+  expect(
+    [...container.querySelectorAll('span')].some(
+      (one) => one.textContent === 'Running in a sandbox',
+    ),
+  ).toBe(true)
+  expect(container.textContent).not.toContain('tasks is not defined')
+})
