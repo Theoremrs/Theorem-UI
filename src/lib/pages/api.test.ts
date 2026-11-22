@@ -87,7 +87,7 @@ beforeEach(async () => {
       body: typeof raw === 'string' ? raw : undefined,
     })
     if (url.pathname === '/api/chat/v1/bootstrap')
-      return json({ schema: 'theorem.chat.bootstrap.v1', csrfToken: 'csrf-1' })
+      return json({ schema: 'theorem.chat.bootstrap.v1', csrfToken: 'csrf' })
     return answer()
   }) as typeof fetch
   // The session is held across test files; this file's token is the one it serves.
@@ -136,7 +136,7 @@ test('a write carries CSRF, an idempotency key and this page client id', async (
   const sent = calls.at(-1)!
   expect(sent.method).toBe('POST')
   expect(sent.url.pathname).toBe(`${PAGES}/patch`)
-  expect(sent.headers.get('X-CSRF-Token')).toBe('csrf-1')
+  expect(sent.headers.get('X-CSRF-Token')).toBe('csrf')
   expect(sent.headers.get('Idempotency-Key')).toBeTruthy()
   expect(sent.headers.get('X-Theorem-Client-Id')).toBeTruthy()
   expect(JSON.parse(sent.body!)).toEqual({
