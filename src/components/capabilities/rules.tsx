@@ -82,36 +82,86 @@ type Draft = {
   sources: Record<string, SourceDraft>
 }
 
+type TriggerDraft = Pick<
+  Draft,
+  'kind' | 'collectionKey' | 'fieldKeys' | 'to' | 'from' | 'interval' | 'start'
+>
+
+/** A new rule's trigger: a record created in the first collection, the other kinds' fields blank. */
+const blankTrigger = (definition: CapabilityDefinition): TriggerDraft => ({
+  kind: 'record_created',
+  collectionKey: definition.collections[0]?.key ?? '',
+  fieldKeys: [],
+  to: '',
+  from: [],
+  interval: '60',
+  start: '',
+})
+
+/** A trigger as the editor holds it: its own kind's fields filled, the other kinds' left blank. */
+function triggerDraftOf(
+  trigger: RuleTrigger,
+  blank: TriggerDraft,
+): TriggerDraft {
+  switch (trigger.kind) {
+    case 'record_created':
+      return {
+        ...blank,
+        kind: trigger.kind,
+        collectionKey: trigger.collectionKey,
+      }
+    case 'record_updated':
+      return {
+        ...blank,
+        kind: trigger.kind,
+        collectionKey: trigger.collectionKey,
+        fieldKeys: trigger.fieldKeys ?? [],
+      }
+    case 'transition':
+      return {
+        ...blank,
+        kind: trigger.kind,
+        collectionKey: trigger.collectionKey,
+        to: trigger.to,
+        from: trigger.from ?? [],
+      }
+    case 'schedule':
+      return {
+        ...blank,
+        kind: trigger.kind,
+        interval: String(trigger.intervalMinutes),
+        start:
+          trigger.startAtMs === undefined
+            ? ''
+            : localDateTimeText(trigger.startAtMs),
+      }
+  }
+}
+
+/** One input's source as the editor holds it: a literal's text, a trigger field's key. */
+const sourceDraftOf = (source: RuleInputSource): SourceDraft => ({
+  source: source.source,
+  text: source.source === 'literal' ? valueText(source.value) : '',
+  fieldKey: source.source === 'trigger_field' ? source.fieldKey : '',
+})
+
 function draftOf(
   rule: RuleSpec | undefined,
   definition: CapabilityDefinition,
 ): Draft {
-  const trigger = rule?.trigger
-  const event = trigger && trigger.kind !== 'schedule' ? trigger : undefined
-  const sources: Record<string, SourceDraft> = {}
-  for (const [key, source] of Object.entries(rule?.inputs ?? {}))
-    sources[key] = {
-      source: source.source,
-      text: source.source === 'literal' ? valueText(source.value) : '',
-      fieldKey: source.source === 'trigger_field' ? source.fieldKey : '',
-    }
+  const blank = blankTrigger(definition)
+  if (!rule) return { key: '', label: '', ...blank, actionKey: '', sources: {} }
   return {
-    key: rule?.key ?? '',
-    label: rule?.label ?? '',
-    kind: trigger?.kind ?? 'record_created',
-    collectionKey: event?.collectionKey ?? definition.collections[0]?.key ?? '',
-    fieldKeys:
-      trigger?.kind === 'record_updated' ? (trigger.fieldKeys ?? []) : [],
-    to: trigger?.kind === 'transition' ? trigger.to : '',
-    from: trigger?.kind === 'transition' ? (trigger.from ?? []) : [],
-    interval:
-      trigger?.kind === 'schedule' ? String(trigger.intervalMinutes) : '60',
-    start:
-      trigger?.kind === 'schedule' && trigger.startAtMs !== undefined
-        ? localDateTimeText(trigger.startAtMs)
-        : '',
-    actionKey: rule?.actionKey ?? '',
-    sources,
+    key: rule.key,
+    label: rule.label,
+    ...triggerDraftOf(rule.trigger, blank),
+    actionKey: rule.actionKey,
+    sources: Object.fromEntries(
+      Object.entries(rule.inputs).map(([key, source]) => [
+        key,
+        sourceDraftOf(source),
+      ]),
+    ),
   }
 }
 
@@ -134,6 +184,15 @@ function statesOf(
   ]
 }
 
+/** A schedule as the draft holds it: a blank interval is left for the checks to name. */
+function scheduleOf(draft: Draft): RuleTrigger {
+  const intervalMinutes = Number(draft.interval.trim() || Number.NaN)
+  const startAtMs = draft.start ? new Date(draft.start).getTime() : Number.NaN
+  return Number.isFinite(startAtMs)
+    ? { kind: 'schedule', intervalMinutes, startAtMs }
+    : { kind: 'schedule', intervalMinutes }
+}
+
 function triggerOf(draft: Draft): RuleTrigger {
   const collectionKey = draft.collectionKey
   switch (draft.kind) {
@@ -147,15 +206,8 @@ function triggerOf(draft: Draft): RuleTrigger {
       return draft.from.length
         ? { kind: 'transition', collectionKey, to: draft.to, from: draft.from }
         : { kind: 'transition', collectionKey, to: draft.to }
-    case 'schedule': {
-      const intervalMinutes = Number(draft.interval.trim() || Number.NaN)
-      const startAtMs = draft.start
-        ? new Date(draft.start).getTime()
-        : Number.NaN
-      return Number.isFinite(startAtMs)
-        ? { kind: 'schedule', intervalMinutes, startAtMs }
-        : { kind: 'schedule', intervalMinutes }
-    }
+    case 'schedule':
+      return scheduleOf(draft)
   }
 }
 
@@ -195,6 +247,26 @@ function ruleOf(draft: Draft, action: ActionSpec | undefined): RuleSpec {
 }
 
 /**
+ * The sources a draft's inputs keep: a schedule has no triggering record to
+ * read a field from, and a field the collection lacks becomes its first.
+ */
+function settledSources(
+  sources: Record<string, SourceDraft>,
+  kind: RuleTrigger['kind'],
+  fieldKeys: string[],
+): Record<string, SourceDraft> {
+  const kept: Record<string, SourceDraft> = {}
+  for (const [key, held] of Object.entries(sources)) {
+    if (held.source === 'trigger_field' && kind === 'schedule') continue
+    kept[key] =
+      held.source === 'trigger_field' && !fieldKeys.includes(held.fieldKey)
+        ? { ...held, fieldKey: fieldKeys[0] ?? '' }
+        : held
+  }
+  return kept
+}
+
+/**
  * Keep a draft's choices inside what its trigger allows: an action the trigger
  * may invoke, states and fields the collection has, a source an input can take.
  */
@@ -210,21 +282,13 @@ function settle(
   const states = statesOf(definition, schemas, draft.collectionKey)
   const fields = schemaFor([...schemas], draft.collectionKey)?.fields ?? []
   const fieldKeys = fields.map((one) => one.key)
-  const sources: Record<string, SourceDraft> = {}
-  for (const [key, held] of Object.entries(draft.sources)) {
-    if (held.source === 'trigger_field' && draft.kind === 'schedule') continue
-    sources[key] =
-      held.source === 'trigger_field' && !fieldKeys.includes(held.fieldKey)
-        ? { ...held, fieldKey: fieldKeys[0] ?? '' }
-        : held
-  }
   return {
     ...draft,
     actionKey,
     to: states.includes(draft.to) ? draft.to : (states[0] ?? draft.to),
     from: draft.from.filter((one) => states.includes(one)),
     fieldKeys: draft.fieldKeys.filter((one) => fieldKeys.includes(one)),
-    sources,
+    sources: settledSources(draft.sources, draft.kind, fieldKeys),
   }
 }
 
@@ -288,6 +352,170 @@ function Ticks({
         </span>
       ))}
     </div>
+  )
+}
+
+type Options = Array<{ value: string; label: string }>
+
+/**
+ * What starts a rule, past its kind: the collection an event watches or a
+ * schedule's interval and start, the fields a change watches, and the states
+ * a transition moves between.
+ */
+function TriggerFields({
+  draft,
+  definition,
+  fieldOptions,
+  stateOptions,
+  onChange: update,
+}: {
+  draft: Draft
+  definition: CapabilityDefinition
+  fieldOptions: Options
+  stateOptions: Options
+  onChange: (change: Partial<Draft>) => void
+}) {
+  const onEvent = draft.kind !== 'schedule'
+  return (
+    <>
+      {onEvent ? (
+        <Captioned label="Collection">
+          <Choice
+            label="Collection"
+            value={draft.collectionKey}
+            options={definition.collections.map((one) => ({
+              value: one.key,
+              label: one.label,
+            }))}
+            onChange={(collectionKey) => update({ collectionKey })}
+          />
+        </Captioned>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          <Captioned
+            label="Every (minutes)"
+            hint="At least 5. A missed slot is not made up later."
+          >
+            <input
+              aria-label="Every (minutes)"
+              className={fieldControl}
+              inputMode="numeric"
+              value={draft.interval}
+              onChange={(event) => update({ interval: event.target.value })}
+            />
+          </Captioned>
+          <Captioned
+            label="Starting at"
+            hint="Optional; else when it is switched on."
+          >
+            <input
+              aria-label="Starting at"
+              type="datetime-local"
+              className={fieldControl}
+              value={draft.start}
+              onChange={(event) => update({ start: event.target.value })}
+            />
+          </Captioned>
+        </div>
+      )}
+      {draft.kind === 'record_updated' && (
+        <Captioned
+          label="Watching"
+          hint="None ticked: any change to the record."
+        >
+          <Ticks
+            prefix="Watch"
+            options={fieldOptions}
+            value={draft.fieldKeys}
+            onChange={(fieldKeys) => update({ fieldKeys })}
+          />
+        </Captioned>
+      )}
+      {draft.kind === 'transition' && (
+        <>
+          <Captioned label="Moves to">
+            <Choice
+              label="Moves to"
+              value={draft.to}
+              options={stateOptions}
+              onChange={(to) => update({ to })}
+            />
+          </Captioned>
+          <Captioned label="From" hint="None ticked: from any state.">
+            <Ticks
+              prefix="From"
+              options={stateOptions.filter((one) => one.value !== draft.to)}
+              value={draft.from}
+              onChange={(from) => update({ from })}
+            />
+          </Captioned>
+        </>
+      )}
+    </>
+  )
+}
+
+/** Where one action input's value comes from: unset, a typed value, the triggering record, or the run's time. */
+function InputSource({
+  field,
+  held: given,
+  onEvent,
+  fieldOptions,
+  onChange,
+}: {
+  field: InputField
+  held: SourceDraft | undefined
+  onEvent: boolean
+  fieldOptions: Options
+  onChange: (change: Partial<SourceDraft>) => void
+}) {
+  const held = given ?? {
+    source: 'unset' as const,
+    text: '',
+    fieldKey: '',
+  }
+  const choices: Array<{ value: SourceKind; label: string }> = [
+    { value: 'unset', label: 'Not set' },
+    { value: 'literal', label: 'A value' },
+    ...(onEvent
+      ? [
+          {
+            value: 'trigger_field' as const,
+            label: 'From the triggering record',
+          },
+        ]
+      : []),
+    ...(field.fieldType.kind === 'timestamp' || field.fieldType.kind === 'date'
+      ? [{ value: 'now' as const, label: 'The time it runs' }]
+      : []),
+  ]
+  return (
+    <Captioned label={`${field.key}${field.required ? ' (required)' : ''}`}>
+      <div className="flex items-center gap-1.5">
+        <Choice
+          label={`Source of ${field.key}`}
+          value={held.source}
+          options={choices}
+          onChange={(source) => onChange({ source: source as SourceKind })}
+        />
+        {held.source === 'literal' && (
+          <input
+            aria-label={`Value of ${field.key}`}
+            className={fieldControl}
+            value={held.text}
+            onChange={(event) => onChange({ text: event.target.value })}
+          />
+        )}
+        {held.source === 'trigger_field' && (
+          <Choice
+            label={`Field for ${field.key}`}
+            value={held.fieldKey}
+            options={fieldOptions}
+            onChange={(fieldKey) => onChange({ fieldKey })}
+          />
+        )}
+      </div>
+    </Captioned>
   )
 }
 
@@ -376,79 +604,13 @@ function RuleEditor({
           onChange={(kind) => update({ kind: kind as RuleTrigger['kind'] })}
         />
       </Captioned>
-      {onEvent ? (
-        <Captioned label="Collection">
-          <Choice
-            label="Collection"
-            value={draft.collectionKey}
-            options={definition.collections.map((one) => ({
-              value: one.key,
-              label: one.label,
-            }))}
-            onChange={(collectionKey) => update({ collectionKey })}
-          />
-        </Captioned>
-      ) : (
-        <div className="grid grid-cols-2 gap-2">
-          <Captioned
-            label="Every (minutes)"
-            hint="At least 5. A missed slot is not made up later."
-          >
-            <input
-              aria-label="Every (minutes)"
-              className={fieldControl}
-              inputMode="numeric"
-              value={draft.interval}
-              onChange={(event) => update({ interval: event.target.value })}
-            />
-          </Captioned>
-          <Captioned
-            label="Starting at"
-            hint="Optional; else when it is switched on."
-          >
-            <input
-              aria-label="Starting at"
-              type="datetime-local"
-              className={fieldControl}
-              value={draft.start}
-              onChange={(event) => update({ start: event.target.value })}
-            />
-          </Captioned>
-        </div>
-      )}
-      {draft.kind === 'record_updated' && (
-        <Captioned
-          label="Watching"
-          hint="None ticked: any change to the record."
-        >
-          <Ticks
-            prefix="Watch"
-            options={fieldOptions}
-            value={draft.fieldKeys}
-            onChange={(fieldKeys) => update({ fieldKeys })}
-          />
-        </Captioned>
-      )}
-      {draft.kind === 'transition' && (
-        <>
-          <Captioned label="Moves to">
-            <Choice
-              label="Moves to"
-              value={draft.to}
-              options={stateOptions}
-              onChange={(to) => update({ to })}
-            />
-          </Captioned>
-          <Captioned label="From" hint="None ticked: from any state.">
-            <Ticks
-              prefix="From"
-              options={stateOptions.filter((one) => one.value !== draft.to)}
-              value={draft.from}
-              onChange={(from) => update({ from })}
-            />
-          </Captioned>
-        </>
-      )}
+      <TriggerFields
+        draft={draft}
+        definition={definition}
+        fieldOptions={fieldOptions}
+        stateOptions={stateOptions}
+        onChange={update}
+      />
       <Captioned
         label="Then"
         hint={
@@ -467,64 +629,16 @@ function RuleEditor({
           onChange={(actionKey) => update({ actionKey })}
         />
       </Captioned>
-      {(action?.input ?? []).map((field) => {
-        const held = draft.sources[field.key] ?? {
-          source: 'unset' as const,
-          text: '',
-          fieldKey: '',
-        }
-        const choices: Array<{ value: SourceKind; label: string }> = [
-          { value: 'unset', label: 'Not set' },
-          { value: 'literal', label: 'A value' },
-          ...(onEvent
-            ? [
-                {
-                  value: 'trigger_field' as const,
-                  label: 'From the triggering record',
-                },
-              ]
-            : []),
-          ...(field.fieldType.kind === 'timestamp' ||
-          field.fieldType.kind === 'date'
-            ? [{ value: 'now' as const, label: 'The time it runs' }]
-            : []),
-        ]
-        return (
-          <Captioned
-            key={field.key}
-            label={`${field.key}${field.required ? ' (required)' : ''}`}
-          >
-            <div className="flex items-center gap-1.5">
-              <Choice
-                label={`Source of ${field.key}`}
-                value={held.source}
-                options={choices}
-                onChange={(source) =>
-                  setSource(field.key, { source: source as SourceKind })
-                }
-              />
-              {held.source === 'literal' && (
-                <input
-                  aria-label={`Value of ${field.key}`}
-                  className={fieldControl}
-                  value={held.text}
-                  onChange={(event) =>
-                    setSource(field.key, { text: event.target.value })
-                  }
-                />
-              )}
-              {held.source === 'trigger_field' && (
-                <Choice
-                  label={`Field for ${field.key}`}
-                  value={held.fieldKey}
-                  options={fieldOptions}
-                  onChange={(fieldKey) => setSource(field.key, { fieldKey })}
-                />
-              )}
-            </div>
-          </Captioned>
-        )
-      })}
+      {(action?.input ?? []).map((field) => (
+        <InputSource
+          key={field.key}
+          field={field}
+          held={draft.sources[field.key]}
+          onEvent={onEvent}
+          fieldOptions={fieldOptions}
+          onChange={(change) => setSource(field.key, change)}
+        />
+      ))}
       {problems.length > 0 && (
         <ul className="flex flex-col gap-0.5 text-xs text-ink-faint">
           {problems.map((problem) => (
@@ -619,6 +733,116 @@ function RuleItem({
         </>
       )}
     </li>
+  )
+}
+
+/**
+ * An instance's rules, each a sentence with whether it is on, the switch for a
+ * caller who may switch it, and Edit and Remove for an author.
+ */
+function RuleList({
+  rules,
+  definition,
+  schemas,
+  states,
+  canSwitch,
+  canEdit,
+  busy,
+  onEdit,
+  onSubmit,
+}: {
+  rules: RuleSpec[]
+  definition: CapabilityDefinition
+  schemas: CollectionSchema[]
+  states: ReturnType<typeof currentRuleStates>
+  canSwitch: boolean
+  canEdit: boolean
+  busy: boolean
+  onEdit: (rule: RuleSpec) => void
+  onSubmit: (op: PatchOp, what: string) => void
+}) {
+  return (
+    <>
+      {!canSwitch && (
+        <p className="text-xs text-ink-faint">
+          Switching a rule on needs the background permission on your grant.
+        </p>
+      )}
+      {rules.length ? (
+        <ul className="flex flex-col divide-y divide-separator">
+          {rules.map((rule) => (
+            <RuleItem
+              key={rule.key}
+              rule={rule}
+              definition={definition}
+              schemas={schemas}
+              on={ruleEnabled(states, rule.key)}
+              canSwitch={canSwitch}
+              canEdit={canEdit}
+              busy={busy}
+              onSwitch={(on) =>
+                onSubmit(
+                  setRuleEnabledOp(rule.key, on),
+                  on ? 'Rule switched on' : 'Rule switched off',
+                )
+              }
+              onEdit={() => onEdit(rule)}
+              onRemove={() => onSubmit(removeRuleOp(rule.key), 'Rule removed')}
+            />
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-ink-muted">
+          {definition.name} has no rules yet.
+        </p>
+      )}
+    </>
+  )
+}
+
+/** The editor over the rule being edited or added, or, for an author, the button that adds one. */
+function AddOrEditRule({
+  editing,
+  definition,
+  schemas,
+  canAdd,
+  busy,
+  onAdd,
+  onCancel,
+  onSave,
+}: {
+  editing: { rule?: RuleSpec } | undefined
+  definition: CapabilityDefinition
+  schemas: CollectionSchema[]
+  canAdd: boolean
+  busy: boolean
+  onAdd: () => void
+  onCancel: () => void
+  onSave: (op: PatchOp, what: string) => void
+}) {
+  if (editing)
+    return (
+      <RuleEditor
+        key={editing.rule?.key ?? '+new'}
+        definition={definition}
+        schemas={schemas}
+        rule={editing.rule}
+        busy={busy}
+        onCancel={onCancel}
+        onSubmit={(rule) =>
+          onSave(
+            editing.rule ? replaceRuleOp(rule) : addRuleOp(rule),
+            editing.rule ? 'Rule saved' : 'Rule added',
+          )
+        }
+      />
+    )
+  if (!canAdd) return null
+  return (
+    <Button size="xs" variant="outline" className="self-start" onClick={onAdd}>
+      <Icon.Add className="size-3.5" />
+      Add rule
+    </Button>
   )
 }
 
@@ -720,70 +944,31 @@ export function RulesDialog({
               onReload={reload}
               onCheck={() => {}}
             />
-            {!canSwitch && (
-              <p className="text-xs text-ink-faint">
-                Switching a rule on needs the background permission on your
-                grant.
-              </p>
-            )}
-            {rules.length ? (
-              <ul className="flex flex-col divide-y divide-separator">
-                {rules.map((rule) => (
-                  <RuleItem
-                    key={rule.key}
-                    rule={rule}
-                    definition={definition}
-                    schemas={schemas}
-                    on={ruleEnabled(states, rule.key)}
-                    canSwitch={canSwitch}
-                    canEdit={grant.author}
-                    busy={authoring.isPending}
-                    onSwitch={(on) =>
-                      void submit(
-                        setRuleEnabledOp(rule.key, on),
-                        on ? 'Rule switched on' : 'Rule switched off',
-                      )
-                    }
-                    onEdit={() => setEditing({ rule })}
-                    onRemove={() =>
-                      void submit(removeRuleOp(rule.key), 'Rule removed')
-                    }
-                  />
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-ink-muted">
-                {definition.name} has no rules yet.
-              </p>
-            )}
-            {editing ? (
-              <RuleEditor
-                key={editing.rule?.key ?? '+new'}
-                definition={definition}
-                schemas={schemas}
-                rule={editing.rule}
-                busy={authoring.isPending}
-                onCancel={() => setEditing(undefined)}
-                onSubmit={(rule) =>
-                  void submit(
-                    editing.rule ? replaceRuleOp(rule) : addRuleOp(rule),
-                    editing.rule ? 'Rule saved' : 'Rule added',
-                  ).then((saved) => saved && setEditing(undefined))
-                }
-              />
-            ) : (
-              grant.author && (
-                <Button
-                  size="xs"
-                  variant="outline"
-                  className="self-start"
-                  onClick={() => setEditing({})}
-                >
-                  <Icon.Add className="size-3.5" />
-                  Add rule
-                </Button>
-              )
-            )}
+            <RuleList
+              rules={rules}
+              definition={definition}
+              schemas={schemas}
+              states={states}
+              canSwitch={canSwitch}
+              canEdit={grant.author}
+              busy={authoring.isPending}
+              onEdit={(rule) => setEditing({ rule })}
+              onSubmit={(op, what) => void submit(op, what)}
+            />
+            <AddOrEditRule
+              editing={editing}
+              definition={definition}
+              schemas={schemas}
+              canAdd={grant.author}
+              busy={authoring.isPending}
+              onAdd={() => setEditing({})}
+              onCancel={() => setEditing(undefined)}
+              onSave={(op, what) =>
+                void submit(op, what).then(
+                  (saved) => saved && setEditing(undefined),
+                )
+              }
+            />
           </>
         )}
         <DialogFooter>
