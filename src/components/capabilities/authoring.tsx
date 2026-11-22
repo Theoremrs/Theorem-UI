@@ -32,6 +32,7 @@ import {
 import { refusalCode, refusalMessage } from '@/lib/capabilities/api'
 import { Choice, Row, StatusLine } from './authoring-parts'
 import type { Status, Submit } from './authoring-parts'
+import { AddVariant, LifecycleEditor } from './field-editors'
 import { capabilityKeys, useCapabilityAuthor } from './queries'
 import { ViewEditor } from './view-editor'
 
@@ -45,6 +46,8 @@ type Section = (typeof SECTIONS)[number]['value']
 const TABS = [
   { value: 'add', label: 'Add field' },
   { value: 'rename', label: 'Rename' },
+  { value: 'variant', label: 'Add variant' },
+  { value: 'lifecycle', label: 'Lifecycle' },
 ] as const
 
 type Tab = (typeof TABS)[number]['value']
@@ -203,6 +206,22 @@ export function AuthoringDialog({
                   schemas={schemas}
                   busy={authoring.isPending}
                   onSubmit={one('Field renamed')}
+                />
+              )}
+              {tab === 'variant' && (
+                <AddVariant
+                  definition={definition}
+                  schemas={schemas}
+                  busy={authoring.isPending}
+                  onSubmit={submit}
+                />
+              )}
+              {tab === 'lifecycle' && (
+                <LifecycleEditor
+                  definition={definition}
+                  schemas={schemas}
+                  busy={authoring.isPending}
+                  onSubmit={submit}
                 />
               )}
             </>
