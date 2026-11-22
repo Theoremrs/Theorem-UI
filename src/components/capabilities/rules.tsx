@@ -1,7 +1,8 @@
-// SOURCING: the app's Dialog and Button, coss ui Switch and Checkbox, the records' Segmented, the
-// native field styling pages/resource-field.tsx uses, and states.tsx's StatusLine, as the slice-1
-// authoring dialog composes them. Every control sends one PatchOp through the author route
-// (useCapabilityAuthor) naming the definition id it read; the rule checks are lib/capabilities/rules.
+// SOURCING: the app's Dialog and Button, coss ui Switch and Checkbox, the authoring parts' Choice, the
+// records' Segmented, the native field styling pages/resource-field.tsx uses, and states.tsx's
+// StatusLine, as the slice-1 authoring dialog composes them. Every control sends one PatchOp through
+// the author route (useCapabilityAuthor) naming the definition id it read; the rule checks are
+// lib/capabilities/rules.
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -47,6 +48,7 @@ import {
   rulesOf,
   setRuleEnabledOp,
 } from '@/lib/capabilities/rules'
+import { Choice } from './authoring-parts'
 import { capabilityKeys, useCapabilityAuthor } from './queries'
 import { RunHistory } from './runs'
 import { StatusLine } from './states'
@@ -225,7 +227,13 @@ function settle(
   }
 }
 
-function Row({
+/**
+ * A caption over controls that name themselves. Not the authoring Row's
+ * <label>: this one holds a group (ticked boxes, a source and its value), and
+ * a label wraps one control; around a box it would also forward the click to
+ * Base UI's hidden input and toggle it twice.
+ */
+function Captioned({
   label,
   hint,
   children,
@@ -240,33 +248,6 @@ function Row({
       {children}
       {hint && <span className="text-xs text-ink-faint">{hint}</span>}
     </div>
-  )
-}
-
-function Choice({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  value: string
-  options: Array<{ value: string; label: string }>
-  onChange: (value: string) => void
-}) {
-  return (
-    <select
-      aria-label={label}
-      className={fieldControl}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
   )
 }
 
@@ -366,7 +347,7 @@ function RuleEditor({
   return (
     <div className="flex flex-col gap-2 rounded-md border border-separator p-3">
       <div className="grid grid-cols-2 gap-2">
-        <Row label="Key" hint="Stable: runs name the rule by it.">
+        <Captioned label="Key" hint="Stable: runs name the rule by it.">
           <input
             aria-label="Rule key"
             className={fieldControl}
@@ -375,8 +356,8 @@ function RuleEditor({
             placeholder="weekly_review"
             onChange={(event) => update({ key: event.target.value.trim() })}
           />
-        </Row>
-        <Row label="Name">
+        </Captioned>
+        <Captioned label="Name">
           <input
             aria-label="Rule name"
             className={fieldControl}
@@ -384,18 +365,18 @@ function RuleEditor({
             placeholder="Weekly review"
             onChange={(event) => update({ label: event.target.value })}
           />
-        </Row>
+        </Captioned>
       </div>
-      <Row label="Starts">
+      <Captioned label="Starts">
         <Choice
           label="Starts"
           value={draft.kind}
           options={TRIGGERS}
           onChange={(kind) => update({ kind: kind as RuleTrigger['kind'] })}
         />
-      </Row>
+      </Captioned>
       {onEvent ? (
-        <Row label="Collection">
+        <Captioned label="Collection">
           <Choice
             label="Collection"
             value={draft.collectionKey}
@@ -405,10 +386,10 @@ function RuleEditor({
             }))}
             onChange={(collectionKey) => update({ collectionKey })}
           />
-        </Row>
+        </Captioned>
       ) : (
         <div className="grid grid-cols-2 gap-2">
-          <Row
+          <Captioned
             label="Every (minutes)"
             hint="At least 5. A missed slot is not made up later."
           >
@@ -419,8 +400,8 @@ function RuleEditor({
               value={draft.interval}
               onChange={(event) => update({ interval: event.target.value })}
             />
-          </Row>
-          <Row
+          </Captioned>
+          <Captioned
             label="Starting at"
             hint="Optional; else when it is switched on."
           >
@@ -431,40 +412,43 @@ function RuleEditor({
               value={draft.start}
               onChange={(event) => update({ start: event.target.value })}
             />
-          </Row>
+          </Captioned>
         </div>
       )}
       {draft.kind === 'record_updated' && (
-        <Row label="Watching" hint="None ticked: any change to the record.">
+        <Captioned
+          label="Watching"
+          hint="None ticked: any change to the record."
+        >
           <Ticks
             prefix="Watch"
             options={fieldOptions}
             value={draft.fieldKeys}
             onChange={(fieldKeys) => update({ fieldKeys })}
           />
-        </Row>
+        </Captioned>
       )}
       {draft.kind === 'transition' && (
         <>
-          <Row label="Moves to">
+          <Captioned label="Moves to">
             <Choice
               label="Moves to"
               value={draft.to}
               options={stateOptions}
               onChange={(to) => update({ to })}
             />
-          </Row>
-          <Row label="From" hint="None ticked: from any state.">
+          </Captioned>
+          <Captioned label="From" hint="None ticked: from any state.">
             <Ticks
               prefix="From"
               options={stateOptions.filter((one) => one.value !== draft.to)}
               value={draft.from}
               onChange={(from) => update({ from })}
             />
-          </Row>
+          </Captioned>
         </>
       )}
-      <Row
+      <Captioned
         label="Then"
         hint={
           onEvent
@@ -481,7 +465,7 @@ function RuleEditor({
           }))}
           onChange={(actionKey) => update({ actionKey })}
         />
-      </Row>
+      </Captioned>
       {(action?.input ?? []).map((field) => {
         const held = draft.sources[field.key] ?? {
           source: 'unset' as const,
@@ -505,7 +489,7 @@ function RuleEditor({
             : []),
         ]
         return (
-          <Row
+          <Captioned
             key={field.key}
             label={`${field.key}${field.required ? ' (required)' : ''}`}
           >
@@ -537,7 +521,7 @@ function RuleEditor({
                 />
               )}
             </div>
-          </Row>
+          </Captioned>
         )
       })}
       {problems.length > 0 && (
