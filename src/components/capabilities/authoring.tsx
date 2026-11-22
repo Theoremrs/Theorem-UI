@@ -33,14 +33,20 @@ import { refusalCode, refusalMessage } from '@/lib/capabilities/api'
 import { AgentAccess } from './agent-access'
 import { Choice, Row, StatusLine } from './authoring-parts'
 import type { Status, Submit } from './authoring-parts'
+import { DefinitionHistoryPanel } from './definition-history'
 import { AddVariant, LifecycleEditor } from './field-editors'
-import { capabilityKeys, useCapabilityAuthor } from './queries'
+import {
+  capabilityKeys,
+  useCapabilityAuthor,
+  useCapabilityRepin,
+} from './queries'
 import { ViewEditor } from './view-editor'
 
 const SECTIONS = [
   { value: 'fields', label: 'Fields' },
   { value: 'views', label: 'Views' },
   { value: 'agent', label: 'Agent access' },
+  { value: 'history', label: 'History' },
 ] as const
 
 type Section = (typeof SECTIONS)[number]['value']
@@ -118,6 +124,7 @@ export function AuthoringDialog({
   const [tab, setTab] = useState<Tab>('add')
   const [status, setStatus] = useState<Status | undefined>()
   const authoring = useCapabilityAuthor(instanceId)
+  const repinning = useCapabilityRepin(instanceId)
   const client = useQueryClient()
   const { definition, collectionSchemas: schemas } = described
   const expectedDefinitionId = described.definitionId
@@ -166,6 +173,21 @@ export function AuthoringDialog({
   }
   const one = (what: string) => (op: PatchOp) => void submit([op], what)
 
+  /** Pin an earlier definition again. It names the version, not a base: no conflict to read back. */
+  const repin = async (definitionId: string) => {
+    setStatus({ kind: 'pending', message: `Re-pinning to ${definitionId}…` })
+    try {
+      const result = await repinning.mutateAsync(definitionId)
+      setStatus({
+        kind: 'saved',
+        message: `Re-pinned · the instance now uses ${result.definitionId}. Records are not changed.`,
+      })
+    } catch (error) {
+      setStatus({ kind: 'failed', message: refusalMessage(error, 'Re-pinning') })
+    }
+  }
+  const busy = authoring.isPending || repinning.isPending
+
   return (
     <Dialog open onOpenChange={(shown) => !shown && onClose()}>
       <DialogContent showCloseButton={false} className="max-w-xl">
@@ -201,7 +223,7 @@ export function AuthoringDialog({
                 <AddField
                   collections={collections}
                   schemas={schemas}
-                  busy={authoring.isPending}
+                  busy={busy}
                   onSubmit={one('Field added')}
                 />
               )}
@@ -209,7 +231,7 @@ export function AuthoringDialog({
                 <RenameField
                   collections={collections}
                   schemas={schemas}
-                  busy={authoring.isPending}
+                  busy={busy}
                   onSubmit={one('Field renamed')}
                 />
               )}
@@ -217,7 +239,7 @@ export function AuthoringDialog({
                 <AddVariant
                   definition={definition}
                   schemas={schemas}
-                  busy={authoring.isPending}
+                  busy={busy}
                   onSubmit={submit}
                 />
               )}
@@ -225,7 +247,7 @@ export function AuthoringDialog({
                 <LifecycleEditor
                   definition={definition}
                   schemas={schemas}
-                  busy={authoring.isPending}
+                  busy={busy}
                   onSubmit={submit}
                 />
               )}
@@ -236,7 +258,7 @@ export function AuthoringDialog({
               definition={definition}
               schemas={schemas}
               startViewKey={viewKey}
-              busy={authoring.isPending}
+              busy={busy}
               onSubmit={submit}
             />
           )}
@@ -244,9 +266,16 @@ export function AuthoringDialog({
             <AgentAccess
               definition={definition}
               grants={described.grants}
-              busy={authoring.isPending}
+              busy={busy}
               onSubmit={submit}
               onAsk={onAsk}
+            />
+          )}
+          {section === 'history' && (
+            <DefinitionHistoryPanel
+              instanceId={instanceId}
+              busy={busy}
+              onRepin={(definitionId) => void repin(definitionId)}
             />
           )}
         </div>

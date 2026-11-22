@@ -369,3 +369,136 @@ test('use in this conversation hands back to the module that opened the dialog',
   // Using it here authors nothing.
   expect(authored()).toEqual([])
 })
+
+// ── Definition history and re-pin ───────────────────────────────────────────
+
+const pin = (
+  seq: number,
+  definitionId: string,
+  reason: 'created' | 'authored' | 'repinned' | 'instantiated',
+  ops: string[] = [],
+) => ({
+  seq,
+  definitionId,
+  reason,
+  principal: 'user:travis',
+  atMs: Date.UTC(2026, 10, 20 + seq, 15, 0),
+  ops,
+})
+
+test('history lists the pins newest first, pages back, and re-pins an older one', async () => {
+  answers.history = {
+    status: 200,
+    body: {
+      instanceId: 'tracker/main',
+      currentDefinitionId: 'capdef:abc',
+      entries: [
+        {
+          ...pin(4, 'capdef:abc', 'authored', ['add_view', 'replace_view']),
+          previousDefinitionId: 'capdef:two',
+        },
+        pin(3, 'capdef:two', 'repinned'),
+      ],
+      nextCursor: 'h3',
+    },
+  }
+  await openDialog()
+  await click(button('History'))
+  await waitFor(() => screen().textContent.includes('capdef:two'))
+  const read = calls.filter((call) => call.path.endsWith('/history'))
+  expect(read[0]?.path).toBe(
+    `${CAPABILITIES}/instances/${encodeURIComponent('tracker/main')}/history`,
+  )
+  expect(read[0]?.search).toBe('')
+  expect(screen().textContent).toContain('Records are not changed')
+  expect(screen().textContent).toContain('add_view, replace_view')
+  // The pin in force is marked, and offers no re-pin to itself.
+  expect(screen().textContent).toContain('In use')
+  expect(named('Re-pin entry 4')).toBeNull()
+  expect(named('Re-pin entry 3')).toBeTruthy()
+
+  // The older page comes from the cursor the first answered with.
+  answers.history = {
+    status: 200,
+    body: {
+      instanceId: 'tracker/main',
+      currentDefinitionId: 'capdef:abc',
+      entries: [
+        pin(2, 'capdef:one', 'instantiated', ['captpl:reading']),
+        pin(1, 'capdef:zero', 'created'),
+      ],
+    },
+  }
+  await click(button('Show older entries'))
+  await waitFor(() => screen().textContent.includes('capdef:zero'))
+  expect(
+    calls.filter((call) => call.path.endsWith('/history')).at(-1)?.search,
+  ).toBe('?cursor=h3')
+  expect(screen().textContent).toContain('Created from template captpl:reading')
+  expect(button('Show older entries')).toBeUndefined()
+
+  answers.repin = {
+    status: 200,
+    body: {
+      definitionId: 'capdef:one',
+      instance: { instanceId: 'tracker/main', definitionId: 'capdef:one' },
+    },
+  }
+  await click(named('Re-pin entry 2'))
+  const repinned = await waitFor(() =>
+    calls.find((call) => call.path.endsWith('/repin')),
+  )
+  expect(repinned.method).toBe('POST')
+  expect(repinned.body).toEqual({ definitionId: 'capdef:one' })
+  await waitFor(() =>
+    screen().textContent.includes(
+      'Re-pinned · the instance now uses capdef:one. Records are not changed.',
+    ),
+  )
+  // A re-pin is not an authoring patch.
+  expect(authored()).toEqual([])
+})
+
+test('an instance with no recorded pins says why, rather than inventing a past', async () => {
+  answers.history = {
+    status: 200,
+    body: {
+      instanceId: 'tracker/main',
+      currentDefinitionId: 'capdef:abc',
+      entries: [],
+    },
+  }
+  await openDialog()
+  await click(button('History'))
+  await waitFor(() => screen().textContent.includes('No history is recorded'))
+  expect(screen().textContent).toContain('until its next change')
+})
+
+test('a refused re-pin says why and moves nothing', async () => {
+  answers.history = {
+    status: 200,
+    body: {
+      instanceId: 'tracker/main',
+      currentDefinitionId: 'capdef:abc',
+      entries: [pin(2, 'capdef:abc', 'authored'), pin(1, 'capdef:old', 'created')],
+    },
+  }
+  answers.repin = {
+    status: 403,
+    body: {
+      title: 'Forbidden',
+      status: 403,
+      code: 'capability_author_denied',
+      detail: 'No author grant.',
+    },
+  }
+  await openDialog()
+  await click(button('History'))
+  await click(await waitFor(() => named('Re-pin entry 1')))
+  await waitFor(() =>
+    screen().textContent.includes(
+      "You do not have permission to change this capability's definition.",
+    ),
+  )
+  expect(screen().textContent).not.toContain('Re-pinned ·')
+})

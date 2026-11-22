@@ -32,6 +32,7 @@ import {
 import type {
   AuthorResult,
   CapabilityDefinition,
+  DefinitionHistory,
   DefinitionPatch,
   InstantiateTemplateRequest,
   InvocationReceipt,
@@ -216,14 +217,16 @@ export function useCapabilityAuthor(instanceId: string | undefined) {
 
 // ── Slice 2: history, re-pin, templates, multi-target invocation ────────────
 
-/** The instance's definition history, newest first, one page. */
+/** The instance's definition history, newest first, page by page. */
 export function useCapabilityHistory(
   instanceId: string | undefined,
   { enabled = true }: { enabled?: boolean } = {},
 ) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: capabilityKeys.history(instanceId ?? ''),
-    queryFn: () => history(instanceId!),
+    queryFn: ({ pageParam }) => history(instanceId!, { cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: DefinitionHistory) => last.nextCursor,
     enabled: enabled && !!instanceId,
     staleTime: 10_000,
     retry,
