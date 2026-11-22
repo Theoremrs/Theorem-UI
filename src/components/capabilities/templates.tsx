@@ -7,7 +7,10 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { fieldControl } from '@/components/pages/resource-field'
 import { refusalMessage } from '@/lib/capabilities/api'
-import type { CapabilityDefinition } from '@/lib/capabilities/contract'
+import type {
+  CapabilityDefinition,
+  CapabilityTemplate,
+} from '@/lib/capabilities/contract'
 import { Choice, Note, Row, StatusLine } from './authoring-parts'
 import type { Status } from './authoring-parts'
 import {
@@ -85,6 +88,94 @@ export function SaveTemplate({
   )
 }
 
+/** What stops an instance id being used: none given, or one with a space. */
+function instanceIdProblems(id: string) {
+  const problems: string[] = []
+  if (!id) problems.push('an instance id')
+  else if (/\s/.test(id)) problems.push('an instance id without spaces')
+  return problems
+}
+
+/** The caller's templates as read, and the one chosen: the one picked, else the first listed. */
+function useTemplateChoice() {
+  const templates = useCapabilityTemplates()
+  const listed = templates.data?.templates ?? []
+  const [chosen, setChosen] = useState('')
+  const template = listed.find((one) => one.templateId === chosen) ?? listed[0]
+  return { templates, listed, template, setChosen }
+}
+
+/** The chosen template, what it brings, and the instance id it is bound under. */
+function TemplateForm({
+  listed,
+  template,
+  instanceId,
+  problems,
+  status,
+  busy,
+  onChoose,
+  onInstanceId,
+  onCreate,
+}: {
+  listed: CapabilityTemplate[]
+  template: CapabilityTemplate
+  instanceId: string
+  problems: string[]
+  status: Status | undefined
+  busy: boolean
+  onChoose: (templateId: string) => void
+  onInstanceId: (instanceId: string) => void
+  onCreate: () => void
+}) {
+  return (
+    <>
+      <Row label="Template">
+        <Choice
+          label="Template to use"
+          value={template.templateId}
+          options={listed.map((one) => ({
+            value: one.templateId,
+            label: one.name,
+          }))}
+          onChange={onChoose}
+        />
+      </Row>
+      {template.description && <Note>{template.description}</Note>}
+      {template.requirements.modules.length > 0 && (
+        <Note>Shown through {template.requirements.modules.join(', ')}.</Note>
+      )}
+      <Row
+        label="Instance id"
+        hint="Stable: pages and agents name the new instance by it."
+      >
+        <input
+          aria-label="New instance id"
+          className={fieldControl}
+          value={instanceId}
+          placeholder="reading/home"
+          onChange={(event) => onInstanceId(event.target.value)}
+        />
+      </Row>
+      <Note>
+        Its own empty collections, with you as its only owner. Nothing is copied
+        from any instance the template was saved from, and later changes to the
+        template never reach it.
+      </Note>
+      {problems.length > 0 && <Note>Still to do: {problems.join(', ')}.</Note>}
+      <StatusLine status={status} />
+      <Button
+        size="sm"
+        className="self-start"
+        disabled={problems.length > 0 || busy}
+        aria-busy={busy}
+        onClick={onCreate}
+      >
+        Create instance
+      </Button>
+    </>
+  )
+}
+
 /**
  * Bind a new instance from one of the caller's templates. It gets its own
  * empty collections and only its creator as owner; `onOpen`, where a module
@@ -95,18 +186,13 @@ export function NewFromTemplate({
 }: {
   onOpen?: (instanceId: string) => void
 }) {
-  const templates = useCapabilityTemplates()
+  const { templates, listed, template, setChosen } = useTemplateChoice()
   const instantiating = useInstantiateCapabilityTemplate()
-  const listed = templates.data?.templates ?? []
-  const [chosen, setChosen] = useState('')
   const [instanceId, setInstanceId] = useState('')
   const [status, setStatus] = useState<Status>()
-  const template = listed.find((one) => one.templateId === chosen) ?? listed[0]
 
   const id = instanceId.trim()
-  const problems: string[] = []
-  if (!id) problems.push('an instance id')
-  else if (/\s/.test(id)) problems.push('an instance id without spaces')
+  const problems = instanceIdProblems(id)
 
   const create = async () => {
     if (!template) return
@@ -148,55 +234,17 @@ export function NewFromTemplate({
           controls, under Templates.
         </Note>
       ) : (
-        <>
-          <Row label="Template">
-            <Choice
-              label="Template to use"
-              value={template.templateId}
-              options={listed.map((one) => ({
-                value: one.templateId,
-                label: one.name,
-              }))}
-              onChange={setChosen}
-            />
-          </Row>
-          {template.description && <Note>{template.description}</Note>}
-          {template.requirements.modules.length > 0 && (
-            <Note>
-              Shown through {template.requirements.modules.join(', ')}.
-            </Note>
-          )}
-          <Row
-            label="Instance id"
-            hint="Stable: pages and agents name the new instance by it."
-          >
-            <input
-              aria-label="New instance id"
-              className={fieldControl}
-              value={instanceId}
-              placeholder="reading/home"
-              onChange={(event) => setInstanceId(event.target.value)}
-            />
-          </Row>
-          <Note>
-            Its own empty collections, with you as its only owner. Nothing is
-            copied from any instance the template was saved from, and later
-            changes to the template never reach it.
-          </Note>
-          {problems.length > 0 && (
-            <Note>Still to do: {problems.join(', ')}.</Note>
-          )}
-          <StatusLine status={status} />
-          <Button
-            size="sm"
-            className="self-start"
-            disabled={problems.length > 0 || instantiating.isPending}
-            aria-busy={instantiating.isPending}
-            onClick={() => void create()}
-          >
-            Create instance
-          </Button>
-        </>
+        <TemplateForm
+          listed={listed}
+          template={template}
+          instanceId={instanceId}
+          problems={problems}
+          status={status}
+          busy={instantiating.isPending}
+          onChoose={setChosen}
+          onInstanceId={setInstanceId}
+          onCreate={() => void create()}
+        />
       )}
     </section>
   )
