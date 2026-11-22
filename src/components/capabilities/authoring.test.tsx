@@ -8,7 +8,7 @@ import { cleanup, render, waitFor } from '../../../test/workspace'
 import { CAPABILITIES } from '@/lib/capabilities/api'
 import type { DescribeResult } from '@/lib/capabilities/contract'
 import { AuthoringDialog } from './authoring'
-import { describeResult } from './fixture'
+import { describeResult, ownerGrant } from './fixture'
 
 const page = (
   window as unknown as { happyDOM: { setURL: (url: string) => void } }
@@ -233,4 +233,139 @@ test('a collection with no select field says it has nothing to govern', async ()
     'This collection declares no select field',
   )
   expect(button('Save lifecycle')).toBeUndefined()
+})
+
+// ── Agent access: three separate controls ───────────────────────────────────
+
+test('discoverability is its own control: set_agent with the description, granting nothing', async () => {
+  await openDialog()
+  await click(button('Agent access'))
+  await waitFor(() => named('Discoverable to agents'))
+  expect(named('Discoverable to agents')?.getAttribute('aria-checked')).toBe(
+    'true',
+  )
+  expect(named<HTMLInputElement>('Agent description')?.value).toBe(
+    'Personal task tracker',
+  )
+  expect(screen().textContent).toContain('Being listed grants nothing')
+  await click(named('Discoverable to agents'))
+  fill('Agent description', ' Tasks for this week ')
+  await click(named('Save discoverability'))
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [
+      {
+        op: 'set_agent',
+        agent: { discoverable: false, description: 'Tasks for this week' },
+      },
+    ],
+  })
+})
+
+test('the grants editor starts from the list describe disclosed and sends it back whole', async () => {
+  described = {
+    ...describeResult(),
+    grants: [
+      // Background permission is not drawn as a control; it must survive.
+      { ...ownerGrant, background: true },
+      {
+        principal: 'user:sam',
+        read: true,
+        // A key the definition no longer declares is still the grant's.
+        invoke: ['complete', 'retired'],
+        author: false,
+      },
+    ],
+  }
+  await openDialog()
+  await click(button('Agent access'))
+  await waitFor(() => named('Principal 1'))
+  expect(named<HTMLInputElement>('Principal 1')?.value).toBe('user:travis')
+  expect(
+    named('Grant 1 invokes every action')?.getAttribute('aria-checked'),
+  ).toBe('true')
+  expect(named('Grant 1 authors')?.getAttribute('aria-checked')).toBe('true')
+  expect(named('Grant 2 invokes complete')?.getAttribute('aria-checked')).toBe(
+    'true',
+  )
+  expect(named('Grant 2 invokes assign')?.getAttribute('aria-checked')).toBe(
+    'false',
+  )
+  expect(named('Grant 2 invokes retired')?.getAttribute('aria-checked')).toBe(
+    'true',
+  )
+  expect(screen().textContent).toContain('Saving replaces the whole grant list')
+
+  // Sam may now assign and author; invoking still does not imply authoring.
+  await click(named('Grant 2 invokes assign'))
+  await click(named('Grant 2 authors'))
+  // A new grant that repeats a principal is named before anything is sent.
+  await click(button('Add grant'))
+  fill('Principal 3', 'user:travis')
+  expect(screen().textContent).toContain('user:travis has two grants')
+  expect(button('Save grants')?.disabled).toBe(true)
+  fill('Principal 3', ' agent:helper ')
+  await click(named('Grant 3 reads'))
+  // A grant added by mistake goes again.
+  await click(button('Add grant'))
+  expect(screen().textContent).toContain('grant 4 names no principal')
+  await click(named('Remove grant 4'))
+
+  await click(button('Save grants'))
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [
+      {
+        op: 'set_grants',
+        grants: [
+          {
+            principal: 'user:travis',
+            read: true,
+            invoke: ['*'],
+            author: true,
+            background: true,
+          },
+          {
+            principal: 'user:sam',
+            read: true,
+            invoke: ['complete', 'retired', 'assign'],
+            author: true,
+          },
+          { principal: 'agent:helper', read: false, invoke: [], author: false },
+        ],
+      },
+    ],
+  })
+})
+
+test('without the grant list in the answer, no grants editor is offered', async () => {
+  const { grants: _withheld, ...withheld } = describeResult()
+  described = withheld
+  await openDialog()
+  await click(button('Agent access'))
+  await waitFor(() => named('Discoverable to agents'))
+  expect(named('Principal 1')).toBeNull()
+  expect(button('Save grants')).toBeUndefined()
+  expect(screen().textContent).toContain(
+    'The grant list is disclosed only to a caller who may author',
+  )
+})
+
+test('use in this conversation hands back to the module that opened the dialog', async () => {
+  await openDialog()
+  await click(button('Agent access'))
+  await waitFor(() => button('Use in this conversation'))
+  // Opened with nothing to put in the conversation, it says so instead.
+  expect(button('Use in this conversation')?.disabled).toBe(true)
+  cleanup()
+
+  let asked = 0
+  await openDialog({ onAsk: () => asked++ })
+  await click(button('Agent access'))
+  await click(await waitFor(() => button('Use in this conversation')))
+  expect(asked).toBe(1)
+  // Using it here authors nothing.
+  expect(authored()).toEqual([])
 })

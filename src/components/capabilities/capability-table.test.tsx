@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { act } from 'react'
 import { cleanup, render, waitFor } from '../../../test/workspace'
+import { useComposerReferences } from '@/components/chat/composer-references'
 import { CapabilityTableModule } from './capability-table'
 import { PageRuntimeProvider } from '../pages/page-runtime'
 import { CAPABILITIES } from '@/lib/capabilities/api'
@@ -747,4 +748,38 @@ test('a stale definition base is refused, the current one is read back, and the 
   // current definition back and asks, so the person checks the change against it.
   expect(sentTo('/author').length).toBe(1)
   expect(reads().length).toBeGreaterThan(before)
+})
+
+// ── Agent access from the table ─────────────────────────────────────────────
+
+test('use in this conversation puts the view in the composer, with or without a selection', async () => {
+  useComposerReferences.setState({ references: [] })
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await authoring()
+  await section('Agent access')
+  await act(async () =>
+    button(screen(), 'Use in this conversation')?.click(),
+  )
+  const [reference] = await waitFor(() => {
+    const held = useComposerReferences.getState().references
+    return held.length ? held : undefined
+  })
+  expect(reference?.label).toBe('Project tracker · Next')
+  expect(
+    (reference as CapabilityContextReference).location.resource,
+  ).toEqual({
+    kind: 'capability',
+    instanceId: 'tracker/main',
+    collectionKey: 'tasks',
+    viewKey: 'next',
+    purpose: 'Track personal projects and tasks',
+    selected: [],
+    filtered: true,
+    truncated: false,
+  })
+  // The dialog steps aside for the composer, and nothing was authored.
+  await waitFor(() => !screen().textContent.includes('Author Project tracker'))
+  expect(sentTo('/author').length).toBe(0)
+  useComposerReferences.setState({ references: [] })
 })

@@ -449,25 +449,29 @@ function CapabilityTableBody({
   const quick = quickAction(definition, spec.collectionKey)
   const actions = updateActions(definition, spec.collectionKey)
 
-  /** The envelope the composer carries: what is on screen, and no record bodies. */
-  const context = useMemo(
+  /**
+   * The envelope the composer carries: what is on screen, and no record bodies.
+   * With nothing selected it names the view alone, which is what "use in this
+   * conversation" hands on; a selection is what the module outputs and emits.
+   */
+  const shown = useMemo(
     () =>
-      selected.length
-        ? capabilityContextReference({
-            instanceId,
-            collectionKey: spec.collectionKey,
-            pageId,
-            viewKey: spec.key,
-            purpose: definition.purpose,
-            label: `${definition.name} · ${spec.label} · ${selected.length} selected`,
-            selected: selected.map((row) => ({
-              id: row.id,
-              revision: row.revision,
-            })),
-            filtered,
-            truncated,
-          })
-        : undefined,
+      capabilityContextReference({
+        instanceId,
+        collectionKey: spec.collectionKey,
+        pageId,
+        viewKey: spec.key,
+        purpose: definition.purpose,
+        label: selected.length
+          ? `${definition.name} · ${spec.label} · ${selected.length} selected`
+          : `${definition.name} · ${spec.label}`,
+        selected: selected.map((row) => ({
+          id: row.id,
+          revision: row.revision,
+        })),
+        filtered,
+        truncated,
+      }),
     [
       selected,
       instanceId,
@@ -479,6 +483,7 @@ function CapabilityTableBody({
       truncated,
     ],
   )
+  const context = selected.length ? shown : undefined
 
   useEffect(() => output('context', context), [output, context])
   useEffect(() => {
@@ -783,6 +788,10 @@ function CapabilityTableBody({
           described={described}
           viewKey={spec.key}
           onClose={() => setAuthoring(false)}
+          onAsk={() => {
+            setAuthoring(false)
+            askAbout(shown)
+          }}
         />
       )}
     </div>

@@ -30,6 +30,7 @@ import {
   schemaFor,
 } from '@/lib/capabilities/model'
 import { refusalCode, refusalMessage } from '@/lib/capabilities/api'
+import { AgentAccess } from './agent-access'
 import { Choice, Row, StatusLine } from './authoring-parts'
 import type { Status, Submit } from './authoring-parts'
 import { AddVariant, LifecycleEditor } from './field-editors'
@@ -39,6 +40,7 @@ import { ViewEditor } from './view-editor'
 const SECTIONS = [
   { value: 'fields', label: 'Fields' },
   { value: 'views', label: 'Views' },
+  { value: 'agent', label: 'Agent access' },
 ] as const
 
 type Section = (typeof SECTIONS)[number]['value']
@@ -102,12 +104,15 @@ export function AuthoringDialog({
   described,
   viewKey,
   onClose,
+  onAsk,
 }: {
   instanceId: string
   described: DescribeResult
   /** The view the module is showing, which the view editor starts from. */
   viewKey: string
   onClose: () => void
+  /** Put what the module shows in the current conversation, as its Ask does. */
+  onAsk?: () => void
 }) {
   const [section, setSection] = useState<Section>('fields')
   const [tab, setTab] = useState<Tab>('add')
@@ -233,6 +238,15 @@ export function AuthoringDialog({
               startViewKey={viewKey}
               busy={authoring.isPending}
               onSubmit={submit}
+            />
+          )}
+          {section === 'agent' && (
+            <AgentAccess
+              definition={definition}
+              grants={described.grants}
+              busy={authoring.isPending}
+              onSubmit={submit}
+              onAsk={onAsk}
             />
           )}
         </div>
