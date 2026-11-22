@@ -5,7 +5,7 @@
 // backend is reached and no model is called.
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { act } from 'react'
-import { cleanup, render, waitFor } from '../../../test/workspace'
+import { cleanup, render, settle, waitFor } from '../../../test/workspace'
 import { useComposerReferences } from '@/components/chat/composer-references'
 import { CapabilityTableModule } from './capability-table'
 import { PageFileContext } from '../pages/page-route'
@@ -21,7 +21,13 @@ import type {
   QueryRequest,
   Grant,
 } from '@/lib/capabilities/contract'
-import { describeResult, queryResult, readerGrant, taskRows } from './fixture'
+import {
+  describeResult,
+  ownerGrant,
+  queryResult,
+  readerGrant,
+  taskRows,
+} from './fixture'
 import type { ModuleViewProps } from '@/lib/modules/registry'
 import type { CapabilityContextReference } from '@/lib/capabilities/reference'
 
@@ -1054,6 +1060,90 @@ test('a stale definition base is refused, the current one is read back, and the 
   // current definition back and asks, so the person checks the change against it.
   expect(sentTo('/author').length).toBe(1)
   expect(reads().length).toBeGreaterThan(before)
+})
+
+// Saving replaces the whole grant list, so a list refused as stale and sent
+// again as it was would drop a grant changed elsewhere meanwhile.
+test('a grant list refused as stale is shown as read again, with the person’s change still laid over it', async () => {
+  const sam: Grant = {
+    principal: 'user:sam',
+    read: true,
+    invoke: [],
+    author: false,
+  }
+  described = {
+    ...describeResult(),
+    definitionId: 'capdef:older',
+    grants: [ownerGrant, sam],
+  }
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await authoring()
+  await section('Agent access')
+  await waitFor(() => dialogInput('Principal 2'))
+  // The person lets Sam author and adds a helper.
+  await press('Grant 2 authors')
+  await act(async () => button(screen(), 'Add grant')?.click())
+  fill(dialogInput('Principal 3')!, 'agent:helper')
+  // Meanwhile Sam was let complete tasks, and Ops let read, elsewhere.
+  const ops: Grant = {
+    principal: 'user:ops',
+    read: true,
+    invoke: [],
+    author: false,
+  }
+  described = {
+    ...describeResult(),
+    grants: [ownerGrant, { ...sam, invoke: ['complete'] }, ops],
+  }
+  const before = reads().length
+  await act(async () => button(screen(), 'Save grants')?.click())
+  await waitFor(() => screen().textContent.includes('submit it once more'))
+  await waitFor(() => reads().length > before)
+  await settle()
+  const principals = () =>
+    [
+      ...document.querySelectorAll<HTMLInputElement>(
+        'input[aria-label^="Principal "]',
+      ),
+    ].map((one) => one.value)
+  expect(principals()).toEqual([
+    'user:travis',
+    'user:sam',
+    'user:ops',
+    'agent:helper',
+  ])
+  // Sam's grant is as read again, with the person's tick over it.
+  expect(named('Grant 2 invokes complete')?.getAttribute('aria-checked')).toBe(
+    'true',
+  )
+  expect(named('Grant 2 authors')?.getAttribute('aria-checked')).toBe('true')
+
+  // Sent again, the list keeps both changes, over the definition read again.
+  const sent = [
+    ownerGrant,
+    { ...sam, invoke: ['complete'], author: true },
+    ops,
+    { principal: 'agent:helper', read: true, invoke: [], author: false },
+  ]
+  described = { ...describeResult(), definitionId: 'capdef:def', grants: sent }
+  await act(async () => button(screen(), 'Save grants')?.click())
+  await waitFor(() => screen().textContent.includes('Grants saved'))
+  expect(authored().at(-1)).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [{ op: 'set_grants', grants: sent }],
+  })
+  // Read again once saved, the list is the one sent, each grant once.
+  await waitFor(() =>
+    screen().textContent.includes('the definition is now capdef:def'),
+  )
+  await settle()
+  expect(principals()).toEqual([
+    'user:travis',
+    'user:sam',
+    'user:ops',
+    'agent:helper',
+  ])
 })
 
 // ── Agent access from the table ─────────────────────────────────────────────

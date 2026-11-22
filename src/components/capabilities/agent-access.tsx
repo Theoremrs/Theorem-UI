@@ -2,7 +2,9 @@
 // app's Button. The three separate agent-access controls of the spec's section 7: use this capability
 // in the current conversation (the composer reference path the table's Ask already uses), make it
 // discoverable (set_agent), and permit actions (set_grants over the grant list describe discloses to
-// an author). Each is its own control, so using one never implies another.
+// an author). Each is its own control, so using one never implies another. The grant list read
+// again after a conflict gets the editor's changes laid over it here (rebase): grants are matched
+// by principal, which no general merge library knows to key on.
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { fieldControl } from '@/components/pages/resource-field'
@@ -150,6 +152,58 @@ function grantProblems(rows: Grant[]) {
   return problems
 }
 
+/** A grant as the editor holds it, and the principal it was read as: none for one added here. */
+interface HeldGrant {
+  grant: Grant
+  from?: string
+}
+
+const asRead = (grants: Grant[]): HeldGrant[] =>
+  grants.map((grant) => ({ grant, from: grant.principal }))
+
+/** The parts of `grant` changed here from `read`, the grant as it was read. */
+const changedFrom = (grant: Grant, read: Grant): Partial<Grant> =>
+  Object.fromEntries(
+    Object.entries(grant).filter(
+      ([key, value]) =>
+        JSON.stringify(value) !== JSON.stringify(read[key as keyof Grant]),
+    ),
+  )
+
+/**
+ * The editor's grants laid over the list as read again (after a conflict):
+ * each grant as now read with the parts changed here over it, none removed
+ * here, then those added here, or changed here and no longer listed, unless
+ * their principal is. Saving it keeps a change made elsewhere meanwhile.
+ */
+function rebase(rows: HeldGrant[], read: Grant[], now: Grant[]) {
+  const readAs = (principal?: string) =>
+    read.find((one) => one.principal === principal)
+  const next: HeldGrant[] = []
+  for (const grant of now) {
+    const row = rows.find((one) => one.from === grant.principal)
+    // Read before and gone from the rows: removed here.
+    if (!row && readAs(grant.principal)) continue
+    const changed = row ? changedFrom(row.grant, readAs(row.from)!) : {}
+    next.push({ grant: { ...grant, ...changed }, from: grant.principal })
+  }
+  // What is left: grants added here, and grants no longer listed, kept only
+  // when changed here.
+  for (const row of rows) {
+    const was = readAs(row.from)
+    if (was && now.some((one) => one.principal === row.from)) continue
+    if (was && Object.keys(changedFrom(row.grant, was)).length === 0) continue
+    const principal = row.grant.principal.trim()
+    if (
+      principal &&
+      next.some((one) => one.grant.principal.trim() === principal)
+    )
+      continue
+    next.push(row)
+  }
+  return next
+}
+
 /** The actions a grant's ticks name: every declared one, then any key the definition no longer declares. */
 function invokeKeys(definition: CapabilityDefinition, grant: Grant) {
   const declared = definition.actions.map((action) => action.key)
@@ -256,11 +310,20 @@ function GrantsEditor({
   onSubmit: Submit
 }) {
   // Each row is the grant as read with the edits laid over it, so a part this
-  // editor does not show (background, for one) goes back unchanged.
-  const [rows, setRows] = useState<Grant[]>(grants)
+  // editor does not show (background, for one) goes back unchanged. The list
+  // read again after a conflict is shown with the edits laid over it again.
+  const [read, setRead] = useState(grants)
+  const [held, setHeld] = useState(() => asRead(grants))
+  if (grants !== read) {
+    setRead(grants)
+    setHeld(rebase(held, read, grants))
+  }
+  const rows = held.map((one) => one.grant)
   const set = (at: number, change: Partial<Grant>) =>
-    setRows((held) =>
-      held.map((one, i) => (i === at ? { ...one, ...change } : one)),
+    setHeld((all) =>
+      all.map((one, i) =>
+        i === at ? { ...one, grant: { ...one.grant, ...change } } : one,
+      ),
     )
   const problems = grantProblems(rows)
 
@@ -277,7 +340,7 @@ function GrantsEditor({
           n={at + 1}
           definition={definition}
           onChange={(change) => set(at, change)}
-          onRemove={() => setRows((held) => held.filter((_, i) => i !== at))}
+          onRemove={() => setHeld((all) => all.filter((_, i) => i !== at))}
         />
       ))}
       <Button
@@ -285,9 +348,9 @@ function GrantsEditor({
         variant="outline"
         className="self-start"
         onClick={() =>
-          setRows((held) => [
-            ...held,
-            { principal: '', read: true, invoke: [], author: false },
+          setHeld((all) => [
+            ...all,
+            { grant: { principal: '', read: true, invoke: [], author: false } },
           ])
         }
       >
