@@ -773,6 +773,76 @@ test('a new view names its key and collection, and a key already taken is refuse
   await waitFor(() => screen().textContent.includes('View added'))
 })
 
+test('a new view’s collection takes the filter, sort and columns that named the old one’s fields with it', async () => {
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await authoring()
+  await section('Views')
+  await waitFor(() => dialogSelect('View to edit'))
+  fill(dialogSelect('View to edit')!, '')
+  await waitFor(() => dialogInput('View key'))
+  fill(dialogInput('View key')!, 'by_name')
+  fill(dialogInput('View label')!, 'By name')
+  // A sort starts ascending; the direction is offered only once there is one.
+  expect(button(screen(), 'Descending')).toBeUndefined()
+  fill(dialogSelect('Sort by')!, 'due_at')
+  expect(button(screen(), 'Ascending')?.getAttribute('aria-pressed')).toBe('true')
+  await act(async () => button(screen(), 'Descending')?.click())
+  await press('Show every field')
+  await press('Add condition to group 1')
+  expect(dialogSelect('Field of condition 1')).toBeTruthy()
+  fill(dialogSelect('View collection')!, 'people')
+  expect(dialogSelect('Sort by')?.value).toBe('')
+  expect(button(screen(), 'Descending')).toBeUndefined()
+  expect(named('Show every field')?.getAttribute('aria-checked')).toBe('true')
+  expect(dialogSelect('Field of condition 1')).toBeNull()
+  // The new collection's own field, ascending again; then no sort at all.
+  fill(dialogSelect('Sort by')!, 'name')
+  expect(button(screen(), 'Ascending')?.getAttribute('aria-pressed')).toBe('true')
+  fill(dialogSelect('Sort by')!, '')
+  expect(button(screen(), 'Ascending')).toBeUndefined()
+  fill(dialogSelect('Sort by')!, 'name')
+  await act(async () => button(screen(), 'Add view')?.click())
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [
+      {
+        op: 'add_view',
+        view: {
+          key: 'by_name',
+          label: 'By name',
+          collectionKey: 'people',
+          layout: 'list',
+          orderBy: { fieldKey: 'name', direction: 'asc' },
+          filter: { op: 'and', conditions: [] },
+        },
+      },
+    ],
+  })
+})
+
+test('a saved view with its sort cleared is sent with no sort, and keeping a view sends nothing', async () => {
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await authoring()
+  await section('Views')
+  await waitFor(() => dialogSelect('Sort by')?.value === 'due_at')
+  await act(async () => button(screen(), 'Remove view')?.click())
+  await act(async () => button(screen(), 'Keep it')?.click())
+  expect(named('Confirm remove view')).toBeNull()
+  expect(button(screen(), 'Remove view')).toBeTruthy()
+  fill(dialogSelect('Sort by')!, '')
+  await act(async () => button(screen(), 'Save view')?.click())
+  await waitFor(() => authored().length === 1)
+  const { orderBy, ...unsorted } = described.definition.views[0]!
+  expect(orderBy).toBeTruthy()
+  expect(authored()[0]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [{ op: 'replace_view', view: unsorted }],
+  })
+})
+
 test('removing a view asks first and says records are not changed', async () => {
   const { container } = await showTable()
   await waitFor(() => container.textContent.includes('Write the plan'))
