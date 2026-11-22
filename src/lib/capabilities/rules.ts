@@ -62,6 +62,23 @@ export const ruleEnabled = (
   ruleKey: string,
 ): boolean => states?.[ruleKey]?.enabled === true
 
+/**
+ * The rule states to draw: describe's, with a later patch answer's enablements
+ * over them, key by key, whichever changed last. Describe is read again after a
+ * patch, so the patch answer only bridges the gap until it arrives.
+ */
+export function currentRuleStates(
+  described: Record<string, RuleState> | undefined,
+  authored: Record<string, RuleEnablement> | undefined,
+): Record<string, RuleState> {
+  const states: Record<string, RuleState> = { ...described }
+  for (const [key, state] of Object.entries(authored ?? {})) {
+    const held = states[key]
+    if (!held || state.changedAtMs >= held.changedAtMs) states[key] = state
+  }
+  return states
+}
+
 // ── Validation ──────────────────────────────────────────────────────────────
 
 const collectionOf = (definition: CapabilityDefinition, key: string) =>

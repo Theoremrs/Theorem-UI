@@ -12,6 +12,7 @@ import { ruleCodes } from './contract'
 import {
   addRuleOp,
   canRetry,
+  currentRuleStates,
   describeRunStatus,
   describeRunTrigger,
   describeTrigger,
@@ -435,5 +436,26 @@ describe('who may switch rules on', () => {
     ).toBe(false)
     expect(ruleEnabled(undefined, 'follow')).toBe(false)
     expect(ruleEnabled({}, 'follow')).toBe(false)
+  })
+})
+
+describe('the rule states a dialog draws', () => {
+  test('a patch answer wins over an older describe, and an older patch answer does not', () => {
+    const described = {
+      a: { enabled: true, changedAtMs: 5, runAs: 'user:x' },
+      b: { enabled: false, changedAtMs: 9 },
+    }
+    const authored = {
+      a: { enabled: false, changedAtMs: 7, runAs: 'user:y' },
+      b: { enabled: true, changedAtMs: 3, runAs: 'user:y' },
+      c: { enabled: true, changedAtMs: 1, runAs: 'user:y' },
+    }
+    expect(currentRuleStates(described, authored)).toEqual({
+      a: { enabled: false, changedAtMs: 7, runAs: 'user:y' },
+      b: { enabled: false, changedAtMs: 9 },
+      c: { enabled: true, changedAtMs: 1, runAs: 'user:y' },
+    })
+    expect(currentRuleStates(undefined, undefined)).toEqual({})
+    expect(currentRuleStates(described, undefined)).toEqual(described)
   })
 })
