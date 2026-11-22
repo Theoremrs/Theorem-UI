@@ -395,11 +395,17 @@ export function useCreatePage(client: WorkspaceClient) {
     mutationFn: async ({
       title,
       template,
+      pinned = false,
     }: {
       title: string
       template?: Pick<PageTemplate, 'layout'>
+      /** Listed first in Pages from the start. */
+      pinned?: boolean
     }) => {
-      const page = pageFromTemplate(template, title.trim() || 'Untitled')
+      const page = {
+        ...pageFromTemplate(template, title.trim() || 'Untitled'),
+        pinned,
+      }
       const path = await writeNew(client, PAGES_FOLDER, page)
       const created = (await client.tree()).find((e) => e.path === path)
       await queryClient.invalidateQueries({
