@@ -79,6 +79,47 @@ export function PageHistory({
   )
 }
 
+/** One saved version: its number, why and when it was kept, and a preview unless it is on screen. */
+function VersionItem({
+  revision,
+  isCurrent,
+  onPreview,
+}: {
+  revision: PageRevision
+  isCurrent: boolean
+  onPreview: (revision: PageRevision) => void
+}) {
+  const time = when(revision.savedAtMs)
+  return (
+    <li className="flex items-center gap-2 border-b border-separator py-2 text-sm last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">
+          Version {revision.seq}
+          {isCurrent && (
+            <span className="ms-2 text-xs font-normal text-ink-muted">
+              On screen
+            </span>
+          )}
+        </div>
+        <div className="text-xs text-ink-muted">
+          {REASON[revision.reason]} ·{' '}
+          <time
+            dateTime={new Date(revision.savedAtMs).toISOString()}
+            title={time.at}
+          >
+            {time.ago}
+          </time>
+        </div>
+      </div>
+      {!isCurrent && (
+        <Button variant="ghost" size="xs" onClick={() => onPreview(revision)}>
+          Preview
+        </Button>
+      )}
+    </li>
+  )
+}
+
 function HistoryDialog({
   client,
   path,
@@ -127,45 +168,14 @@ function HistoryDialog({
             aria-label="Versions"
             className="flex max-h-80 flex-col overflow-y-auto"
           >
-            {history.revisions.map((revision) => {
-              const time = when(revision.savedAtMs)
-              const isCurrent = revision.seq === currentSeq
-              return (
-                <li
-                  key={revision.seq}
-                  className="flex items-center gap-2 border-b border-separator py-2 text-sm last:border-b-0"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium">
-                      Version {revision.seq}
-                      {isCurrent && (
-                        <span className="ms-2 text-xs font-normal text-ink-muted">
-                          On screen
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-ink-muted">
-                      {REASON[revision.reason]} ·{' '}
-                      <time
-                        dateTime={new Date(revision.savedAtMs).toISOString()}
-                        title={time.at}
-                      >
-                        {time.ago}
-                      </time>
-                    </div>
-                  </div>
-                  {!isCurrent && (
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => onPreview(revision)}
-                    >
-                      Preview
-                    </Button>
-                  )}
-                </li>
-              )
-            })}
+            {history.revisions.map((revision) => (
+              <VersionItem
+                key={revision.seq}
+                revision={revision}
+                isCurrent={revision.seq === currentSeq}
+                onPreview={onPreview}
+              />
+            ))}
           </ol>
         )}
         {history.more && (
