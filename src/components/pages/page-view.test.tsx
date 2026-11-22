@@ -244,3 +244,101 @@ test('in the Theorem vault a pin is a patch, and an earlier version is previewed
     happyDom.setURL('about:blank')
   }
 })
+
+test('the page history says when it did not open or keeps no version yet, and pages older versions in', async () => {
+  happyDom.setURL('http://localhost:3000/')
+  const fake = fakeWorkspace({})
+  const owner = stubPageOwner(fake)
+  const path = 'Pages/Desk.page.json'
+  const json = (value: unknown, status = 200) =>
+    new Response(JSON.stringify(value), {
+      status,
+      headers: {
+        'content-type':
+          status >= 400 ? 'application/problem+json' : 'application/json',
+      },
+    })
+  // The history route answers as each step needs; every other route is the stub's.
+  let answer: 'refuse' | 'empty' | 'paged' = 'refuse'
+  const served = window.fetch
+  window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input))
+    if (!url.pathname.endsWith('/history')) return served(input, init)
+    if (answer === 'refuse')
+      return json(
+        { title: 'Unavailable', status: 503, detail: 'The vault is offline.' },
+        503,
+      )
+    if (answer === 'empty') return json({ path, revisions: [] })
+    const all = (await (await served(input, init)).json()) as {
+      revisions: unknown[]
+    }
+    return json(
+      url.searchParams.has('cursor')
+        ? { path, revisions: all.revisions.slice(1) }
+        : { path, revisions: all.revisions.slice(0, 1), nextCursor: 1 },
+    )
+  }) as typeof fetch
+  try {
+    const first = await savePage({ path, page: newPage('Desk') })
+    await patchPage({
+      path,
+      expectedRevision: first.revision,
+      ops: [{ op: 'set_title', title: 'Study' }],
+    })
+    const entry = (await fake.client.tree()).find((e) => e.path === path)!
+    const body = document.body
+    const openHistory = async () => {
+      const { container } = await render(
+        <VaultPage client={owner.client} entryId={entry.id} />,
+      )
+      await waitFor(
+        () => container.querySelector('h1')?.textContent === 'Study',
+      )
+      act(() => button(container, 'History')!.click())
+    }
+
+    await openHistory()
+    await waitFor(() => body.textContent.includes('The history did not open'))
+    // The refusal is said as the client read it: its status, then its body.
+    const refusal = [...body.querySelectorAll('[role="alert"]')].find((one) =>
+      one.textContent.startsWith('The history did not open'),
+    )!
+    expect(refusal.textContent).toStartWith(
+      'The history did not open: Theorem answered 503\nStatus code: 503',
+    )
+    expect(refusal.textContent).toContain('The vault is offline.')
+    expect(body.querySelector('[aria-label="Versions"]')).toBeNull()
+    cleanup()
+
+    answer = 'empty'
+    await openHistory()
+    await waitFor(() =>
+      body.textContent.includes(
+        'No versions are kept for this page yet. The next save starts its history.',
+      ),
+    )
+    expect(button(body, 'Show older versions')).toBeUndefined()
+    cleanup()
+
+    answer = 'paged'
+    await openHistory()
+    await waitFor(() => body.textContent.includes('Version 2'))
+    expect(body.textContent).not.toContain('Version 1')
+    act(() => button(body, 'Show older versions')!.click())
+    await waitFor(() => body.textContent.includes('Version 1'))
+    expect(button(body, 'Show older versions')).toBeUndefined()
+    // The version on screen says so and offers no preview; an older one offers one.
+    const row = (seq: number) =>
+      [...body.querySelectorAll('li')].find((li) =>
+        li.textContent.includes(`Version ${seq}`),
+      )!
+    expect(row(2).textContent).toContain('On screen')
+    expect(button(row(2), 'Preview')).toBeUndefined()
+    expect(row(1).textContent).not.toContain('On screen')
+    expect(button(row(1), 'Preview')).toBeTruthy()
+  } finally {
+    owner.restore()
+    happyDom.setURL('about:blank')
+  }
+})
