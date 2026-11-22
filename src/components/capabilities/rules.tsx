@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/coss/checkbox'
 import { Switch } from '@/components/coss/switch'
 import { Icon } from '@/components/icons'
 import { fieldControl } from '@/components/pages/resource-field'
+import { Segmented } from '@/components/records/field-form'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -47,6 +48,7 @@ import {
   setRuleEnabledOp,
 } from '@/lib/capabilities/rules'
 import { capabilityKeys, useCapabilityAuthor } from './queries'
+import { RunHistory } from './runs'
 import { StatusLine } from './states'
 import type { Status } from './states'
 
@@ -662,6 +664,7 @@ export function RulesDialog({
   const [status, setStatus] = useState<Status>()
   const [editing, setEditing] = useState<{ rule?: RuleSpec }>()
   const [authored, setAuthored] = useState<Record<string, RuleEnablement>>()
+  const [tab, setTab] = useState<'rules' | 'runs'>('rules')
   const states = currentRuleStates(described.ruleStates, authored)
 
   const reload = () =>
@@ -713,74 +716,90 @@ export function RulesDialog({
             going when this page is closed.
           </DialogDescription>
         </DialogHeader>
-        <StatusLine
-          status={status}
-          onClear={() => setStatus(undefined)}
-          onReload={reload}
-          onCheck={() => {}}
+        <Segmented
+          label="Rules or runs"
+          value={tab}
+          options={[
+            { value: 'rules', label: 'Rules' },
+            { value: 'runs', label: 'Runs' },
+          ]}
+          onChange={setTab}
         />
-        {!canSwitch && (
-          <p className="text-xs text-ink-faint">
-            Switching a rule on needs the background permission on your grant.
-          </p>
-        )}
-        {rules.length ? (
-          <ul className="flex flex-col divide-y divide-separator">
-            {rules.map((rule) => (
-              <RuleItem
-                key={rule.key}
-                rule={rule}
+        {tab === 'runs' ? (
+          <RunHistory instanceId={instanceId} described={described} />
+        ) : (
+          <>
+            <StatusLine
+              status={status}
+              onClear={() => setStatus(undefined)}
+              onReload={reload}
+              onCheck={() => {}}
+            />
+            {!canSwitch && (
+              <p className="text-xs text-ink-faint">
+                Switching a rule on needs the background permission on your
+                grant.
+              </p>
+            )}
+            {rules.length ? (
+              <ul className="flex flex-col divide-y divide-separator">
+                {rules.map((rule) => (
+                  <RuleItem
+                    key={rule.key}
+                    rule={rule}
+                    definition={definition}
+                    schemas={schemas}
+                    on={ruleEnabled(states, rule.key)}
+                    canSwitch={canSwitch}
+                    canEdit={grant.author}
+                    busy={authoring.isPending}
+                    onSwitch={(on) =>
+                      void submit(
+                        setRuleEnabledOp(rule.key, on),
+                        on ? 'Rule switched on' : 'Rule switched off',
+                      )
+                    }
+                    onEdit={() => setEditing({ rule })}
+                    onRemove={() =>
+                      void submit(removeRuleOp(rule.key), 'Rule removed')
+                    }
+                  />
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-ink-muted">
+                {definition.name} has no rules yet.
+              </p>
+            )}
+            {editing ? (
+              <RuleEditor
+                key={editing.rule?.key ?? '+new'}
                 definition={definition}
                 schemas={schemas}
-                on={ruleEnabled(states, rule.key)}
-                canSwitch={canSwitch}
-                canEdit={grant.author}
+                rule={editing.rule}
                 busy={authoring.isPending}
-                onSwitch={(on) =>
+                onCancel={() => setEditing(undefined)}
+                onSubmit={(rule) =>
                   void submit(
-                    setRuleEnabledOp(rule.key, on),
-                    on ? 'Rule switched on' : 'Rule switched off',
-                  )
-                }
-                onEdit={() => setEditing({ rule })}
-                onRemove={() =>
-                  void submit(removeRuleOp(rule.key), 'Rule removed')
+                    editing.rule ? replaceRuleOp(rule) : addRuleOp(rule),
+                    editing.rule ? 'Rule saved' : 'Rule added',
+                  ).then((saved) => saved && setEditing(undefined))
                 }
               />
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-ink-muted">
-            {definition.name} has no rules yet.
-          </p>
-        )}
-        {editing ? (
-          <RuleEditor
-            key={editing.rule?.key ?? '+new'}
-            definition={definition}
-            schemas={schemas}
-            rule={editing.rule}
-            busy={authoring.isPending}
-            onCancel={() => setEditing(undefined)}
-            onSubmit={(rule) =>
-              void submit(
-                editing.rule ? replaceRuleOp(rule) : addRuleOp(rule),
-                editing.rule ? 'Rule saved' : 'Rule added',
-              ).then((saved) => saved && setEditing(undefined))
-            }
-          />
-        ) : (
-          grant.author && (
-            <Button
-              size="xs"
-              variant="outline"
-              className="self-start"
-              onClick={() => setEditing({})}
-            >
-              <Icon.Add className="size-3.5" />
-              Add rule
-            </Button>
-          )
+            ) : (
+              grant.author && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="self-start"
+                  onClick={() => setEditing({})}
+                >
+                  <Icon.Add className="size-3.5" />
+                  Add rule
+                </Button>
+              )
+            )}
+          </>
         )}
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onClose}>
