@@ -759,6 +759,34 @@ export function localDateTimeText(ms: number) {
   return new Date(ms - offset).toISOString().slice(0, 16)
 }
 
+/** Beside a date: its Clear, or, where it cannot be emptied, why an empty one was refused. */
+function ClearOrRefusal({
+  clearable,
+  refused,
+  onClear,
+}: {
+  clearable: boolean
+  refused: boolean
+  onClear: () => void
+}) {
+  if (clearable)
+    return (
+      <button
+        type="button"
+        onClick={onClear}
+        className="text-xs text-ink-muted hover:text-ink"
+      >
+        Clear
+      </button>
+    )
+  if (!refused) return null
+  return (
+    <span role="alert" className="text-xs text-error-ink">
+      Cannot be emptied
+    </span>
+  )
+}
+
 /** Dates travel as ISO strings: a date as YYYY-MM-DD, a timestamp in UTC. */
 function DateEditor({
   field,
@@ -800,21 +828,11 @@ function DateEditor({
         onKeyDown={(event) => commitKeys(event, commit, onDiscard)}
         className="rounded-md border border-separator bg-background px-2 py-1 text-sm text-ink"
       />
-      {clearable ? (
-        <button
-          type="button"
-          onClick={() => onCommit(null)}
-          className="text-xs text-ink-muted hover:text-ink"
-        >
-          Clear
-        </button>
-      ) : (
-        refused && (
-          <span role="alert" className="text-xs text-error-ink">
-            Cannot be emptied
-          </span>
-        )
-      )}
+      <ClearOrRefusal
+        clearable={clearable}
+        refused={refused}
+        onClear={() => onCommit(null)}
+      />
     </div>
   )
 }
