@@ -94,14 +94,19 @@ export function StylePicker() {
   )
   const styles = catalog.data?.styles
 
-  // A pick made before a message was accepted may name a style since deleted.
+  // Only the current conversation's catalog can confirm a pick was deleted.
   useEffect(() => {
-    if (!styles || !pending || styles.some((style) => style.id === pending))
+    if (
+      catalog.isPlaceholderData ||
+      !styles ||
+      !pending ||
+      styles.some((style) => style.id === pending)
+    )
       return
     const picks = usePendingStyle.getState()
     if (threadId) picks.chooseHeld(threadId, undefined)
     else picks.chooseDraft(localId, undefined)
-  }, [styles, pending, threadId, localId])
+  }, [catalog.isPlaceholderData, styles, pending, threadId, localId])
 
   if (!catalog.data) return null
   const { selection } = catalog.data

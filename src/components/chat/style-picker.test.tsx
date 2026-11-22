@@ -1,4 +1,4 @@
-import { act } from 'react'
+import { act, useState } from 'react'
 import {
   afterAll,
   afterEach,
@@ -193,12 +193,17 @@ function PickerWithDraftId() {
  * settings link is a router link), then lets the page's queries settle.
  */
 async function mount(threadId?: string) {
+  let setThreadId: (id: string) => void = () => {}
   const root = createRootRoute({
-    component: () => (
-      <Runtime threadId={threadId}>
-        <PickerWithDraftId />
-      </Runtime>
-    ),
+    component: function PickerRoute() {
+      const [currentThread, selectThread] = useState(threadId)
+      setThreadId = selectThread
+      return (
+        <Runtime threadId={currentThread}>
+          <PickerWithDraftId />
+        </Runtime>
+      )
+    },
   })
   const styles = createRoute({
     getParentRoute: () => root,
@@ -214,7 +219,12 @@ async function mount(threadId?: string) {
   await act(() => new Promise((resolve) => setTimeout(resolve)))
   const draftId = view.container.querySelector<HTMLElement>('[data-draft-id]')!
     .dataset.draftId!
-  return { ...view, router, draftId }
+  return {
+    ...view,
+    router,
+    draftId,
+    switchThread: (id: string) => act(() => setThreadId(id)),
+  }
 }
 
 const trigger = (container: HTMLElement) =>
@@ -401,6 +411,39 @@ test('a pick held for a conversation that names a style since deleted is dropped
   usePendingStyle.setState({ held: { t1: 'user.style.gone' } })
   await mount('t1')
   await waitFor(() => !('t1' in usePendingStyle.getState().held))
+})
+
+test('a placeholder catalog does not erase another conversation’s held style', async () => {
+  const fake = createResponseStylesFake({}).routes
+  const path = 'GET /api/chat/v1/response-styles'
+  let release = () => {}
+  const loading = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  backend({}, {
+    [path]: async (params, request) => {
+      const thread = new URL(request.url).searchParams.get('threadId')
+      if (thread === 't2') await loading
+      const catalog = await fake[path]!(params, request) as {
+        styles: { id: string }[]
+      }
+      if (thread !== 't1') return catalog
+      return {
+        ...catalog,
+        styles: catalog.styles.filter(({ id }) => id !== 'theorem.style.formal'),
+      }
+    },
+  })
+  usePendingStyle.getState().chooseHeld('t2', 'theorem.style.formal')
+  const { container, switchThread } = await mount('t1')
+  try {
+    await switchThread('t2')
+    await waitFor(() => trigger(container)?.disabled)
+    expect(usePendingStyle.getState().held.t2).toBe('theorem.style.formal')
+  } finally {
+    release()
+  }
+  await waitFor(() => trigger(container)?.textContent === 'Formal')
 })
 
 test("the project's default is offered inside a project, and sets the style in use", async () => {
