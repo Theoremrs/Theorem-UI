@@ -1094,7 +1094,7 @@
   --glass-ink: color-mix(in oklab, var(--ink) 72%, #000);
   --glass-ink-muted: color-mix(
     in oklab,
-    var(--ink-muted) 38%,
+    var(--ink-muted) var(--glass-ink-muted-share, 38%),
     var(--glass-ink)
   );
   --glass-ink-faint: color-mix(
@@ -1120,6 +1120,13 @@
     0 10px 22px -8px rgb(0 0 0 / 0.55), 0 30px 60px -24px rgb(0 0 0 / 0.65);
   --glass-ink: color-mix(in oklab, var(--ink) 55%, #fff);
   --lg-show: 0.5;
+}
+
+/* Stone's light muted ink is already dark, so on the pane it keeps more of
+   itself: a step below the glass ink (1.38:1, where 38% left 1.13:1) at 4.6:1
+   on the darkest glass measured over a thread, with a menu row's highlight. */
+:root:not(.dark)[data-palette='stone'] {
+  --glass-ink-muted-share: 75%;
 }
 
 :root[data-glass-study='curved'] {

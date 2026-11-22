@@ -160,6 +160,8 @@ const EMPTY: Readonly<Record<ToolCatalogState['status'], string>> = {
   failed: 'Tools could not be loaded.',
 }
 
+const NO_COMMANDS = 'No matching commands'
+
 /** Local commands open settings; native tool picks retain their directive in the message. */
 const OUTPUT_COMMANDS: TriggerItem[] = [
   {
@@ -184,8 +186,9 @@ const COMMAND_ICONS = {
   NewChat: Icon.NewChat,
   WebSearch: Icon.WebSearch,
   Plan: Icon.Plan,
-  Code: Icon.Code,
-  ReadAloud: Icon.ReadAloud,
+  // The painted Streamline coded page, as the + menu draws Code mode.
+  Code: Icon.CodeMode,
+  ReadAloud: Icon.ReadAloudControl,
   Plugins: Icon.Plugins,
 } as const
 
@@ -349,13 +352,13 @@ export function ComposerToolTrigger() {
             else setOutputDialog(item.id)
           },
         }}
-        heading={<>
-          <div>Theorem tools and commands</div>
-          {status !== 'ready' && <p>{EMPTY[status]}</p>}
-        </>}
+        // Until the tools are listed the note says why, so the list's own
+        // line (an empty list stays open only while they load) answers only
+        // for the commands.
+        note={status === 'ready' ? undefined : EMPTY[status]}
         itemTag={tagOf}
-        emptyItemsLabel={EMPTY[status]}
-        loadingLabel={EMPTY.loading}
+        emptyItemsLabel={status === 'ready' ? EMPTY.ready : NO_COMMANDS}
+        loadingLabel={NO_COMMANDS}
         surfaceRef={glass.attach}
         className={cn('w-md', glass.className)}
       />

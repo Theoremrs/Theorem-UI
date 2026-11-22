@@ -165,11 +165,11 @@ function useDebounced<T>(value: T, ms: number) {
 }
 
 /**
- * The line above the list, which also reports the typed query: the popover's
+ * The note under the list, which also reports the typed query: the popover's
  * scope holds it with the caret taken into account, and the Index searches
  * documents on Theorem rather than in what this page has loaded.
  */
-function MentionHeading({
+function MentionNote({
   onQuery,
   failed,
   onRetry,
@@ -183,25 +183,20 @@ function MentionHeading({
   useEffect(() => onQuery(query), [onQuery, query])
   // Closing the list clears the query, so nothing is loaded while it is shut.
   useEffect(() => () => onQuery(undefined), [onQuery])
-  return (
-    <>
-      Records and documents
-      {failed ? (
-        <span role="alert" className="text-ink-muted block text-xs">
-          Some records could not be searched.{' '}
-          <button
-            type="button"
-            className="underline"
-            // Keep the caret in the message so the list stays open.
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={onRetry}
-          >
-            Try again
-          </button>
-        </span>
-      ) : null}
-    </>
-  )
+  return failed ? (
+    <span role="alert">
+      Some records could not be searched.{' '}
+      <button
+        type="button"
+        className="underline"
+        // Keep the caret in the message so the list stays open.
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={onRetry}
+      >
+        Try again
+      </button>
+    </span>
+  ) : null
 }
 
 const markOf =
@@ -382,7 +377,7 @@ const DIRECTIVE = { formatter: MENTION_FORMATTER, onInserted: citeMention }
 export function ComposerMentionTrigger() {
   useMentionCitesFollowText()
   const [query, setQuery] = useState<string | undefined>(undefined)
-  // The heading is shown only while the list is open, so a query means open.
+  // The note is shown only while the list is open, so a query means open.
   const open = query !== undefined
   const model = useDataModel()
   const allTypes = model.data?.objectTypes
@@ -435,9 +430,9 @@ export function ComposerMentionTrigger() {
       documents.isPending ||
       types.some((type) => records.statusOf(type) === 'pending'))
   const retryFailed = records.retryFailed
-  const heading = useMemo(
+  const note = useMemo(
     () => (
-      <MentionHeading
+      <MentionNote
         onQuery={setQuery}
         failed={failedRecords}
         onRetry={retryFailed}
@@ -452,10 +447,9 @@ export function ComposerMentionTrigger() {
       matcher={mentionMatcher}
       isLoading={loading}
       directive={DIRECTIVE}
-      heading={heading}
+      note={note}
       iconMap={ICONS}
       itemTag={tagOf}
-      itemLabelClassName="text-sm"
       emptyItemsLabel={
         failedRecords
           ? 'Some records could not be searched.'

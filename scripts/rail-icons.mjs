@@ -133,6 +133,9 @@ export const CONTROLS = [
   // Owner's 2026-11-16 set for the composer's + menu: Plugins, Web search.
   { name: 'plugins', source: 'control/source/streamline-toys-lego.png' },
   { name: 'browser', source: 'control/source/streamline-app-window.png' },
+  // Owner's 2026-11-21 speaker for the / menu's Read aloud: a page with a
+  // speaker, so it sits in the file family beside Code mode's coded page.
+  { name: 'readAloud', source: 'control/source/streamline-audio-file-volume.png' },
   // The + menu's Skills, from the same atom-and-spark art as Icon.Skill; it is
   // drawn as line art, so its enclosed regions are filled as the others are.
   {

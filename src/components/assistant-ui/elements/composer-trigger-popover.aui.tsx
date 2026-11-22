@@ -1,7 +1,7 @@
-// SOURCING: assistant-ui registry element composer-trigger-popover (https://r.assistant-ui.com/styles/base-nova/composer-trigger-popover.json) over ComposerPrimitive.TriggerPopover, vendored with five changes: the coss popup surface and item states, placement by Floating UI against the element that holds it (the primitive's absolute bottom-full placement is clipped by the thread's scroll area when the composer sits mid-screen), a bounded list that keeps the highlighted row in view (the primitive moves the highlight but does not scroll), an icon only where one resolves plus an optional heading, per-item tag and item label class (mono for tool names, the default; the text face for names of records and documents), and a surfaceRef, composed with the placement's, for a surface drawn over the popover's box
+// SOURCING: assistant-ui registry element composer-trigger-popover (https://r.assistant-ui.com/styles/base-nova/composer-trigger-popover.json) over ComposerPrimitive.TriggerPopover, vendored with five changes: the coss popup surface and item states, placement by Floating UI against the element that holds it (the primitive's absolute bottom-full placement is clipped by the thread's scroll area when the composer sits mid-screen), a bounded list that keeps the highlighted row in view (the primitive moves the highlight but does not scroll), two-line rows (an icon column centred on the name's line, the name and its description in one text column, a hairline where the item type changes, a translucent ink highlight, the list scrolling without a bar), an optional note under the list for state the rows cannot show, a per-item tag, and a surfaceRef, composed with the placement's, for a surface drawn over the popover's box
 'use client'
 
-import { memo, useCallback, useEffect, useRef } from 'react'
+import { Fragment, memo, useCallback, useEffect, useRef } from 'react'
 import type { ComponentPropsWithoutRef, FC, ReactNode, Ref, RefObject } from 'react'
 import {
   ComposerPrimitive,
@@ -49,12 +49,14 @@ type ComposerTriggerPopoverBaseProps = Omit<
   iconMap?: Record<string, IconComponent>
   /** Icon when no entry in `iconMap` matches; without one such rows have no icon. */
   fallbackIcon?: IconComponent
-  /** A line above the list naming what it holds. */
-  heading?: ReactNode
+  /**
+   * State the rows cannot show, such as a source that failed to load, under
+   * the list. It renders with the items, only while the popover is open, and
+   * takes no room when it renders nothing.
+   */
+  note?: ReactNode
   /** A short trailing note for an item, such as what it changes. */
   itemTag?: (item: TriggerItem) => ReactNode
-  /** The face of an item's label. @default "font-mono text-[13px]" */
-  itemLabelClassName?: string
   /** Label shown on the back button. @default "Back" */
   backLabel?: string
   /** Label shown when no categories are available. @default "No items available" */
@@ -89,8 +91,18 @@ function resolveIcon(
   return (iconKey ? iconMap?.[iconKey] : undefined) ?? fallback
 }
 
+/**
+ * A row's box and its highlight: ink at 7% over whatever the menu is (a solid
+ * fill or the glass), with the text keeping its own colours.
+ */
 const ROW =
-  'flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-start text-sm text-foreground outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground'
+  'w-full cursor-default rounded-sm px-2 py-[7px] text-start text-foreground outline-none select-none data-highlighted:bg-ink/7'
+
+/** The icon column and the text column every item row shares. */
+const COLUMNS = 'grid grid-cols-[1rem_minmax(0,1fr)] gap-x-2.5'
+
+/** A hairline across the list, inset from its edges. */
+const HAIRLINE = 'bg-separator mx-1 my-1 h-px'
 
 type CategoriesProps = {
   iconMap: Record<string, IconComponent> | undefined
@@ -115,9 +127,9 @@ const Categories: FC<CategoriesProps> = ({
             <ComposerPrimitive.TriggerPopoverCategoryItem
               key={cat.id}
               categoryId={cat.id}
-              className={cn(ROW, 'justify-between')}
+              className={cn(ROW, 'flex items-center justify-between gap-2.5')}
             >
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-2.5 text-sm font-semibold">
                 {Icon && <Icon className="text-ink-muted size-4" />}
                 {cat.label}
               </span>
@@ -143,22 +155,7 @@ function useHighlightInView(list: RefObject<HTMLDivElement | null>) {
   }, [list, highlightedIndex])
 }
 
-/**
- * The line above the list. The primitive renders its children even while
- * closed, so its behavior child can register; like the list parts, the
- * heading renders only while the popover is open.
- */
-function Heading({ children }: { children: ReactNode }) {
-  const { open } = unstable_useTriggerPopoverScopeContext()
-  if (!open) return null
-  return (
-    <div className="text-ink-faint border-separator border-b px-3 py-1.5 text-xs">
-      {children}
-    </div>
-  )
-}
-
-/** The least height worth keeping the popover above for: its heading and two rows. */
+/** The least height worth keeping the popover above for: three of its rows. */
 const MIN_HEIGHT = 160
 
 /**
@@ -198,7 +195,7 @@ type ItemsProps = {
   iconMap: Record<string, IconComponent> | undefined
   fallbackIcon: IconComponent | undefined
   itemTag: ((item: TriggerItem) => ReactNode) | undefined
-  itemLabelClassName: string
+  note: ReactNode
   backLabel: string
   emptyLabel: string
   loadingLabel: string
@@ -209,7 +206,7 @@ const Items: FC<ItemsProps> = ({
   iconMap,
   fallbackIcon,
   itemTag,
-  itemLabelClassName,
+  note,
   backLabel,
   emptyLabel,
   loadingLabel,
@@ -231,7 +228,7 @@ const Items: FC<ItemsProps> = ({
 
           <div
             ref={list}
-            className="max-h-80 overflow-y-auto overscroll-contain p-1"
+            className="max-h-105 [scrollbar-width:none] overflow-y-auto overscroll-contain p-1 [&::-webkit-scrollbar]:hidden"
           >
             {items.map((item, index) => {
               const iconKey =
@@ -240,45 +237,54 @@ const Items: FC<ItemsProps> = ({
                   : undefined
               const Icon = resolveIcon(iconKey, iconMap, fallbackIcon)
               const tag = itemTag?.(item)
+              // A hairline where one kind of item gives way to the next, so
+              // the order says what the list holds without a heading.
+              const kindChanges =
+                index > 0 && items[index - 1]!.type !== item.type
               return (
-                <ComposerPrimitive.TriggerPopoverItem
-                  key={item.id}
-                  item={item}
-                  index={index}
-                  className={cn(ROW, 'flex-col items-stretch gap-0.5')}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    {Icon && (
-                      <Icon className="text-ink-muted size-3.5 shrink-0" />
-                    )}
-                    <span
-                      className={cn(
-                        'min-w-0 flex-1 truncate',
-                        itemLabelClassName,
-                      )}
-                    >
-                      {item.label}
+                <Fragment key={item.id}>
+                  {kindChanges && <div aria-hidden className={HAIRLINE} />}
+                  <ComposerPrimitive.TriggerPopoverItem
+                    item={item}
+                    index={index}
+                    className={cn(ROW, COLUMNS)}
+                  >
+                    {/* The column stays when there is no icon, so every name starts in one place.
+                        The painted icons keep the 14px they shipped at. */}
+                    <span className="flex h-5 items-center">
+                      {Icon && <Icon className="text-ink-muted size-3.5" />}
                     </span>
-                    {tag && (
-                      <span className="text-ink-faint shrink-0 text-xs">
-                        {tag}
+                    <span className="flex min-w-0 items-baseline gap-2">
+                      {/* 14/20 with Carbon's +0.16px for Plex at 14px: the name a step above the app's 13px chrome, as the picked study drew it. */}
+                      <span className="min-w-0 flex-1 truncate text-[14px]/5 font-semibold tracking-[0.16px]">
+                        {item.label}
+                      </span>
+                      {tag && (
+                        <span className="text-ink-muted shrink-0 text-xs">
+                          {tag}
+                        </span>
+                      )}
+                    </span>
+                    {item.description && (
+                      <span className="text-ink-muted col-start-2 line-clamp-2 text-xs leading-4">
+                        {item.description}
                       </span>
                     )}
-                  </span>
-                  {item.description && (
-                    <span className="text-ink-muted line-clamp-2 text-xs leading-snug">
-                      {item.description}
-                    </span>
-                  )}
-                </ComposerPrimitive.TriggerPopoverItem>
+                  </ComposerPrimitive.TriggerPopoverItem>
+                </Fragment>
               )
             })}
             {items.length === 0 && (
-              <div className="text-ink-muted px-2 py-1.5 text-sm">
+              <div className="text-ink-muted px-2 py-[7px] text-sm">
                 {isLoading ? loadingLabel : emptyLabel}
               </div>
             )}
           </div>
+          {note !== undefined && (
+            <div className="text-ink-muted border-separator mx-2 mb-1 border-t py-[7px] pr-2 pl-[30px] text-xs leading-4 empty:hidden">
+              {note}
+            </div>
+          )}
         </div>
       )}
     </ComposerPrimitive.TriggerPopoverItems>
@@ -292,9 +298,8 @@ const Items: FC<ItemsProps> = ({
 const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
   iconMap,
   fallbackIcon,
-  heading,
+  note,
   itemTag,
-  itemLabelClassName = 'font-mono text-[13px]',
   backLabel = 'Back',
   emptyCategoriesLabel = 'No items available',
   emptyItemsLabel = 'No matching items',
@@ -344,7 +349,6 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
           removeOnExecute={action.removeOnExecute}
         />
       ) : null}
-      {heading && <Heading>{heading}</Heading>}
       <Categories
         iconMap={iconMap}
         fallbackIcon={fallbackIcon}
@@ -354,7 +358,7 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
         iconMap={iconMap}
         fallbackIcon={fallbackIcon}
         itemTag={itemTag}
-        itemLabelClassName={itemLabelClassName}
+        note={note}
         backLabel={backLabel}
         emptyLabel={emptyItemsLabel}
         loadingLabel={loadingLabel}
