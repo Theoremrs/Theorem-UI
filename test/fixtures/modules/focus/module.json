@@ -1,0 +1,35 @@
+{
+  "schema": "theorem.module/1",
+  "id": "vault.focus",
+  "label": "Focus",
+  "description": "Open tracker tasks that fit the minutes you have, with Complete beside each.",
+  "settings": [
+    {
+      "name": "minutes",
+      "label": "Minutes",
+      "kind": "number",
+      "default": 25
+    }
+  ],
+  "outputs": [{ "name": "summary", "label": "Summary", "type": "text" }],
+  "capabilities": {
+    "instances": [
+      {
+        "instanceId": "tracker/main",
+        "methods": ["query", "invoke"],
+        "actions": ["complete"]
+      }
+    ]
+  },
+  "agent": {
+    "description": "Lists the tracker's next tasks whose effort fits the minutes set on this component, and completes one when asked.",
+    "summaryOutput": "summary"
+  },
+  "fallback": {
+    "kind": "capability-records",
+    "instanceId": "tracker/main",
+    "viewKey": "next",
+    "actions": ["complete"]
+  },
+  "implementation": { "kind": "sandboxed-html", "entry": "index.html" }
+}

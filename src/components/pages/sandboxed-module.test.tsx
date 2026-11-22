@@ -1,41 +1,26 @@
-// SOURCING: bun:test; a vault module read from test/blocks/memory-workspace, placed as a page places
-// it (useInstance under a PageRuntimeProvider) and rendered through VaultModule, with
-// slice2-harness's stand-in for /api/capabilities/v1. The frame's side of the bridge is the port the
-// page hands the frame when it says it is ready, so its calls reach the host the module really
-// runs with; what is asserted is the fallback a person sees, the request each call sends and the
-// envelope the composer carries.
-import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
-import * as esbuild from 'esbuild-wasm'
-import { act } from 'react'
-import { memoryWorkspace } from '../../../test/blocks/memory-workspace'
-import { cleanup, render, waitFor } from '../../../test/workspace'
+// SOURCING: bun:test over module-harness: a vault module placed as a page places it and run through
+// VaultModule, its frame's calls made on the port the page hands the frame, so they reach the host
+// the module really runs with. What is asserted is the fallback a person sees, the request each call
+// sends and the envelope the composer carries.
+import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { waitFor } from '../../../test/workspace'
 import {
   button,
-  install,
   named,
   press,
   sentTo,
-  uninstall,
 } from '@/components/capabilities/slice2-harness'
 import { capabilityKeys } from '@/components/capabilities/queries'
 import { useComposerReferences } from '@/components/chat/composer-references'
-import * as hosted from '@/lib/blocks/hosted-app'
-import { call, READY_MESSAGE, rpcOver } from '@/lib/blocks/sandbox/protocol'
-import type { PageMethods, Rpc } from '@/lib/blocks/sandbox/protocol'
-import { parseManifest } from '@/lib/modules/contract'
+import { call } from '@/lib/blocks/sandbox/protocol'
+import type { PageMethods } from '@/lib/blocks/sandbox/protocol'
 import { bootstrap } from '@/lib/theorem/client'
-import { useModuleGrants } from '@/lib/modules/grants'
-import { fromManifest } from '@/lib/modules/registry'
-import type { ModuleDefinition } from '@/lib/modules/registry'
-import type { WorkspaceClient } from '@/lib/workspace/types'
 import {
-  InstanceProvider,
-  PageRuntimeProvider,
-  useInstance,
-} from './page-runtime'
-import { VaultModule } from './sandboxed-module'
-
-const FOLDER = 'Modules/focus'
+  beginModuleTest,
+  endModuleTest,
+  frameOf,
+  placeModule,
+} from './module-harness'
 
 const manifest = {
   schema: 'theorem.module/1',
@@ -66,99 +51,11 @@ const manifest = {
 
 const source = '<!doctype html><html><body><main>Focus</main></body></html>'
 
-function files(extra: Record<string, unknown> = {}) {
-  const text = JSON.stringify({ ...manifest, ...extra })
-  const definition = fromManifest(
-    parseManifest(`${FOLDER}/module.json`, text),
-    `${FOLDER}/module.json`,
-  )
-  const client = memoryWorkspace({
-    [`${FOLDER}/module.json`]: text,
-    [`${FOLDER}/index.html`]: source,
-  })
-  return { client: client as unknown as WorkspaceClient, definition }
-}
+const place = (extra: Record<string, unknown> = {}) =>
+  placeModule(JSON.stringify({ ...manifest, ...extra }), source)
 
-function Placed({
-  client,
-  definition,
-}: {
-  client: WorkspaceClient
-  definition: ModuleDefinition
-}) {
-  const view = useInstance(definition, { id: 'focus-1' }, false)
-  return (
-    <InstanceProvider path={view.path}>
-      <VaultModule
-        client={client}
-        definition={definition}
-        folder={FOLDER}
-        entry="index.html"
-        view={view}
-      />
-    </InstanceProvider>
-  )
-}
-
-async function place(extra: Record<string, unknown> = {}) {
-  const { client, definition } = files(extra)
-  return render(
-    <PageRuntimeProvider>
-      <Placed client={client} definition={definition} />
-    </PageRuntimeProvider>,
-  )
-}
-
-/**
- * Says ready from the module's frame, as its bridge script does, and returns
- * the frame's end of the port the page answers with.
- */
-async function frameOf(container: HTMLElement): Promise<Rpc> {
-  const iframe = await waitFor(() => container.querySelector('iframe'), {
-    timeout: 10_000,
-  })
-  // happy-dom loads no frame page, so the frame's window is a stand-in that
-  // keeps the port the page sends it.
-  let port: MessagePort | undefined
-  const target = {
-    postMessage: (
-      _message: unknown,
-      _origin: string,
-      transfer?: Transferable[],
-    ) => {
-      port = transfer?.[0] as MessagePort
-    },
-  }
-  Object.defineProperty(iframe, 'contentWindow', { value: target })
-  act(() => {
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        source: target as unknown as Window,
-        data: { type: READY_MESSAGE },
-      }),
-    )
-  })
-  await waitFor(() => port)
-  return rpcOver(port!)
-}
-
-const originalHosted = hosted.hostedAppDocument
-// The frame's document is built as in the browser, with esbuild's Node build.
-let building: { mockRestore: () => void } | undefined
-
-beforeEach(() => {
-  building = spyOn(hosted, 'hostedAppDocument').mockImplementation(
-    (html, _esbuild, options) => originalHosted(html, esbuild, options),
-  )
-  install()
-  useModuleGrants.setState({ grants: {} })
-  useComposerReferences.setState({ references: [] })
-})
-afterEach(() => {
-  cleanup()
-  uninstall()
-  building?.mockRestore()
-})
+beforeEach(beginModuleTest)
+afterEach(endModuleTest)
 
 test('a module not yet allowed asks first, and meanwhile shows its records through the fallback', async () => {
   const { container } = await place()
