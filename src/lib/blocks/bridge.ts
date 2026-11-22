@@ -17,6 +17,11 @@ import {
 import type {
   ArtifactObservation,
   ArtifactResolution,
+  CapabilityFailure,
+  CapabilityInvokeParams,
+  CapabilityMethod,
+  CapabilityOutcome,
+  CapabilityQueryParams,
   DbFailure,
   DbMethod,
   DbOutcome,
@@ -70,6 +75,41 @@ export function dbFailure(error: unknown): DbFailure {
   }
 }
 
+/** A capability instance a frame may reach, and what it may do there. */
+export interface CapabilityScope {
+  instanceId: string
+  methods: ReadonlyArray<CapabilityMethod>
+  /** The action keys `invoke` may name. */
+  actions: ReadonlyArray<string>
+}
+
+/**
+ * Capability calls the host makes for a frame with its own session: the frame
+ * names an instance and an action, never a credential.
+ */
+export interface AppCapabilities {
+  /** What the module declared and the person allowed; anything else is denied. */
+  scope: ReadonlyArray<CapabilityScope>
+  describe: (instanceId: string) => Promise<unknown>
+  query: (request: CapabilityQueryParams) => Promise<unknown>
+  invoke: (request: CapabilityInvokeParams) => Promise<unknown>
+}
+
+/** A capability's refusal as the frame is told of it: a problem's code and detail. */
+export function capabilityFailure(error: unknown): CapabilityFailure {
+  const body = (error as { body?: unknown } | null)?.body
+  const problem = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {}
+  return {
+    code: typeof problem.code === 'string' ? problem.code : 'capability_failure',
+    message:
+      typeof problem.detail === 'string'
+        ? problem.detail
+        : error instanceof Error
+          ? error.message
+          : String(error),
+  }
+}
+
 /** What the page lends one block. */
 export interface BridgeHost {
   client: Pick<WorkspaceClient, 'read' | 'tree' | 'write'>
@@ -96,6 +136,8 @@ export interface BridgeHost {
   recording?: (trace: ModelTrace) => Promise<Uint8Array>
   /** Keeps the App's runs and results durably. Absent where no Theorem backend is reached. */
   artifacts?: AppArtifacts
+  /** Capability instances a sandboxed module was allowed. Absent: every capability call is denied. */
+  capability?: AppCapabilities
 }
 
 /**
@@ -256,6 +298,22 @@ const params = {
           .optional(),
       })
       .optional(),
+  }),
+  capabilityDescribe: z.strictObject({ instanceId: name }),
+  capabilityQuery: z.strictObject({
+    instanceId: name,
+    viewKey: name.optional(),
+    query: z.record(z.string(), z.json()).optional(),
+    cursor: z.string().min(1).max(4096).optional(),
+    limit: z.number().int().positive().optional(),
+  }),
+  capabilityInvoke: z.strictObject({
+    instanceId: name,
+    actionKey: name,
+    inputs: z.record(z.string(), z.json()),
+    recordId: name.optional(),
+    expectedRevision: z.number().int().nonnegative().optional(),
+    invocationKey: name.optional(),
   }),
   snapshot: z.object({
     html: z.string().max(MAX_SNAPSHOT),
@@ -502,6 +560,46 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
   serve<PageMethods, 'artifacts.run'>(rpc, 'artifacts.run', async (raw) =>
     artifacts().run(params.openRun.parse(raw).id),
   )
+
+  // A module reaches a capability only through the host, and only where its
+  // manifest declared the instance (and the action) and the person allowed it.
+  const capability = (instanceId: string, method: CapabilityMethod, actionKey?: string) => {
+    const lent = host.capability
+    const scope = lent?.scope.find((one) => one.instanceId === instanceId)
+    if (!lent || !scope)
+      throw new BridgeDenied(
+        `capability("${instanceId}") is not among the capability instances this module was allowed`,
+      )
+    if (!scope.methods.includes(method))
+      throw new BridgeDenied(`capability.${method} on "${instanceId}" was not allowed`)
+    if (actionKey !== undefined && !scope.actions.includes(actionKey))
+      throw new BridgeDenied(
+        `the action "${actionKey}" of "${instanceId}" is not among the actions this module was allowed`,
+      )
+    return lent
+  }
+  const outcome = async (reach: () => Promise<unknown>): Promise<CapabilityOutcome> => {
+    try {
+      return { ok: true, value: await reach() }
+    } catch (error) {
+      return { ok: false, error: capabilityFailure(error) }
+    }
+  }
+  serve<PageMethods, 'capability.describe'>(rpc, 'capability.describe', (raw) => {
+    const { instanceId } = params.capabilityDescribe.parse(raw)
+    const lent = capability(instanceId, 'describe')
+    return outcome(() => lent.describe(instanceId))
+  })
+  serve<PageMethods, 'capability.query'>(rpc, 'capability.query', (raw) => {
+    const request = params.capabilityQuery.parse(raw)
+    const lent = capability(request.instanceId, 'query')
+    return outcome(() => lent.query(request))
+  })
+  serve<PageMethods, 'capability.invoke'>(rpc, 'capability.invoke', (raw) => {
+    const request = params.capabilityInvoke.parse(raw)
+    const lent = capability(request.instanceId, 'invoke', request.actionKey)
+    return outcome(() => lent.invoke(request))
+  })
 
   serve<PageMethods, 'trace.recording'>(rpc, 'trace.recording', async (raw) => {
     if (!host.recording)
