@@ -4,6 +4,7 @@
 // (and/or/not over typed leaves) with its untouched-node guarantee; the tree logic is pure and tested
 // apart, so this file only draws it.
 import { useMemo } from 'react'
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { fieldControl } from '@/components/pages/resource-field'
 import type { ResolvedField } from '@/lib/capabilities/contract'
@@ -63,6 +64,229 @@ function numbering(tree: EditNode) {
   return numbers
 }
 
+/** A condition as it starts over a field: the field's first operator, and no value. */
+const startRow = (
+  fields: Map<string, ResolvedField>,
+  fieldKey: string,
+): FilterRow => ({
+  fieldKey,
+  op: opsForField(fields.get(fieldKey))[0] ?? 'eq',
+  value: '',
+})
+
+type Option = { value: string; label: string }
+
+/** What every node's controls edit: the whole tree, changed through onChange. */
+type Editing = { tree: EditNode; onChange: (tree: EditNode) => void }
+
+/** An all-of or any-of group: its match, its children, and the ways to add to it. */
+function GroupNode({
+  node,
+  n,
+  root,
+  noFields,
+  firstRow,
+  tree,
+  onChange,
+  children,
+}: Editing & {
+  node: Extract<EditNode, { kind: 'group' }>
+  n: number
+  root: boolean
+  noFields: boolean
+  firstRow: () => FilterRow
+  children: ReactNode
+}) {
+  return (
+    <fieldset className="flex flex-col gap-1.5 rounded-md border border-separator p-2">
+      <div className="flex items-center gap-1.5">
+        <Choice
+          label={`Match for group ${n}`}
+          value={node.op}
+          options={MATCH}
+          onChange={(op) =>
+            onChange(setGroupOp(tree, node.id, op as 'and' | 'or'))
+          }
+        />
+        {!root && (
+          <>
+            <Button
+              size="xs"
+              variant="ghost"
+              aria-label={`Negate group ${n}`}
+              onClick={() => onChange(negate(tree, node.id))}
+            >
+              Not
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              aria-label={`Remove group ${n}`}
+              onClick={() => onChange(removeNode(tree, node.id))}
+            >
+              ×
+            </Button>
+          </>
+        )}
+      </div>
+      {node.children.length === 0 && (
+        <p className="text-xs text-ink-faint">
+          {root
+            ? 'No conditions: the view shows every record.'
+            : 'No conditions in this group yet.'}
+        </p>
+      )}
+      {children}
+      <div className="flex gap-1.5">
+        <Button
+          size="xs"
+          variant="outline"
+          aria-label={`Add condition to group ${n}`}
+          disabled={noFields}
+          onClick={() => onChange(addCondition(tree, node.id, firstRow()))}
+        >
+          Add condition
+        </Button>
+        <Button
+          size="xs"
+          variant="outline"
+          aria-label={`Add group to group ${n}`}
+          onClick={() => onChange(addGroup(tree, node.id, 'or'))}
+        >
+          Add group
+        </Button>
+      </div>
+    </fieldset>
+  )
+}
+
+/** A negation around one node, and the way to undo it. */
+function NotNode({
+  node,
+  n,
+  tree,
+  onChange,
+  children,
+}: Editing & {
+  node: Extract<EditNode, { kind: 'not' }>
+  n: number
+  children: ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-separator p-2">
+      <div className="flex items-center gap-1.5">
+        <span className="flex-1 text-xs font-medium text-ink-muted">Not</span>
+        <Button
+          size="xs"
+          variant="ghost"
+          aria-label={`Remove negation ${n}`}
+          onClick={() => onChange(unwrapNot(tree, node.id))}
+        >
+          Undo not
+        </Button>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/** A condition this editor cannot change: shown as read, and removable. */
+function OpaqueNode({
+  node,
+  n,
+  tree,
+  onChange,
+}: Editing & { node: Extract<EditNode, { kind: 'opaque' }>; n: number }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <p className="min-w-0 flex-1 truncate rounded-md bg-raised px-2 py-1 text-xs text-ink-muted">
+        A condition this editor cannot change, kept as it is:{' '}
+        <code className="font-mono">{JSON.stringify(node.original)}</code>
+      </p>
+      <Button
+        size="xs"
+        variant="ghost"
+        aria-label={`Remove condition ${n}`}
+        onClick={() => onChange(removeNode(tree, node.id))}
+      >
+        ×
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * A condition over one field: its field, operator and value. A field the
+ * collection no longer has, or an operator its field does not offer, is
+ * still offered, first.
+ */
+function LeafNode({
+  node,
+  n,
+  fields,
+  fieldOptions,
+  tree,
+  onChange,
+}: Editing & {
+  node: Extract<EditNode, { kind: 'leaf' }>
+  n: number
+  fields: Map<string, ResolvedField>
+  fieldOptions: Option[]
+}) {
+  const { row } = node
+  const field = fields.get(row.fieldKey)
+  const ops = opsForField(field)
+  const set = (next: FilterRow) => onChange(setLeaf(tree, node.id, next))
+  return (
+    <div className="flex items-center gap-1.5">
+      <Choice
+        label={`Field of condition ${n}`}
+        value={row.fieldKey}
+        options={
+          field || !row.fieldKey
+            ? fieldOptions
+            : [{ value: row.fieldKey, label: row.fieldKey }, ...fieldOptions]
+        }
+        onChange={(fieldKey) => set(startRow(fields, fieldKey))}
+      />
+      <Choice
+        label={`Operator of condition ${n}`}
+        value={row.op}
+        options={(ops.includes(row.op) ? ops : [row.op, ...ops]).map((op) => ({
+          value: op,
+          label: OP_WORDS[op],
+        }))}
+        onChange={(op) => set({ ...row, op: op as LeafOp })}
+      />
+      {!valueless(row.op) && (
+        <input
+          aria-label={`Value of condition ${n}`}
+          className={fieldControl}
+          value={row.value}
+          placeholder={row.op === 'in' ? 'one, two' : undefined}
+          onChange={(event) => set({ ...row, value: event.target.value })}
+        />
+      )}
+      <Button
+        size="xs"
+        variant="ghost"
+        aria-label={`Negate condition ${n}`}
+        onClick={() => onChange(negate(tree, node.id))}
+      >
+        Not
+      </Button>
+      <Button
+        size="xs"
+        variant="ghost"
+        aria-label={`Remove condition ${n}`}
+        onClick={() => onChange(removeNode(tree, node.id))}
+      >
+        ×
+      </Button>
+    </div>
+  )
+}
+
 /**
  * The whole filter of one view, as nested groups: all-of and any-of groups,
  * negations, and conditions over the collection's fields. What is not touched
@@ -82,186 +306,46 @@ export function FilterTreeEditor({
     value: field.key,
     label: field.label,
   }))
-  const firstRow = (): FilterRow => {
-    const fieldKey = fieldOptions[0]?.value ?? ''
-    return {
-      fieldKey,
-      op: opsForField(fields.get(fieldKey))[0] ?? 'eq',
-      value: '',
-    }
-  }
+  const firstRow = () => startRow(fields, fieldOptions[0]?.value ?? '')
+  const noFields = fieldOptions.length === 0
+  const editing = { tree, onChange }
 
-  const draw = (node: EditNode, root: boolean) => {
+  const draw = (node: EditNode, root: boolean): ReactNode => {
     const n = numbers.get(node.id) ?? 0
     switch (node.kind) {
       case 'group':
         return (
-          <fieldset
+          <GroupNode
             key={node.id}
-            className="flex flex-col gap-1.5 rounded-md border border-separator p-2"
+            node={node}
+            n={n}
+            root={root}
+            noFields={noFields}
+            firstRow={firstRow}
+            {...editing}
           >
-            <div className="flex items-center gap-1.5">
-              <Choice
-                label={`Match for group ${n}`}
-                value={node.op}
-                options={MATCH}
-                onChange={(op) =>
-                  onChange(setGroupOp(tree, node.id, op as 'and' | 'or'))
-                }
-              />
-              {!root && (
-                <>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    aria-label={`Negate group ${n}`}
-                    onClick={() => onChange(negate(tree, node.id))}
-                  >
-                    Not
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    aria-label={`Remove group ${n}`}
-                    onClick={() => onChange(removeNode(tree, node.id))}
-                  >
-                    ×
-                  </Button>
-                </>
-              )}
-            </div>
-            {node.children.length === 0 && (
-              <p className="text-xs text-ink-faint">
-                {root
-                  ? 'No conditions: the view shows every record.'
-                  : 'No conditions in this group yet.'}
-              </p>
-            )}
             {node.children.map((child) => draw(child, false))}
-            <div className="flex gap-1.5">
-              <Button
-                size="xs"
-                variant="outline"
-                aria-label={`Add condition to group ${n}`}
-                disabled={fieldOptions.length === 0}
-                onClick={() =>
-                  onChange(addCondition(tree, node.id, firstRow()))
-                }
-              >
-                Add condition
-              </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                aria-label={`Add group to group ${n}`}
-                onClick={() => onChange(addGroup(tree, node.id, 'or'))}
-              >
-                Add group
-              </Button>
-            </div>
-          </fieldset>
+          </GroupNode>
         )
       case 'not':
         return (
-          <div
-            key={node.id}
-            className="flex flex-col gap-1.5 rounded-md border border-separator p-2"
-          >
-            <div className="flex items-center gap-1.5">
-              <span className="flex-1 text-xs font-medium text-ink-muted">
-                Not
-              </span>
-              <Button
-                size="xs"
-                variant="ghost"
-                aria-label={`Remove negation ${n}`}
-                onClick={() => onChange(unwrapNot(tree, node.id))}
-              >
-                Undo not
-              </Button>
-            </div>
+          <NotNode key={node.id} node={node} n={n} {...editing}>
             {draw(node.child, false)}
-          </div>
+          </NotNode>
         )
       case 'opaque':
+        return <OpaqueNode key={node.id} node={node} n={n} {...editing} />
+      case 'leaf':
         return (
-          <div key={node.id} className="flex items-center gap-1.5">
-            <p className="min-w-0 flex-1 truncate rounded-md bg-raised px-2 py-1 text-xs text-ink-muted">
-              A condition this editor cannot change, kept as it is:{' '}
-              <code className="font-mono">{JSON.stringify(node.original)}</code>
-            </p>
-            <Button
-              size="xs"
-              variant="ghost"
-              aria-label={`Remove condition ${n}`}
-              onClick={() => onChange(removeNode(tree, node.id))}
-            >
-              ×
-            </Button>
-          </div>
+          <LeafNode
+            key={node.id}
+            node={node}
+            n={n}
+            fields={fields}
+            fieldOptions={fieldOptions}
+            {...editing}
+          />
         )
-      case 'leaf': {
-        const { row } = node
-        const field = fields.get(row.fieldKey)
-        const ops = opsForField(field)
-        const set = (next: FilterRow) => onChange(setLeaf(tree, node.id, next))
-        return (
-          <div key={node.id} className="flex items-center gap-1.5">
-            <Choice
-              label={`Field of condition ${n}`}
-              value={row.fieldKey}
-              options={
-                field || !row.fieldKey
-                  ? fieldOptions
-                  : [
-                      { value: row.fieldKey, label: row.fieldKey },
-                      ...fieldOptions,
-                    ]
-              }
-              onChange={(fieldKey) =>
-                set({
-                  fieldKey,
-                  op: opsForField(fields.get(fieldKey))[0] ?? 'eq',
-                  value: '',
-                })
-              }
-            />
-            <Choice
-              label={`Operator of condition ${n}`}
-              value={row.op}
-              options={(ops.includes(row.op) ? ops : [row.op, ...ops]).map(
-                (op) => ({ value: op, label: OP_WORDS[op] }),
-              )}
-              onChange={(op) => set({ ...row, op: op as LeafOp })}
-            />
-            {!valueless(row.op) && (
-              <input
-                aria-label={`Value of condition ${n}`}
-                className={fieldControl}
-                value={row.value}
-                placeholder={row.op === 'in' ? 'one, two' : undefined}
-                onChange={(event) => set({ ...row, value: event.target.value })}
-              />
-            )}
-            <Button
-              size="xs"
-              variant="ghost"
-              aria-label={`Negate condition ${n}`}
-              onClick={() => onChange(negate(tree, node.id))}
-            >
-              Not
-            </Button>
-            <Button
-              size="xs"
-              variant="ghost"
-              aria-label={`Remove condition ${n}`}
-              onClick={() => onChange(removeNode(tree, node.id))}
-            >
-              ×
-            </Button>
-          </div>
-        )
-      }
     }
   }
 
@@ -276,7 +360,7 @@ export function FilterTreeEditor({
             size="xs"
             variant="outline"
             aria-label="Add condition"
-            disabled={fieldOptions.length === 0}
+            disabled={noFields}
             onClick={() => onChange(addCondition(tree, tree.id, firstRow()))}
           >
             Add condition
