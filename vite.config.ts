@@ -34,14 +34,71 @@ const loroForWorkers: Plugin = {
 }
 const serverOnlyPackages = ['trash', '@rustyreddb/node']
 
+// Pierre's diffs build their wasm highlighter at import time, which no server
+// bundle here survives: the import throws before a request is answered. A
+// diff is only ever shown when a person opens a change row, in the browser,
+// so servers get components that render nothing and the browser keeps the
+// real package, lazily (delegation-parts).
+const diffsServerStub: Plugin = {
+  name: 'theorem:diffs-server-stub',
+  enforce: 'pre',
+  applyToEnvironment: (environment) => environment.name !== 'client',
+  resolveId(id) {
+    if (id === '@pierre/diffs/react') return '\0theorem:pierre-diffs-react'
+  },
+  load(id) {
+    if (id === '\0theorem:pierre-diffs-react')
+      return 'export const PatchDiff = () => null;\nexport const MultiFileDiff = () => null;\n'
+  },
+}
+
+// The App graph database and the workbench's device checkpoint keep their
+// records in @rustyreddb/browser: a dedicated worker of the page, on the origin
+// private file system. No server opens one — a Worker has neither OPFS nor a
+// page Worker — but the lazy imports in blocks/app-db and workbench/layout/
+// checkpoint still pull its wasm into the server bundle. The vendored 0.2.0
+// tarball grew that wasm to ~16.5 MiB, which alone pushed the Worker past
+// Cloudflare's 63.9 MiB uncompressed limit and failed every deploy (code
+// 10027). Servers get inert stubs; the browser keeps the real package, lazily.
+const rustyredServerStub: Plugin = {
+  name: 'theorem:rustyred-server-stub',
+  enforce: 'pre',
+  applyToEnvironment: (environment) => environment.name !== 'client',
+  resolveId(id) {
+    if (id === '@rustyreddb/browser' || id.startsWith('@rustyreddb/browser/'))
+      return '\0theorem:rustyred-browser'
+  },
+  load(id) {
+    if (id === '\0theorem:rustyred-browser')
+      return `const unavailable = () =>
+  Promise.reject(new Error('RustyRedDB runs in a browser worker, not on the server.'))
+export const open = unavailable
+export const inMemory = unavailable
+export default ''
+`
+  },
+}
+
 // The personal Theorem serves the API and is its OAuth issuer; it grants the
 // theorem-ui client models:invoke.
 const theoremVars = {
   THEOREM_API_URL: 'https://travis-theorem-personal.fly.dev',
   THEOREM_OAUTH_CLIENT_ID: 'theorem-ui',
+  // The iOS app's sign-in callback on theorem.rs (mobile/docs/sign-in.md).
+  THEOREM_IOS_APP_IDS: 'K5CTABMVHN.rs.theorem.app',
 }
 
 const config = defineConfig({
+  // Oracle harnesses and their captured DOM are not application sources.
+  // Their writes must not hot-reload another concurrent browser check.
+  server: {
+    watch: {
+      ignored: [
+        /[/\\]docs[/\\]plans[/\\]composable-appearance[/\\]evidence[/\\]/,
+        /[/\\](?:scripts|tests)[/\\]design-oracles[/\\]/,
+      ],
+    },
+  },
   // The dev server's client dependency scan follows the route tree into the
   // desktop routes, and cannot pre-bundle these for the browser: rolldown
   // cannot load a .node file, and trash's globby needs unicorn-magic's Node
@@ -55,6 +112,8 @@ const config = defineConfig({
   },
   plugins: [
     cloudflare && loroForWorkers,
+    diffsServerStub,
+    rustyredServerStub,
     tailwindcss(),
     // Noun icons are filled contours on a 100 viewBox with no declared fill.
     svgr({
@@ -80,6 +139,17 @@ const config = defineConfig({
     // served beside the app so it shares this origin, its proxy and its session.
     nitro({
       preset: cloudflare ? 'cloudflare_module' : 'bun',
+      minify: cloudflare,
+      // The dictation WebSocket upgrades through the Bun preset's crossws
+      // adapter; the fetch proxy alone drops the upgrade header.
+      features: { websocket: true },
+      // Keep dependencies of the lazy Neon Auth routes out of eagerly loaded
+      // library chunks. The browser adapter generates a UUID on module load.
+      ...(cloudflare && {
+        rolldownConfig: {
+          output: { codeSplitting: { includeDependenciesRecursively: false } },
+        },
+      }),
       cloudflare: {
         deployConfig: true,
         nodeCompat: true,
@@ -87,6 +157,8 @@ const config = defineConfig({
         wrangler: {
           name: 'theorem-ui',
           compatibility_date: '2026-10-01',
+          // Link previews use the public Internet boundary, including same-zone URLs.
+          compatibility_flags: ['global_fetch_strictly_public'],
           routes: [{ pattern: 'theorem.rs', custom_domain: true }],
           // Also reachable at theorem-ui.<account>.workers.dev.
           workers_dev: true,
@@ -97,6 +169,19 @@ const config = defineConfig({
         },
       },
       publicAssets: [
+        // The page a webview (the markdown preview) runs in, which Theia's
+        // build puts beside the frontend for a backend to serve at /webview.
+        // It comes before /theia, which dev otherwise answers with a 404.
+        {
+          baseURL: '/theia/webview',
+          dir: fileURLToPath(
+            new URL(
+              './ide/applications/browser/lib/webview/pre',
+              import.meta.url,
+            ),
+          ),
+          maxAge: 0,
+        },
         {
           baseURL: '/theia',
           dir: fileURLToPath(
@@ -111,9 +196,22 @@ const config = defineConfig({
       // only: it loads native addons a Worker cannot run. The plugin and every
       // route answer only when the desktop host started the server, so the Bun
       // build for the web carries them inert.
-      ...(!cloudflare && {
-        plugins: ['./src/server/desktop/plugin.ts'],
-        routes: {
+      routes: {
+        ...(cloudflare && {
+          '/api/files/v1/**': { handler: './src/server/files-proxy.ts' },
+          '/api/project-files/v1/**': {
+            handler: './src/server/files-proxy.ts',
+          },
+        }),
+        // Dictation upgrades to a WebSocket on both hosts: the fetch proxy
+        // drops the upgrade header, so this nitro route hands it to crossws
+        // (the Bun adapter locally, the cloudflare_module adapter on the
+        // Worker).
+        '/api/chat/v1/dictation': {
+          handler: './src/server/dictation-proxy.ts',
+          method: 'GET',
+        },
+        ...(!cloudflare && {
           '/desktop/session': {
             handler: './src/server/desktop/session.ts',
             method: 'GET',
@@ -126,7 +224,10 @@ const config = defineConfig({
             handler: './src/server/desktop/events.ts',
             method: 'GET',
           },
-        },
+        }),
+      },
+      ...(!cloudflare && {
+        plugins: ['./src/server/desktop/plugin.ts'],
         // Copied whole so each binary ships beside its module instead of
         // being lost to bundling.
         traceDeps: serverOnlyPackages.map((name) => `${name}*`),

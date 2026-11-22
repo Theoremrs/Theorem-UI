@@ -17,22 +17,23 @@ import { z } from 'zod/v4'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { DataModelView } from '@/components/records/data-model'
 import {
-  objectTypeByName,
-  parseRecordItemId,
-  recordItemId,
-} from '@/components/records/model'
-import { useDataModel } from '@/components/records/queries'
-import { RecordTable as RecordTableView } from '@/components/records/record-table'
-import { describeError } from '@/lib/theorem/client'
+  CrmRecordPageView,
+  CrmTableView,
+  RecordsHome as RecordsHome_,
+} from '@/components/crm/index-views'
+import { NamedTypeIcon } from '@/components/crm/type-icons'
+import { DataModelView } from '@/components/records/data-model'
+import { WORK_COMPONENT_NAMES, workComponents } from '@/components/work/library'
 import { AtlasMap } from './atlas'
-import { dataModelViewId, recordsViewId } from './programs'
+import { IndexPlaceContext, useLocalIndexPlace } from './navigation'
+import { dataModelViewId, recordPageViewId, recordsViewId } from './programs'
 import type {
   AtlasSnapshot,
   Collection,
   FilingReceipt,
   IndexItem,
+  IndexRecord,
   ObservationEvent,
   Scope,
 } from './contract'
@@ -44,16 +45,22 @@ export type IndexHost = {
   selectedId: string | undefined
   openItem: (documentId: string) => void
   openCollection: (collectionId: string) => void
-  /** Open another view in this scope, such as an object's records. */
-  openView: (viewId: string) => void
+  /**
+   * Open another view in this scope, such as an object's records. A record's
+   * page passes `closeItem`: it has no preview beside it.
+   */
+  openView: (viewId: string, options?: { closeItem?: boolean }) => void
   collectionName: (collectionId: string) => string | undefined
   record: (event: Omit<ObservationEvent, 'atMs' | 'scope' | 'viewId'>) => void
+  /** A preview: record views keep a place of their own and never move the live Index. */
+  preview?: boolean
 }
 
 /** Previews render with a host that opens nothing and records nothing. */
 export const PREVIEW_HOST: IndexHost = {
   scope: { kind: 'home' },
   viewId: 'preview',
+  preview: true,
   selectedId: undefined,
   openItem: () => undefined,
   openCollection: () => undefined,
@@ -64,6 +71,23 @@ export const PREVIEW_HOST: IndexHost = {
 
 export const IndexHostContext = createContext<IndexHost>(PREVIEW_HOST)
 const useHost = () => useContext(IndexHostContext)
+
+/**
+ * A record view reads and moves the Index's place. In a preview that place
+ * is the live Index behind the dialog, so the preview gets one of its own.
+ */
+function PreviewPlace({ children }: { children: ReactNode }) {
+  const place = useLocalIndexPlace({})
+  return (
+    <IndexPlaceContext.Provider value={place}>
+      {children}
+    </IndexPlaceContext.Provider>
+  )
+}
+
+function InHostPlace({ children }: { children: ReactNode }) {
+  return useHost().preview ? <PreviewPlace>{children}</PreviewPlace> : children
+}
 
 const rows = <T,>(value: unknown): T[] =>
   Array.isArray(value) ? (value as T[]) : []
@@ -134,13 +158,9 @@ const Heading = defineComponent({
   }),
   component: ({ props }) =>
     props.level === 1 ? (
-      <h2 className="font-heading text-[22px] font-medium">
-        {props.text}
-      </h2>
+      <h2 className="font-heading text-[22px] font-medium">{props.text}</h2>
     ) : (
-      <h3 className="font-heading text-[17px] font-semibold">
-        {props.text}
-      </h3>
+      <h3 className="font-heading text-[17px] font-semibold">{props.text}</h3>
     ),
 })
 
@@ -611,11 +631,12 @@ const latestReceipt = (history: unknown) =>
 const IndexComparison = defineComponent({
   name: 'IndexComparison',
   description:
-    'Template component: documents side by side with where each is filed and why, from an items Query, a collections Query and one filing_history Query per document, in document order.',
+    'Template component: documents side by side with where each is filed and why, from an items Query, a collections Query and one filing_history Query per document, in document order; an optional records Query adds the CRM records opened with them.',
   props: z.object({
     items: z.any(),
     collections: z.any(),
     filings: z.array(z.any()).optional(),
+    records: z.any().optional(),
   }),
   component: function IndexComparisonView({ props }) {
     const host = useHost()
@@ -625,38 +646,81 @@ const IndexComparison = defineComponent({
     const collections = rows<Collection>(
       (props.collections as { collections?: unknown } | null)?.collections,
     )
+    const records = rows<IndexRecord>(
+      (props.records as { records?: unknown } | null)?.records,
+    )
     const name = (id: string) =>
       collections.find((c) => c.collectionId === id)?.name ??
       host.collectionName(id) ??
       id
+    const openRecord = (record: IndexRecord) => {
+      host.record({ kind: 'item_opened', subjects: [record.itemId] })
+      host.openView(recordPageViewId(record.nameSingular, record.recordId), {
+        closeItem: true,
+      })
+    }
     return (
-      <div className="flex snap-x gap-3 overflow-x-auto pb-1">
-        {items.map((item, index) => {
-          const receipt = latestReceipt(props.filings?.[index])
-          return (
-            <ItemButton
-              key={item.documentId}
-              item={item}
-              className="flex w-72 shrink-0 snap-start flex-col gap-2 rounded-lg border border-separator p-3"
-            >
-              <span className="text-sm font-medium">{item.title}</span>
-              <span className="text-[11px] text-ink-faint">
-                {item.documentKind}
-              </span>
-              <CollectionChips ids={item.collectionIds} />
-              {receipt && (
-                <span className="text-xs text-ink-muted">
-                  Filed in {name(receipt.destinationCollectionId)} by{' '}
-                  {receipt.tier}, {Math.round(receipt.confidence * 100)}% sure
-                  {receipt.lowConfidence ? ', worth a look' : ''}.
-                </span>
-              )}
-              <span className="text-xs leading-5 text-ink-muted">
-                {item.snippet}
-              </span>
-            </ItemButton>
-          )
-        })}
+      <div className="flex flex-col gap-4">
+        {items.length > 0 && (
+          <div className="flex snap-x gap-3 overflow-x-auto pb-1">
+            {items.map((item, index) => {
+              const receipt = latestReceipt(props.filings?.[index])
+              return (
+                <ItemButton
+                  key={item.documentId}
+                  item={item}
+                  className="flex w-72 shrink-0 snap-start flex-col gap-2 rounded-lg border border-separator p-3"
+                >
+                  <span className="text-sm font-medium">{item.title}</span>
+                  <span className="text-[11px] text-ink-faint">
+                    {item.documentKind}
+                  </span>
+                  <CollectionChips ids={item.collectionIds} />
+                  {receipt && (
+                    <span className="text-xs text-ink-muted">
+                      Filed in {name(receipt.destinationCollectionId)} by{' '}
+                      {receipt.tier}, {Math.round(receipt.confidence * 100)}%
+                      sure
+                      {receipt.lowConfidence ? ', worth a look' : ''}.
+                    </span>
+                  )}
+                  <span className="text-xs leading-5 text-ink-muted">
+                    {item.snippet}
+                  </span>
+                </ItemButton>
+              )
+            })}
+          </div>
+        )}
+        {records.length > 0 && (
+          <section aria-label="Records" className="flex flex-col gap-1.5">
+            <h3 className="text-xs font-medium tracking-wide text-ink-faint uppercase">
+              Records
+            </h3>
+            <ul className="flex flex-col">
+              {records.map((record) => (
+                <li key={record.itemId}>
+                  <button
+                    type="button"
+                    onClick={() => openRecord(record)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm outline-none hover:bg-hover/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+                  >
+                    <NamedTypeIcon
+                      nameSingular={record.nameSingular}
+                      className="text-ink-muted"
+                    />
+                    <span className="min-w-0 flex-1 truncate">
+                      {record.title || record.recordId}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-ink-faint">
+                      {record.nameSingular}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     )
   },
@@ -778,42 +842,57 @@ const Atlas = defineComponent({
 
 // Records
 
+// A record table or page fills the view when it is the whole program, and
+// takes a fixed height among other components.
+const RECORD_FRAME = 'h-full min-h-[32rem] overflow-hidden'
+
 const RecordTable = defineComponent({
   name: 'RecordTable',
   description:
-    "One declared object's records as an editable table: sort, filter, hide and reorder columns, a Calculate footer, and records opened beside it. object is the type's name_singular; fields picks and orders the columns. Reads Theorem's schema itself; it takes no Query.",
+    "One declared object's records as the CRM's editable table: filter, sort, hide columns, add, update and delete in bulk, and a record opened beside it. object is the type's name_singular; fields picks and orders the columns. Reads Theorem's schema itself; it takes no Query.",
   props: z.object({
     object: z.string(),
     fields: z.array(z.string()).optional(),
   }),
   component: function RecordTableComponent({ props }) {
-    const host = useHost()
-    const model = useDataModel()
-    const type = objectTypeByName(model.data, props.object)
-    if (model.isPending)
-      return <div className="h-80 animate-pulse rounded-lg bg-raised" />
-    if (!model.data || !type)
-      return (
-        <p className="text-sm text-ink-muted">
-          {model.error
-            ? describeError(model.error)
-            : `There is no "${props.object}" object in the schema.`}
-        </p>
-      )
-    const open = parseRecordItemId(host.selectedId ?? '')
     return (
-      <RecordTableView
-        objectType={type}
-        model={model.data}
-        viewKey={host.viewId}
-        fieldKeys={props.fields}
-        activeRecordId={
-          open?.nameSingular === type.name_singular ? open.recordId : undefined
-        }
-        onOpenRecord={(id) => host.openItem(recordItemId(type, id))}
-        onOpenRelated={(name, id) => host.openItem(`record:${name}/${id}`)}
-        onEditFields={() => host.openView(dataModelViewId(type.name_singular))}
-      />
+      <InHostPlace>
+        <div className={RECORD_FRAME}>
+          <CrmTableView object={props.object} fields={props.fields} />
+        </div>
+      </InHostPlace>
+    )
+  },
+})
+
+const RecordPage = defineComponent({
+  name: 'RecordPage',
+  description:
+    "One record in full: its properties, a timeline of what changed and who changed it, and the records tied to it. object is the type's name_singular, record the record's id. Reads Theorem's schema itself; it takes no Query.",
+  props: z.object({ object: z.string(), record: z.string() }),
+  component: function RecordPageComponent({ props }) {
+    return (
+      <InHostPlace>
+        <div className={RECORD_FRAME}>
+          <CrmRecordPageView object={props.object} recordId={props.record} />
+        </div>
+      </InHostPlace>
+    )
+  },
+})
+
+const RecordsHome = defineComponent({
+  name: 'RecordsHome',
+  description:
+    "Where records begin: the people, organizations and promises Theorem can keep, and adding them; once added, the first record type's table. Takes no props.",
+  props: z.object({}),
+  component: function RecordsHomeComponent() {
+    return (
+      <InHostPlace>
+        <div className={RECORD_FRAME}>
+          <RecordsHome_ />
+        </div>
+      </InHostPlace>
     )
   },
 })
@@ -897,9 +976,11 @@ const SetPreference = defineAction({
   }),
 })
 
-/** Built on first use, for the reason artifactLibrary is (see artifacts/openui/library). */
-export const indexLibrary = once(() =>
-  createLibrary({
+const WORK_COMPONENTS = once(() => workComponents(useHost))
+
+/** The library with or without the work tracker's components; both render and check the same programs. */
+function buildLibrary(withWork: boolean) {
+  return createLibrary({
     id: 'theorem.index',
     root: 'Stack',
     components: [
@@ -921,8 +1002,11 @@ export const indexLibrary = once(() =>
       FilingList,
       Atlas,
       RecordTable,
+      RecordPage,
+      RecordsHome,
       DataModel,
       ActionButton,
+      ...(withWork ? WORK_COMPONENTS() : []),
     ],
     componentGroups: [
       { name: 'Layout', components: ['Stack', 'Columns', 'Section'] },
@@ -941,12 +1025,29 @@ export const indexLibrary = once(() =>
           'Atlas',
         ],
       },
-      { name: 'Records', components: ['RecordTable', 'DataModel'] },
+      {
+        name: 'Records',
+        components: ['RecordTable', 'RecordPage', 'RecordsHome', 'DataModel'],
+      },
+      ...(withWork
+        ? [{ name: 'Work', components: [...WORK_COMPONENT_NAMES] }]
+        : []),
       { name: 'Actions', components: ['ActionButton'] },
     ],
     actions: [OpenItem, AskTheorem, PinView, SetPreference],
-  }),
-)
+  })
+}
+
+/**
+ * Built on first use, for the reason artifactLibrary is (see artifacts/openui/library).
+ * Renders and checks every program, so a saved view that uses the tracker
+ * still draws (as "Work tracker is off") when the tracker is switched off.
+ */
+export const indexLibrary = once(() => buildLibrary(true))
+/** What Theorem is told it may compose with while the tracker is off. */
+const indexLibraryWithoutWork = once(() => buildLibrary(false))
+const libraryFor = (withWork: boolean) =>
+  withWork ? indexLibrary() : indexLibraryWithoutWork()
 
 export type IndexLibrary = ReturnType<typeof indexLibrary>
 
@@ -984,8 +1085,11 @@ const PROMPT_RULES = [
   'Results: items and used_together bindings return {items, total}; collections returns {collections}; filing_history returns {receipts}; map returns {snapshot}.',
   'Keep views calm: one primary list or comparison, a search field when the material is long, at most one Callout.',
   'Never invent document ids; use the ids the request gives you.',
-  'RecordTable("<object>") and DataModel() read Theorem\'s schema register themselves and take no Query; name objects by their name_singular.',
+  'RecordTable("<object>"), RecordPage("<object>", "<record id>"), RecordsHome() and DataModel() read Theorem\'s schema register themselves and take no Query; name objects by their name_singular.',
 ]
+
+const WORK_RULE =
+  'The Work components (WorkView, WorkList, WorkBoard, WorkViewBar, WorkInbox, WorkItem, WorkProjects, WorkProject) read the work tracker themselves and take no Query; name views and projects by their ids.'
 
 const TOOL_EXAMPLE = `$q = ""
 root = Stack([search, results])
@@ -994,19 +1098,19 @@ found = Query("items", {q: $q}, {items: [], total: 0})
 results = ItemList(found.items, "list", "collection", "Nothing matches yet.")`
 
 /** The prompt Theorem composes candidates with, and the names the server lints against. */
-export function libraryPrompt() {
-  return indexLibrary().prompt({
+export function libraryPrompt(withWork = true) {
+  return libraryFor(withWork).prompt({
     preamble:
       "You compose views of a person's filed material in Theorem's Index. Answer with OpenUI Lang only.",
-    additionalRules: PROMPT_RULES,
+    additionalRules: withWork ? [...PROMPT_RULES, WORK_RULE] : PROMPT_RULES,
     toolExamples: [TOOL_EXAMPLE],
     toolCalls: true,
     bindings: true,
   })
 }
 
-export const libraryComponents = () => [
-  ...Object.keys(indexLibrary().components),
+export const libraryComponents = (withWork = true) => [
+  ...Object.keys(libraryFor(withWork).components),
   ...OPENUI_COMPONENTS,
 ]
 
@@ -1026,9 +1130,9 @@ async function sha256(text: string) {
 }
 
 /** The record PUT /api/index/v1/library stores; the digest covers everything the server reads. */
-export async function libraryRecord() {
-  const prompt = libraryPrompt()
-  const components = libraryComponents()
+export async function libraryRecord(withWork = true) {
+  const prompt = libraryPrompt(withWork)
+  const components = libraryComponents(withWork)
   const callables = libraryCallables()
   return {
     libraryId: 'theorem.index',

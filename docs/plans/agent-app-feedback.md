@@ -107,6 +107,15 @@ container images and `rustyred-thg-mcp`'s cell tests were not run.
 - The conversation draws a TypeScript program as it draws a Monty one, with
   its source highlighted in its language.
 
+As built (Theorem pull requests 1012, merged, and 1019, and this repo's 68):
+a TypeScript program the agent wrote is a row in the owner's conversation,
+closed by default, that opens to its source highlighted as TypeScript. A
+Monty program is not drawn: most are compiled from the model's tool calls,
+and the server keeps those out of the conversation. A visitor to a shared
+conversation is not shown a program. Seen in Chromium, closed and open, in
+light and dark, over a committed part (`/story/chat-program`). Not observed:
+the row in a conversation with a live model.
+
 ## Step 4: writing the App is the App (Theorem repo and this repo)
 
 - A program has `app`. `app.write(files)` and `app.edit(file, old, new)` save
@@ -128,12 +137,40 @@ container images and `rustyred-thg-mcp`'s cell tests were not run.
   bound to the turn, and one more tool in the front role's policy.
 - With no page open, a write is saved and says it was not built.
 
+As built (Theorem pull requests 1010, merged, and 1018):
+
+- The operations are `read_app` and `write_app`, which a program calls as it
+  calls any operation (`tool("write_app", {...})` in TypeScript). There is no
+  `app` object. A write takes the whole App document as `html` and the
+  revision it read, and is refused when that revision is no longer the head.
+- With 1018 a write's result has `check`: what the page's `app.check` found
+  when it built that document, in the same call. With no page that offers the
+  check, or with `check: false`, `check` is null and `notChecked` says why.
+- Not built: `app.edit`, so a change is a read and a whole write; and a
+  `picture` on the write, which waits for 1013 and 1018 to both be on main.
+
 ## Step 5: a subagent gets the same feedback (Theorem repo)
 
 - A worker's program has the same `app`. Its builds are answered by the page
   of the conversation that started the work.
 - Starting a subagent stays a call (`start_work`), which is the exception the
   owner named.
+
+As built (Theorem pull request 1020 and this repo's 69):
+
+- A Builder is handed the operations the page declared on the turn that
+  started it, those that only read, so its run has `app__check` and its task
+  says to check the App before handing it back. It still submits the App
+  through `complete_work`; it has no `write_app`.
+- The Builder asks on its own run, which is not a message of the
+  conversation. While a specialist's card is live the page follows that run
+  by its id and answers its checks. A check waits 60 seconds for the page.
+- Tested on the server with only the model's replies scripted
+  (`page_check_tests`): a Builder's run calls the check, the test answers as
+  the page does on that run, the model reads what was found and hands the App
+  back. Tested here without a server: the page reads pending requests off a
+  specialist's run. Not observed: a browser page answering a Builder, or a
+  live model.
 
 ## Seeing the App
 
@@ -144,11 +181,27 @@ the accessibility tree, by vision, or by the harness's visual perceiver.
    names real elements. The harness's own `perception_visual` README puts the
    tree first on web surfaces and the perceiver where there is no tree.
 2. **A picture, for a model with vision.** An outline cannot say whether the
-   layout is right. It needs the frame's pixels and a way to give a turn an
-   image; a receipt's result is JSON today, so the second is Theorem's.
+   layout is right.
+   - This repo (built, `feat/app-picture`): `app.check` takes `picture: true`
+     and its result then has `picture`, the App's snapshot drawn by the
+     browser, as `{type: "image", mediaType, data, width, height}`. PNG, or
+     JPEG where the PNG is over 1 MiB of base64. A real Chromium draws the
+     fixture's layout and its canvas (`bun run e2e:app-ts`).
+   - Theorem (built, pull request 1013, stacked on 1012): a receipt's result
+     is JSON, and JSON is text to a model, so the turn takes a picture of
+     that shape out of a result and gives it to the model as an image after
+     the result. It is kept out of what the run saves. Only a model the
+     catalog records as reading images is sent one; OpenRouter's directory
+     says which do, and the model list the interface reads now reports it.
+     A chat-route test shows the picture in the model's next request as an
+     image and absent from the thread.
 3. **The visual perceiver on that picture** (`perception_visual`, reached
    through `THEOREM_OMNIPARSER_URL`), for a model without vision and for what
-   is drawn on a canvas, which has no tree.
+   is drawn on a canvas, which has no tree. Built in Theorem pull request
+   1014, stacked on 1013: a model that is not sent a picture is told what
+   the perceiver read from it, as lines of text and controls with where each
+   is. Tested against a perceiver stood up in the test; the perceiver service
+   itself was not run, so what it reads from a real App is not observed.
 4. **Acting.** With elements named, a program can press and type and read
    the outline again, which tests what the App does and not only what it
    shows.
@@ -181,10 +234,15 @@ the accessibility tree, by vision, or by the harness's visual perceiver.
 2. Boa cells: the kernel's cell tests and the worker tests pass, with the
    memory and deadline refusals held by the worker. Recorded in the Theorem
    pull request.
-3. A live turn: the front model writes a TypeScript program whose
+3. A picture: a real browser draws the fixture App's layout and canvas into
+   the check's result. Observed: `bun run e2e:app-ts`, 21 of 21, the picture
+   about 25 KB of base64. Theorem's chat-route test
+   (`picture_flow_tests`) shows a scripted model's next request carrying a
+   receipt's picture as an image. Not observed: a live model shown one.
+4. A live turn: the front model writes a TypeScript program whose
    `app.write` returns the page's findings, and repairs a type error without
    the person. Needs the deployed stack.
-4. A live turn: the front model reads an App a subagent published and
+5. A live turn: the front model reads an App a subagent published and
    changes it.
-5. A live builder: a worker's program writes an App, reads a build failure
+6. A live builder: a worker's program writes an App, reads a build failure
    and repairs it in the same attempt.

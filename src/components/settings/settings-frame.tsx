@@ -1,22 +1,27 @@
 // SOURCING: @tanstack/react-router Link (each section is a route), ui/icon-tile for row marks; the layout follows Twenty's settings (nav replaces the app panel, breadcrumb over a raised sheet, sections of bordered rows)
 import { Link, useMatches } from '@tanstack/react-router'
+import { useRef, useState } from 'react'
 import type { ComponentType, ReactNode, SVGProps } from 'react'
+import { useIsomorphicLayoutEffect } from '@/components/assistant-ui/utils/useIsomorphicLayoutEffect'
 import { Icon } from '@/components/icons'
+import { PANEL_WIDTH } from '@/components/shell/shell-state'
 import { IconTile } from '@/components/ui/icon-tile'
 import { cn } from '@/lib/utils'
 import { SETTINGS_GROUPS, settingsSection } from './sections'
 
 const navItem =
-  'flex h-8 items-center gap-2 rounded-md px-2 text-sm text-ink-muted outline-none transition-colors duration-100 hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus data-[status=active]:bg-selected data-[status=active]:text-ink'
+  'flex items-center rounded-md text-sm text-ink-muted transition-colors duration-100 hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus data-[status=active]:bg-selected data-[status=active]:text-ink'
 
 /** The settings nav: a way back to the conversation, then the sections by group. */
 function SettingsNav() {
   return (
     <nav
       aria-label="Settings"
-      className="flex w-(--spacing-sidebar) shrink-0 flex-col gap-4 overflow-y-auto px-2 py-3"
+      data-appearance-part="settings-nav"
+      style={{ width: PANEL_WIDTH.default }}
+      className="flex shrink-0 flex-col overflow-y-auto"
     >
-      <Link to="/" className={navItem}>
+      <Link to="/" data-appearance-part="navigation-row" className={navItem}>
         <Icon.X className="size-4" />
         Exit settings
       </Link>
@@ -24,7 +29,12 @@ function SettingsNav() {
         <div key={label} className="flex flex-col gap-0.5">
           <p className="px-2 pb-1 text-xs text-ink-faint">{label}</p>
           {sections.map(({ path, label: name, Mark }) => (
-            <Link key={path} to={path} className={navItem}>
+            <Link
+              key={path}
+              to={path}
+              data-appearance-part="navigation-row"
+              className={navItem}
+            >
               <Mark className="size-4" />
               {name}
             </Link>
@@ -46,20 +56,41 @@ function useCurrentSection() {
 export function SettingsLayout({ children }: { children: ReactNode }) {
   const current = useCurrentSection()
   return (
-    <div className="flex h-dvh bg-rail text-ink">
-      <SettingsNav />
-      <div className="flex min-w-0 flex-1 flex-col pe-1.5 pb-1.5">
+    <div className="flex h-dvh flex-col bg-rail text-ink md:flex-row">
+      <div className="hidden md:contents">
+        <SettingsNav />
+      </div>
+      <details className="max-h-[40dvh] shrink-0 overflow-auto border-b border-separator px-3 py-2 md:hidden">
+        <summary className="cursor-pointer">Settings sections</summary>
+        <SettingsNav />
+      </details>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col pe-1.5 pb-1.5">
         <header className="flex h-11 shrink-0 items-center gap-1.5 px-2 text-sm">
           {current && (
             <>
               <span className="text-ink-faint">{current.group}</span>
               <span className="text-ink-faint">/</span>
-              <span>{current.label}</span>
+              {current.within ? (
+                <Link
+                  to={current.path}
+                  // The page open is one under this section, not the section.
+                  activeOptions={{ exact: true }}
+                  className="rounded-sm text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  {current.label}
+                </Link>
+              ) : (
+                <span>{current.label}</span>
+              )}
             </>
           )}
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto rounded-xl bg-sheet shadow-sheet">
-          <div className="mx-auto flex max-w-[680px] flex-col gap-8 px-6 py-8">
+          <div
+            data-appearance-spacing-role="settings-page"
+            className="mx-auto flex w-full flex-col"
+            style={{ maxWidth: current?.width ?? 680 }}
+          >
             {children}
           </div>
         </main>
@@ -71,20 +102,28 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
 export function SettingsPage({
   title,
   description,
+  action,
   children,
 }: {
   title: string
   description?: ReactNode
+  /** Set level with the title, as a section's action is with its own. */
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
     <>
-      <div className="flex flex-col gap-1">
-        <h1 className="font-heading text-[20px] font-medium">
-          {title}
-        </h1>
-        {description && (
-          <p className="text-sm text-ink-muted">{description}</p>
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 data-appearance-recipe="heading.medium">{title}</h1>
+          {description && (
+            <p data-appearance-recipe="ui.label" className="text-ink-muted">
+              {description}
+            </p>
+          )}
+        </div>
+        {action && (
+          <div className="flex shrink-0 items-center gap-3">{action}</div>
         )}
       </div>
       {children}
@@ -104,13 +143,34 @@ export function SettingsSection({
   action?: ReactNode
   children: ReactNode
 }) {
+  const ref = useRef<HTMLElement>(null)
+  const [tabled, setTabled] = useState(false)
+  // A section that holds a table is data management: it takes the compact
+  // steps, while a page of fields keeps its comfortable spacing. The table
+  // can arrive with its data, so the section watches for one.
+  useIsomorphicLayoutEffect(() => {
+    const section = ref.current
+    if (!section) return
+    const read = () => setTabled(section.querySelector('table') !== null)
+    read()
+    const observer = new MutationObserver(read)
+    observer.observe(section, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
   return (
-    <section className="flex flex-col gap-3">
+    <section
+      ref={ref}
+      data-appearance-spacing-role="settings-section"
+      data-density={tabled ? 'compact' : undefined}
+      className="flex flex-col"
+    >
       <div className="flex items-end justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h2 className="text-sm font-medium">{title}</h2>
+          <h2 data-appearance-recipe="ui.section">{title}</h2>
           {description && (
-            <p className="text-sm text-ink-muted">{description}</p>
+            <p data-appearance-recipe="ui.label" className="text-ink-muted">
+              {description}
+            </p>
           )}
         </div>
         {action}
@@ -153,16 +213,23 @@ export function SettingsRow({
   children?: ReactNode
 }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5">
+    <div
+      data-appearance-part="settings-row"
+      className="flex flex-wrap items-center"
+    >
       {Mark && (
-        <IconTile size="lg">
+        <IconTile size="lg" data-appearance-part="settings-mark">
           <Mark className="size-4 text-ink-muted" />
         </IconTile>
       )}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm">{title}</span>
+      <div className="flex min-w-0 flex-1 basis-56 flex-col">
+        <span data-appearance-recipe="ui.label" className="wrap-break-word">
+          {title}
+        </span>
         {description && (
-          <span className="text-xs text-ink-muted">{description}</span>
+          <span data-appearance-recipe="metadata" className="text-ink-muted">
+            {description}
+          </span>
         )}
       </div>
       {children}

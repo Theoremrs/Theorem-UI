@@ -1,0 +1,350 @@
+{
+  "schema": "theorem.interactive-response-completion.v1",
+  "recordedAt": "2026-11-21T01:40:11.770160+00:00",
+  "pullRequest": 146,
+  "baseRevision": "02b9783d9415c8424dd9323ee18a6db678d536ac",
+  "scope": "Phase1 evidence responses; local and fixture verification, no production deployment or human visual seal",
+  "unitSuites": {
+    "composer": {
+      "passed": 1030,
+      "failed": 0,
+      "files": 99,
+      "assertions": 3598
+    },
+    "appearance": {
+      "passed": 179,
+      "failed": 0,
+      "files": 15,
+      "assertions": 5451
+    }
+  },
+  "typecheck": "passed",
+  "changedFileEslint": "passed",
+  "colorAudit": {
+    "modes": 10,
+    "edges": 119,
+    "predicates": 2390,
+    "failures": 0
+  },
+  "browserResponses": [
+    {
+      "id": "response-evidence",
+      "engine": "webkit",
+      "version": "27.2",
+      "checks": {
+        "one source cited twice draws one preview": true,
+        "the preview names the source": true,
+        "keyboard opens the Sources dropdown with the exact passage": true,
+        "the dropdown offers Open source and Add to context": true,
+        "Open source goes to the source itself": true,
+        "the composer carries the source as a reference": true,
+        "a resolved preview retains its exact supporting passage": true,
+        "Escape returns passage focus to its trigger": true,
+        "distinct sources in one message both reach the composer": true,
+        "adding the same source again is idempotent": true,
+        "chart navigation preserves the preceding message geometry": true,
+        "keyboard inspection reaches exact values with units": true,
+        "expansion retains the selected values": true,
+        "expanded Data retains original values and provenance": true,
+        "closing preserves Data mode and restores focus": true,
+        "returning to Chart retains point selection": true,
+        "the chart plots first": true,
+        "the Data view shows the plot's own values": true,
+        "units and provenance stay visible": true
+      },
+      "verificationScope": "Rerun after whole-message source ownership and closed-row focus retention. Background resource diagnostics retain the limitation described in recoveryFollowup."
+    },
+    {
+      "id": "response-evidence",
+      "engine": "chromium",
+      "version": "156.0.8078.4",
+      "checks": {
+        "one source cited twice draws one preview": true,
+        "the preview names the source": true,
+        "keyboard opens the Sources dropdown with the exact passage": true,
+        "the dropdown offers Open source and Add to context": true,
+        "Open source goes to the source itself": true,
+        "the composer carries the source as a reference": true,
+        "a resolved preview retains its exact supporting passage": true,
+        "Escape returns passage focus to its trigger": true,
+        "distinct sources in one message both reach the composer": true,
+        "adding the same source again is idempotent": true,
+        "chart navigation preserves the preceding message geometry": true,
+        "keyboard inspection reaches exact values with units": true,
+        "expansion retains the selected values": true,
+        "expanded Data retains original values and provenance": true,
+        "closing preserves Data mode and restores focus": true,
+        "returning to Chart retains point selection": true,
+        "the chart plots first": true,
+        "the Data view shows the plot's own values": true,
+        "units and provenance stay visible": true
+      },
+      "verificationScope": "Captured on 7b1abd67 in Composer run44848752325. Current follow-up acceptance is tracked on the PR."
+    }
+  ],
+  "browserAppearance": {
+    "id": "settings-appearance",
+    "engine": "webkit",
+    "version": "27.2",
+    "checks": {
+      "editors seed from the active palette in both modes": true,
+      "a failing contrast pair is refused with its reason": true,
+      "a refused edit paints nothing": true,
+      "a valid edit applies as the custom palette": true
+    },
+    "verificationScope": "Recorded WebKit baseline; current Chromium editor verification covers the palette-control additions."
+  },
+  "browserTouch": {
+    "engine": "webkit",
+    "version": "27.2",
+    "checks": {
+      "touch target outside the visible switch track toggles the real control": true,
+      "touch hit area is at least44px with compact track preserved": true,
+      "touch inspection shows exact values with units": true,
+      "touch expansion preserves selected values": true,
+      "narrow expanded chart stays inside viewport": true,
+      "expanded data retains original numbers": true,
+      "closing on touch keeps Data view": true,
+      "no horizontal page overflow": true,
+      "no browser runtime errors": true
+    },
+    "errors": [],
+    "verificationScope": "Baseline fixture retained; subsequent review validation includes the current response browser suites."
+  },
+  "workerBuild": {
+    "status": "passed",
+    "compatibilityDate": "2026-10-01",
+    "compatibilityFlags": [
+      "global_fetch_strictly_public",
+      "nodejs_compat"
+    ],
+    "verificationScope": "Local build on 97b9359e. The Workers check for the final source/parser follow-up is tracked on the PR."
+  },
+  "workerRuntime": {
+    "example.com": "Example Domain",
+    "react.dev": "React metadata returned",
+    "localtest.me": "private addresses resolved; platform fetch refused; preview null",
+    "verificationScope": "Baseline actual workerd probe, supplemented by the current transport regressions and full Workers build."
+  },
+  "browserAppearanceChromium": {
+    "id": "settings-appearance",
+    "engine": "chromium",
+    "version": "156.0.8078.4",
+    "checks": {
+      "editors seed from the active palette in both modes": true,
+      "a failing contrast pair is refused with its reason": true,
+      "a refused edit paints nothing": true,
+      "a valid edit applies as the custom palette": true
+    },
+    "verificationScope": "Rerun after adding every validated color role to the editor: all four checks passed."
+  },
+  "ciSelectorFollowup": {
+    "run": "https://github.com/Travis-Gilbert/Theorem-UI/actions/runs/44832200270",
+    "headRevision": "ea749c5a16ef4827f157915faefddd8d8fdab405",
+    "establishedBrowserOraclesPassed": 12,
+    "failure": "The global repeated Add-to-context action also matched the closing source popover.",
+    "fix": "Scope resolved and fallback actions by stable source ID; wait for the fallback to become hidden after Escape.",
+    "originalAssertions": "retained",
+    "targetedRerun": "19/19 response checks in Chromium and WebKit; 4/4 appearance checks in Chromium"
+  },
+  "reviewFollowup": {
+    "review": "https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6000753294",
+    "previousHead": "e855ee4ba7f374ad0f29ae981255d97935e3150f",
+    "previousComposerRun": "https://github.com/Travis-Gilbert/Theorem-UI/actions/runs/44835621628",
+    "previousComposerResult": "success: response19/19, appearance4/4",
+    "localStatus": "passed",
+    "freshCi": "Tracked on the pull request for the commit containing this record.",
+    "metadataServer": {
+      "tests": 37,
+      "assertions": 217,
+      "failures": 0
+    },
+    "sourceAndPreviewQuery": {
+      "tests": 31,
+      "assertions": 127,
+      "failures": 0
+    },
+    "models": {
+      "tests": 34,
+      "assertions": 93,
+      "failures": 0
+    },
+    "glass": {
+      "tests": 20,
+      "assertions": 85,
+      "failures": 0
+    },
+    "paletteAndIndependentPolicy": {
+      "tests": 54,
+      "assertions": 4839,
+      "failures": 0
+    },
+    "identityDecision": "Labels are display text, not proof of source identity. Entries without a shared ID or URL remain distinct.",
+    "sourceMedia": "Untrusted metadata images and favicons are omitted at the rendering boundary, including cached metadata."
+  },
+  "reviewEdgeCases": {
+    "review": "https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001107996",
+    "previousHead": "97b9359ebcd4fa36265ccb0be6104f96ef26e609",
+    "sourceKeys": "Reserve assigned keys; URL changes preserve an existing source identity without giving it to a later source.",
+    "reload": "Clear composer state, then recreate both references with their original keys and all exact passages.",
+    "parser": "Use HTML ASCII whitespace and ASCII tag-name folding; skip decoded-empty metadata candidates.",
+    "sourceTests": {
+      "passed": 30,
+      "assertions": 148,
+      "failed": 0
+    },
+    "metadataTests": {
+      "passed": 43,
+      "assertions": 231,
+      "failed": 0
+    },
+    "freshCi": "Tracked on the pull request for the commit containing this record.",
+    "localStatus": "Passed: final combined composer suite, repository typecheck, focused source/server suites and lint."
+  },
+  "paletteEditorInventory": {
+    "review": "https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001300983",
+    "previousHead": "0372ce1dce6e35aadcc4466e5773e96efd6f1d3f",
+    "addedExistingRoles": [
+      "surface-user-message",
+      "surface-artifact",
+      "surface-hover",
+      "attention-ink",
+      "redwood-hover",
+      "redwood-pressed",
+      "error-solid",
+      "on-error"
+    ],
+    "regressions": [
+      "Rejected accent/text colors can be repaired through hover and pressed controls and applied.",
+      "Every validated foreground/background has a visible control in both modes."
+    ],
+    "appearanceTests": {
+      "passed": 176,
+      "assertions": 5435,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "focusedLint": "passed",
+    "browserAppearanceChromium": {
+      "passed": 4,
+      "total": 4
+    },
+    "freshCi": "Tracked on the pull request for the commit containing this record."
+  },
+  "recoveryFollowup": {
+    "review": "https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001469822",
+    "previousHead": "a792e846dd66d1ba52ab73e1dd68495a8bd846cf",
+    "sourceTests": {
+      "passed": 34,
+      "assertions": 193,
+      "failed": 0
+    },
+    "metadataTests": {
+      "passed": 46,
+      "assertions": 244,
+      "failed": 0
+    },
+    "modelAndClipboardTests": {
+      "passed": 26,
+      "assertions": 73,
+      "failed": 0
+    },
+    "behaviors": [
+      "Ambiguous anonymous URL citations retain a separate ID-less group; repeats reuse that group.",
+      "Reload tests reconstruct a fresh runtime before recreating composer references.",
+      "Escape and trigger-close restore focus when the fallback disappears; outside clicks retain their actual target.",
+      "Clipboard errors are visible and pending writes cannot overlap; model changes isolate feedback.",
+      "Nested/unclosed template metadata is excluded from the page preview.",
+      "Metadata caches coalesce fragments while preserving queries and original citation links."
+    ],
+    "parserEvaluation": {
+      "package": "parse5 7.3.0",
+      "fixture": "nested div tags at the existing bounded extraction size",
+      "sizesCharacters": [
+        25000,
+        50000,
+        100000,
+        200000
+      ],
+      "fullTreeMilliseconds": [
+        54.5,
+        163.4,
+        585.7,
+        2242.1
+      ],
+      "existingScanMilliseconds": [
+        2.8,
+        1.0,
+        2.1,
+        9.7
+      ],
+      "scope": "Local workload-specific probe before the template counter; not a general parser comparison."
+    },
+    "freshCi": "Tracked on the pull request for the commit containing this record.",
+    "localStatus": "Passed: combined composer and appearance suites, repository typecheck, focused lint and WebKit response oracle.",
+    "webkitConsoleDiagnostics": {
+      "http503Messages": 6,
+      "pageErrorReports": 0,
+      "attribution": {
+        "tracedPath": "/api/chat/v1/dictation/status",
+        "resourceType": "fetch",
+        "status": 503,
+        "contentType": "application/problem+json",
+        "code": "theorem_unconfigured",
+        "title": "Theorem backend is not configured",
+        "detail": "Set THEOREM_API_URL in .env (see .env.example).",
+        "scope": "One fresh WebKit load traced this background request; it is consistent with the original six per-scenario messages, whose logger omitted URLs. No preview or asset failure appeared in the attributed load."
+      }
+    }
+  },
+  "ownershipAndAdmissionFollowup": {
+    "review": "https://github.com/Travis-Gilbert/Theorem-UI/pull/146#pullrequestreview-6001725102",
+    "previousHead": "7b1abd67325b2921b1ce4d085436e17de0414678",
+    "previousComposerRun": "https://github.com/Travis-Gilbert/Theorem-UI/actions/runs/44848752325",
+    "previousComposerResult": "success: response19/19, appearance4/4, original browser oracles12/12",
+    "sourceTests": {
+      "passed": 41,
+      "assertions": 244,
+      "failed": 0
+    },
+    "metadataTests": {
+      "passed": 54,
+      "assertions": 334,
+      "failed": 0
+    },
+    "sourceOwnership": "Inspect explicit ID claims across the whole durable message. Ambiguous URLs keep anonymous passages separate from every explicit ID, even when ambiguity appears later or a third ID arrives.",
+    "identityTradeoff": "A formerly promoted URL-keyed group returns to anonymous ownership when ambiguity appears; its explicit source receives its id key. Previously selected composer references remain snapshots; current source actions use reconstructed attribution.",
+    "focus": "The closed Sources row remains mounted while it owns focus and disappears on blur; its retained trigger remains operable.",
+    "parser": "Appropriate raw-text end tags accept slash and attribute delimiters with matching quotes; first usable decoded metadata wins; supported entity references decode once.",
+    "admission": {
+      "distinctActivePreviews": 16,
+      "outstandingNativeDnsLookups": 16,
+      "scope": "Per process or Worker isolate; no deployment-wide rate-limit claim.",
+      "ordering": "Cached metadata and same-document coalescing are served before preview admission.",
+      "overload": {
+        "status": 503,
+        "retryAfterSeconds": 1,
+        "cacheControl": "no-store",
+        "queued": false,
+        "negativeCached": false
+      },
+      "dnsAccounting": "Reserved until actual native lookup settlement, including late resolution/rejection after the six-second preview deadline.",
+      "regressions": "Saturation prevents seventeenth starts; cache/coalescing work at capacity; the same rejected URL recovers; late DNS answers do not dial; synchronous throws release slots; ordinary missing metadata retains negative caching."
+    },
+    "typecheck": "passed",
+    "focusedLint": "passed",
+    "webkitResponse": {
+      "passed": 19,
+      "total": 19,
+      "version": "27.2"
+    },
+    "integratedComposer": {
+      "passed": 1030,
+      "failed": 0,
+      "files": 99,
+      "assertions": 3598,
+      "durationSeconds": 105.03
+    },
+    "freshCi": "Tracked on the pull request for the commit containing this record."
+  }
+}

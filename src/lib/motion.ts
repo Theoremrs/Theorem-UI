@@ -16,6 +16,12 @@ export const springs = {
   lift: spring({ bounce: 0.45, duration: 550 }),
   /** Heights and other structure that must not overshoot. */
   glide: spring({ bounce: 0, duration: 320 }),
+  /**
+   * Many things moving to new places at once, such as a graph re-forming:
+   * DESIGN.md's structural transition at 220ms, critically damped, so nothing
+   * overshoots. About 99% of the way there by 220ms.
+   */
+  shift: spring({ bounce: 0, duration: 220 }),
 }
 
 export type SpringName = keyof typeof springs
@@ -29,7 +35,9 @@ const reduceQuery =
     : window.matchMedia('(prefers-reduced-motion: reduce)')
 
 /** Reduced motion keeps crossfades and drops movement, scale and bounce. */
-export const prefersReducedMotion = () => reduceQuery?.matches ?? true
+export const prefersReducedMotion = () =>
+  (reduceQuery?.matches ?? true) ||
+  document.documentElement.dataset.appearanceMotion === 'reduced'
 
 /**
  * Publishes each spring as `--ease-<name>` (a CSS linear() curve) and

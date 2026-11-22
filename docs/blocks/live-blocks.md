@@ -399,9 +399,14 @@ with labels and properties, and edges between them.
   `getEdge`, `queryNodes` and `neighbors` read the graph. `query(cypher,
 params)` runs read-only Cypher. `subscribe(read, next)` keeps one of those
   reads current. A failure is a `DbError` with the database's own `code`, such
-  as `cypher_write_unsupported`.
-- **Where it lives.** The database is RustyRedDB (`@rustyreddb/browser`) in a
-  worker of the page, stored in the origin private file system. A sandboxed
+  as `cypher_write_unsupported`, or `owner_record` for a record another owner
+  keeps (a `ControlEvent` label, a reserved ID such as `statement:…`, or an
+  `_rr_` metadata key). `ownership` is an ordinary property here: no other
+  subsystem keeps records in an App's database.
+- **Where it lives.** The database is Rusty Red's canonical engine
+  (`@rustyreddb/browser`, built from Theorem's `rustyred-thg-browser`) in a
+  worker of the page. It is one `.RR` file in the origin private file system,
+  the same format and Cypher engine as the native database. A sandboxed
   frame has no storage, so each call crosses the bridge and is checked against
   the declaration first (`bridge.ts`, `app-db.ts`).
 - **It belongs to the App, not a revision.** Its directory is named by the
@@ -415,8 +420,16 @@ params)` runs read-only Cypher. `subscribe(read, next)` keeps one of those
 - **Several tabs.** Tabs showing the same App use one database. One tab holds
   its file and the others reach it through that tab; when it closes, another
   takes over.
-- **Not yet.** Full-text search and compaction are not in the browser
-  database. Folder HTML apps, cells and page modules have no `db`.
+- **History.** Every commit is kept as a past version for 90 days unless the
+  declaration says otherwise: `db("records", { historyDays: 365 })`, any
+  number of days, zero or more; two different windows for one name are a
+  declaration error. The current records are always kept. Each opening of
+  the App compacts a database once, when it holds versions more than a day
+  past the window its current source declares, cutting them and reclaiming
+  their space; a saved revision never compacts. `inspect()` reports the
+  window as `historyDays`.
+- **Not yet.** Full-text search is not in the browser database. Folder HTML
+  apps, cells and page modules have no `db`.
 
 `bun run e2e:app-db` runs this in headless Chromium without a Theorem server,
 and with `--built` against a production build.
@@ -445,9 +458,20 @@ carries its source files as scripts a browser does not run.
   `data-path`: `.ts`, `.tsx`, `.js`, `.jsx`, `.css` or `.json`, relative, in
   folders if wanted. The App starts from `main.tsx` (or `.ts`, `.jsx`, `.js`),
   or from the file marked `data-entry`. Files import each other by relative
-  path and import the modules in [the import map](#the-import-map), nothing
-  else. A page with no such scripts is a plain HTML App, as before
+  path, import browser-compatible npm packages, or import HTTPS ES modules.
+  [The import map](#the-import-map) is an offline fast path for Apps, not a
+  list of permitted components or packages. A page with no such scripts is a plain HTML App, as before
   (`app-source.ts`).
+- **Dependencies.** Add a virtual `package.json` source with ordinary
+  `dependencies` to pin package versions (for example
+  `{"dependencies":{"@luma.gl/core":"9.2.3"}}`). Explicit version imports
+  (`@luma.gl/core@9.2.3` or `npm:@luma.gl/core@9.2.3`) and HTTPS ESM URLs work
+  too. npm packages use esm.sh's browser builds; React dependencies resolve
+  through the App's own React choice. Build and check share cached responses,
+  but only exact versions or immutable URLs pin direct dependencies across
+  page loads; transitive ranges are not a saved lockfile. Unversioned
+  packages can change on a later page load. Dependencies are fetched by the
+  host while building; the frame's declared network policy is unchanged.
 - **Build.** When the page is hosted, esbuild-wasm bundles the files and what
   they import into one module, which replaces the source scripts and runs
   last in the body. Imported `.css` becomes a style element. Types are erased,
@@ -458,8 +482,11 @@ carries its source files as scripts a browser does not run.
   (`app-check.ts`, `app-checker.ts`). The check is strict. It knows React,
   and `window.theorem` exactly as the bridge gives it: those declarations are
   written from `sandbox/app-bridge.ts` by `bun scripts/app-declarations.ts`,
-  and a test fails when they are stale. The import map's other modules import
-  untyped. An App runs whether or not its check passes; the check and the
+  and a test fails when they are stale. External module declarations are read
+  from the metadata on the same module response used for the build, including
+  their transitive type imports. Missing declarations or failed fetches are
+  reported, never hidden behind a wildcard `any` module. The import map's
+  existing other modules remain untyped. An App runs whether or not its check passes; the check and the
   build are separate facts about a revision.
 - **Running.** What the App throws and does not catch is sent to the page
   (`frame.error`), which traces it through the bundle's source map to the

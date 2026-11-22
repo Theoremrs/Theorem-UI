@@ -1,0 +1,494 @@
+{
+  "spec": "Owner's design review of theorem.rs, 2026-11-16: reading surface, composer, sidebar, top chrome, settings, Kit and Theo",
+  "rules": [
+    "built is the implementer's report; review is set only by the owner. Nothing is accepted until the owner says so.",
+    "Subjective changes get a visual target the owner picks (study or fixture with Theorem's own components) before code spreads.",
+    "Evidence names the state it shows; an empty page or an error reply does not evidence a normal reply."
+  ],
+  "rejected_decisions": [
+    "No visible quiet band over the Life field (was READ-01)",
+    "The composer is not an opaque cutout; it keeps its liquid glass (was READ-07, COMP-05 opacity)",
+    "Settings keeps its original linear layout; only its information architecture changes (was SET-01)"
+  ],
+  "items": [
+    {
+      "id": "FIX-01",
+      "area": "fixture",
+      "claim": "A populated fixture screen from Theorem's own components: /story/populated-shell, the real ChatShell over the fake Theorem with three pins, the project tree and Recent, a long reply (headings, inline code, a table, a code block, folded tool calls), Kit and Theo, and the composer whose + menu lists four MCP connections",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "Captures: docs/plans/evidence/studies/populated-fixture.png and populated/ (dark Life off and on, light; reply and menu open). The three faults it turned up are fixed (FIX-02..04)"
+    },
+    {
+      "id": "FIX-02",
+      "area": "reading",
+      "claim": "Code blocks stay inside the prose column, as tables do, and scroll sideways in their own region (they used to break out to the expanded measure)",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "Evidence: docs/plans/evidence/studies/fixture-fixes-before-after.png"
+    },
+    {
+      "id": "FIX-03",
+      "area": "composer",
+      "claim": "No stepped outline around the composer: with code back in the column, the scroll-edge band under the composer no longer cuts across a wider block",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "Evidence: docs/plans/evidence/studies/fixture-fixes-before-after.png"
+    },
+    {
+      "id": "FIX-04",
+      "area": "figures",
+      "claim": "Theo leaves the live reply once its slot scrolls under the thread header, instead of sitting on the breadcrumb",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "Evidence: docs/plans/evidence/studies/fixture-fixes-before-after.png"
+    },
+    {
+      "id": "NAV-04a",
+      "area": "sidebar",
+      "claim": "Pinned tiles at about half size: folder 32x24, page 20x24 (were about 60x44 and 36x44)",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "Evidence: docs/plans/evidence/studies/fixture-fixes-before-after.png"
+    },
+    {
+      "id": "READ-02",
+      "area": "reading",
+      "claim": "A visible pause/hide control for the background animation, beside the transcript, not only in the right-click menu",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "READ-03",
+      "area": "reading",
+      "claim": "Assistant prose reads at ~17px / 27px with primary ink; headings clearly heavier with more space above; metadata quieter",
+      "built": "done",
+      "review": "awaiting owner review; populated capture in docs/plans/evidence/studies/populated-fixture.png"
+    },
+    {
+      "id": "READ-04",
+      "area": "reading",
+      "claim": "Inline code: medium-weight mono, warm amber/terracotta ink, subtle fill, no border, size matched to prose",
+      "built": "done",
+      "review": "awaiting owner review; populated capture in docs/plans/evidence/studies/populated-fixture.png"
+    },
+    {
+      "id": "READ-05",
+      "area": "reading",
+      "claim": "Long inline error strings render as a contained diagnostic block",
+      "built": "done",
+      "review": "awaiting owner review; populated capture in docs/plans/evidence/studies/populated-fixture.png"
+    },
+    {
+      "id": "READ-06",
+      "area": "reading",
+      "claim": "Tables stay inside the prose column on an opaque quiet surface, padded, clear headers, scroll in their own region",
+      "built": "done",
+      "review": "awaiting owner review; populated capture in docs/plans/evidence/studies/populated-fixture.png"
+    },
+    {
+      "id": "READ-08",
+      "area": "reading",
+      "claim": "Tool calls in a reply fold into one ReUI Trace summary row above the answer",
+      "built": "done",
+      "review": "awaiting owner review; populated capture in docs/plans/evidence/studies/populated-fixture.png"
+    },
+    {
+      "id": "READ-07a",
+      "area": "reading",
+      "claim": "The transcript's bottom space follows the composer's measured height, so the last row scrolls clear of it",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "No code change was needed: assistant-ui's ViewportFooter is sticky and in flow, so the composer's own height is the transcript's bottom space. Measured in the populated story at the bottom of the thread: a 114px composer leaves 56px between the last reply row and the composer's top, and a five-line draft (composer 186px) still leaves 56px. The scroll-to-bottom button is hidden at the bottom (ScrollToBottom is disabled there, disabled:invisible), shows once scrolled up, and hides again after it is pressed. Split from READ-07 on 2026-11-16."
+    },
+    {
+      "id": "COMP-01",
+      "area": "composer",
+      "claim": "Generous writing area (~110px empty, grows with the draft); placeholder 'Write a message…'",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "The ~110px figure came from a critique, not an approved target; judge the proportion, not the number"
+    },
+    {
+      "id": "COMP-02",
+      "area": "composer",
+      "claim": "Lower-left: attachment kept, plus a + menu. Lower-right: compact model mark and Send. No permanent Web, Plan or Connections buttons",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "COMP-04",
+      "area": "composer",
+      "claim": "Model selector is a provider logo; hover and focus show the full name; click opens the picker on the exact selection; unknown models get a fallback mark; effort and response settings reachable from the picker",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "COMP-03",
+      "area": "composer",
+      "claim": "+ menu: Web search (checkbox, visible chip when on), Plan (checkbox), Tools, MCP connections opening a searchable roster in the popover; opening runs nothing and grants nothing; keyboard menu-button pattern",
+      "built": "superseded",
+      "review": "-",
+      "note": "Replaced by COMP-07"
+    },
+    {
+      "id": "COMP-07",
+      "area": "composer",
+      "claim": "+ menu, in order: Web search; Connectors (a submenu of the person's MCP servers, each a switch for this chat, with Choose tools); Skills (a submenu, Plan under it); Code mode; Manage tools (a submenu reaching the settings for all of them); no Connectors list on the menu itself",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "Owner's spec 2026-11-16. Submenus are coss MenuSub (Base UI SubmenuRoot, hover or click). Captures m-open/m-plugins/m-skills/m-manage in the session scratchpad; tests composer-tools.test.tsx (order, Manage tools hrefs) and composer-connections.test.tsx (MCP servers submenu). The MCP server list is from the story's roster; the local Theorem still answers 404 to /api/connections/v1/tools. On 2026-11-17 the owner renamed the Plugins submenu to Connectors (the label, the + tooltip, and its row under Manage tools); the command palette's Plugins group lists skill plugin packs and keeps its name."
+    },
+    {
+      "id": "COMP-06",
+      "area": "composer",
+      "claim": "+ menu rows share one start edge (switches at the end), and the popup wears the colour the composer renders in",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "Colour judged by one sampled pixel per mode (dark 32,29,27 vs composer 31,29,27); the whole surface, its edge and shadow, not compared yet"
+    },
+    {
+      "id": "COMP-05a",
+      "area": "composer",
+      "claim": "Composer glass: less perimeter glare, a soft edge highlight",
+      "built": "reverted with the opaque body, not rebuilt",
+      "review": "-",
+      "note": "Split from COMP-05: independent of opacity"
+    },
+    {
+      "id": "COMP-05b",
+      "area": "composer",
+      "claim": "One radius for the composer fill, clip, border and effects",
+      "built": "reverted with the opaque body, not rebuilt",
+      "review": "-",
+      "note": "Split from COMP-05: independent of opacity"
+    },
+    {
+      "id": "COMP-05c",
+      "area": "composer",
+      "claim": "A restrained contact shadow under the composer",
+      "built": "reverted with the opaque body, not rebuilt",
+      "review": "-",
+      "note": "Split from COMP-05: independent of opacity"
+    },
+    {
+      "id": "NAV-01",
+      "area": "sidebar",
+      "claim": "Sidebar is a docked glass column: it fills the page's start column top to bottom, its start corners are the page's own, and only the side facing the conversation floats (8px gap, 14px corners, shadow)",
+      "built": "done",
+      "review": "target approved by the owner 2026-11-16 (option C); built result awaiting owner review",
+      "note": "Target: docs/plans/evidence/studies/c-docked-glass-study.png, chosen from junction-studies.png. Built capture vs target, sidebar and junction (x 0-300): dark with Life off identical, light max difference 9/255, dark with Life on differs only in the 8px gap where Life cells moved"
+    },
+    {
+      "id": "NAV-02",
+      "area": "sidebar",
+      "claim": "The selected rail tab joins the card with no gap or divider",
+      "built": "done",
+      "review": "accepted by the owner 2026-11-16 (flush first tab)",
+      "note": "The rail's first item is level with the sheet's top edge (sheet inset, 3px), so no rail shows above the bump-out. While the first destination is active its tab runs straight into that edge: the top inward curve is hidden and the sheet's top-left corner is squared; any other tab keeps both inward curves and the 12px corner returns. Evidence: docs/plans/evidence/studies/rail-flush-before-after.png (dark Life off/on, light; Home and Index active)"
+    },
+    {
+      "id": "NAV-03",
+      "area": "sidebar",
+      "claim": "Order: header + visible search, New thread, pinned shelf, projects tree, chats",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "NAV-05",
+      "area": "sidebar",
+      "claim": "Projects render as a tree on the filesystem-item pattern, keeping the theme-derived folder colour; expand and new-thread-in-project are separate targets",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "NAV-06",
+      "area": "sidebar",
+      "claim": "Files is not a permanent chat-sidebar footer; Librarian footer shows only with activity or an unresolved action",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "NAV-08",
+      "area": "sidebar",
+      "claim": "The unsorted group is named Recent and has a + that starts a new chat, matching the Projects +",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "NAV-09",
+      "area": "sidebar",
+      "claim": "New project (sidebar + and workspace menu) creates the project and opens its page with the name selected to type over; no inline naming row",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "CHROME-01",
+      "area": "chrome",
+      "claim": "Thread header: compact breadcrumb, no full-width divider, pin moved into the conversation menu",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "CHROME-02",
+      "area": "chrome",
+      "claim": "One workspace/layout entry point upper right; Follow the agent and Gallery live inside it",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "SET-02",
+      "area": "settings",
+      "claim": "Settings controls use coss primitives (Switch, Field, Breadcrumb); stronger heading/body/metadata hierarchy",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "SET-03",
+      "area": "settings",
+      "claim": "Preferences: Narrate replies as they arrive; Background animation playing/paused",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "SET-04",
+      "area": "settings",
+      "claim": "Settings information architecture regrouped inside the original linear layout: You (Appearance with a Background section, Theo and Kit, Responses), Models (Models, API keys), Tools (Connections, Plugins and skills, Work tracker), Your Theorem (Import context, Observe); /settings lands on Appearance",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "FIG-03",
+      "area": "figures",
+      "claim": "Theo's talking-mouth form is removed; the boombox is the only sound form",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "NAV-04",
+      "area": "sidebar",
+      "claim": "Pinned shelf of three compact tiles across: 21st folder for projects, a related document tile for threads; pin/unpin/reorder via menu actions",
+      "built": "done",
+      "review": "awaiting owner review; the populated fixture shows the shelf (docs/plans/evidence/studies/populated-fixture.png)"
+    },
+    {
+      "id": "NAV-07",
+      "area": "sidebar",
+      "claim": "Warm neutral chroma on the sidebar card and the dark composer: no olive cast (Stone dark measured hue 107 before, 68 after, chroma about 0.005)",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "Hue at chroma ~0.005 is weak evidence (CSS treats zero-chroma hue as powerless); compare the whole rendered surface"
+    },
+    {
+      "id": "FIG-01",
+      "area": "figures",
+      "claim": "Kit jumps to its rail slot while a response comes in and returns after",
+      "built": "done",
+      "review": "awaiting owner review; needs a successful streaming reply captured"
+    },
+    {
+      "id": "FIG-02",
+      "area": "figures",
+      "claim": "Theo narrates a reply as it streams when the preference is on",
+      "built": "done",
+      "review": "awaiting owner review; needs a successful streaming reply captured"
+    },
+    {
+      "id": "COMP-12",
+      "area": "composer",
+      "claim": "Code mode switch on the + menu opens the terminal split and sends the turn with executionMode 'coding'; it stays on per conversation and shows a Code chip",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "useCodeMode store and codingTurnOptions in composer-tools.tsx, merged into each send in runtime.tsx beside Plan; the chip turns it off and leaves the terminal open. Not yet exercised against a live Theorem turn."
+    },
+    {
+      "id": "ICON-04",
+      "area": "icons",
+      "claim": "Connectors (formerly Plugins) uses the owner's Lego mark, Web search the App Window (browser) mark, Code mode the File Code mark, each through the same four-layer treatment as the other control icons",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "scripts/rail-icons.mjs entries plugins and browser; webSearch layers removed; PROVENANCE.md rows updated."
+    },
+    {
+      "id": "CODE-01",
+      "area": "transcript",
+      "claim": "Code blocks highlight with TanStack Highlight (not Shiki) in the palette's code themes, with a line-number column and a header with language and a labelled copy button, following the owner's CodeBlock component",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "2026-11-17 owner ask. origin/main (41f71c67) merged into this branch. composer-plus.tsx: turning Code mode on opens the workbench at the companion last used (beside or under the conversation, so the composer stays in view) through useShell setWorkbench, unless it is already open; turning it off leaves it where it is. composer-tools.test.tsx checks workbench=side and no side drawer. Seen live in populated-shell: data-workbench-placement=side with its Threads panel, the Code mark beside +, the composer on screen. At 1440px the side panel steps aside into its overlay then, by the existing 35rem rule in chat-shell.tsx (on both sides of the merge)."
+    },
+    {
+      "id": "GLASS-03",
+      "area": "sidebar",
+      "claim": "Sidebar glass is clearer than the composer's in its bottom third and firmer in its upper two-thirds, with the Life field visible behind it",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "Liquid shader gained u_bodyLow/u_split (--lg-body-low, --lg-body-split 0.667); panel body 0.6/0.62 top, 0.24 low; dark blur 3 to 1.5; the frost fallback veil thins the same way. Also fixed: a paused Life field published its canvas once at mount, before the pane subscribed, so the pane never drew the field (frames.ts now replays the last frame). Cells under the sidebar come and go with the field, so a still capture can show few."
+    },
+    {
+      "id": "PIN-03",
+      "area": "sidebar",
+      "claim": "Pinned tile labels soft-wrap to two lines one size smaller (11px), and the tile marks are a fifth smaller (folder 26x19, document 16x19)",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "SHELL-01",
+      "area": "sidebar",
+      "claim": "On a window wide enough to dock it, Open sidebar re-docks the panel; the drawer never opens there",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "SHELL-02",
+      "area": "sidebar",
+      "claim": "Where the sheet is too narrow to dock the panel, the sidebar opens as the docked panel's rounded card beside the docked rail, with no close button and no second rail (the rail joins it only on a phone); the owner chose to keep this card over removing the drawer, 2026-11-16",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "PIN-04",
+      "area": "sidebar",
+      "claim": "Pinned folder and document tiles carry equal visual weight: the folder lighter, the document more visible",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "folder.tsx colours and the 21x17 document tile; evidence sidebar-dark/light in docs/plans/evidence/design-overhaul/review (manifest.json names each capture's revision and working-tree fingerprint)"
+    },
+    {
+      "id": "NAV-10",
+      "area": "sidebar",
+      "claim": "In the projects tree the folder is the disclosure: no chevrons; pressing the folder opens it and its files sit inset beneath it",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "organized-panel.tsx (ms-4 subtree, open/closed folder marks), filesystem-item.tsx chevron prop"
+    },
+    {
+      "id": "CODE-02",
+      "area": "transcript",
+      "claim": "Code blocks are framecn's Glass Code Block matched to the app's glass: a top-lit hairline frame fading down, a frosted pane tinted the sheet's bottom colour top to bottom, window lights and the language as the title, a copy action, numbered lines; corners on the artifact radius token",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "glass-code-block.tsx; --glass-code-* in styles.css. Tint measured uniform at the sheet's bottom colour (#171615 at 55% in dark) after the owner found the top too warm. Radius moved from 16px to --appearance-radius-artifact; on 2026-11-17 the owner widened messages, artifacts, code blocks and the composer to 15px (--appearance-radius-message, --appearance-radius-artifact, --appearance-radius-composer, --radius-artifact)."
+    },
+    {
+      "id": "LIFE-01",
+      "area": "reading",
+      "claim": "Life glyphs go quiet under each line of response text, following the lines (no rectangular band), and the field keeps running between lines and in the margins; turning Life off changes only the background",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "lib/life/occlusion.ts (per-cell coverage from Range.getClientRects, feathered) applied in mount-life.ts and mount-life-2d.ts from life-backdrop.tsx. 2026-11-17 review (Life still competes with paragraphs): the WebGL mask snapped each line to whole cells through projectClientToGrid, which also returned -Infinity for a line crossing the grid edge, so part of a paragraph went unmasked; it now projects fractional cells from the canvas and grid metrics. Each line rect is extended to the block line-height, so no strip of field shows between lines, and reaches 14px past its ends; coverage from neighbouring lines sums; TEXT_QUIET is 0.97. 3x crops in both themes show paragraphs clean, with the field running in the margins. Typing benchmark, 75 keystrokes over 2.9s, three runs each (CDP Performance): script 1305ms with Life on vs 914ms off, of which the idle field loop is 662 vs 337ms, so typing itself costs about 66ms more with Life on (under 1ms a key) and layout is unchanged (19.6 vs 19.3ms). 2026-11-17 (10:24 review) recheck: populated-shell, Expressive stone, field on, 3x in both themes after the gradient change: no glyph on any line, no opaque band; no further change made. One animation frame per theme was checked."
+    },
+    {
+      "id": "SKILL-01",
+      "area": "composer",
+      "claim": "The + menu's Skills submenu is a skills browser: Plan, then the skills Theorem serves from its registry with their plugin, and a link to browse skills in settings; picking one writes a skill chip into the draft that the turn's model loads",
+      "built": "UI done; live skill load blocked in Theorem",
+      "review": "awaiting owner review",
+      "note": "composer-plus.tsx over lib/theorem/catalog (/api/chat/v1/skills). A pick writes assistant-ui's directive :skill[title]{name=id}; user-markdown.tsx renders it as a chip by title. Live gate (scripts/e2e/skills.mjs, bun run e2e:skills, local stack, 2026-11-17): the submenu lists the 8 skills Theorem serves, the pick writes the directive, focus returns to the draft. The first run found the composer's Markdown export escaping the bracket (:skill\\[...]), so the sent message showed no chip and the model got escaped text; composer-markdown.ts now keeps skill directives as it keeps tool directives (test in composer-markdown.test.tsx). After the fix the sent message carries the directive intact and shows the chip. The turn itself fails in Theorem: the chat front has no skill_get (it is on the MCP surface in crates/api, not in crates/agent), tool() is ungranted inside execute_program, and search_tools and describe return without a disposition so program_turn.rs result_disposition marks them failed; the model searched for SKILL.md files and hit the 24-iteration limit. The integration gate stays open on that Theorem work."
+    },
+    {
+      "id": "ICON-05",
+      "area": "icons",
+      "claim": "Every + menu row's icon is from one family with the composer's attach and + controls",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "Measured: all rows already used the painted control treatment (16px, same ink, paper/tint/line layers) except Skills, a masked line PNG; it now uses SkillControl traced from streamline-ai-science-spark in scripts/rail-icons.mjs (the art encloses no region, so only its line layer exists)."
+    },
+    {
+      "id": "COMP-13",
+      "area": "composer",
+      "claim": "The liquid composer's edge is lit from the top and fades down, with a contact shadow under it, staying glass",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "The live pane's flat focus ring drew the bottom edge as bright as the top; it is gone, and the pane's own contour is the edge (dark --lg-stroke 0.16 on the composer). Measured at 3x in dark: top edge 99 as before, bottom edge 46 to 26 (the body's value), a darker contact below from --liquid-contact. Focus shows as the caret; forced colors still draws the border. 2026-11-17 review (light rim too bright at the top and corners): the light composer takes --lg-stroke 0.22, --lg-light 0.16, --lg-sheen 0.05. Measured at 3x in light: the top hairline 254 to 247, the glow 2px in 233 to 207, 7px in 212 to 197; the refraction and blur are unchanged."
+    },
+    {
+      "id": "NAV-11",
+      "area": "navigation",
+      "claim": "The navigation panel and the rail's attached corners use a 15px radius, matching messages, code blocks, artifacts and the composer",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "shell/floating-card.tsx FLOATING_CARD_VARS --panel-radius 15px (was 14px); styles.css .rail-junction --junction-corner 15px (was 10px). The owner asked for the sidebar curves at 15px; the design review had flagged --junction-corner for a separate look, so it is called out here."
+    },
+    {
+      "id": "NAV-12",
+      "area": "navigation",
+      "claim": "Under glass, the navigation panel is the composer's glass, and the rail's tab, concave corners included, is drawn by the same liquid-glass renderer in the same material, lit across the panel's box, so composer, panel and tab read as one material",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "styles.css --composer-glass-* tokens applied to [data-surface-role=composer|navigation].surface-liquid; floating-card.tsx uses surface-liquid instead of glass-panel/glass-panel-liquid (that utility is now used only by stories/glass-compare.tsx). The panel keeps its own panel-lift shadow and clearer lower third. appearance.css junction veil = composer tone at --lg-body*(1-show) over --sheet-field. Measured at 3x and 1x: tab vs panel body within 1-2 levels in both themes, before and after the gradient change. 2026-11-17 follow-up (owner: the tab did not look like the same component): the tab was CSS only (a flat veil). rail.tsx Junction now runs useLiquidGlass on the tab (curved on the rail side, running on into the panel), with the composer-glass tokens and the sheet's field under it instead of a blur of the rail; the renderer takes a light box (Pane.light, u_lightBox) so the tab's highlight is swept across the panel's box. Measured at 3x, Home active (flush): top highlight 71/71 and 55/55 dark, 237/236 light across the join; body 44/44 and 213/213. 2026-11-17 second follow-up (owner: the corners read as a different texture, two surfaces made the tab): the glass now draws the whole selection. The shader takes u_fillet and draws the joined tab's concave corners itself, with the lit edge wrapping each curve and fading into the panel's unbeveled side. While the tab is live its box grows by --junction-corner above (unless flush) and below, the CSS .rail-junction-corner spans are hidden, and the tab paints its own show-through (--lg-backdrop: none), so no page surface sits under it. Measured at 3x with Index active: tab body vs panel body 43/44 dark and 212/212 light; both curves clean in both themes (evidence/design-overhaul/rail-tab-glass-corners-2026-11-17.png). With the panel collapsed the tab joins the sheet and stays CSS."
+    },
+    {
+      "id": "SHEET-01",
+      "area": "surface",
+      "claim": "Expressive restores gradient depth through the shared sheet ends (light lifts the top and keeps its foot; dark lifts the top a little and deepens the vignette); Calm stays flat; glass, rail tab and sheet stay continuous",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "styles.css --sheet-top (palette --sheet-from unless Expressive lifts it: +22% white light, +5% white dark) and Expressive dark --sheet-shade --sheet-to +34% black (was 22%); custom palettes excluded. The curve and its stops are unchanged, so liquid-glass reads --sheet-top/--sheet-shade (use-liquid-glass.ts, which now also re-reads on data-appearance-preset). At 1280x860, x=1000: light 206->187 by y=600 before, 217->190 after; dark 37->26 before, 47->28 after with a deeper foot. Before/after rendered with the old ends injected; Calm captures included in the evidence set (shell-calm-*)."
+    },
+    {
+      "id": "MENU-01",
+      "area": "composer",
+      "claim": "Under glass, every menu that opens off the composer (the + menu and its Connectors and Skills submenus, the model picker with its effort footer, Choose tools, and the / tool picker) is a pane of the composer's glass drawn by the liquid-glass renderer, with the conversation showing through its thinned body as it does through the composer's",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "2026-11-17 owner ask. glass/menu-glass.tsx (useMenuGlass('composer'), or MenuGlass around the + menu: useLiquidGlass on a callback ref, since the popups mount only while open, keyed to the composer's material) is applied in composer-plus.tsx, model-picker.tsx (coss ComboboxPopup gains surfaceRef for its painting span), composer-connections.tsx and composer-tools.tsx (the vendored trigger popover gains surfaceRef, composed with its placement ref). styles.css: .glass-menu takes the composer-glass tokens; live, the popup's fill, hairline and inner highlight give way to the pane; .composer-menu's opaque fill applies only off glass. appearance.css: the opaque popover paint and the popover material rules skip .glass-menu and its contents. With the composer on paper nothing changes. Measured in populated-shell at 2x, Expressive Stone, both themes: each popup data-liquid=live with its canvas, background transparent, backdrop blur(6px). Evidence: evidence/design-overhaul/composer-menus-glass-2026-11-17.png. Seen while checking, not from this change: Theo's face perches over the / picker's last row (it does so with the glass classes removed too)."
+    },
+    {
+      "id": "MENU-02",
+      "area": "composer",
+      "claim": "Manage tools in the + menu is a link to the tool and MCP settings (/settings/connections), with no submenu arrow",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "2026-11-17 owner ask. composer-plus.tsx: a MenuLinkItem rendering a router Link. composer-tools.test.tsx checks it is an anchor to /settings/connections without aria-haspopup. Clicked in populated-shell: it lands on /settings/connections. Evidence: evidence/design-overhaul/composer-marks-manage-tools-2026-11-17.png."
+    },
+    {
+      "id": "MENU-03",
+      "area": "composer",
+      "claim": "A mode that is on (Web, Code) shows as its mark alone beside the +: no word, no box behind it, no X; pressing the mark turns the mode off",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "2026-11-17 owner ask. composer-plus.tsx ModeChip is an icon-only Base UI Toggle in a tooltip (the accessible name and tooltip say how to turn it off); appearance.css drops the --surface-selected box from pressed composer tools; the label container query is gone. Measured both themes: chip text empty, background transparent, pressing it removes it. Evidence: evidence/design-overhaul/composer-marks-manage-tools-2026-11-17.png."
+    },
+    {
+      "id": "NAV-13",
+      "area": "navigation",
+      "claim": "With Home selected, the top tab meets the sidebar with no corner of the panel showing above it and no seam between the two",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "2026-11-17 owner ask. rail.tsx measures the sheet top for the first destination and sets --junction-lead, so the tab runs from the panel top; styles.css and appearance.css extend the flush tab by the lead. shaders.ts: a joined pane reads its own last column for the right-hand neighbour sample, removing a one-pixel dim column at the join. Verified with the first destination shifted 3px: the tab starts at the panel top."
+    },
+    {
+      "id": "NAV-14",
+      "area": "navigation",
+      "claim": "Under glass, the sidebar's menus (the three-dot thread menu with its Type, Projects and Later submenus, and the right-click menu) are panes of the sidebar's liquid glass",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "2026-11-17 owner ask. floating-card.tsx wraps the panel in MenuGlass surface=\"navigation\"; coss MenuPopup (and so MenuSubPopup) reads useMenuGlass() and wears the nearest surface's glass, following it through portals. Measured both themes: menu, submenu and context menu data-liquid=live with canvas, background transparent, backdrop blur(6px). Evidence: evidence/design-overhaul/sidebar-menus-shadow-2026-11-17.png."
+    },
+    {
+      "id": "NAV-15",
+      "area": "navigation",
+      "claim": "The sidebar's shadow on the page is short and soft, following its rounded edge with no hard stop line",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "2026-11-17 owner ask. Cause: the dock pane holding the card clips at the edge of its 8px gutter, and the old 32px fall-off was cut there. styles.css .panel-lift: 0 0 1px at 0.16 and 2px 1px 6px -1px at 0.34 (eased back from 0.2/0.45 at the owner's ask the same day), which ends inside the gutter. Row across the gutter, light: 158 to 194 in about 5 CSS px with no step (before: flat 178-189, then a jump to 194 at the clip); dark: 24 to 32, smooth. Evidence: evidence/design-overhaul/sidebar-menus-shadow-2026-11-17.png (before light, after light, after dark on the right)."
+    },
+    {
+      "id": "CODE-01",
+      "area": "composer",
+      "claim": "Code mode opens the agentic coding workbench docked in the page as set, not the plain terminal drawer",
+      "built": "blocked",
+      "review": "not started",
+      "note": "2026-11-17 owner ask. This branch is based on 202be43e; the workbench (origin/main 06666ec0, which replaced the terminal drawer and shell terminalOpen with workbench/lastCompanion/setWorkbench) is not in it. Needs this work committed and main merged, then composer-plus.tsx calls setWorkbench instead of setSideDrawer('terminal')."
+    },
+    {
+      "id": "EVID-01",
+      "area": "process",
+      "claim": "Every review capture carries its revision and working-tree fingerprint in its file name and manifest",
+      "built": "done",
+      "review": "awaiting owner review",
+      "note": "scripts/design-oracles/capture-review.mjs (--local seeds the reviewer's appearance preset, --click/--key open menus; the capture folder is left out of the fingerprint). Current set: fingerprint 202be43eaf-3affd189fa in docs/plans/evidence/design-overhaul/review, with Calm shells (shell-calm-*); older sets kept beside it (manifest.json names each capture's revision and working-tree fingerprint)"
+    }
+  ]
+}

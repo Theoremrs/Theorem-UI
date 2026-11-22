@@ -1,22 +1,33 @@
-// SOURCING: dockview-react via DockShell (desktop layout), Base UI Drawer (phone sidebar), Base UI useMediaQuery, the shell's ModeView (assistant-ui Thread in chat mode), AgentComposer (Base UI Popover), NotePanel (Milkdown Crepe), WorkspaceFilePanel, WorkspaceCommands (the folder dialogs and their shortcuts), the agent TerminalDrawer and the tabbed SideTerminal, the Vault (React.lazy, so cosmos.gl loads only when it opens)
+// SOURCING: dockview-react via DockShell (desktop layout), the Life field under the desktop sheet (LifeSheet) seen through the side panel's frosted glass (styles.css glass-panel; under liquid glass, glass/liquid-glass curved on all four edges, a card lifted off the sheet after the AG-UI Dojo's floating sidebar the owner's review named), Base UI Drawer (the panel's card over a sheet too narrow to dock it, with the rail on a phone), Base UI useMediaQuery, the shell's ModeView (assistant-ui Thread in chat mode), AgentComposer (Base UI Popover), NotePanel (Milkdown Crepe), WorkspaceFilePanel, WorkspaceCommands (the folder dialogs and their shortcuts), the workbench docked full screen, beside or under the sheet (WorkbenchDock) and the SideTerminal's gallery, the Vault (React.lazy, so cosmos.gl loads only when it opens)
+import { useThreadDisplayTitle } from '@/lib/theorem/thread-title'
 import type { SplitviewApi, SplitviewReadyEvent } from 'dockview-react'
+import { useParams } from '@tanstack/react-router'
 import { AgentComposer } from '@/components/canvas/agent-composer'
-import { ArtifactPanel } from '@/components/artifacts/artifact-panel'
 import { ContextPanel } from './sidebar'
 import { DockShell } from './dock'
 import { Drawer } from '@base-ui/react/drawer'
 import { Icon } from '@/components/icons'
+import { ThemeToggle } from '@/components/settings/theme-toggle'
+import { LifeSheet } from '@/components/life/life-backdrop'
+import { FloatingCard, FLOATING_CARD_VARS } from './floating-card'
+import './chat-shell.css'
 import { LayoutPriority, Orientation, SplitviewReact } from 'dockview-react'
-import { ModeView, modeLabel, navigatorMode, useShellMode } from './modes'
-import { NotePanel } from '@/components/notes/note-panel'
+import { modeLabel, navigatorMode, useShellMode } from './modes'
+import { useProjectHomeTitle } from '@/components/projects/project-home'
 import { PANEL_WIDTH, useShell } from './shell-state'
 import { Rail } from './rail'
-import { SideTerminal } from '@/components/terminal/side-terminal'
-import { TerminalDrawer } from '@/components/terminal/terminal-drawer'
-import { ThreadListPrimitive, useAuiState } from '@assistant-ui/react'
+import {
+  SideTerminal,
+  useCabinetExpanded,
+} from '@/components/terminal/side-terminal'
+import {
+  useWorkbenchPlacement,
+  useWorkbenchShortcut,
+} from '@/components/workbench/use-workbench-placement'
+import { WorkbenchDock } from '@/components/workbench/workbench-dock'
+import { ThreadListPrimitive } from '@assistant-ui/react'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { WorkspaceCommands } from '@/components/workspace/workspace-commands'
-import { WorkspaceFileOverlay } from '@/components/workspace/workspace-file-panel'
 import { cn } from '@/lib/utils'
 import {
   Suspense,
@@ -24,17 +35,21 @@ import {
   lazy,
   useContext,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
 } from 'react'
-import { ComparePane } from '@/components/review/compare-pane'
-import { useArtifactView } from '@/components/artifacts/artifact-view'
-import { useReviewDock } from '@/lib/theorem/reviews'
-import { useCanvasView } from '@/components/canvas/canvas-view'
-import { useMediaQuery } from '@base-ui/react/unstable-use-media-query'
-import { useNoteView } from '@/components/notes/note-view'
-import { useParams } from '@tanstack/react-router'
+import type { CSSProperties } from 'react'
 
 import { ModePage } from '@/components/pages/mode-page'
+import { IdePageShown, OnIdePage } from '@/components/ide/ide-page'
+import { IdeStatusBar } from '@/components/ide/ide-status-bar'
+
+const Workbench = lazy(() =>
+  import('@/components/workbench/workbench').then((module) => ({
+    default: module.Workbench,
+  })),
+)
 
 const VaultWorkspace = lazy(() =>
   import('@/components/vault/vault-workspace').then((module) => ({
@@ -45,12 +60,14 @@ const VaultWorkspace = lazy(() =>
 const iconButton = 'size-9 p-2'
 
 function ChatHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
-  const title = useAuiState((s) => s.threadListItem.title)
+  const threadTitle = useThreadDisplayTitle()
+  const title = useProjectHomeTitle() ?? threadTitle
   const mode = useShellMode()
   return (
     <header className="flex h-14 shrink-0 items-center gap-1 px-2">
       <TooltipIconButton
         tooltip="Open sidebar"
+        aria-label="Open sidebar"
         className={iconButton}
         onClick={onOpenSidebar}
       >
@@ -64,93 +81,49 @@ function ChatHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       <h1 className="min-w-0 truncate px-2 text-sm text-ink-muted">
         {mode === 'chat' ? title || 'New chat' : modeLabel(mode)}
       </h1>
+      <div className="ms-auto">
+        <ThemeToggle />
+      </div>
     </header>
   )
 }
 
 /**
- * Phone shell: the conversation fills the screen and the rail and its panel
- * open together in a drawer. The open artifact covers the conversation.
+ * Navigation over the conversation, without replacing the mounted
+ * conversation, where the sheet is too narrow to dock it. It is the same
+ * floating card as the docked panel, beside the docked rail; on a phone,
+ * where the docked rail is hidden, the drawer brings its own rail. Escape,
+ * a press outside and a swipe close it.
  */
-function PhoneShell() {
-  const openId = useArtifactView((s) => s.openId)
-  const close = useArtifactView((s) => s.close)
-  const noteId = useNoteView((s) => s.openId)
-  const closeNote = useNoteView((s) => s.close)
-  const reviewId = useReviewDock((s) => s.phoneReviewId)
-
-  // A different conversation starts with the artifact closed.
-  const threadId = useAuiState((s) => s.threadListItem.id)
-  useEffect(() => useArtifactView.getState().reset(), [threadId])
-
-  // The drawer belongs to the thread, mode, open note (beside a chat, or the
-  // route's in Notes mode) and canvas focus it was opened from, so picking a
-  // chat, a mode or a note in it closes it without an effect.
-  const mode = useShellMode()
-  const focusCount = useCanvasView((s) => s.focusCount)
-  const { documentId } = useParams({ strict: false })
-  const view = `${mode}:${threadId}:${noteId}:${documentId}:${focusCount}`
-  const [drawerView, setDrawerView] = useState<string | null>(null)
-  const drawerOpen = drawerView === view
-  const setDrawerOpen = (open: boolean) => setDrawerView(open ? view : null)
-
+function NavigationDrawer({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const panelWidth = useShell((s) => s.panelWidth)
   return (
-    <>
-      <Drawer.Root
-        open={drawerOpen}
-        onOpenChange={setDrawerOpen}
-        swipeDirection="left"
-      >
-        <Drawer.Portal>
-          <Drawer.Backdrop className="fixed inset-0 bg-black/30 opacity-[calc(1-var(--drawer-swipe-progress))] transition-opacity duration-300 data-ending-style:opacity-0 data-starting-style:opacity-0 data-swiping:duration-0" />
-          <Drawer.Viewport className="fixed inset-0 flex items-stretch justify-start">
-            <Drawer.Popup className="flex h-full w-[min(calc(var(--spacing-rail)+var(--spacing-sidebar)),90vw)] bg-rail outline-none [--sheet-h:calc(100dvh-2*var(--sheet-inset))] [--sheet-inset:3px] [transform:translateX(var(--drawer-swipe-movement-x))] transition-transform duration-(--duration-settle) ease-settle data-ending-style:duration-(--duration-exit) data-ending-style:ease-exit data-ending-style:[transform:translateX(-100%)] data-starting-style:[transform:translateX(-100%)] data-swiping:duration-0">
-              <Drawer.Title className="sr-only">Navigation</Drawer.Title>
+    <Drawer.Root open={open} onOpenChange={onOpenChange} swipeDirection="left">
+      <Drawer.Portal>
+        <Drawer.Backdrop className="appearance-navigation-backdrop fixed inset-0 z-40 bg-black/30" />
+        <Drawer.Viewport className="fixed inset-0 z-50 flex items-stretch justify-start">
+          <Drawer.Popup
+            data-appearance-part="drawer"
+            style={{ '--drawer-panel': `${panelWidth}px` } as CSSProperties}
+            className={`appearance-navigation-drawer flex h-full max-w-full outline-none ${FLOATING_CARD_VARS} [--sheet-inset:3px]`}
+          >
+            <Drawer.Title className="sr-only">Navigation</Drawer.Title>
+            <div className="appearance-drawer-rail h-full bg-rail">
               <Rail />
-              <div className="relative my-(--sheet-inset) me-(--sheet-inset) min-w-0 flex-1">
-                <div aria-hidden="true" className="lift-glow" />
-                <div className="sheet relative h-full overflow-hidden rounded-xl bg-sheet shadow-sheet">
-                  <ContextPanel />
-                </div>
-              </div>
-            </Drawer.Popup>
-          </Drawer.Viewport>
-        </Drawer.Portal>
-      </Drawer.Root>
-
-      <div className="flex h-full min-w-0 flex-1 flex-col bg-sheet [--sheet-h:100dvh] [--sheet-inset:0px]">
-        <ChatHeader onOpenSidebar={() => setDrawerOpen(true)} />
-        <div className="min-h-0 flex-1">
-          <ModeView />
-        </div>
-      </div>
-
-      {openId && (
-        <ArtifactPanel
-          artifactId={openId}
-          onClose={() => close(openId)}
-          className="fixed inset-0 z-40"
-        />
-      )}
-
-      {noteId && (
-        <NotePanel
-          documentId={noteId}
-          onClose={closeNote}
-          className="fixed inset-0 z-40"
-        />
-      )}
-
-      {reviewId && (
-        <ComparePane
-          reviewId={reviewId}
-          onClose={() => useReviewDock.setState({ phoneReviewId: undefined })}
-          className="fixed inset-0 z-40"
-        />
-      )}
-
-      <WorkspaceFileOverlay />
-    </>
+            </div>
+            <div className="min-w-0 flex-1 py-(--sheet-inset)">
+              <GlassPanel />
+            </div>
+          </Drawer.Popup>
+        </Drawer.Viewport>
+      </Drawer.Portal>
+    </Drawer.Root>
   )
 }
 
@@ -158,15 +131,74 @@ function PhoneShell() {
 type DockRoute = { projectId: string; threadId: string | undefined }
 const DockRouteContext = createContext<DockRoute | null>(null)
 
+/**
+ * A layer kept mounted while another shows. Dockview's views set visibility:
+ * visible on themselves, which shows through a hidden parent, so the layer is
+ * transparent as well as hidden.
+ */
+const HIDDEN_LAYER = 'invisible opacity-0'
+
+/**
+ * The column beside the panel: the dock, and in IDE mode the IDE's page over
+ * it (by default the conversation with Theia beside it). The page loads on
+ * its first visit and then stays, hidden, so Theia's editors and layout
+ * survive a switch; the dock stays mounted under it for the same reason, and
+ * hides while the page shows so the sheet's gradient shows through the page.
+ */
 function DockView() {
   const route = useContext(DockRouteContext)
   if (!route) throw new Error('DockView renders inside the desktop sheet')
-  return <DockShell projectId={route.projectId} threadId={route.threadId} />
+  const ide = useShellMode() === 'ide'
+  const [ideLoaded, setIdeLoaded] = useState(ide)
+  if (ide && !ideLoaded) setIdeLoaded(true)
+  return (
+    // The bottom workspace overlays the full frame. Keep the conversation's
+    // composer above it while the sidebar retains its full height.
+    <div
+      data-workbench-anchor=""
+      className="relative h-full pb-(--workbench-reserve,0px)"
+    >
+      {/* Dockview layers its panels with z-index; isolate keeps them under the page. */}
+      <div inert={ide} className={cn('isolate h-full', ide && HIDDEN_LAYER)}>
+        <DockShell projectId={route.projectId} threadId={route.threadId} />
+      </div>
+      {ideLoaded && (
+        <div
+          inert={!ide}
+          className={cn(
+            'absolute inset-x-0 top-0 bottom-(--workbench-reserve,0px)',
+            !ide && HIDDEN_LAYER,
+          )}
+        >
+          <OnIdePage value>
+            <IdePageShown value={ide}>
+              <ModePage mode="ide" />
+            </IdePageShown>
+          </OnIdePage>
+        </div>
+      )}
+    </div>
+  )
 }
 const PANEL = 'panel'
 
+/**
+ * The side panel as a card lifted off the sheet: inset from the sheet's edges,
+ * rounded on every corner and casting a shadow, with the rail's tab for its
+ * mode bridging the gap to it. As frosted glass the Life field runs under the
+ * whole sheet, so it shows through the card, blurred; under liquid glass the
+ * card is a liquid pane curved on all four edges.
+ */
+function GlassPanel() {
+  return (
+    <FloatingCard>
+      <ContextPanel />
+    </FloatingCard>
+  )
+}
+
 const splitComponents = {
-  [PANEL]: ContextPanel,
+  [PANEL]: GlassPanel,
   dock: DockView,
 }
 
@@ -175,12 +207,60 @@ const splitComponents = {
  * keeps its width as the window resizes, can be dragged within its range and
  * closes per mode from the rail.
  */
-function SheetSplit(route: DockRoute) {
-  // Theia and the Vault cover the split, and the rail's button drives their
-  // own side panels, so the split underneath keeps Chat's panel.
+function SheetSplit({
+  onOpenSidebar,
+  ...route
+}: DockRoute & { onOpenSidebar: () => void }) {
+  // The Vault covers the split, and the rail's button drives its own side
+  // panel, so the split underneath keeps Chat's panel.
   const panelMode = navigatorMode(useShellMode())
   const panelOpen = useShell((s) => !s.panelCollapsed[panelMode])
   const [split, setSplit] = useState<SplitviewApi>()
+  const host = useRef<HTMLDivElement>(null)
+  const lastFocus = useRef<{ element: HTMLElement; inShell: boolean } | null>(
+    null,
+  )
+  const preferredWidth = useShell((s) => s.panelWidth)
+  const [overlay, setOverlay] = useState(false)
+  useEffect(() => {
+    const remember = (event: FocusEvent) => {
+      if (
+        !(event.target instanceof HTMLElement) ||
+        event.target === document.body
+      )
+        return
+      lastFocus.current = {
+        element: event.target,
+        inShell: Boolean(
+          host.current?.closest('.appearance-shell')?.contains(event.target),
+        ),
+      }
+    }
+    document.addEventListener('focusin', remember)
+    return () => document.removeEventListener('focusin', remember)
+  }, [])
+  useEffect(() => {
+    const element = host.current
+    if (!element) return
+    let frame = 0
+    const measure = () => {
+      frame = 0
+      const root = parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      )
+      setOverlay(element.clientWidth - preferredWidth < 35 * root)
+    }
+    const observer = new ResizeObserver(() => {
+      if (!frame) frame = requestAnimationFrame(measure)
+    })
+    observer.observe(element)
+    observer.observe(document.documentElement)
+    measure()
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
+  }, [preferredWidth])
 
   const onReady = ({ api }: SplitviewReadyEvent) => {
     const panelWidth = useShell.getState().panelWidth
@@ -198,15 +278,52 @@ function SheetSplit(route: DockRoute) {
       id: 'dock',
       component: 'dock',
       size: api.width - panelWidth,
-      minimumSize: 360,
+      minimumSize: 0,
       priority: LayoutPriority.High,
     })
     setSplit(api)
   }
 
   useEffect(() => {
-    split?.getPanel(PANEL)?.api.setVisible(panelOpen)
-  }, [split, panelOpen])
+    split?.getPanel(PANEL)?.api.setVisible(panelOpen && !overlay)
+    const element = host.current?.querySelector<HTMLElement>('.sheet-split')
+    const frame = requestAnimationFrame(() => {
+      if (element) split?.layout(element.clientWidth, element.clientHeight)
+      const previous = lastFocus.current
+      if (!previous?.inShell) return
+      const navigationHidden =
+        overlay &&
+        previous.element.closest('[data-appearance-part="navigation"]')
+      if (
+        !navigationHidden &&
+        previous.element.checkVisibility({ visibilityProperty: true })
+      )
+        return
+      if (
+        document.activeElement !== document.body &&
+        document.activeElement !== previous.element
+      )
+        return
+      const shell = host.current?.closest('.appearance-shell')
+      const controls = [
+        ...(shell?.querySelectorAll<HTMLElement>('button,a,[role="button"]') ??
+          []),
+      ].filter((control) =>
+        control.checkVisibility({ visibilityProperty: true }),
+      )
+      // A hidden navigation command hands focus to its visible counterpart,
+      // otherwise to the drawer trigger (or the first docked rail command).
+      const label = previous.element.getAttribute('aria-label')
+      const counterpart = controls.find(
+        (control) => label && control.getAttribute('aria-label') === label,
+      )
+      const trigger = controls.find(
+        (control) => control.getAttribute('aria-label') === 'Open sidebar',
+      )
+      ;(counterpart ?? trigger ?? controls[0])?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [split, panelOpen, overlay])
 
   // The width a drag leaves the panel at is the width it reopens with.
   useEffect(() => {
@@ -221,13 +338,34 @@ function SheetSplit(route: DockRoute) {
 
   return (
     <DockRouteContext.Provider value={route}>
-      <SplitviewReact
-        className="sheet-split dockview-theme-theorem h-full w-full"
-        orientation={Orientation.HORIZONTAL}
-        proportionalLayout={false}
-        components={splitComponents}
-        onReady={onReady}
-      />
+      <div
+        ref={host}
+        className="flex h-full min-w-0 flex-col"
+        data-appearance-part="shell-allocation"
+      >
+        {(overlay || !panelOpen) && (
+          <div className="appearance-compact-header">
+            {/* With room to dock it, the panel comes back docked; only a
+                sheet too narrow for it takes the drawer. */}
+            <ChatHeader
+              onOpenSidebar={
+                overlay
+                  ? onOpenSidebar
+                  : () => useShell.getState().setPanelOpen(panelMode, true)
+              }
+            />
+          </div>
+        )}
+        <div className="min-h-0 flex-1">
+          <SplitviewReact
+            className="sheet-split dockview-theme-theorem h-full w-full"
+            orientation={Orientation.HORIZONTAL}
+            proportionalLayout={false}
+            components={splitComponents}
+            onReady={onReady}
+          />
+        </div>
+      </div>
     </DockRouteContext.Provider>
   )
 }
@@ -236,57 +374,167 @@ function SheetSplit(route: DockRoute) {
  * Desktop shell: the rail is the base, and one rounded sheet sits on it,
  * inset by --sheet-inset from the window, holding the panel and the dock.
  * The sheet lifts off the rail by a shadow in light and a glow in dark.
- * In IDE mode its page fills the sheet, opaque over the dock (by default
- * Theia alone; the terminal is the shell's drawer), and in Vault mode the
- * Vault does. Each
- * loads on its first visit and then stays, hidden, so its editors and layout
- * survive a switch; the panel and dock stay mounted under them for the same
- * reason.
+ * In IDE mode the IDE's page takes the dock's place beside the IDE's panel,
+ * and Theia's status bar runs along the bottom of the whole sheet.
+ * In Vault mode the Vault fills the sheet; it loads on its first visit and
+ * then stays, hidden, so its editors and layout survive a switch, and the
+ * panel and dock stay mounted under it for the same reason.
  */
 function DesktopShell(route: DockRoute) {
   const mode = useShellMode()
-  const ide = mode === 'ide'
+  const {
+    placement,
+    requestedPlacement,
+    toggle: toggleWorkbench,
+  } = useWorkbenchPlacement()
+  useWorkbenchShortcut(toggleWorkbench)
+  const full = requestedPlacement === 'full'
+  // Only the docked right placement takes space in the frame's row.
+  const dockedSide = useShell(
+    (s) => placement === 'side' && s.workbenchAttachment === 'docked',
+  )
+  // The row the workbench writes its sizes to (workbench-dock.tsx), kept as
+  // the element so the workbench has it in its first layout effects.
+  const [frame, setFrame] = useState<HTMLDivElement | null>(null)
+  const savedFocus = useRef<HTMLElement | null>(null)
+  const previousPlacement = useRef(placement)
+  useLayoutEffect(() => {
+    if (!frame) return
+    const sheet = frame.querySelector('[data-appearance-part="sheet-frame"]')
+    const remember = (event: Event) => {
+      const target = event.target
+      if (target instanceof HTMLElement && sheet?.contains(target))
+        savedFocus.current = target
+    }
+    frame.addEventListener('focusin', remember)
+    return () => frame.removeEventListener('focusin', remember)
+  }, [frame])
+  useLayoutEffect(() => {
+    const closedWithFocusLost =
+      previousPlacement.current !== undefined &&
+      placement === undefined &&
+      document.activeElement === document.body
+    if (
+      (previousPlacement.current === 'full' && !full) ||
+      closedWithFocusLost
+    ) {
+      const previous = savedFocus.current
+      const fallback = frame?.querySelector<HTMLElement>(
+        '[data-appearance-part="sheet-frame"] [aria-label="Message input"]',
+      )
+      const target = previous?.getClientRects().length ? previous : fallback
+      target?.focus({ preventScroll: true })
+    }
+    previousPlacement.current = placement
+  }, [frame, full, placement])
+  // Mounted on its first showing, then kept, hidden while closed, so its runs
+  // and terminals carry on (components/workbench/workbench-dock.tsx).
+  const [workbenchMounted, setWorkbenchMounted] = useState(
+    requestedPlacement !== undefined,
+  )
+  if (requestedPlacement !== undefined && !workbenchMounted)
+    setWorkbenchMounted(true)
+  const { documentId } = useParams({ strict: false })
+  const view = `${mode}:${route.threadId}:${documentId}`
+  const [drawerView, setDrawerView] = useState<string | null>(null)
+  const drawerOpen = drawerView === view
+  const setDrawerOpen = (open: boolean) => setDrawerView(open ? view : null)
+  if (drawerView !== null && drawerView !== view) setDrawerView(null)
   const vault = mode === 'vault'
-  const [ideLoaded, setIdeLoaded] = useState(ide)
-  if (ide && !ideLoaded) setIdeLoaded(true)
+  const ide = mode === 'ide'
+  // An expanded artifact cabinet covers the workspace: what it dims is inert.
+  const covered = useCabinetExpanded()
   const [vaultLoaded, setVaultLoaded] = useState(vault)
   if (vault && !vaultLoaded) setVaultLoaded(true)
   return (
-    <div className="flex h-full w-full [--sheet-h:calc(100dvh-2*var(--sheet-inset))] [--sheet-inset:3px]">
-      <Rail collapsible />
-      <div className="relative my-(--sheet-inset) me-(--sheet-inset) min-w-0 flex-1">
-        <div aria-hidden="true" className="lift-glow" />
-        <div className="sheet relative h-full overflow-hidden rounded-xl bg-sheet shadow-sheet">
-          {/* Dockview layers its panels with z-index; isolate keeps them under Theia and the Vault. */}
-          <div inert={ide || vault} className="isolate h-full">
-            <SheetSplit {...route} />
-          </div>
-          {ideLoaded && (
-            <div
-              inert={!ide}
-              className={cn(
-                'absolute inset-0 isolate bg-sheet',
-                !ide && 'invisible',
-              )}
-            >
-              <ModePage mode="ide" />
-            </div>
-          )}
-          {vaultLoaded && (
-            <div
-              inert={!vault}
-              className={cn(
-                'absolute inset-0 isolate bg-sheet',
-                !vault && 'invisible',
-              )}
-            >
-              <Suspense>
-                <VaultWorkspace active={vault} />
-              </Suspense>
-            </div>
-          )}
-        </div>
+    <div
+      data-appearance-part="shell"
+      data-appearance-width-role="usable"
+      className={`appearance-shell flex h-full w-full ${FLOATING_CARD_VARS} [--sheet-h:calc(100dvh-2*var(--sheet-inset))] [--sheet-inset:3px]`}
+    >
+      <div className="appearance-docked-rail" data-appearance-width-role="rail">
+        <Rail collapsible workspaceFull={full} />
       </div>
+      {/* A docked cabinet reserves its width here (side-terminal sets
+          --cabinet-dock); an overlay reserves none. The workbench sits in the
+          same row whatever its placement, so moving it keeps the mounted
+          workspace. A right drawer covers the conversation column and a
+          bottom drawer spans this frame, including the sidebar. */}
+      <div
+        ref={setFrame}
+        className="relative flex min-h-0 min-w-0 flex-1 flex-row me-(--cabinet-dock,0px) transition-[margin] duration-(--duration-glide) ease-glide"
+      >
+        <div
+          className={cn(
+            'relative my-(--sheet-inset) me-(--sheet-inset) min-h-0 min-w-0 flex-1 data-[covered]:opacity-40',
+            dockedSide && 'me-0',
+          )}
+          data-appearance-part="sheet-frame"
+          data-covered={covered || undefined}
+          hidden={full}
+          inert={covered}
+        >
+          <div aria-hidden="true" className="lift-glow" />
+          <div
+            data-active-surface={full ? undefined : ''}
+            className="sheet relative h-full overflow-hidden rounded-xl bg-sheet shadow-sheet"
+          >
+            {/* Dockview layers its panels with z-index; isolate keeps them under the Vault. */}
+            <div inert={vault} className="isolate flex h-full flex-col">
+              <div className="min-h-0 flex-1">
+                {/* The field runs under the panel as well as the conversation,
+                  while the conversation is the sheet's view. */}
+                <LifeSheet active={mode === 'chat' && !full}>
+                  <SheetSplit
+                    {...route}
+                    onOpenSidebar={() => setDrawerOpen(true)}
+                  />
+                </LifeSheet>
+              </div>
+              {ide && <IdeStatusBar />}
+            </div>
+            {vaultLoaded && (
+              <div
+                inert={!vault}
+                className={cn(
+                  'absolute inset-0 isolate flex flex-col bg-sheet',
+                  !vault && HIDDEN_LAYER,
+                )}
+              >
+                <div className="appearance-vault-header shrink-0">
+                  <ChatHeader onOpenSidebar={() => setDrawerOpen(true)} />
+                </div>
+                <div className="min-h-0 flex-1">
+                  <Suspense>
+                    <VaultWorkspace active={vault} />
+                  </Suspense>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        {workbenchMounted && (
+          <WorkbenchDock placement={requestedPlacement} frame={frame}>
+            {({ shown, companion }) => (
+              <Suspense
+                fallback={
+                  <p role="status" className="p-3 text-sm">
+                    Opening workspace…
+                  </p>
+                }
+              >
+                <Workbench
+                  key={route.projectId}
+                  projectId={route.projectId}
+                  shown={shown}
+                  companion={companion}
+                />
+              </Suspense>
+            )}
+          </WorkbenchDock>
+        )}
+      </div>
+      <NavigationDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
     </div>
   )
 }
@@ -298,34 +546,12 @@ export function ChatShell({
   projectId: string
   threadId: string | undefined
 }) {
-  const desktop = useMediaQuery('(min-width: 768px)', { noSsr: true })
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-rail text-ink">
-      {desktop ? (
-        <DesktopShell projectId={projectId} threadId={threadId} />
-      ) : (
-        <PhoneShell />
-      )}
+      <DesktopShell projectId={projectId} threadId={threadId} />
       <AgentComposer projectId={projectId} />
       <WorkspaceCommands />
-      <TerminalDrawer />
       <SideTerminal />
-    </div>
-  )
-}
-
-/** Full-height status for the shell before a project is available. */
-export function ShellStatus({
-  title,
-  detail,
-}: {
-  title: string
-  detail?: string
-}) {
-  return (
-    <div className="flex h-dvh flex-col items-center justify-center gap-2 bg-background px-6 text-center">
-      <p className="font-heading text-[20px] font-medium">{title}</p>
-      {detail && <p className="max-w-md text-sm text-ink-muted">{detail}</p>}
     </div>
   )
 }

@@ -179,6 +179,25 @@ function History({ librarian }: { librarian: LibrarianStatus }) {
 }
 
 /** The Librarian's corner of the sidebar: what it last did, why, and how to take it back. */
+/** How long a sitting stays news in the sidebar after it ends. */
+const NEWS_MS = 15 * 60_000
+
+/**
+ * Whether the Librarian has something to show: it is reading, it is paused
+ * or off for a reason the person can act on, or it filed something lately.
+ * Otherwise its footer stays out of the sidebar.
+ */
+export function librarianHasNews(
+  librarian: LibrarianStatus,
+  now = Date.now(),
+) {
+  if (librarian.state === 'working' || librarian.state === 'paused')
+    return true
+  if (librarian.state === 'off') return librarian.offReason !== undefined
+  const [newest] = librarian.recent
+  return newest !== undefined && now - newest.atMs < NEWS_MS
+}
+
 export function LibrarianFooter({ librarian }: { librarian: LibrarianStatus }) {
   const control = useLibrarianControl()
   const [newest] = librarian.recent
@@ -195,7 +214,7 @@ export function LibrarianFooter({ librarian }: { librarian: LibrarianStatus }) {
   return (
     <section
       aria-label="Librarian"
-      className="flex shrink-0 flex-col gap-1.5 border-t border-separator px-3 py-2.5 text-sm"
+      className="flex shrink-0 flex-col gap-1.5 border-t border-separator px-4 py-2.5 text-sm"
     >
       <div className="flex items-center gap-2">
         <Icon.Librarian

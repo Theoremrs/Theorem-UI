@@ -1,0 +1,92 @@
+19:07:53 signed in as claude-e2e-other
+PASS another workspace holds a contact named Noor
+19:08:09 signed in as claude-e2e
+19:08:25 fixture saved; the commitment is at revision 2101
+PASS the People table lists Noor
+PASS and says which record is the person signed in
+PASS the Person type now keeps phone from Theorem  {"version":1,"assistance":"available","mention_fields":["aliases"],"excluded_fields":["phone"]}
+PASS the first turn finishes  completed
+PASS the provider was sent the commitment  10 record spans
+PASS at the revision that was saved  record:Commitment/commitment:materials-fc1cbfef@2101
+PASS saying Wednesday
+PASS and the answer on the page says Wednesday
+PASS the provider was told how Noor is related to the person asking  Noor is “sister” to Avery Quinn (the person asking).
+PASS and how her organization is related to another  Riverbed Clay is “supplier” to Kiln Street Studio.
+PASS and the answer on the page says so
+PASS the provider was sent one description of the data model  Activity, Commitment, Constraint, Interaction, Organization, Person, Relationship
+PASS which says what links one type to another
+PASS and what the fields of the given records mean  {"name":"Name. The name you know them by.","organization":"Organization. The organization they belong to.","role":"Role. What they do, or who they are to you."}
+PASS without naming the field that is kept from Theorem
+PASS the edit was saved at a new revision  revision 2101 then 3117
+PASS the screen shows the new saved revision
+19:09:07 page loads needed: to open 1 and to reopen 1
+PASS reopened, the record still says Friday
+PASS and its history shows Wednesday becoming Friday  You changed Due from Wednesday to Friday
+
+Nov 16, 2026, 7:09 PM · revision 2101 → 3117
+
+You added this
+
+Nov 16, 2026, 7:08 PM · revision 2101
+PASS between the two saved revisions, as the change of the person signed in  You changed Due from Wednesday to Friday
+
+Nov 16, 2026, 7:09 PM · revision 2101 → 3117
+
+You added this
+
+Nov 16, 2026, 7:08 PM · revision 2101
+PASS a follow-up in the first conversation finishes  completed
+PASS its request still carries the earlier answer that said Wednesday
+PASS and the commitment at the edited revision  record:Commitment/commitment:materials-fc1cbfef@3117
+PASS saying Friday, with Wednesday marked as replaced  {"due":"Friday","superseded":{"due":{"previous":"Wednesday"}}}
+PASS and the new answer in that conversation says Friday
+PASS the second turn finishes  completed
+PASS the provider was sent the edited revision  record:Commitment/commitment:materials-fc1cbfef@3117
+PASS saying Friday  Friday
+PASS with the day it replaced marked as replaced  {"due":{"previous":"Wednesday"}}
+PASS every saved-record span names its record and revision  10 spans
+PASS Noor is among them
+PASS and so is when Avery can be called
+PASS and the answer on the page says Friday
+PASS requests of all three turns were read  1 before the edit, 1 in the same conversation after it, 1 in a new one
+PASS no request holds the phone number kept from Theorem
+PASS no request holds the private note
+PASS no request holds the other workspace's contact
+PASS the private record is in no span
+PASS the reply says which saved records it used
+PASS naming the commitment and its revision  Used 10 saved records · 1 held back
+Used in this response
+
+Avery Quinn · Person · revision 2083
+
+This is you
+
+No calls before 10am · Constraint · revision 2105
+
+It always applies to you
+
+Noor · Person
+PASS and that something was held back, without saying what it holds
+PASS the look-up turn finishes  completed
+PASS the turn began without the planning call and was offered the look-up  2 provider requests
+PASS the look-up returned the planning call at its saved revision  record:Interaction/interaction:planning-fc1cbfef@2109
+PASS and counted the private one without naming it  held back: 1
+PASS with what its fields mean
+PASS and the answer on the page is from what was looked up
+PASS the reply says what Theorem looked up, and that one record was held back  Looked up 2 saved records · 1 held back · 1 left out for length
+Looked up while answering
+
+Avery Quinn · Person · revision 2083
+
+This is you
+
+Planning call for the workshop · Interaction · revision 21
+19:09:42 provider requests written to /tmp/claude-0/-home-user/ab33e1ed-a1c3-5ca1-823c-9ec8aa80fa88/scratchpad/e2e-lookup/crm-context-requests.json
+19:09:42 page problems 41
+Errors seen:
+  404 GET /api/artifacts/v1/libraries/theorem-artifacts
+  503 GET /api/project-files/v1/projects/chatproj_sha256%3Ad36420cf41011ae89c6d7833f
+  404 PUT /api/artifacts/v1/libraries/theorem-artifacts 
+  404 GET /api/chat/v1/threads/chatthread_sha256%3Afd8ca5c37f14ba0711a2f5f4e/reviews
+  404 GET /api/chat/v1/threads/chatthread_sha256%3A2fa1a850fb4f328108f4ee0bc/reviews
+All checks passed

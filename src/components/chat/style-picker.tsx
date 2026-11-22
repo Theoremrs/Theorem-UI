@@ -124,8 +124,7 @@ export function StylePicker() {
   const choose = (value: string) => {
     const style = value === INHERIT ? null : value
     if (!threadId) return choosePending(style ?? undefined)
-    // The conversation exists, so its choice is written now, in place of any pick still waiting on a message. A turn sent meanwhile waits for the write.
-    choosePending(undefined, threadId)
+    // A turn on an existing conversation waits for the write.
     select.mutate(
       { scope: 'conversation', threadId, style },
       { onError: fail('Could not change the response style') },

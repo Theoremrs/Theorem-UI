@@ -1,0 +1,658 @@
+{
+  "captures": [
+    {
+      "file": "shell-dark.202be43eaf-516350d0cc.png",
+      "rev": "202be43eaf",
+      "tree": "516350d0cc",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T04:39:10.971Z"
+    },
+    {
+      "file": "sidebar-dark.202be43eaf-516350d0cc.png",
+      "rev": "202be43eaf",
+      "tree": "516350d0cc",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-appearance-part=\"navigation\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T04:39:11.504Z"
+    },
+    {
+      "file": "code-block-dark.202be43eaf-516350d0cc.png",
+      "rev": "202be43eaf",
+      "tree": "516350d0cc",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-glass-code]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T04:39:11.700Z"
+    },
+    {
+      "file": "composer-dark.202be43eaf-516350d0cc.png",
+      "rev": "202be43eaf",
+      "tree": "516350d0cc",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-surface-role=\"composer\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T04:39:11.824Z"
+    },
+    {
+      "file": "menu-skills-dark.202be43eaf-516350d0cc.png",
+      "rev": "202be43eaf",
+      "tree": "516350d0cc",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [
+        {
+          "kind": "click",
+          "value": "[aria-label=\"More options\"]"
+        },
+        {
+          "kind": "click",
+          "value": "role=menuitem[name=\"Skills\"]"
+        },
+        {
+          "kind": "key",
+          "value": "ArrowRight"
+        }
+      ],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T04:39:31.265Z"
+    },
+    {
+      "file": "shell-light.202be43eaf-516350d0cc.png",
+      "rev": "202be43eaf",
+      "tree": "516350d0cc",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T04:39:52.862Z"
+    },
+    {
+      "file": "sidebar-light.202be43eaf-516350d0cc.png",
+      "rev": "202be43eaf",
+      "tree": "516350d0cc",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-appearance-part=\"navigation\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T04:39:53.053Z"
+    },
+    {
+      "file": "code-block-light.202be43eaf-516350d0cc.png",
+      "rev": "202be43eaf",
+      "tree": "516350d0cc",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-glass-code]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T04:39:53.177Z"
+    },
+    {
+      "file": "composer-light.202be43eaf-516350d0cc.png",
+      "rev": "202be43eaf",
+      "tree": "516350d0cc",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-surface-role=\"composer\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T04:39:53.340Z"
+    },
+    {
+      "file": "menu-skills-light.202be43eaf-516350d0cc.png",
+      "rev": "202be43eaf",
+      "tree": "516350d0cc",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [
+        {
+          "kind": "click",
+          "value": "[aria-label=\"More options\"]"
+        },
+        {
+          "kind": "click",
+          "value": "role=menuitem[name=\"Skills\"]"
+        },
+        {
+          "kind": "key",
+          "value": "ArrowRight"
+        }
+      ],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T04:40:21.191Z"
+    },
+    {
+      "file": "shell-dark.202be43eaf-fce049158b.png",
+      "rev": "202be43eaf",
+      "tree": "fce049158b",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T10:45:51.891Z"
+    },
+    {
+      "file": "sidebar-dark.202be43eaf-fce049158b.png",
+      "rev": "202be43eaf",
+      "tree": "fce049158b",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-appearance-part=\"navigation\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T10:45:52.035Z"
+    },
+    {
+      "file": "code-block-dark.202be43eaf-fce049158b.png",
+      "rev": "202be43eaf",
+      "tree": "fce049158b",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-glass-code]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T10:45:52.126Z"
+    },
+    {
+      "file": "composer-dark.202be43eaf-fce049158b.png",
+      "rev": "202be43eaf",
+      "tree": "fce049158b",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-surface-role=\"composer\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T10:45:52.215Z"
+    },
+    {
+      "file": "menu-skills-dark.202be43eaf-fce049158b.png",
+      "rev": "202be43eaf",
+      "tree": "fce049158b",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [
+        {
+          "kind": "click",
+          "value": "[aria-label=\"More options\"]"
+        },
+        {
+          "kind": "click",
+          "value": "role=menuitem[name=\"Skills\"]"
+        },
+        {
+          "kind": "key",
+          "value": "ArrowRight"
+        }
+      ],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T10:45:59.340Z"
+    },
+    {
+      "file": "shell-light.202be43eaf-fce049158b.png",
+      "rev": "202be43eaf",
+      "tree": "fce049158b",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T10:46:05.057Z"
+    },
+    {
+      "file": "sidebar-light.202be43eaf-fce049158b.png",
+      "rev": "202be43eaf",
+      "tree": "fce049158b",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-appearance-part=\"navigation\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T10:46:05.197Z"
+    },
+    {
+      "file": "code-block-light.202be43eaf-fce049158b.png",
+      "rev": "202be43eaf",
+      "tree": "fce049158b",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-glass-code]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T10:46:05.292Z"
+    },
+    {
+      "file": "composer-light.202be43eaf-fce049158b.png",
+      "rev": "202be43eaf",
+      "tree": "fce049158b",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-surface-role=\"composer\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T10:46:05.373Z"
+    },
+    {
+      "file": "menu-skills-light.202be43eaf-fce049158b.png",
+      "rev": "202be43eaf",
+      "tree": "fce049158b",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [
+        {
+          "kind": "click",
+          "value": "[aria-label=\"More options\"]"
+        },
+        {
+          "kind": "click",
+          "value": "role=menuitem[name=\"Skills\"]"
+        },
+        {
+          "kind": "key",
+          "value": "ArrowRight"
+        }
+      ],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T10:46:12.424Z"
+    },
+    {
+      "file": "shell-dark.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T16:35:09.624Z"
+    },
+    {
+      "file": "sidebar-dark.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-appearance-part=\"navigation\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T16:35:09.755Z"
+    },
+    {
+      "file": "code-block-dark.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-glass-code]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T16:35:09.839Z"
+    },
+    {
+      "file": "composer-dark.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-surface-role=\"composer\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T16:35:09.926Z"
+    },
+    {
+      "file": "shell-calm-dark.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"calm\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T16:35:16.312Z"
+    },
+    {
+      "file": "menu-skills-dark.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [
+        {
+          "kind": "click",
+          "value": "[data-slot=\"aui_composer-shell\"] [aria-label=\"More options\"]"
+        },
+        {
+          "kind": "click",
+          "value": "role=menuitem[name=\"Skills\"]"
+        },
+        {
+          "kind": "key",
+          "value": "ArrowRight"
+        }
+      ],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "dark",
+      "capturedAt": "2026-11-17T16:35:23.571Z"
+    },
+    {
+      "file": "shell-light.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T16:35:30.166Z"
+    },
+    {
+      "file": "sidebar-light.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-appearance-part=\"navigation\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T16:35:30.300Z"
+    },
+    {
+      "file": "code-block-light.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-glass-code]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T16:35:30.383Z"
+    },
+    {
+      "file": "composer-light.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "[data-surface-role=\"composer\"]",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T16:35:30.466Z"
+    },
+    {
+      "file": "menu-skills-light.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [
+        {
+          "kind": "click",
+          "value": "[data-slot=\"aui_composer-shell\"] [aria-label=\"More options\"]"
+        },
+        {
+          "kind": "click",
+          "value": "role=menuitem[name=\"Skills\"]"
+        },
+        {
+          "kind": "key",
+          "value": "ArrowRight"
+        }
+      ],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"expressive\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T16:35:42.881Z"
+    },
+    {
+      "file": "shell-calm-light.202be43eaf-3affd189fa.png",
+      "rev": "202be43eaf",
+      "tree": "3affd189fa",
+      "url": "http://localhost:3102/story/populated-shell",
+      "selector": "",
+      "steps": [],
+      "local": {
+        "theorem-ui:appearance": "{\"state\":{\"preset\":\"calm\",\"overrides\":{\"palette\":\"stone\"}},\"version\":1}"
+      },
+      "viewport": {
+        "width": 1280,
+        "height": 860,
+        "scale": 2
+      },
+      "scheme": "light",
+      "capturedAt": "2026-11-17T16:35:54.623Z"
+    }
+  ]
+}

@@ -5,10 +5,15 @@
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { chromium } from 'playwright-core'
+import { chromium, firefox } from 'playwright-core'
 import { ACCOUNT, DATA_DIR, UI } from './config.mjs'
 
-const BROWSER_STATE = join(DATA_DIR, 'browser-state.json')
+/** Where an account's signed-in browser state is kept between scenarios. */
+const browserState = (account) =>
+  join(
+    DATA_DIR,
+    account === ACCOUNT ? 'browser-state.json' : `browser-state-${account}.json`,
+  )
 export const SHOTS = join(DATA_DIR, 'shots')
 
 // Playwright's own error messages carry the request log, session cookie included,
@@ -37,10 +42,10 @@ export function log(...parts) {
   console.log(new Date().toISOString().slice(11, 19), ...parts)
 }
 
-async function signIn(page) {
+async function signIn(page, account) {
   await page.getByRole('button', { name: /sign in|continue/i }).first().click()
   await page.locator('input[name="login"]').waitFor()
-  await page.locator('input[name="login"]').fill(ACCOUNT)
+  await page.locator('input[name="login"]').fill(account)
   // The development login takes any password; this one is thrown away.
   await page
     .locator('input[name="password"]')
@@ -50,12 +55,29 @@ async function signIn(page) {
   await page.waitForURL((url) => url.href.startsWith(UI) && !url.pathname.startsWith('/login'))
 }
 
-export async function open(path = '/') {
+/**
+ * `browser: 'firefox'` is the Firefox installed on this machine, for what only
+ * Gecko does. `account` signs in as someone other than the test account.
+ */
+export async function open(
+  path = '/',
+  { browser: name = 'chromium', account = ACCOUNT } = {},
+) {
+  const BROWSER_STATE = browserState(account)
   mkdirSync(SHOTS, { recursive: true })
   // Full Chromium in new headless mode. The separate headless shell (Playwright
   // 1.64, revision 1248) never paints a frame on macOS 27, so every screenshot
-  // and click waits forever.
-  const browser = await chromium.launch({ channel: 'chromium' })
+  // and click waits forever. Firefox is the stock one, driven over WebDriver BiDi.
+  const browser =
+    name === 'firefox'
+      ? await firefox.launch({ channel: 'moz-firefox' })
+      : await chromium.launch(
+          // E2E_CHROMIUM names a Chromium already on this machine, where
+          // Playwright's own download is not the one installed.
+          process.env.E2E_CHROMIUM
+            ? { executablePath: process.env.E2E_CHROMIUM }
+            : { channel: 'chromium' },
+        )
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     colorScheme: 'dark',
@@ -92,10 +114,14 @@ export async function open(path = '/') {
       throw new Error(`${UI} did not answer the bootstrap request`)
     })
   if (asked.status() === 401) {
-    await page.goto(`${UI}/login`, { waitUntil: 'domcontentloaded', timeout: 120_000 })
-    await signIn(page)
-    log('signed in as', ACCOUNT)
+    // On a page of its own: the app is still starting when sign-in lands, and
+    // Firefox drops a navigation asked for in the middle of that.
+    const door = await context.newPage()
+    await door.goto(`${UI}/login`, { waitUntil: 'domcontentloaded', timeout: 120_000 })
+    await signIn(door, account)
+    log('signed in as', account)
     await context.storageState({ path: BROWSER_STATE })
+    await door.close()
   }
   await page.goto(UI + path, { waitUntil: 'domcontentloaded', timeout: 120_000 })
   return { browser, context, page, problems }

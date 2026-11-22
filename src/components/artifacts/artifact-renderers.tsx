@@ -1,4 +1,4 @@
-// SOURCING: react-markdown + remark-gfm + @tailwindcss/typography (documents), the installed react-shiki SyntaxHighlighter (code), the installed beautiful-mermaid MermaidDiagram (diagrams), notebook-artifact (Observable and marimo notebooks in the hosted frame), OpenUI's Renderer over theorem-artifacts (openui/renderer)
+// SOURCING: react-markdown + remark-gfm + @tailwindcss/typography (documents), the TanStack Highlight SyntaxHighlighter (code), the installed beautiful-mermaid MermaidDiagram (diagrams), notebook-artifact (Observable and marimo notebooks in the hosted frame), OpenUI's Renderer over theorem-artifacts (openui/renderer)
 //
 // The renderers this build mounts. Which one shows an artifact at a distance
 // is the registry's answer (artifact-registry: contributions + resolve); a
@@ -10,10 +10,11 @@ import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { MermaidDiagram } from '@/components/assistant-ui/elements/mermaid-diagram'
-import { SyntaxHighlighter } from '@/components/assistant-ui/elements/shiki-highlighter'
+import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highlighter'
 import { DocumentApp } from '@/components/blocks/document-app'
 import { cn } from '@/lib/utils'
 import type { Distance } from '@/lib/artifacts/contributions'
+import { useArtifactMessageId } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 import { AppPreview } from './app-revision-frame'
 import { AppRevision } from './app-history'
@@ -23,6 +24,7 @@ import {
   UnreadableNotebook,
 } from './notebook-artifact'
 import { OpenUIArtifact } from './openui/renderer'
+import { SceneInConversation, SceneInReply } from '@/components/chat/scene-part'
 import {
   mountRenderers,
   rendererFor,
@@ -146,18 +148,55 @@ const MarimoArtifact: FC<RendererProps> = ({ artifact }) =>
     <UnreadableNotebook artifact={artifact} />
   )
 
-mountRenderers({
-  'theorem-document.excerpt': DocumentExcerpt,
-  'theorem-document': DocumentArtifact,
-  'theorem-code.excerpt': CodeExcerpt,
-  'theorem-code': CodeArtifact,
-  'theorem-diagram': DiagramArtifact,
-  'theorem-app.preview': AppPreviewArtifact,
-  'theorem-app': AppArtifact,
-  'theorem-observable': ObservableArtifact,
-  'theorem-marimo': MarimoArtifact,
-  'theorem-openui': OpenUIArtifact,
-})
+/** A scene in its reply: the whole surface, wired to the conversation. */
+const SceneReplyArtifact: FC<RendererProps> = ({ artifact }) =>
+  artifact.scene ? (
+    <SceneInReply scene={artifact.scene} />
+  ) : (
+    <TheoremCard
+      artifact={artifact}
+      reason="The scene payload could not be read"
+    />
+  )
+
+/**
+ * A scene filling a panel, in its full layout, wired to the same
+ * conversation as its reply: Ask refers to the reply that carries this
+ * revision, and Fix asks the agent in this thread.
+ */
+const SceneArtifact: FC<RendererProps> = ({ artifact }) => {
+  const messageId = useArtifactMessageId(artifact)
+  return artifact.scene ? (
+    <SceneInConversation
+      scene={artifact.scene}
+      messageId={messageId}
+      placement="panel"
+    />
+  ) : (
+    <TheoremCard
+      artifact={artifact}
+      reason="The scene payload could not be read"
+    />
+  )
+}
+
+mountRenderers(
+  {
+    'theorem-document.excerpt': DocumentExcerpt,
+    'theorem-document': DocumentArtifact,
+    'theorem-code.excerpt': CodeExcerpt,
+    'theorem-code': CodeArtifact,
+    'theorem-diagram': DiagramArtifact,
+    'theorem-app.preview': AppPreviewArtifact,
+    'theorem-app': AppArtifact,
+    'theorem-observable': ObservableArtifact,
+    'theorem-marimo': MarimoArtifact,
+    'theorem-openui': OpenUIArtifact,
+    'theorem-scene.reply': SceneReplyArtifact,
+    'theorem-scene': SceneArtifact,
+  },
+  { bare: ['theorem-scene.reply'], fills: ['theorem-scene'] },
+)
 
 /** The Theorem card: what the artifact is, its summary, and why no renderer showed it. */
 const TheoremCard: FC<{ artifact: TheoremArtifact; reason?: string }> = ({

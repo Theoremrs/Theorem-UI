@@ -6,12 +6,20 @@
 import type { TheoremContextReference } from '@theoremharness/sdk'
 import { resourceKey } from '@theoremharness/sdk'
 import { create } from 'zustand'
+import type { RecordReference } from '@/components/crm/reference'
 import { Icon } from '@/components/icons'
 import type { DelegationReference } from '@/lib/theorem/delegations'
+import { citationReferenceKey } from '@/lib/theorem/citations'
 
-export type ComposerReference = TheoremContextReference | DelegationReference
+export type ComposerReference =
+  TheoremContextReference | DelegationReference | RecordReference
 
-export function referenceKey({ location }: ComposerReference): string {
+export function referenceKey(reference: ComposerReference): string {
+  const { location } = reference
+  if (location.resource.kind === 'message') {
+    const citation = citationReferenceKey(reference as TheoremContextReference)
+    if (citation) return citation
+  }
   const { resource, range } = location
   const at = range
     ? `#${range.start.line}:${range.start.character}-${range.end.line}:${range.end.character}`
@@ -21,6 +29,9 @@ export function referenceKey({ location }: ComposerReference): string {
       return `delegation:${resource.runId}:${resource.delegationId}`
     case 'delegation-change':
       return `delegation-change:${resource.runId}:${resource.delegationId}:${resource.side}:${resource.path}${at}`
+    // A saved record: the turn reads it at the revision saved when it is sent.
+    case 'record':
+      return `record:${resource.objectType}/${resource.objectId}`
     default:
       return `${resourceKey(resource)}${at}`
   }
@@ -38,10 +49,20 @@ export const useComposerReferences = create<ComposerReferencesState>()(
   (set, get) => ({
     references: [],
     add: (reference) =>
-      set((s) => ({references:[
-        ...s.references.filter(existing=>referenceKey(existing)!==referenceKey(reference)),
-        reference,
-      ]})),
+      set((s) => {
+        const key = referenceKey(reference)
+        const index = s.references.findIndex(
+          (entry) => referenceKey(entry) === key,
+        )
+        if (index < 0) return { references: [...s.references, reference] }
+        // Refresh evidence or revision in place so repeated additions keep
+        // the person's context in the same order.
+        return {
+          references: s.references.map((entry, i) =>
+            i === index ? reference : entry,
+          ),
+        }
+      }),
     remove: (key) =>
       set((s) => ({
         references: s.references.filter((r) => referenceKey(r) !== key),
@@ -67,8 +88,8 @@ export function askAbout(reference: ComposerReference) {
  * Returns whether one was focused.
  */
 export function focusComposer(): boolean {
-  const composers = document.querySelectorAll<HTMLTextAreaElement>(
-    'textarea.aui-composer-input',
+  const composers = document.querySelectorAll<HTMLElement>(
+    '.aui-composer-input .ProseMirror',
   )
   for (const composer of composers) {
     const shown =
@@ -99,6 +120,8 @@ function referenceLabel({ label, location }: ComposerReference): string {
       return 'Run'
     case 'graph-object':
       return resource.objectType ?? 'Graph object'
+    case 'record':
+      return resource.objectType
   }
 }
 

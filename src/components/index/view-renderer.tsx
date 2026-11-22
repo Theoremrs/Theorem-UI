@@ -40,11 +40,14 @@ export function ViewRenderer({
   host: given,
   actions,
   onErrors,
+  fill = false,
 }: {
   definition: Pick<ViewCandidate, 'program' | 'bindings' | 'operations'>
   host?: IndexHost
   actions?: ViewActions
   onErrors?: (errors: OpenUIError[]) => void
+  /** The program is the whole view (a record table or page): fill its height. */
+  fill?: boolean
 }) {
   const { program, bindings, operations } = definition
   // A preview opens and records nothing, but still names collections.
@@ -105,7 +108,7 @@ export function ViewRenderer({
         <Renderer.QueryError>
           <QueryFailure />
         </Renderer.QueryError>
-        <Renderer.Content />
+        <Renderer.Content className={fill ? 'h-full' : undefined} />
       </Renderer.Root>
     </IndexHostContext.Provider>
   )

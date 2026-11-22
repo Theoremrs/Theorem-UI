@@ -1,7 +1,7 @@
 // SOURCING: the surfaces Theorem already has, each wrapped as a module rather
 // than rebuilt: the Index's own columns (ViewColumn, with its header,
 // proposals and held revision, at an IndexPlace) and its document Inspector,
-// the records' RecordInspector and RecordTable, assistant-ui's Thread on the
+// the CRM's record preview and table (components/crm/index-views), assistant-ui's Thread on the
 // one shared runtime, WorkspaceFilePanel for a vault file, DocumentApp for a
 // conversation App, the IDE frame (browser-only Theia) and the tabbed agent
 // terminal (terminal-screen over side-terminal's useTerminalTabs, the tabs the
@@ -15,30 +15,30 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { useRouter } from '@tanstack/react-router'
 import { create } from 'zustand'
 import type { StoreApi, UseBoundStore } from 'zustand'
+import { ArtifactPlacement } from '@/components/artifacts/artifact-message'
 import { Thread } from '@/components/assistant-ui/elements/thread.aui'
 import { DocumentApp } from '@/components/blocks/document-app'
 import { useComposerReferences } from '@/components/chat/composer-references'
 import { IdeFrame } from '@/components/ide/ide-frame'
+import { IdePageShown } from '@/components/ide/ide-page'
+import { LifeBackdrop } from '@/components/life/life-backdrop'
 import type { Scope as IndexScope } from '@/components/index/contract'
 import { ViewColumn } from '@/components/index/index-surface'
 import { Inspector } from '@/components/index/inspector'
 import {
   IndexPlaceContext,
+  useIndexNavigate,
   useLocalIndexPlace,
 } from '@/components/index/navigation'
 import type { IndexPlace } from '@/components/index/navigation'
 import { observer } from '@/components/index/observe'
 import { dataModelViewId } from '@/components/index/programs'
-import {
-  objectTypeByName,
-  parseRecordItemId,
-  recordItemId,
-} from '@/components/records/model'
-import { useDataModel } from '@/components/records/queries'
-import { RecordInspector } from '@/components/records/record-inspector'
-import { RecordTable } from '@/components/records/record-table'
+import { parseRecordItemId, recordItemId } from '@/components/records/model'
+import { OpenDocumentProvider } from '@/components/crm/context'
+import { CrmRecordInspector, CrmTableView } from '@/components/crm/index-views'
 import { useActiveProject } from '@/components/shell/projects'
 import { useShell } from '@/components/shell/shell-state'
 import {
@@ -50,6 +50,8 @@ import {
   addReference,
 } from '@/components/terminal/terminal-screen'
 import { Button } from '@/components/ui/button'
+import { WorkInspector } from '@/components/work/inspector'
+import { parseWorkItemId } from '@/components/work/route'
 import { WorkspaceFilePanel } from '@/components/workspace/workspace-file-panel'
 import type { Item } from '@/lib/modules/contract'
 import { builtin, registerBuiltin } from '@/lib/modules/registry'
@@ -57,9 +59,9 @@ import type { ModuleDefinition, ModuleViewProps } from '@/lib/modules/registry'
 import type { PageRuntime } from '@/lib/modules/runtime'
 import { useVaultClient } from '@/lib/modules/store'
 import { isItem, isReference } from '@/lib/modules/values'
-import { describeError } from '@/lib/theorem/client'
 import { useNothingToShow } from './layout-parts'
 import { useModuleAction, usePageRuntime } from './page-runtime'
+import { WORK_MODULES } from './work-modules'
 
 function Empty({ children }: { children: string }) {
   return <p className="p-3 text-sm text-ink-muted">{children}</p>
@@ -70,7 +72,11 @@ const text = (value: unknown) => (typeof value === 'string' ? value : '')
 /** An item for a document or record, opened in `scope` when it was. */
 const indexItem = (id: string, scope?: IndexScope): Item => ({
   id,
-  kind: parseRecordItemId(id) ? 'record' : 'document',
+  kind: parseWorkItemId(id)
+    ? 'work'
+    : parseRecordItemId(id)
+      ? 'record'
+      : 'document',
   ...(scope && { scope }),
 })
 
@@ -223,18 +229,31 @@ function InspectorModule({ inputs, emit }: ModuleViewProps) {
   }
   if (!current)
     return <Empty>Nothing to show yet. Connect its Item, or send it one.</Empty>
-  const record = parseRecordItemId(current.id)
-  if (record)
+  const work = parseWorkItemId(current.id)
+  if (work)
     return (
-      <RecordInspector
+      <WorkInspector
         key={current.id}
-        nameSingular={record.nameSingular}
-        recordId={record.recordId}
-        onOpenRecord={(name, id) => open(`record:${name}/${id}`)}
-        onEditFields={(name) => emit('editFields', name)}
+        itemId={work}
+        onOpen={(id) => open(`work:${id}`)}
         onClose={close}
         className="h-full"
       />
+    )
+  const record = parseRecordItemId(current.id)
+  if (record)
+    return (
+      // A document the record was opened with shows here too, as its records do.
+      <OpenDocumentProvider value={open}>
+        <CrmRecordInspector
+          key={current.id}
+          nameSingular={record.nameSingular}
+          recordId={record.recordId}
+          onOpenRelated={(type, id) => open(recordItemId(type, id))}
+          onClose={close}
+          className="h-full"
+        />
+      </OpenDocumentProvider>
     )
   return (
     <Inspector
@@ -248,47 +267,56 @@ function InspectorModule({ inputs, emit }: ModuleViewProps) {
   )
 }
 
-function RecordsModule({
-  settings,
-  output,
-  emit,
-  instanceId,
-}: ModuleViewProps) {
-  const model = useDataModel()
+/**
+ * The saved arrangement of a table in a module. Pages made from one template
+ * keep the same module ids, so the page's own id goes in the key. Outside a
+ * page route the key is the module path alone, as it was before.
+ */
+export const moduleViewKey = (pageId: string | undefined, path: string) =>
+  pageId ? `module:${pageId}:${path}` : `module:${path}`
+
+/** The vault entry of the page on screen, from its route. */
+function usePageId(): string | undefined {
+  // Absent outside a router, as in a page's own tests.
+  const router = useRouter({ warn: false }) as
+    ReturnType<typeof useRouter> | undefined
+  const match = router?.state.location.pathname.match(/\/pages\/([^/]+)/)
+  return match?.[1]
+}
+
+function RecordsModule({ settings, output, emit, path }: ModuleViewProps) {
   const name = text(settings.object)
-  const type = objectTypeByName(model.data, name)
-  const [active, setActive] = useState<string>()
-  if (!name) return <Empty>Choose an object in its settings.</Empty>
-  if (model.isPending)
-    return <div className="m-3 h-40 animate-pulse rounded-lg bg-raised" />
-  if (!model.data || !type)
-    return (
-      <Empty>
-        {model.error
-          ? describeError(model.error)
-          : `There is no "${name}" object in the schema.`}
-      </Empty>
-    )
-  const send = (id: string) => {
-    const item = indexItem(id)
-    output('selected', item)
-    emit('opened', item)
+  // The table keeps a place of its own on the page; a record opened from it
+  // is this module's selection, for an inspector connected to it.
+  const place = useLocalIndexPlace({})
+  const index = useIndexNavigate()
+  const pageId = usePageId()
+  const reporting: IndexPlace = {
+    search: place.search,
+    navigate: {
+      ...place.navigate,
+      // A record's page, or another type's table, opens in the Index.
+      openView: index.openView,
+      openItem: (id) => {
+        place.navigate.openItem(id)
+        const item = indexItem(id)
+        output('selected', item)
+        emit('opened', item)
+      },
+      closeItem: () => {
+        place.navigate.closeItem()
+        output('selected', undefined)
+      },
+    },
   }
+  if (!name) return <Empty>Choose an object in its settings.</Empty>
   return (
-    <div className="p-3">
-      <RecordTable
-        objectType={type}
-        model={model.data}
-        viewKey={`page:${instanceId}`}
-        activeRecordId={active}
-        onOpenRecord={(id) => {
-          setActive(id)
-          send(recordItemId(type, id))
-        }}
-        onOpenRelated={(related, id) => send(`record:${related}/${id}`)}
-        onEditFields={() => undefined}
-      />
-    </div>
+    <IndexPlaceContext.Provider value={reporting}>
+      <div className="h-full min-h-[24rem]">
+        {/* This module's own arrangement: it is on no Index view of its own. */}
+        <CrmTableView object={name} viewKey={moduleViewKey(pageId, path)} />
+      </div>
+    </IndexPlaceContext.Provider>
   )
 }
 
@@ -358,10 +386,17 @@ function ConversationModule({ settings, path }: ModuleViewProps) {
   useModuleAction('attach', (payload) => {
     if (isReference(payload)) useComposerReferences.getState().add(payload)
   })
+  // Kept laid out under another mode, the page's conversation is still out
+  // of sight: what arrives meanwhile is new when the person comes back.
+  const shown = useContext(IdePageShown)
   if (!mine) return <Elsewhere what="The conversation" onTake={take} />
   return (
     <div className="h-full min-h-[320px]">
-      <Thread autoFocus={false} />
+      <ArtifactPlacement.Provider value="inline">
+        <LifeBackdrop>
+          <Thread autoFocus={false} composerDocked covered={!shown} />
+        </LifeBackdrop>
+      </ArtifactPlacement.Provider>
     </div>
   )
 }
@@ -369,10 +404,14 @@ function ConversationModule({ settings, path }: ModuleViewProps) {
 const useIdeOwner = create<Owner>(() => ({}))
 
 /**
- * Theia, for the active project. Add to chat is its Added event; with its
- * chat set to the page, Theia's own chat closes and Follow follows the agent
- * terminal's active tab, so a connection from Added to a terminal's Attach
- * makes the terminal the conversation.
+ * Theia, for the active project. Add to chat is its Added event. With its
+ * chat set to the page's conversation, Theia's own chat closes and Follow
+ * follows the conversation's runs, so a connection from Added to the
+ * conversation's Attach puts the selection in its composer. Set to the
+ * agent terminal on the right, Added also puts the selection on the right
+ * drawer's active tab for its next turn, and Follow follows that tab. Set to
+ * the page, Follow follows the agent terminal's active tab too, so a
+ * connection to a terminal's Attach makes the terminal the conversation.
  */
 function IdeModule({ settings, emit, arranging, path }: ModuleViewProps) {
   const { mine, take } = useOwner(useIdeOwner, path, !arranging)
@@ -384,6 +423,11 @@ function IdeModule({ settings, emit, arranging, path }: ModuleViewProps) {
     <div className="h-full">
       <IdeFrame
         docked={settings.chat !== 'own'}
+        follows={
+          settings.chat === 'page' || settings.chat === 'terminal'
+            ? 'terminal'
+            : 'chat'
+        }
         onAddToChat={(reference) => {
           emit('added', reference)
           if (settings.chat === 'terminal' && project)
@@ -551,6 +595,7 @@ export const BUILTIN_MODULES: ReadonlyArray<ModuleDefinition> = [
     actions: [item('show', 'Show an item')],
     Component: InspectorModule,
   }),
+  ...WORK_MODULES,
   builtin({
     id: 'theorem.records.table',
     label: 'Records',
@@ -572,7 +617,7 @@ export const BUILTIN_MODULES: ReadonlyArray<ModuleDefinition> = [
     id: 'theorem.conversation',
     label: 'Conversation',
     description:
-      'The conversation and its composer. Moving it keeps the draft.',
+      'The conversation and its composer, over the Life field, its artifacts open in line. Moving it keeps the draft.',
     settings: [
       {
         name: 'conversation',
@@ -599,8 +644,15 @@ export const BUILTIN_MODULES: ReadonlyArray<ModuleDefinition> = [
         kind: 'select',
         options: [
           { label: "Theia's own", value: 'own' },
+          {
+            label: "The page's conversation, through Added",
+            value: 'conversation',
+          },
           { label: 'The agent terminal on the right', value: 'terminal' },
-          { label: 'On the page, through Added', value: 'page' },
+          {
+            label: 'An agent terminal on the page, through Added',
+            value: 'page',
+          },
         ],
         default: 'own',
       },

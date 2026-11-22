@@ -9,7 +9,9 @@ import { converter, differenceCiede2000, inGamut, wcagContrast } from 'culori'
 import { modeTokens, modes } from '../../../scripts/palettes'
 import {
   GITHUB_SHARP,
+  LINK,
   SLATE,
+  SUCCESS,
   measure,
   terminalTheme,
   workspaceOf,
@@ -45,9 +47,21 @@ const WORKSPACES = {
   Stone: workspace(mode("[data-palette='stone']")),
   'Stone dark': workspace(mode(".dark[data-palette='stone']")),
   // A person's own colours, made the way a palette is.
-  'plum dark': workspace({ ...mode('.dark'), hue: 320, saturation: 0.12 }),
-  'red dark': workspace({ ...mode('.dark'), hue: 25, saturation: 0.15 }),
-  'green light': workspace({ ...mode(':root'), hue: 146, saturation: 0.2 }),
+  'plum dark': workspace({
+    ...mode('.dark'),
+    hue: 320,
+    saturation: 0.12,
+  }),
+  'red dark': workspace({
+    ...mode('.dark'),
+    hue: 25,
+    saturation: 0.15,
+  }),
+  'green light': workspace({
+    ...mode(':root'),
+    hue: 146,
+    saturation: 0.2,
+  }),
   'pure grey, darker': workspace({
     ...darker(mode('.dark'), 0.05),
     saturation: 0,
@@ -136,9 +150,27 @@ describe.each(THEMES)('in %s', (_, theme) => {
     }
   })
 
+  test('the mark is in gamut, reads as it does on the slate, and keeps clear of the state hues', () => {
+    const mark = lch(theme.mark)
+    expect(theme.mark).toMatch(/^#[0-9a-f]{6}$/)
+    expect(displayable({ ...mark, c: mark.c - 0.0005 })).toBe(true)
+    const onSlate = wcagContrast(SLATE.mark, SLATE.bg)
+    const onBg = wcagContrast(theme.mark, theme.bg)
+    expect(Math.abs(onBg - onSlate)).toBeLessThan(0.1)
+    expect(wcagContrast(theme.mark, theme.raised)).toBeGreaterThanOrEqual(4.5)
+    for (const state of [SLATE.error, SLATE.gold, SLATE.sage, SUCCESS, LINK])
+      expect(apart(mark.h, lch(state).h)).toBeGreaterThanOrEqual(26)
+  })
+
   test('the background is never lighter than the slate', () => {
     expect(lch(theme.bg).l).toBeLessThanOrEqual(lch(SLATE.bg).l + ROUNDING)
   })
+})
+
+test('on the slate the mark is burnt orange', () => {
+  expect(SLATE.mark).toBe('#e2813f')
+  expect(wcagContrast(SLATE.mark, SLATE.bg)).toBeCloseTo(5.32, 2)
+  expect(wcagContrast(SLATE.mark, SLATE.raised)).toBeCloseTo(4.69, 2)
 })
 
 test('a neutral workspace gives a neutral terminal', () => {

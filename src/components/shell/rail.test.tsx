@@ -15,7 +15,10 @@ import { cleanup, render, waitFor } from '../../../test/workspace'
 import { Rail, orderModes } from './rail'
 import { useShell } from './shell-state'
 
-function renderRail(props: { collapsible?: boolean }) {
+function renderRail(
+  props: { collapsible?: boolean; workspaceFull?: boolean },
+  initialEntry = '/vault',
+) {
   const root = createRootRoute({ component: Outlet })
   const shell = createRoute({
     getParentRoute: () => root,
@@ -29,14 +32,14 @@ function renderRail(props: { collapsible?: boolean }) {
   })
   const routeTree = root.addChildren([
     shell.addChildren(
-      ['/', 'vault', 'ide'].map((path) =>
+      ['/', 'vault', 'ide', 'notes'].map((path) =>
         createRoute({ getParentRoute: () => shell, path }),
       ),
     ),
   ])
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: ['/vault'] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   })
   return { router, rendered: render(<RouterProvider router={router} />) }
 }
@@ -45,7 +48,13 @@ const click = (button: HTMLButtonElement) => act(async () => button.click())
 
 let restoreFetch: (() => void) | undefined
 beforeEach(() => {
-  useShell.setState({ filesShown: false, railOrder: [] })
+  useShell.setState({
+    filesShown: false,
+    railOrder: [],
+    panelCollapsed: {},
+    chatThreadId: undefined,
+    workbench: undefined,
+  })
   const spy = spyOn(globalThis, 'fetch').mockImplementation(
     (async () =>
       new Response(null, { status: 404 })) as unknown as typeof fetch,
@@ -87,6 +96,89 @@ test('on the desktop, Files leaves a mode that covers the panel', async () => {
   expect(useShell.getState().filesShown).toBe(true)
 })
 
+test('Home restores its normal panel from Files before toggling it closed', async () => {
+  const { router, rendered } = renderRail({ collapsible: true })
+  const { container } = await rendered
+  const files = await waitFor(() =>
+    container.querySelector<HTMLButtonElement>('button[aria-label="Files"]'),
+  )
+  const home = await waitFor(() =>
+    container.querySelector<HTMLButtonElement>('button[aria-label="Home"]'),
+  )
+
+  await click(files)
+  await waitFor(() => router.state.location.pathname === '/')
+  expect(useShell.getState().filesShown).toBe(true)
+
+  await click(home)
+  expect(useShell.getState().filesShown).toBe(false)
+  expect(useShell.getState().panelCollapsed.chat).toBe(false)
+  expect(home.getAttribute('aria-expanded')).toBe('true')
+  expect(files.getAttribute('aria-pressed')).toBe('false')
+  expect(router.state.location.pathname).toBe('/')
+
+  await click(home)
+  expect(useShell.getState().panelCollapsed.chat).toBe(true)
+  expect(home.getAttribute('aria-expanded')).toBe('false')
+})
+
+test('a destination leaves Files and reopens its previously collapsed panel', async () => {
+  useShell.setState({ panelCollapsed: { notes: true } })
+  const { router, rendered } = renderRail({ collapsible: true }, '/')
+  const { container } = await rendered
+  const files = await waitFor(() =>
+    container.querySelector<HTMLButtonElement>('button[aria-label="Files"]'),
+  )
+  const notes = await waitFor(() =>
+    container.querySelector<HTMLButtonElement>('button[aria-label="Notes"]'),
+  )
+
+  await click(files)
+  expect(useShell.getState().filesShown).toBe(true)
+  await click(notes)
+  await waitFor(() => router.state.location.pathname === '/notes')
+
+  expect(useShell.getState().filesShown).toBe(false)
+  expect(useShell.getState().panelCollapsed.notes).toBe(false)
+  expect(notes.getAttribute('aria-expanded')).toBe('true')
+})
+
+test('on a phone, the active destination returns from Files to its normal list', async () => {
+  const { router, rendered } = renderRail({}, '/')
+  const { container } = await rendered
+  const files = await waitFor(() =>
+    container.querySelector<HTMLButtonElement>('button[aria-label="Files"]'),
+  )
+  const home = await waitFor(() =>
+    container.querySelector<HTMLButtonElement>('button[aria-label="Home"]'),
+  )
+
+  await click(files)
+  expect(useShell.getState().filesShown).toBe(true)
+  await click(home)
+
+  expect(useShell.getState().filesShown).toBe(false)
+  expect(router.state.location.pathname).toBe('/')
+})
+
+test('Home exits the full workspace and reveals its normal panel', async () => {
+  useShell.setState({ workbench: 'full', panelCollapsed: { chat: true } })
+  const { router, rendered } = renderRail(
+    { collapsible: true, workspaceFull: true },
+    '/',
+  )
+  const { container } = await rendered
+  const home = await waitFor(() =>
+    container.querySelector<HTMLButtonElement>('button[aria-label="Home"]'),
+  )
+
+  await click(home)
+
+  expect(useShell.getState().workbench).toBe('closed')
+  expect(useShell.getState().panelCollapsed.chat).toBe(false)
+  expect(router.state.location.pathname).toBe('/')
+})
+
 test('the rail keeps the order destinations were dragged into', () => {
   const modes = (order: Parameters<typeof orderModes>[0]) =>
     orderModes(order).map((entry) => entry.mode)
@@ -110,6 +202,20 @@ test('the rail keeps the order destinations were dragged into', () => {
     'pages',
     'vault',
     'spaces',
+  ])
+  // Records moved into the Index; an order saved while the CRM had its own
+  // place on the rail still lists only the destinations there are.
+  expect(
+    modes(['crm' as Parameters<typeof orderModes>[0][number], 'ide']),
+  ).toEqual([
+    'ide',
+    'chat',
+    'index',
+    'notes',
+    'pages',
+    'vault',
+    'spaces',
+    'canvas',
   ])
 })
 
@@ -140,5 +246,22 @@ test('Alt and an arrow move a destination without opening it', async () => {
   // A screen reader hears where it went.
   expect(container.querySelector('#rail-modes-moved')?.textContent).toBe(
     `IDE moved to position ${labels().length - 2} of ${labels().length}.`,
+  )
+})
+
+test("on the desktop the tab joins the Vault's sheet, which covers the open panel", async () => {
+  useShell.setState({ panelCollapsed: {} })
+  const { router, rendered } = renderRail({ collapsible: true })
+  await rendered
+  const junction = await waitFor(() =>
+    document.querySelector<HTMLElement>('.rail-junction'),
+  )
+  expect(junction.dataset.joins).toBe('sheet')
+  await act(async () => router.navigate({ to: '/' }))
+  await waitFor(() =>
+    document.querySelector<HTMLElement>('.rail-junction')?.dataset.joins ===
+    'navigation'
+      ? true
+      : undefined,
   )
 })

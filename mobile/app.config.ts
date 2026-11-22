@@ -1,0 +1,162 @@
+// SOURCING: Expo app config (expo-router, expo-build-properties for the iOS 18 floor, the local theorem-session module plugin)
+import type { ConfigContext, ExpoConfig } from 'expo/config'
+
+/**
+ * The Theorem authority, OAuth client and callback are build inputs, not code:
+ * a personal tester now, a production store later. Each falls back to the
+ * personal deployment the web app on theorem.rs also uses.
+ */
+const authority = process.env.THEOREM_AUTHORITY ?? 'https://travis-theorem-personal.fly.dev'
+const oauthClientId = process.env.THEOREM_OAUTH_CLIENT_ID ?? 'theorem-ios'
+// Theorem refuses custom-scheme redirect URIs, so sign-in returns through a
+// claimed HTTPS callback (ASWebAuthenticationSession, iOS 17.4+). The app
+// must be associated with this host: see docs/sign-in.md.
+const oauthRedirectUri = process.env.THEOREM_OAUTH_REDIRECT_URI ?? 'https://theorem.rs/auth/ios/callback'
+// The web app's App host (Theorem-UI src/routes/app-host.tsx): Apps run in it, in a WebView, as the web runs them.
+// A development build may point it at a local web server, e.g. http://<this Mac>:3000/app-host.
+const appHost = process.env.THEOREM_APP_HOST ?? 'https://theorem.rs/app-host'
+const bundleIdentifier = process.env.THEOREM_IOS_BUNDLE_ID ?? 'rs.theorem.app'
+// One App Group holds what the app and its extensions pass each other (shared
+// items today). The share extension's identifier is the app's with a suffix.
+const appGroup = process.env.THEOREM_IOS_APP_GROUP ?? `group.${bundleIdentifier}`
+// The EAS project (@commonplaces/theorem). Override both for another Expo account.
+const easOwner = process.env.EAS_OWNER ?? 'commonplaces'
+const easProjectId = process.env.EAS_PROJECT_ID ?? '2e3a9e30-8c11-4b4d-8fdb-7802ffe23c92'
+
+export default ({ config }: ConfigContext): ExpoConfig => ({
+  ...config,
+  name: 'Theorem',
+  slug: 'theorem',
+  owner: easOwner,
+  version: '0.1.0',
+  scheme: 'theorem',
+  orientation: 'default',
+  icon: './assets/icon.png',
+  userInterfaceStyle: 'automatic',
+  backgroundColor: '#1c1d1e',
+  ios: {
+    bundleIdentifier,
+    // One universal app: the iPad gets the sidebar layout, and narrow
+    // multitasking windows collapse to the selected detail.
+    supportsTablet: true,
+    requireFullScreen: false,
+    // The `mode=developer` entry lets a device in Developer Mode (with
+    // Associated Domains Development on) read the association straight from
+    // the host instead of Apple's CDN, which caches it for hours. Other
+    // devices ignore that entry and use the plain one.
+    associatedDomains: [
+      `webcredentials:${new URL(oauthRedirectUri).host}`,
+      `webcredentials:${new URL(oauthRedirectUri).host}?mode=developer`,
+    ],
+    infoPlist: {
+      // Standard TLS and SSH only, the same declaration Remux makes; review before App Store submission.
+      ITSAppUsesNonExemptEncryption: false,
+      // Remux-derived terminal sessions (modules/theorem-session): dictation into the
+      // session composer, hosts on the local network, and iPad pointer and keyboard input.
+      NSMicrophoneUsageDescription: 'Theorem uses the microphone when you dictate into a terminal session.',
+      NSSpeechRecognitionUsageDescription:
+        'Theorem turns what you dictate into a terminal session into text on this device.',
+      NSLocalNetworkUsageDescription:
+        'Theorem connects to computers on your network when you open a terminal session on them.',
+      UIApplicationSupportsIndirectInputEvents: true,
+      // The screen-sharing prototype (modules/theo-capture, iOS 27): the whole
+      // screen keeps being captured in other apps only with `screen-capture`,
+      // and the microphone only with `audio`. Review both before a store build.
+      UIBackgroundModes: ['screen-capture', 'audio'],
+      NSScreenCaptureUsageDescription:
+        'Theorem captures your screen only after you start sharing it, so Theo can follow what you are doing.',
+    },
+  },
+  plugins: [
+    // Listed first because Xcode project mods run in reverse order: this one runs after
+    // expo-sharing and expo-widgets and gives their extension groups their own Info.plist
+    // reference, which Xcode 27.2 requires (see the plugin).
+    './plugins/own-group-file-references.js',
+    'expo-router',
+    [
+      'expo-splash-screen',
+      {
+        image: './assets/splash-icon.png',
+        imageWidth: 160,
+        resizeMode: 'contain',
+        backgroundColor: '#f3f3f3',
+        dark: { image: './assets/splash-icon.png', backgroundColor: '#1c1d1e' },
+      },
+    ],
+    'expo-secure-store',
+    'expo-sqlite',
+    'expo-web-browser',
+    'expo-font',
+    [
+      // Camera and Photos for intake. The photo picker runs out of process and
+      // needs no library permission. Intake records no audio: the microphone
+      // string stays the terminal's, which this plugin would otherwise replace.
+      'expo-image-picker',
+      {
+        cameraPermission: 'Theorem uses the camera when you photograph something to give to a conversation.',
+        photosPermission: false,
+        microphonePermission: 'Theorem uses the microphone when you dictate into a terminal session.',
+      },
+    ],
+    [
+      // The share sheet: a share extension (`<bundle id>.ShareExtension`) that
+      // hands the shared items to the app through the App Group and opens
+      // intake. Receiving is experimental in expo-sharing (SDK 58).
+      'expo-sharing',
+      {
+        ios: {
+          enabled: true,
+          appGroupId: appGroup,
+          extensionBundleIdentifier: `${bundleIdentifier}.ShareExtension`,
+          activationRule: {
+            supportsText: true,
+            supportsWebUrlWithMaxCount: 1,
+            supportsImageWithMaxCount: 10,
+            supportsFileWithMaxCount: 10,
+          },
+        },
+      },
+    ],
+    [
+      // The Live Activity for an ongoing task (features/presence). The plugin
+      // adds a widget extension (`<bundle id>.ExpoWidgetsTarget`) in the same
+      // App Group. No home-screen widget is declared, and push updates are off:
+      // Theorem has no route that sends them yet, so the phone only updates
+      // the activity while the app runs.
+      'expo-widgets',
+      {
+        bundleIdentifier: `${bundleIdentifier}.ExpoWidgetsTarget`,
+        groupIdentifier: appGroup,
+        enablePushNotifications: false,
+        widgets: [],
+      },
+    ],
+    [
+      // The event editor for a proposed event (features/phone-actions). On
+      // iOS 17 and later it runs outside the app and asks for no permission;
+      // these strings are what iOS would show if a later feature asked.
+      'expo-calendar',
+      {
+        calendarPermission:
+          'Theorem adds an event to your calendar only when you save it yourself in the event editor.',
+        remindersPermission: 'Theorem does not use your reminders.',
+      },
+    ],
+    // Theo's actions for Shortcuts, Siri, Spotlight and the Action button. The
+    // Swift in app-intents/ is compiled into the app target (inline modules),
+    // which is where Apple's build reads App Intents from. Alpha in SDK 58.
+    'expo-app-intents',
+    [
+      'expo-build-properties',
+      // The Remux session feature and its GhosttyKit build target iOS 18.
+      { ios: { deploymentTarget: '18.0' } },
+    ],
+    // Puts Remux's images in the app's asset catalog (see the plugin for why).
+    './modules/theorem-session/app.plugin.js',
+  ],
+  experiments: { typedRoutes: true, inlineModules: { watchedDirectories: ['app-intents'] } },
+  extra: {
+    theorem: { authority, oauthClientId, oauthRedirectUri, appHost },
+    eas: { projectId: easProjectId },
+  },
+})

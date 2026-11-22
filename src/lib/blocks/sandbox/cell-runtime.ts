@@ -28,8 +28,8 @@ async function main(): Promise<void> {
       return null
     },
   )
-  observeHeight((height) => {
-    void call<PageMethods, 'frame.resize'>(rpc, 'frame.resize', { height })
+  observeHeight((height, fills) => {
+    void call<PageMethods, 'frame.resize'>(rpc, 'frame.resize', { height, fills })
   })
   observeSnapshots((html) => {
     void call<PageMethods, 'frame.snapshot'>(rpc, 'frame.snapshot', { html })

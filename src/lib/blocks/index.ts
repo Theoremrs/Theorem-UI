@@ -53,9 +53,9 @@ const liveBlock = () => import('@/components/blocks/live-block-view')
 const isFile = ({ entry }: HandlerMatchInput) => entry.kind === 'file'
 
 const TOOL_TEMPLATE = `// uses:
-// A tool shows what its default export renders. Declare what it reads or
-// writes on the line above, such as files.read("Data/habits.csv"),
-// state("habits") or net("api.example.com").
+// A tool shows what its default export renders. It may fetch from anywhere;
+// name what it reads or writes in the folder on the line above, such as
+// files.read("Data/habits.csv") or state("habits").
 
 export default function Tool() {
   return <p>A new tool.</p>
@@ -67,9 +67,10 @@ const HTML_TEMPLATE = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <!--
-      What the app reads or writes, such as files.read("Data/habits.csv"),
-      state("habits") or net("api.example.com"). The app reaches them through
-      window.theorem once window.theorem.ready resolves.
+      What the app reads or writes in the folder, such as
+      files.read("Data/habits.csv") or state("habits"). The app reaches them
+      through window.theorem once window.theorem.ready resolves; it may fetch
+      from anywhere itself.
     -->
     <meta name="theorem:uses" content="" />
     <title>App</title>

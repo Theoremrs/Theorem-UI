@@ -1,0 +1,243 @@
+{
+  "checks": [
+    {
+      "tooltips": "theme and terminal have no hover popup"
+    },
+    {
+      "field": "glass receives frames with the companion off"
+    },
+    {
+      "material": "glass",
+      "dark": true,
+      "paint": {
+        "material": "glass",
+        "live": "live",
+        "ink": "rgb(206, 204, 202)",
+        "backdrop": "blur(6px)",
+        "planes": [
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          }
+        ],
+        "canvas": {
+          "width": 598,
+          "height": 90
+        },
+        "transmittedBackdrop": {
+          "redPixel": [
+            140,
+            12,
+            11
+          ],
+          "bluePixel": [
+            12,
+            12,
+            138
+          ]
+        },
+        "editComposer": {
+          "material": "glass",
+          "live": "live",
+          "planes": [
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)"
+          ]
+        }
+      }
+    },
+    {
+      "material": "glass",
+      "dark": false,
+      "paint": {
+        "material": "glass",
+        "live": "live",
+        "ink": "rgb(50, 48, 46)",
+        "backdrop": "blur(6px)",
+        "planes": [
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          }
+        ],
+        "canvas": {
+          "width": 598,
+          "height": 90
+        },
+        "transmittedBackdrop": {
+          "redPixel": [
+            222,
+            80,
+            78
+          ],
+          "bluePixel": [
+            82,
+            80,
+            218
+          ]
+        },
+        "editComposer": {
+          "material": "glass",
+          "live": "live",
+          "planes": [
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)"
+          ]
+        }
+      }
+    },
+    {
+      "material": "liquid",
+      "dark": true,
+      "paint": {
+        "material": "liquid",
+        "live": "live",
+        "ink": "rgb(206, 204, 202)",
+        "backdrop": "blur(6px)",
+        "planes": [
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          }
+        ],
+        "canvas": {
+          "width": 598,
+          "height": 90
+        },
+        "transmittedBackdrop": {
+          "redPixel": [
+            139,
+            12,
+            11
+          ],
+          "bluePixel": [
+            12,
+            12,
+            138
+          ]
+        },
+        "editComposer": {
+          "material": "liquid",
+          "live": "live",
+          "planes": [
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)"
+          ]
+        }
+      }
+    },
+    {
+      "material": "liquid",
+      "dark": false,
+      "paint": {
+        "material": "liquid",
+        "live": "live",
+        "ink": "rgb(50, 48, 46)",
+        "backdrop": "blur(6px)",
+        "planes": [
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          }
+        ],
+        "canvas": {
+          "width": 598,
+          "height": 90
+        },
+        "transmittedBackdrop": {
+          "redPixel": [
+            222,
+            80,
+            78
+          ],
+          "bluePixel": [
+            82,
+            80,
+            218
+          ]
+        },
+        "editComposer": {
+          "material": "liquid",
+          "live": "live",
+          "planes": [
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)"
+          ]
+        }
+      }
+    },
+    {
+      "forcedColors": "opaque reading plane retained"
+    },
+    {
+      "phone": "Header toggles only mode and preserves the draft"
+    },
+    {
+      "settings": "Account → Settings → Appearance controls update the real preferences"
+    }
+  ]
+}

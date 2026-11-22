@@ -1,0 +1,81 @@
+// SOURCING: lucide-react (one line mark per built-in type and for the CRM's own controls; the app's Icon set has no person, building or handshake)
+import {
+  Building2,
+  CalendarRange,
+  Handshake,
+  MessagesSquare,
+  Shapes,
+  ShieldAlert,
+  Target,
+  UserRound,
+  Waypoints,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import type { ObjectType } from '@/components/records/contract'
+import { cn } from '@/lib/utils'
+import { BUILT_IN, builtInName } from './model'
+import type { BuiltIn } from './model'
+
+const ICON: Record<BuiltIn, LucideIcon> = {
+  person: UserRound,
+  organization: Building2,
+  relationship: Waypoints,
+  activity: CalendarRange,
+  commitment: Handshake,
+  interaction: MessagesSquare,
+  goal: Target,
+  constraint: ShieldAlert,
+}
+
+/** A type's mark: its own for a built-in type, a general one for any other. */
+export function TypeIcon({
+  type,
+  className,
+}: {
+  type: ObjectType | undefined
+  className?: string
+}) {
+  const name = type ? builtInName(type) : undefined
+  const Mark = name ? ICON[name] : Shapes
+  return (
+    <Mark
+      aria-hidden
+      strokeWidth={1.75}
+      className={cn('size-4 shrink-0', className)}
+    />
+  )
+}
+
+/** A built-in type's mark by name, before the type is declared. */
+export function BuiltInIcon({
+  name,
+  className,
+}: {
+  name: BuiltIn
+  className?: string
+}) {
+  const Mark = ICON[name]
+  return (
+    <Mark
+      aria-hidden
+      strokeWidth={1.75}
+      className={cn('size-4 shrink-0', className)}
+    />
+  )
+}
+
+/** The mark for a type known only by its singular name, as an Index record names it. */
+export function NamedTypeIcon({
+  nameSingular,
+  className,
+}: {
+  nameSingular: string
+  className?: string
+}) {
+  const name = BUILT_IN.find((n) => n === nameSingular.toLowerCase())
+  return name ? (
+    <BuiltInIcon name={name} className={className} />
+  ) : (
+    <TypeIcon type={undefined} className={className} />
+  )
+}

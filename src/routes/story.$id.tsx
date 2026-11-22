@@ -2,15 +2,6 @@
 import { useIsFetching } from '@tanstack/react-query'
 import { createFileRoute, notFound } from '@tanstack/react-router'
 import { Suspense, lazy, useEffect, useState } from 'react'
-import {
-  showStory,
-  TerminalScreen,
-} from '@/components/terminal/terminal-screen'
-import type { TerminalAction } from '@/components/terminal/terminal-screen'
-import {
-  storySnapshot,
-  TERMINAL_STORIES,
-} from '@/components/terminal/terminal-stories'
 import { installFakeTheorem } from '@/stories/fake-theorem'
 import { findStory } from '@/stories/index'
 import { storyRoutes } from '@/stories/routes'
@@ -45,7 +36,9 @@ export const Route = createFileRoute('/story/$id')({
     },
     stringify: ({ id }) => ({ id }),
   },
-  loader: ({ params }) => {
+  loader: async ({ params }) => {
+    const { storySnapshot, TERMINAL_STORIES } =
+      await import('@/components/terminal/terminal-stories')
     const terminal = TERMINAL_STORIES.find((s) => s.id === params.id)
     if (terminal) {
       return {
@@ -65,45 +58,20 @@ export const Route = createFileRoute('/story/$id')({
   component: Story,
 })
 
+const TerminalStory = lazy(() => import('@/components/terminal/terminal-story'))
+
 function Story() {
   const story = Route.useLoaderData()
   return story.kind === 'terminal' ? (
-    <TerminalStory
-      id={story.id}
-      title={story.title}
-      snapshot={story.snapshot}
-    />
+    <Suspense>
+      <TerminalStory
+        id={story.id}
+        title={story.title}
+        snapshot={story.snapshot}
+      />
+    </Suspense>
   ) : (
     <ComponentStory id={story.id} />
-  )
-}
-
-function TerminalStory({
-  id,
-  title,
-  snapshot,
-}: {
-  id: string
-  title: string
-  snapshot: ReturnType<typeof storySnapshot>
-}) {
-  const key = `story:${id}`
-  const [action, setAction] = useState<TerminalAction>()
-  useEffect(() => showStory(key, snapshot), [key, snapshot])
-  return (
-    <main
-      data-story={id}
-      data-action={action && JSON.stringify(action)}
-      className="flex h-[640px] w-[900px] flex-col overflow-hidden"
-    >
-      <TerminalScreen
-        hostId={`story-terminal-${id}`}
-        tabbed={false}
-        tabs={[{ id: key, title }]}
-        active={key}
-        onAction={setAction}
-      />
-    </main>
   )
 }
 
@@ -113,7 +81,7 @@ function ComponentStory({ id }: { id: string }) {
   // effect's cleanup, and takes it out when the story closes, so the app it
   // links into reaches Theorem again.
   const [routes] = useState(() => {
-    const answers = storyRoutes(Date.now())
+    const answers = storyRoutes(Date.now(), findStory(id)?.routes)
     installFakeTheorem(answers)
     return answers
   })
@@ -141,10 +109,17 @@ function StoryReady() {
     if (fetching > 0) return
     let live = true
     let timer: ReturnType<typeof setTimeout> | undefined
-    // A quiet moment, since a query can start the commit after another ends.
-    void document.fonts.ready.then(() => {
-      if (live) timer = setTimeout(() => setSettled(true), 400)
-    })
+    // A quiet moment, since a query can start the commit after another ends; and nothing on the
+    // page still saying it has yet to draw (a story marks that with `data-story-pending`).
+    const settle = () => {
+      if (!live) return
+      timer = document.querySelector('[data-story-pending]')
+        ? setTimeout(settle, 50)
+        : setTimeout(() => {
+            if (live) setSettled(true)
+          }, 400)
+    }
+    void document.fonts.ready.then(settle)
     return () => {
       live = false
       clearTimeout(timer)

@@ -1,3 +1,4 @@
+import { appearancePair } from '@/lib/appearance-policy'
 // SOURCING: coss ui combobox (vendored as-is from https://coss.com/ui/r/combobox.json; registry imports point at this folder)
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
 import { ChevronsUpDownIcon, XIcon } from "lucide-react";
@@ -163,6 +164,7 @@ export function ComboboxPopup({
   align = "start",
   anchor: anchorProp,
   portalProps,
+  surfaceRef,
   ...props
 }: ComboboxPrimitive.Popup.Props & {
   align?: ComboboxPrimitive.Positioner.Props["align"];
@@ -171,6 +173,8 @@ export function ComboboxPopup({
   side?: ComboboxPrimitive.Positioner.Props["side"];
   anchor?: ComboboxPrimitive.Positioner.Props["anchor"];
   portalProps?: ComboboxPrimitive.Portal.Props;
+  /** The span that paints the popup's box, for a surface drawn over it. */
+  surfaceRef?: React.Ref<HTMLSpanElement>;
 }): React.ReactElement {
   const { chipsRef } = React.useContext(ComboboxContext);
   const anchor = anchorProp ?? chipsRef;
@@ -187,6 +191,7 @@ export function ComboboxPopup({
         sideOffset={sideOffset}
       >
         <span
+          ref={surfaceRef}
           className={cn(
             "relative flex max-h-full min-w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding shadow-lg/5 transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
             className,
@@ -195,6 +200,11 @@ export function ComboboxPopup({
           <ComboboxPrimitive.Popup
             className="flex max-h-[min(var(--available-height),23rem)] flex-1 flex-col text-foreground"
             data-slot="combobox-popup"
+            data-appearance-part="popover"
+            data-appearance-radius-role="field"
+            data-appearance-recipe="ui.label"
+            data-surface-role="popover"
+            {...appearancePair('primary', 'popover')}
             {...props}
           >
             {children}

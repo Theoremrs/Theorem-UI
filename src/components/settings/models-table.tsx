@@ -1,6 +1,6 @@
-// SOURCING: @tanstack/react-table v9 through the vendored TanStack Table kitchen-sink-shadcn-base data table (components/data-table: createTableHook, filter, sort and view lists, pagination, resizing); lib/theorem/models for the model shape and formatContext; Intl.NumberFormat for prices and counts
+// SOURCING: @tanstack/react-table v9 through the vendored TanStack Table kitchen-sink-shadcn-base data table (components/data-table: createTableHook, filter, sort and view lists, pagination, resizing); lib/theorem/models for the model shape and formatContext; Intl.NumberFormat for prices and counts; ./models-search for the catalog's own contiguous search and natural name order; ./model-details for the right-side identity panel
 import * as React from 'react'
-import type { Column } from '@tanstack/react-table'
+import type { Column, FilterFn, SortFn } from '@tanstack/react-table'
 import type { ExtendedColumnFilter } from '@/types/data-table'
 import type { features } from '@/components/data-table/features'
 import { DebouncedInput } from '@/components/data-table/debounced-input'
@@ -23,11 +23,22 @@ import { Button } from '@/components/ui/button'
 import { formatContext } from '@/lib/theorem/models'
 import type { ModelOption } from '@/lib/theorem/models'
 import { cn } from '@/lib/utils'
+import {
+  compareModelNames,
+  matchesModelQuery,
+  matchesModelTextFilter,
+  pageIndexAfterFilters,
+  pageIndexForRows,
+} from './models-search'
+import { ModelDetails } from './model-details'
 
 /** A model as the table holds it: the option plus the person's marks on it. */
 type ModelRow = ModelOption & { starred: boolean; inUse: boolean }
 
 const ToggleStarContext = React.createContext<(ref: string) => void>(() => {})
+const InspectContext = React.createContext<
+  (ref: string, trigger: HTMLElement) => void
+>(() => {})
 
 const MODALITY_LABELS: Record<string, string> = {
   text: 'Text',
@@ -76,23 +87,28 @@ function StarCell() {
 function ModelCell() {
   const cell = useCellContext<string>()
   const model = cell.row.original as ModelRow
+  const inspect = React.useContext(InspectContext)
+  const trigger = React.useRef<HTMLButtonElement>(null)
   return (
-    <div className="flex min-w-0 flex-col gap-0.5" title={model.description}>
-      <div className="flex min-w-0 items-center gap-1.5">
-        <span className="truncate text-ink">{model.name}</span>
-        {model.inUse && (
-          <Badge
-            size="sm"
-            className="border-transparent bg-redwood-container text-redwood-ink"
-          >
-            In use
-          </Badge>
-        )}
-      </div>
-      <span className="truncate font-mono text-[11px] text-ink-faint">
-        {model.ref}
+    <button
+      ref={trigger}
+      type="button"
+      className="flex min-w-0 flex-1 items-center justify-center gap-1.5"
+      aria-label={`Details for ${model.name}, ${model.ref}`}
+      onClick={() => inspect(model.ref, trigger.current!)}
+    >
+      <span className="truncate text-ink" data-model-name title={model.name}>
+        {model.name}
       </span>
-    </div>
+      {model.inUse && (
+        <Badge
+          size="sm"
+          className="shrink-0 border-transparent bg-redwood-container text-redwood-ink"
+        >
+          In use
+        </Badge>
+      )}
+    </button>
   )
 }
 
@@ -104,40 +120,27 @@ function TokensCell() {
 function PriceCell() {
   const value = useCellContext<number | undefined>().getValue()
   if (value === undefined) return <Faint />
-  return value === 0 ? (
-    <span className="text-teal-ink">Free</span>
-  ) : (
-    <>{usd.format(value)}</>
-  )
+  return value === 0 ? <>Free</> : <>{usd.format(value)}</>
 }
 
 function InputsCell() {
   const inputs = useCellContext<readonly string[]>().getValue()
+  const full = inputs.map(modalityLabel).join(', ')
   return (
-    <div className="flex gap-1 overflow-hidden">
-      {inputs.map((input) => (
-        <Badge
-          key={input}
-          size="sm"
-          variant="outline"
-          className="text-ink-muted"
-        >
-          {modalityLabel(input)}
-        </Badge>
-      ))}
-    </div>
+    <span
+      className="truncate text-ink-muted"
+      data-model-inputs
+      title={full || undefined}
+      aria-label={full || undefined}
+    >
+      {full}
+    </span>
   )
 }
 
 function BooleanCell() {
   const value = useCellContext<boolean>().getValue()
-  return value ? (
-    <Icon.Check aria-label="Yes" className="size-3.5 text-teal-ink" />
-  ) : (
-    <Faint>
-      <span aria-label="No">–</span>
-    </Faint>
-  )
+  return value ? <>Yes</> : <Faint>No</Faint>
 }
 
 function SourceCell() {
@@ -146,6 +149,34 @@ function SourceCell() {
 }
 
 const columnHelper = createAppColumnHelper<ModelRow>()
+
+/** Natural A-Z on the display name; vendor and ref break identical-name ties. */
+const nameSort: SortFn<typeof features, ModelRow> = (first, second) =>
+  compareModelNames(first.original, second.original)
+
+/**
+ * The catalog's global search: contiguous, case-insensitive, trimmed text in
+ * the name, canonical ref or vendor as separate fields. It reads the row, not
+ * the column value, so the hidden ref never widens a name match.
+ */
+const modelGlobalFilter: FilterFn<typeof features, ModelRow> = (
+  row,
+  _columnId,
+  value,
+) => matchesModelQuery(row.original, String(value ?? ''))
+
+/**
+ * The Model column's text filter: the same operators and joins the filter
+ * list offers, with both sides compared case-insensitively (the shared
+ * dynamic filter compares a raw value against case-folded comparators).
+ */
+const modelTextFilter: FilterFn<typeof features, ModelRow> = (row, columnId) =>
+  matchesModelTextFilter(
+    String(row.getValue(columnId) ?? ''),
+    (row.table.store.state.columnFilters as Array<ExtendedColumnFilter>).filter(
+      (filter) => filter.id === columnId,
+    ),
+  )
 
 /** Options with how many models carry each, for the filter list's facets. */
 function countOptions(
@@ -165,6 +196,9 @@ function modelColumns(models: readonly ModelOption[]) {
     enableGlobalFilter: false,
     size: 92,
   }
+  // Every column is centered (owner, 2026-11-20); the header button centers
+  // its label and sort mark together.
+  const centeredHeader = 'flex w-full justify-center'
   return columnHelper.columns([
     columnHelper.accessor('starred', {
       id: 'starred',
@@ -175,19 +209,22 @@ function modelColumns(models: readonly ModelOption[]) {
       ),
       cell: () => <StarCell />,
       sortFn: 'basic',
+      sortDescFirst: true,
       enableHiding: false,
       enableResizing: false,
       enableGlobalFilter: false,
       size: 40,
       meta: { label: 'Starred', variant: 'boolean' },
     }),
-    // Name and ref together: sorting reads the name first, and search and the
-    // text filter match either.
-    columnHelper.accessor((row) => `${row.name} ${row.ref}`, {
+    // The visible display name alone: the hidden ref must not steer the
+    // order, and the catalog's own global filter reads name, ref and vendor
+    // as separate fields.
+    columnHelper.accessor('name', {
       id: 'name',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <ModelCell />,
-      sortFn: 'alphanumeric',
+      sortFn: nameSort,
+      filterFn: modelTextFilter,
       enableHiding: false,
       size: 240,
       minSize: 160,
@@ -195,44 +232,47 @@ function modelColumns(models: readonly ModelOption[]) {
     }),
     columnHelper.accessor('vendor', {
       id: 'vendor',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: ({ cell }) => <cell.TextCell />,
+      enableGlobalFilter: false,
       size: 112,
       meta: { label: 'Vendor', variant: 'multi-select' },
     }),
     columnHelper.accessor('contextLength', {
       id: 'contextLength',
       ...numeric,
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <TokensCell />,
-      meta: { label: 'Context', variant: 'number' },
+      size: 148,
+      meta: { label: 'Context (tokens)', variant: 'number' },
     }),
     columnHelper.accessor('maxOutput', {
       id: 'maxOutput',
       ...numeric,
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <TokensCell />,
-      size: 104,
-      meta: { label: 'Max output', variant: 'number' },
+      size: 172,
+      meta: { label: 'Max output (tokens)', variant: 'number' },
     }),
     columnHelper.accessor('promptPrice', {
       id: 'promptPrice',
       ...numeric,
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <PriceCell />,
+      size: 108,
       meta: { label: 'Input $/M', variant: 'number' },
     }),
     columnHelper.accessor('completionPrice', {
       id: 'completionPrice',
       ...numeric,
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <PriceCell />,
-      size: 100,
+      size: 116,
       meta: { label: 'Output $/M', variant: 'number' },
     }),
     columnHelper.accessor('inputs', {
       id: 'inputs',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <InputsCell />,
       getUniqueValues: (row) => [...row.inputs],
       enableSorting: false,
@@ -249,20 +289,22 @@ function modelColumns(models: readonly ModelOption[]) {
     }),
     columnHelper.accessor('tools', {
       id: 'tools',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <BooleanCell />,
       sortFn: 'basic',
+      sortDescFirst: true,
       enableGlobalFilter: false,
       size: 120,
       meta: { label: 'Native tools', variant: 'boolean' },
     }),
     columnHelper.accessor('reasoning', {
       id: 'reasoning',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <BooleanCell />,
       sortFn: 'basic',
+      sortDescFirst: true,
       enableGlobalFilter: false,
-      size: 96,
+      size: 112,
       meta: { label: 'Reasoning', variant: 'boolean' },
     }),
     columnHelper.accessor(
@@ -270,7 +312,7 @@ function modelColumns(models: readonly ModelOption[]) {
         row.addedAtMs === undefined ? undefined : new Date(row.addedAtMs),
       {
         id: 'addedAt',
-        header: ({ header }) => <header.ColumnHeader />,
+        header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
         cell: ({ cell }) => <cell.DateCell />,
         sortFn: 'datetime',
         sortUndefined: 'last',
@@ -281,7 +323,7 @@ function modelColumns(models: readonly ModelOption[]) {
     ),
     columnHelper.accessor('source', {
       id: 'source',
-      header: ({ header }) => <header.ColumnHeader />,
+      header: ({ header }) => <header.ColumnHeader className={centeredHeader} />,
       cell: () => <SourceCell />,
       enableGlobalFilter: false,
       size: 128,
@@ -336,6 +378,10 @@ export function ModelsTable({
     Array<ExtendedColumnFilter>
   >([])
   const [globalFilter, setGlobalFilter] = React.useState('')
+  const [pageIndex, setPageIndex] = React.useState(0)
+  const [pageSize, setPageSize] = React.useState(50)
+  const [inspected, setInspected] = React.useState<string | undefined>()
+  const detailsTrigger = React.useRef<HTMLElement | null>(null)
 
   const data = React.useMemo(() => {
     const stars = new Set(starred)
@@ -348,22 +394,47 @@ export function ModelsTable({
 
   const columns = React.useMemo(() => modelColumns(models), [models])
 
+  // A query or column-filter change returns to page one; starring, which
+  // changes only the marks on the rows, never moves the page.
+  const search = React.useCallback((value: string) => {
+    setGlobalFilter(value)
+    setPageIndex(pageIndexAfterFilters())
+  }, [])
+  const filterColumns = React.useCallback(
+    (updater: React.SetStateAction<Array<ExtendedColumnFilter>>) => {
+      setColumnFilters(updater)
+      setPageIndex(pageIndexAfterFilters())
+    },
+    [],
+  )
+
   const table = useAppTable(
     {
       columns,
       data,
       getRowId: (row) => row.ref,
-      state: { columnFilters, globalFilter },
-      onColumnFiltersChange: setColumnFilters,
-      onGlobalFilterChange: setGlobalFilter,
-      // Starring a model changes the data; the page the person is on should stay.
+      state: {
+        columnFilters,
+        globalFilter,
+        pagination: { pageIndex, pageSize },
+      },
+      onColumnFiltersChange: filterColumns,
+      onGlobalFilterChange: (updater) =>
+        search(typeof updater === 'function' ? updater(globalFilter) : updater),
+      onPaginationChange: (updater) => {
+        const next =
+          typeof updater === 'function'
+            ? updater({ pageIndex, pageSize })
+            : updater
+        setPageIndex(next.pageIndex)
+        setPageSize(next.pageSize)
+      },
+      globalFilterFn: modelGlobalFilter,
+      // The page resets deliberately on query/filter changes above, and
+      // clamps below; a star must not reset it.
       autoResetPageIndex: false,
       initialState: {
-        sorting: [
-          { id: 'starred', desc: true },
-          { id: 'name', desc: false },
-        ],
-        pagination: { pageIndex: 0, pageSize: 50 },
+        sorting: [{ id: 'name', desc: false }],
         columnVisibility: { maxOutput: false, source: false, addedAt: false },
         columnPinning: { start: ['starred', 'name'], end: [] },
         columnOrder: columns.map((c) => c.id ?? ''),
@@ -372,110 +443,149 @@ export function ModelsTable({
     (state) => state,
   )
 
+  const rowCount = table.getFilteredRowModel().rows.length
+  // A catalog refresh can shrink the list under the current page: hold the
+  // page while it exists, clamp to the last page when it does not. Adjusting
+  // state during render is React's documented pattern for derived corrections.
+  const [previousRowCount, setPreviousRowCount] = React.useState(rowCount)
+  if (previousRowCount !== rowCount) {
+    setPreviousRowCount(rowCount)
+    const clamped = pageIndexForRows(pageIndex, rowCount, pageSize)
+    if (clamped !== pageIndex) setPageIndex(clamped)
+  }
+
+  const inspectedModel = inspected
+    ? data.find((model) => model.ref === inspected)
+    : undefined
+  const inspect = React.useCallback((ref: string, trigger: HTMLElement) => {
+    detailsTrigger.current = trigger
+    setInspected(ref)
+  }, [])
+
   const pinnedCell = (pinned: false | 'start' | 'end') =>
     pinned ? 'bg-raised group-hover/row:bg-hover' : undefined
 
   return (
     <ToggleStarContext.Provider value={onToggleStar}>
-      <table.AppTable>
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-40 flex-1">
-              <Icon.Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-faint" />
-              <DebouncedInput
-                value={globalFilter}
-                onChange={(value) => setGlobalFilter(String(value))}
-                placeholder="Search models..."
-                aria-label="Search models"
-                className="h-7 pl-8 text-sm"
-              />
+      <InspectContext.Provider value={inspect}>
+        <table.AppTable>
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-40 flex-1">
+                <Icon.Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-faint" />
+                <DebouncedInput
+                  value={globalFilter}
+                  onChange={(value) => search(String(value))}
+                  placeholder="Search models..."
+                  aria-label="Search models"
+                  className="h-7 pl-8 text-sm"
+                />
+              </div>
+              <table.FilterList />
+              <table.SortList />
+              <table.ViewOptions />
             </div>
-            <table.FilterList />
-            <table.SortList />
-            <table.ViewOptions />
-          </div>
-          <div className="overflow-hidden rounded-lg border border-separator bg-raised">
-            <Table
-              containerClassName="max-h-[min(70vh,44rem)] overflow-auto"
-              style={{ width: table.getTotalSize(), minWidth: '100%' }}
-            >
-              <TableHeader className="sticky top-0 z-20 bg-raised [&_tr]:border-separator">
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow
-                    key={headerGroup.id}
-                    className="hover:bg-transparent"
-                  >
-                    {headerGroup.headers
-                      .filter((header) => header.column.getIsVisible())
-                      .map((header) => (
-                        <table.AppHeader header={header} key={header.id}>
-                          {(h) => (
-                            <TableHead
-                              colSpan={h.colSpan}
-                              className={cn(
-                                'relative h-9',
-                                h.column.id === 'starred' && 'px-0',
-                                h.column.getIsPinned() && 'bg-raised',
-                              )}
-                              style={{
-                                flexGrow: h.getSize(),
-                                width: h.getSize(),
-                                ...pinningStyles(h.column),
-                              }}
-                            >
-                              {h.isPlaceholder ? null : <h.FlexRender />}
-                              <h.ResizeHandle />
-                            </TableHead>
-                          )}
-                        </table.AppHeader>
-                      ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows.length ? (
-                  table.getRowModel().rows.map((row) => (
+            <div className="overflow-hidden rounded-lg border border-separator bg-raised">
+              <Table
+                containerClassName="max-h-[min(70vh,44rem)] overflow-auto"
+                style={{ width: table.getTotalSize(), minWidth: '100%' }}
+              >
+                <TableHeader className="sticky top-0 z-20 bg-raised [&_tr]:border-separator">
+                  {table.getHeaderGroups().map((headerGroup) => (
                     <TableRow
-                      key={row.id}
-                      className="group/row border-separator"
-                      data-in-use={row.original.inUse ? '' : undefined}
+                      key={headerGroup.id}
+                      className="hover:bg-transparent"
                     >
-                      {row.getVisibleCells().map((cell) => (
-                        <table.AppCell cell={cell} key={cell.id}>
-                          {(c) => (
-                            <TableCell
-                              className={cn(
-                                'py-1.5 text-sm text-ink',
-                                c.column.id === 'starred' &&
-                                  'justify-center px-0',
-                                pinnedCell(c.column.getIsPinned()),
-                              )}
-                              style={{
-                                flexGrow: c.column.getSize(),
-                                width: c.column.getSize(),
-                                ...pinningStyles(c.column),
-                              }}
-                            >
-                              <c.FlexRender />
-                            </TableCell>
-                          )}
-                        </table.AppCell>
-                      ))}
+                      {headerGroup.headers
+                        .filter((header) => header.column.getIsVisible())
+                        .map((header) => (
+                          <table.AppHeader header={header} key={header.id}>
+                            {(h) => (
+                              <TableHead
+                                colSpan={h.colSpan}
+                                className={cn(
+                                  // Twenty's sticky 32px header row, 13px text,
+                                  // a vertical rule between columns.
+                                  'relative h-8 justify-center border-s border-separator text-[13px] first:border-s-0',
+                                  h.column.id === 'starred' && 'px-0',
+                                  h.column.getIsPinned() && 'bg-raised',
+                                )}
+                                style={{
+                                  flexGrow: h.getSize(),
+                                  width: h.getSize(),
+                                  ...pinningStyles(h.column),
+                                }}
+                              >
+                                {h.isPlaceholder ? null : <h.FlexRender />}
+                                <h.ResizeHandle />
+                              </TableHead>
+                            )}
+                          </table.AppHeader>
+                        ))}
                     </TableRow>
-                  ))
-                ) : (
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell className="w-full justify-center py-8 text-sm text-ink-muted">
-                      No model matches.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {table.getRowModel().rows.length ? (
+                    table.getRowModel().rows.map((row) => (
+                      <TableRow
+                        key={row.id}
+                        className="group/row border-separator"
+                        data-in-use={row.original.inUse ? '' : undefined}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <table.AppCell cell={cell} key={cell.id}>
+                            {(c) => (
+                              <TableCell
+                                className={cn(
+                                  // Twenty's 36px rows, 13px text, centered,
+                                  // a vertical rule between columns.
+                                  'h-9 justify-center border-s border-separator py-0 text-[13px] text-ink first:border-s-0',
+                                  c.column.id === 'starred' &&
+                                    'justify-center px-0',
+                                  [
+                                    'contextLength',
+                                    'maxOutput',
+                                    'promptPrice',
+                                    'completionPrice',
+                                  ].includes(c.column.id) &&
+                                    'tabular-nums',
+                                  pinnedCell(c.column.getIsPinned()),
+                                )}
+                                style={{
+                                  flexGrow: c.column.getSize(),
+                                  width: c.column.getSize(),
+                                  ...pinningStyles(c.column),
+                                }}
+                              >
+                                <c.FlexRender />
+                              </TableCell>
+                            )}
+                          </table.AppCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell className="w-full justify-center py-8 text-sm text-ink-muted">
+                        No model matches.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            <table.Pagination pageSizeOptions={[25, 50, 100]} noun="model" />
           </div>
-          <table.Pagination pageSizeOptions={[25, 50, 100]} noun="model" />
-        </div>
-      </table.AppTable>
+        </table.AppTable>
+      </InspectContext.Provider>
+      <ModelDetails
+        model={inspectedModel}
+        starred={inspectedModel?.starred ?? false}
+        inUse={inspectedModel?.inUse ?? false}
+        onClose={() => setInspected(undefined)}
+        returnFocusTo={detailsTrigger}
+      />
     </ToggleStarContext.Provider>
   )
 }

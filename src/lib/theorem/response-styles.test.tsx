@@ -502,6 +502,46 @@ test("a conversation's choice still on its way holds a turn back until Theorem k
   await waitFor(() => probe.current.isSuccess)
 })
 
+test('overlapping picks for one conversation are saved in order before its next turn', async () => {
+  const probe = await mountHook(() => ({
+    menu: useSelectionMutation(),
+    dialog: useSelectionMutation(),
+  }))
+  const path = '/api/chat/v1/response-styles/selection'
+  const writes = () => sent('PUT', path)
+  let first = () => {}
+  let second = () => {}
+  slow = new Promise<void>((resolve) => { first = resolve })
+  const choose = (style: string, threadId = 't1') =>
+    ({ scope: 'conversation', style, threadId }) as const
+
+  await act(async () => probe.current.menu.mutate(choose('theorem.style.formal')))
+  await waitFor(() => writes().length === 1)
+  slow = new Promise<void>((resolve) => { second = resolve })
+  await act(async () => {
+    probe.current.dialog.mutate(choose('theorem.style.concise'))
+    probe.current.menu.mutate(choose('theorem.style.educational', 't2'))
+  })
+  // A different conversation writes immediately; the second pick for t1 waits.
+  await waitFor(() => writes().length >= 2)
+  expect(writes().map(({ body }) => body)).toEqual([
+    choose('theorem.style.formal'),
+    choose('theorem.style.educational', 't2'),
+  ])
+  let ready = false
+  const turn = conversationStyleSettled('t1').then(() => { ready = true })
+  first()
+  await waitFor(() => writes().length === 3)
+  expect(writes()[2]?.body).toEqual(choose('theorem.style.concise'))
+  expect(ready).toBe(false)
+  await act(async () => {
+    second()
+    await turn
+  })
+  const catalog = await client.fetchQuery(responseStylesQuery({ threadId: 't1' }))
+  expect(catalog.selection.conversation).toBe('theorem.style.concise')
+})
+
 test('the shipped version is read again every time it is opened, and a saved revision once', async () => {
   const id = 'theorem.style.concise'
   const root = `/api/chat/v1/response-styles/styles/${id}/revisions`

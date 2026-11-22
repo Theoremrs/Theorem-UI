@@ -9,18 +9,32 @@ import { describeError, isSignedOut } from '@/lib/theorem/client'
 import { cn } from '@/lib/utils'
 import { scopeKey } from './contract'
 import type { IndexView, ViewOrigin, ViewRevision } from './contract'
-import { RecordInspector } from '@/components/records/record-inspector'
-import { objectTypeByName, parseRecordItemId } from '@/components/records/model'
+import { CrmRecordInspector } from '@/components/crm/index-views'
+import {
+  objectTypeByName,
+  parseRecordItemId,
+  recordItemId,
+} from '@/components/records/model'
 import { useDataModel } from '@/components/records/queries'
+import { WorkInspector } from '@/components/work/inspector'
+import {
+  isWorkView,
+  parseWorkItemId,
+  workItemId,
+} from '@/components/work/route'
+import { WorkScreenTitle } from '@/components/work/screen-title'
 import { Inspector } from './inspector'
 import type { IndexHost } from './library'
 import { useAskTheorem, useIndexPlace } from './navigation'
 import { observer } from './observe'
 import {
-  dataModelViewId,
   defaultViewFor,
   isDefaultView,
+  isFullBleedProgram,
   isWideProgram,
+  RECORD_PAGE_PREFIX,
+  RECORDS_HOME_VIEW_ID,
+  RECORDS_PREFIX,
   resolveDefaultView,
   revisionOnScreen,
 } from './programs'
@@ -78,7 +92,13 @@ function useOpenView() {
     setHeld({ scope: scopeKey(scope), viewId: fallback })
   const viewId = viewParam ?? heldHere ?? fallback
   const builtIn = isDefaultView(viewId)
-    ? resolveDefaultView(viewId, collectionName, objectLabel)
+    ? resolveDefaultView(
+        viewId,
+        collectionName,
+        objectLabel,
+        (nameSingular) =>
+          objectTypeByName(dataModel.data, nameSingular)?.label_singular,
+      )
     : undefined
   const stored = useStoredView(builtIn ? undefined : viewId)
   // Until the scope's views arrive the pinned one is unknown; opening the
@@ -162,6 +182,16 @@ function useDwell(host: Pick<IndexHost, 'scope' | 'viewId'>) {
 
 type Dialog = 'edit' | 'history' | undefined
 
+/** The built-in record views, which draw their own title in place of the header. */
+export function drawsOwnHeader(view: Pick<IndexView, 'origin' | 'viewId'>) {
+  return (
+    view.origin === 'default' &&
+    (view.viewId === RECORDS_HOME_VIEW_ID ||
+      view.viewId.startsWith(RECORDS_PREFIX) ||
+      view.viewId.startsWith(RECORD_PAGE_PREFIX))
+  )
+}
+
 function ViewHeader({
   view,
   revision,
@@ -186,7 +216,11 @@ function ViewHeader({
     <header className="flex flex-col gap-1 pb-5">
       <div className="flex items-center gap-2">
         <h1 className="min-w-0 flex-1 truncate font-heading text-[22px] font-medium">
-          {revision.title}
+          {isWorkView(view.viewId) ? (
+            <WorkScreenTitle viewId={view.viewId} fallback={revision.title} />
+          ) : (
+            revision.title
+          )}
         </h1>
         <span className="flex shrink-0 items-center">
           {!builtIn && (
@@ -310,7 +344,8 @@ export function ViewColumn() {
       navigate.openItem(documentId)
     },
     openCollection: navigate.openCollection,
-    openView: (viewId) => navigate.openView(viewId, open.scope),
+    openView: (viewId, options) =>
+      navigate.openView(viewId, open.scope, options),
     collectionName: open.collectionName,
     record: (event) =>
       observer().record({ ...event, scope: open.scope, viewId: open.viewId }),
@@ -358,6 +393,64 @@ export function ViewColumn() {
       />
     )
 
+  // A built-in record view draws its own title. Every other view keeps the
+  // header: a saved one for Edit, History, Pin and Archive, a built-in one
+  // for Customize, the only way to make it a saved view of one's own.
+  const header = !drawsOwnHeader(open.view) && (
+    // Keyed so an editor's draft never carries over to another view.
+    <ViewHeader
+      key={open.view.viewId}
+      view={open.view}
+      revision={revision}
+      revisions={open.revisions}
+      onSaved={(saved) => {
+        hold(saved)
+        if (saved.viewId !== open.viewId)
+          navigate.openView(saved.viewId, saved.scope)
+      }}
+      onArchived={open.release}
+    />
+  )
+  const notices = (
+    <ProposalNotices
+      scope={open.scope}
+      viewId={open.viewId}
+      onOpenView={(viewId) => navigate.openView(viewId, open.scope)}
+    />
+  )
+  const newerNotice = newer && (
+    <div className="mb-5 flex items-center gap-3 rounded-lg border border-separator bg-raised px-3 py-2 text-sm">
+      <p className="min-w-0 flex-1">
+        This view has a newer revision.{' '}
+        <span className="text-ink-muted">{newer.note}</span>
+      </p>
+      <Button variant="ghost" size="sm" onClick={() => hold(open.view!)}>
+        Show it
+      </Button>
+    </div>
+  )
+
+  // A record table or page fills the view and scrolls inside itself, under
+  // the view's own header and notices.
+  if (isFullBleedProgram(revision.program))
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="shrink-0 px-3 empty:hidden [&>*]:mt-3 [&>*]:mb-0">
+          {header}
+          {notices}
+          {newerNotice}
+        </div>
+        <div className="min-h-0 flex-1">
+          <ViewRenderer
+            definition={revision}
+            host={host}
+            actions={actions}
+            fill
+          />
+        </div>
+      </div>
+    )
+
   return (
     <div className="h-full overflow-y-auto">
       <div
@@ -366,35 +459,9 @@ export function ViewColumn() {
           isWideProgram(revision.program) ? 'max-w-none' : 'max-w-4xl',
         )}
       >
-        {/* Keyed so an editor's draft never carries over to another view. */}
-        <ViewHeader
-          key={open.view.viewId}
-          view={open.view}
-          revision={revision}
-          revisions={open.revisions}
-          onSaved={(saved) => {
-            hold(saved)
-            if (saved.viewId !== open.viewId)
-              navigate.openView(saved.viewId, saved.scope)
-          }}
-          onArchived={open.release}
-        />
-        <ProposalNotices
-          scope={open.scope}
-          viewId={open.viewId}
-          onOpenView={(viewId) => navigate.openView(viewId, open.scope)}
-        />
-        {newer && (
-          <div className="mb-5 flex items-center gap-3 rounded-lg border border-separator bg-raised px-3 py-2 text-sm">
-            <p className="min-w-0 flex-1">
-              This view has a newer revision.{' '}
-              <span className="text-ink-muted">{newer.note}</span>
-            </p>
-            <Button variant="ghost" size="sm" onClick={() => hold(open.view!)}>
-              Show it
-            </Button>
-          </div>
-        )}
+        {header}
+        {notices}
+        {newerNotice}
         <ViewRenderer definition={revision} host={host} actions={actions} />
         {prefer.error && (
           <p role="alert" className="mt-3 text-xs text-error-ink">
@@ -413,23 +480,34 @@ export function InspectorColumn({ className }: { className?: string }) {
     navigate,
   } = useIndexPlace()
   if (!item) return null
-  const record = parseRecordItemId(item)
-  if (record)
+  const work = parseWorkItemId(item)
+  if (work)
     return (
-      <RecordInspector
-        key={item}
-        nameSingular={record.nameSingular}
-        recordId={record.recordId}
-        onOpenRecord={(nameSingular, recordId) => {
-          const opened = `record:${nameSingular}/${recordId}`
+      <WorkInspector
+        itemId={work}
+        onOpen={(id) => {
+          const opened = workItemId(id)
           observer().record({ kind: 'item_opened', scope, subjects: [opened] })
           navigate.openItem(opened)
         }}
-        onEditFields={(nameSingular) =>
-          navigate.openView(dataModelViewId(nameSingular), scope)
-        }
         onClose={navigate.closeItem}
         className={className}
+      />
+    )
+  const record = parseRecordItemId(item)
+  if (record)
+    return (
+      <CrmRecordInspector
+        key={item}
+        nameSingular={record.nameSingular}
+        recordId={record.recordId}
+        onOpenRelated={(type, recordId) => {
+          const opened = recordItemId(type, recordId)
+          observer().record({ kind: 'item_opened', scope, subjects: [opened] })
+          navigate.openItem(opened)
+        }}
+        onClose={navigate.closeItem}
+        className={cn('h-full', className)}
       />
     )
   return (

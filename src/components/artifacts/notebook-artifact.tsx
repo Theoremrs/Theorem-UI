@@ -2,7 +2,7 @@
 // "allow-scripts", a CSP that loads nothing unless a run names its hosts),
 // the bridge's theme.changed call and the platform MutationObserver (the
 // page's theme followed into the frame, as live-terminal-theme follows it),
-// the installed react-shiki SyntaxHighlighter (the marimo source), ui/button,
+// the TanStack Highlight SyntaxHighlighter (the marimo source), ui/button,
 // composer-references' askAbout with app-references' notebookReference (the
 // path an HTML App's selection takes to the next turn), and artifact-host's
 // react-query reads of the host description and the recorded outputs. No
@@ -14,14 +14,13 @@
 // only when the person starts it, and never claims a run it did not make.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { SyntaxHighlighter } from '@/components/assistant-ui/elements/shiki-highlighter'
+import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highlighter'
 import { BlockFrame } from '@/components/blocks/block-frame'
 import { BlockMessage } from '@/components/blocks/block-status'
 import { askAbout } from '@/components/chat/composer-references'
 import { Button } from '@/components/ui/button'
 import { BridgeDenied } from '@/lib/blocks/bridge'
 import type { BridgeHost } from '@/lib/blocks/bridge'
-import { noCapabilities } from '@/lib/blocks/declarations'
 import type { FrameConnection } from '@/lib/blocks/executor'
 import { call } from '@/lib/blocks/sandbox/protocol'
 import type {
@@ -63,7 +62,6 @@ export function notebookHost(
   onSelection?: (selection: AppSelection) => void,
 ): BridgeHost {
   return {
-    capabilities: noCapabilities(),
     state: {
       snapshot: () => ({}),
       set: denied('keeps no shared state'),

@@ -1,0 +1,144 @@
+{
+  "scope": "document, profile, traceability, and package verification only; not application behavior",
+  "date": "2026-11-14",
+  "checks": [
+    {
+      "name": "approved_html_identity",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:README.md",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:calm-paper-cabinet.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:calm-workspace-preview.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:calm-workspace.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:capture.py",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:expanded-cabinet-preview.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:expanded-cabinet.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:expressive-workspace-preview.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:expressive-workspace.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:index.html",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:mobile-cabinet.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:opened-original-preview.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:opened-original.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:palette-checks.json",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:pixel-cabinet.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:preview-modes.png",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:test_prototype.py",
+      "result": "pass"
+    },
+    {
+      "name": "approved_file:verification.json",
+      "result": "pass"
+    },
+    {
+      "name": "local_document_links",
+      "result": "pass",
+      "details": {
+        "count": 30,
+        "missing": []
+      }
+    },
+    {
+      "name": "requirement_ids",
+      "result": "pass"
+    },
+    {
+      "name": "acceptance_case_ids",
+      "result": "pass"
+    },
+    {
+      "name": "acceptance_status_honesty",
+      "result": "pass"
+    },
+    {
+      "name": "bidirectional_traceability",
+      "result": "pass"
+    },
+    {
+      "name": "requirement_case_references",
+      "result": "pass"
+    },
+    {
+      "name": "palette_shape",
+      "result": "pass"
+    },
+    {
+      "name": "source_color_notice",
+      "result": "pass"
+    },
+    {
+      "name": "width_examples",
+      "result": "pass",
+      "details": {
+        "466px_columns": 2,
+        "340px_columns": 1,
+        "466px_card_width": 206.0
+      }
+    },
+    {
+      "name": "raster_profile",
+      "result": "pass"
+    },
+    {
+      "name": "no_font_binaries",
+      "result": "pass"
+    },
+    {
+      "name": "new_docs_no_unresolved_authorship_markers",
+      "result": "pass"
+    }
+  ],
+  "passed": 31,
+  "production_acceptance_cases": 40,
+  "production_acceptance_executed": 0,
+  "historical_prototype_record_preserved": true,
+  "historical_prototype_checks_rerun": false
+}

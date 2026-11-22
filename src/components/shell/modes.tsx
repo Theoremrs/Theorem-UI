@@ -1,15 +1,11 @@
-// SOURCING: @tanstack/react-router (each mode is a route), assistant-ui Thread element, the Spaces canvas (React Flow), the IDE frame (browser-only Theia), the Vault's file list on a phone (FoldersSection), the program canvas (React Flow), Index mode (its page, pages/mode-page.tsx), Pages (Puck over the vault's page files; a mode's page opens there to be arranged), Notes (Theorem documents in the Milkdown note editor)
-import { Canvas } from '@/components/canvas/canvas'
-import { ProgramSurface } from '@/components/program/program-surface'
+// SOURCING: @tanstack/react-router (each mode is a route), assistant-ui Thread element, the Spaces canvas (React Flow), the IDE frame (browser-only Theia), the Vault's file list on a phone (FoldersSection), the program canvas (React Flow), Index mode (its page, pages/mode-page.tsx), Pages (Puck over the vault's page files; a mode's page opens there to be arranged), Notes (Theorem documents in the Milkdown note editor), a project's home in chat mode (components/projects/project-home), and records (components/crm: saved people, organizations and what is owed) inside Index mode
 import { RailMark } from './rail-marks'
-import { IdeFrame } from '@/components/ide/ide-frame'
 import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { Thread } from '@/components/assistant-ui/elements/thread.aui'
-import { VaultPhone } from '@/components/vault/vault-phone'
-import { useCallback } from 'react'
-import { useMatches, useNavigate, useParams } from '@tanstack/react-router'
-import { IndexMode } from '@/components/pages/mode-page'
-import { NotesView } from '@/components/notes/notes-view'
+import { Suspense, lazy, useCallback } from 'react'
+import type React from 'react'
+import { useNavigate, useParams } from '@tanstack/react-router'
+import { ProjectHome } from '@/components/projects/project-home'
 import {
   ModePageView,
   PageStatus,
@@ -18,15 +14,42 @@ import {
 import { isPageMode } from '@/lib/modules/templates'
 import { useShell } from './shell-state'
 
-export type ShellMode =
-  | 'chat'
-  | 'index'
-  | 'notes'
-  | 'pages'
-  | 'vault'
-  | 'spaces'
-  | 'canvas'
-  | 'ide'
+import { useShellMode } from './shell-mode'
+import type { ShellMode } from './shell-mode'
+
+export { useShellMode } from './shell-mode'
+export type { ShellMode } from './shell-mode'
+
+const Canvas = lazy(() =>
+  import('@/components/canvas/canvas').then((module) => ({
+    default: module.Canvas,
+  })),
+)
+const ProgramSurface = lazy(() =>
+  import('@/components/program/program-surface').then((module) => ({
+    default: module.ProgramSurface,
+  })),
+)
+const IdeFrame = lazy(() =>
+  import('@/components/ide/ide-frame').then((module) => ({
+    default: module.IdeFrame,
+  })),
+)
+const VaultPhone = lazy(() =>
+  import('@/components/vault/vault-phone').then((module) => ({
+    default: module.VaultPhone,
+  })),
+)
+const IndexMode = lazy(() =>
+  import('@/components/pages/mode-page').then((module) => ({
+    default: module.IndexMode,
+  })),
+)
+const NotesView = lazy(() =>
+  import('@/components/notes/notes-view').then((module) => ({
+    default: module.NotesView,
+  })),
+)
 
 /** The rail's destinations, in order. */
 export const MODES = [
@@ -62,35 +85,11 @@ export const modeLabel = (mode: ShellMode) =>
   MODES.find((entry) => entry.mode === mode)!.label
 
 /**
- * The mode whose panel beside the rail shows: Theia and the Vault cover the
- * sheet in their modes, so Chat's panel stays under them.
+ * The mode whose panel beside the rail shows: the Vault covers the sheet, so
+ * Chat's panel stays under it. The IDE has its own, its sessions.
  */
 export const navigatorMode = (mode: ShellMode): ShellMode =>
-  mode === 'ide' || mode === 'vault' ? 'chat' : mode
-
-/**
- * The mode is the route: /index, /notes, /pages, /vault, /spaces, /canvas and /ide, and chat everywhere else. It reads
- * the router's matches, as useParams does, so the mode and the thread id
- * always describe the same navigation.
- */
-export function useShellMode(): ShellMode {
-  return useMatches({
-    select: (matches) => {
-      for (const { routeId } of matches) {
-        if (routeId === '/_chat/index') return 'index'
-        if (routeId === '/_chat/notes' || routeId === '/_chat/notes/$documentId')
-          return 'notes'
-        if (routeId === '/_chat/pages' || routeId === '/_chat/pages/$pageId')
-          return 'pages'
-        if (routeId === '/_chat/vault') return 'vault'
-        if (routeId === '/_chat/spaces') return 'spaces'
-        if (routeId === '/_chat/canvas') return 'canvas'
-        if (routeId === '/_chat/ide') return 'ide'
-      }
-      return 'chat'
-    },
-  })
-}
+  mode === 'vault' ? 'chat' : mode
 
 /** Navigates to a mode; chat returns to the conversation last left. */
 export function useOpenMode() {
@@ -115,27 +114,47 @@ export function useOpenMode() {
 /**
  * The view for the current mode. The conversation stays mounted behind the
  * other modes, so its scroll position and composer draft survive a switch.
- * On the desktop Theia and the Vault cover the whole sheet, so the dock keeps
- * the conversation laid out beneath them; on a phone they take the screen.
+ * On the desktop the Vault covers the whole sheet, so the dock keeps the
+ * conversation laid out beneath it, and the IDE's page has its own
+ * conversation beside Theia; on a phone they take the screen.
  */
-export function ModeView({ docked = false }: { docked?: boolean }) {
+export function ModeView({
+  docked = false,
+  actions,
+}: {
+  docked?: boolean
+  /** The dock's panel controls, for a mode that draws its own top edge (Notes). */
+  actions?: React.ReactNode
+}) {
   const mode = useShellMode()
+  // A project's home stands in for the conversation, which stays mounted behind it.
+  const { projectId } = useParams({ strict: false })
+  const projectHome = mode === 'chat' && projectId !== undefined
   const showThread =
-    mode === 'chat' || (docked && (mode === 'ide' || mode === 'vault'))
+    (mode === 'chat' && !projectHome) || (docked && mode === 'vault')
   return (
     <>
+      {projectHome && <ProjectHome key={projectId} projectId={projectId} />}
       <div hidden={!showThread} className="h-full">
         <LifeBackdrop>
           <Thread covered={mode !== 'chat'} />
         </LifeBackdrop>
       </div>
-      {mode === 'ide' && !docked && <IdeFrame />}
-      {mode === 'vault' && !docked && <VaultPhone />}
-      {mode === 'index' && <IndexMode />}
-      {mode === 'notes' && <NotesView />}
-      {mode === 'pages' && <PagesView />}
-      {mode === 'spaces' && <Canvas />}
-      {mode === 'canvas' && <ProgramSurface />}
+      <Suspense
+        fallback={
+          <p role="status" className="p-3 text-sm">
+            Loading {modeLabel(mode)}…
+          </p>
+        }
+      >
+        {mode === 'ide' && !docked && <IdeFrame />}
+        {mode === 'vault' && !docked && <VaultPhone />}
+        {mode === 'index' && <IndexMode />}
+        {mode === 'notes' && <NotesView docked={docked} actions={actions} />}
+        {mode === 'pages' && <PagesView />}
+        {mode === 'spaces' && <Canvas />}
+        {mode === 'canvas' && <ProgramSurface />}
+      </Suspense>
     </>
   )
 }

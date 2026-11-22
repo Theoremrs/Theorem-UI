@@ -1,4 +1,4 @@
-// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), @tanstack/react-router CatchBoundary per part, MessagePrimitive.PartByIndex for the tool calls a run summary folds, and the installed ToolGroupRoot / ToolGroupContent / ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, scene-part.tsx for the theorem-scene part
+// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), @tanstack/react-router CatchBoundary per part, coss ui Collapsible (base-ui) for the activity line's details, shadcn Trace (ReUI, Base UI build) for the reply's tool calls folded into one summary row, and the installed ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, the terminal's openOf/pathOf and Follow's useRevealFile for the file a tool card opens in the IDE, scene-part.tsx for the theorem-scene part, the CRM's context-manifest-part.tsx for the theorem-context_manifest part (the saved records a reply was given) and record-change-proposal-part.tsx for proposed record changes and their outcomes
 //
 // Theorem message parts that are not text or tool calls arrive as data parts
 // named `theorem-<type>` (see @theoremharness/sdk/assistant-ui). This file
@@ -6,22 +6,26 @@
 // approvals (decided through runs.command, since Theorem owns approvals), and
 // gives the artifact tools a pending card while they run. Delegated work has
 // its own cards in delegation-parts.
-import {
-  MessagePrimitive,
-  useAui,
-  useAuiState,
-  useAssistantDataUI,
-} from '@assistant-ui/react'
+import { useAui, useAuiState, useAssistantDataUI } from '@assistant-ui/react'
+import { renderGenerativeUI } from '@assistant-ui/generative-ui/react'
+import { styledGenerativeUILibrary } from '@/components/assistant-ui/elements/generative-ui'
+import { PRESENT } from '@/lib/generative/operations'
 import { CatchBoundary } from '@tanstack/react-router'
 import type {
+  AssistantState,
   DataMessagePartComponent,
   ToolCallMessagePartComponent,
 } from '@assistant-ui/react'
-import { useEffect, useMemo, useState } from 'react'
-import type { FC } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import type { FC, ReactNode } from 'react'
 import { ApprovalCard } from '@/components/assistant-ui/elements/approval-card'
 import type { ApprovalState } from '@/components/assistant-ui/elements/approval-card'
-import { CollapsibleTrigger } from '@/components/assistant-ui/elements/collapsible-root'
+import { GlassCodeBlock } from '@/components/assistant-ui/elements/glass-code-block'
+import {
+  Collapsible,
+  CollapsiblePanel,
+  CollapsibleTrigger,
+} from '@/components/coss/collapsible'
 import {
   ReasoningContent,
   ReasoningRoot,
@@ -29,39 +33,58 @@ import {
   ReasoningTrigger,
 } from '@/components/assistant-ui/elements/reasoning'
 import { ThinkingIndicator } from '@/components/assistant-ui/elements/thinking-indicator'
-import {
-  ToolGroupContent,
-  ToolGroupRoot,
-} from '@/components/assistant-ui/elements/tool-group.aui'
 import { ToolFallback } from '@/components/assistant-ui/elements/tool-fallback.aui'
+import { thingProps, toolState } from '@/lib/face/things'
 import {
   ARTIFACT_PART,
   readArtifact,
 } from '@/components/artifacts/artifact-model'
 import { ArtifactMessage } from '@/components/artifacts/artifact-message'
 import { DELEGATION_RENDERERS } from '@/components/chat/delegation-parts'
+import { ContextManifestPart } from '@/components/crm/context-manifest-part'
+import { SkillLoadPart } from '@/components/chat/skill-load-part'
+import {
+  RecordChangeOutcomePart,
+  RecordChangeProposalPart,
+} from '@/components/crm/record-change-proposal-part'
+import { ProgramPart } from '@/components/chat/program-part'
+import { CompletionFooter } from '@/components/chat/run-footer'
+import { UserMarkdown } from '@/components/chat/user-markdown'
 import { NoteImage } from '@/components/notes/kinds/embed-block'
 import { ReviewAnswerCard } from '@/components/review/review-card'
 import { PlanToolCall } from '@/components/chat/plan-graph'
-import { askAbout } from '@/components/chat/composer-references'
-import {
-  readScene,
-  repairRequest,
-  SCENE_PART,
-} from '@/components/chat/scene-model'
-import { SceneCard } from '@/components/chat/scene-part'
-import { useSceneTheme } from '@/components/chat/scene-theme'
+import { useRevealFile } from '@/components/ide/follow'
+import { openOf, pathOf } from '@/components/terminal/terminal-code'
+import type { Open } from '@/components/terminal/terminal-code'
+import { readScene, SCENE_PART } from '@/components/chat/scene-model'
+import { SceneInReply } from '@/components/chat/scene-part'
 import { Icon } from '@/components/icons'
 import {
-  describeError,
-  describeRunFailure,
-  mutate,
-  theorem,
-} from '@/lib/theorem/client'
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from '@/components/ui/trace'
+import { getToolCategoryIcon } from '@/components/ui/tool-calls-section-utils/tool-icons'
+import { describeError, describeRunFailure } from '@/lib/theorem/client'
+import {
+  approvalChoice,
+  approvalOutcome,
+  readApproval,
+  sendApprovalDecision,
+} from '@/lib/theorem/approval'
+import type {
+  ApprovalChoice,
+  ApprovalOutcome,
+  TheoremApproval,
+} from '@/lib/theorem/approval'
 import { uploadContentPath } from '@/lib/theorem/uploads'
 import { DRAFT_PLAN } from '@/lib/theorem/plans'
-import { liveEnter } from '@/components/assistant-ui/elements/surfaces'
 import { cn, humanize } from '@/lib/utils'
+import { appearancePair } from '@/lib/appearance-policy'
 
 type Json = Record<string, unknown>
 
@@ -128,14 +151,170 @@ const ArtifactToolCall: ToolCallMessagePartComponent<{
 
 const ARTIFACT_TOOLS = new Set(['create_artifact', 'update_artifact'])
 
+/* -------------------------------------------------------------- tool calls */
+
+/** A host call's state as its row says it: `HostCallState` in theorem-surface-contracts, read against the run. */
+export type CallState =
+  'running' | 'done' | 'failed' | 'interrupted' | 'awaiting'
+
+/** One row of a reply's tool trace. */
+export interface ToolCallEntry {
+  tool_name: string
+  /** The icon category the row wears. */
+  tool_category: string
+  /** What the call did, in words that follow its state. */
+  message: string
+  show_category?: boolean
+  /** What the row opens to, when the call has something to show. */
+  output?: string
+  /** Trace's status: absent once the call is done. */
+  status?: 'running' | 'error'
+}
+
+const TRACE_STATUS: Record<CallState, ToolCallEntry['status']> = {
+  running: 'running',
+  awaiting: 'running',
+  failed: 'error',
+  interrupted: 'error',
+  done: undefined,
+}
+
 /**
- * A host function called by the native agent's program. Artifact calls defer
- * to the artifact card, which carries their result; the rest show as a chip.
+ * `pending` and `awaiting_approval` are live only while the run is: a call
+ * still in either once the run has stopped never finished, and is not done.
+ */
+export function hostCallState(
+  state: string | undefined,
+  running: boolean,
+): CallState {
+  if (state === 'resolved') return 'done'
+  if (state === 'failed') return 'failed'
+  if (!running) return 'interrupted'
+  return state === 'awaiting_approval' ? 'awaiting' : 'running'
+}
+
+/** A verb while the call runs, once it has, and after "Could not". */
+const VERBS = {
+  search: ['Searching', 'Searched', 'search'],
+  read: ['Reading', 'Read', 'read'],
+} as const
+
+/**
+ * The agent's own functions in words (the verb, then what it acts on) and
+ * the icon category their row wears. The catalog is open (a connector brings
+ * its own tools), so a name outside this table keeps its own name and its row
+ * says the state beside it.
+ */
+const CALLS: Record<
+  string,
+  readonly [keyof typeof VERBS, string, string] | undefined
+> = {
+  search_memory: ['search', 'memory', 'memory'],
+  search_history: ['search', 'conversation history', 'history'],
+  search_library: ['search', 'the Library', 'documents'],
+  search_web: ['search', 'the web', 'web'],
+  read_document: ['read', 'a document', 'documents'],
+  read_file: ['read', 'a file', 'documents'],
+}
+
+const STATE_NOTE = {
+  failed: 'failed',
+  interrupted: 'did not finish',
+  awaiting: 'waiting for your approval',
+} as const
+
+/** Memory's functions that keep their own names in a row and still wear memory's mark. */
+const MEMORY_CALLS = new Set(['recall', 'encode'])
+
+/** Kit's own moves. The fox on the stage shows them, so one that misses is a detail and never the run's news. */
+const isKitCall = (name: string) => /^kit[._]/.test(name)
+
+/** What a call's row says: "Searching memory…", "Searched memory", "Could not search memory". */
+export function callWords(name: string, state: CallState): string {
+  const known = CALLS[name]
+  if (!known) {
+    const own = humanize(name)
+    if (state === 'done') return own
+    return state === 'running' ? `${own}…` : `${own} · ${STATE_NOTE[state]}`
+  }
+  const [doing, did, bare] = VERBS[known[0]]
+  const what = known[1]
+  if (state === 'done') return `${did} ${what}`
+  if (state === 'failed') return `Could not ${bare} ${what}`
+  if (state === 'running') return `${doing} ${what}…`
+  return `${doing} ${what} · ${STATE_NOTE[state]}`
+}
+
+/** The icon category a call's row wears. */
+function callCategory(name: string): string {
+  const known = CALLS[name]
+  if (known) return known[2]
+  if (isKitCall(name)) return 'kit'
+  return MEMORY_CALLS.has(name) ? 'memory' : 'unknown'
+}
+
+type DataPartLike = { type: string; name?: string; data?: unknown }
+
+/** The reply's host calls, less the artifact calls: their card is the reply's. */
+function hostCalls(
+  content: readonly DataPartLike[],
+  running: boolean,
+): Array<{ name: string; state: CallState }> {
+  return content.flatMap((part) => {
+    if (part.type !== 'data' || part.name !== 'theorem-host_call') return []
+    const call = object(part.data)
+    const name = str(call.name) ?? 'host call'
+    if (ARTIFACT_TOOLS.has(name)) return []
+    return [{ name, state: hostCallState(str(call.state), running) }]
+  })
+}
+
+/**
+ * A reply's routine work as the tool-calls section lists it: each host call
+ * in words that follow its state, and each check of an App with the problems
+ * it found as the row's output.
+ */
+export function toolCallEntries(
+  content: readonly DataPartLike[],
+  running: boolean,
+): ToolCallEntry[] {
+  return content.flatMap((part): ToolCallEntry[] => {
+    if (part.type !== 'data') return []
+    if (part.name === 'theorem-host_call')
+      return hostCalls([part], running).map(({ name, state }) => ({
+        tool_name: name,
+        tool_category: callCategory(name),
+        message: callWords(name, state),
+        show_category: false,
+        ...(TRACE_STATUS[state] && { status: TRACE_STATUS[state] }),
+      }))
+    if (part.name !== 'theorem-client_operation') return []
+    const check = appCheckSummary(part.data, running)
+    if (!check) return []
+    // Why the check fell short, then what it found.
+    const output = [check.reason, appCheckProblems(part.data)]
+      .filter(Boolean)
+      .join('\n')
+    return [
+      {
+        tool_name: 'app.check',
+        tool_category: 'development',
+        message: check.words,
+        show_category: false,
+        ...(output && { output }),
+      },
+    ]
+  })
+}
+
+/**
+ * A host function called by the native agent's program. An artifact call is
+ * drawn here, by the artifact card that carries its result; every other call
+ * is a row of the tool-calls section under the activity line.
  */
 const HostCallPart: DataMessagePartComponent = ({ data }) => {
   const call = object(data)
   const name = str(call.name) ?? 'host call'
-  const state = str(call.state) ?? 'pending'
   const running = useAuiState((s) => s.message.status?.type === 'running')
   // The agent retries a failed artifact call; once one lands, the miss is noise.
   const produced = useAuiState((s) =>
@@ -143,46 +322,16 @@ const HostCallPart: DataMessagePartComponent = ({ data }) => {
       (part) => part.type === 'data' && part.name === ARTIFACT_PART,
     ),
   )
-  const pending = state === 'pending' && running
-  if (ARTIFACT_TOOLS.has(name)) {
-    if (pending) return <ArtifactPendingCard toolName={name} />
-    if (state === 'failed' && !produced)
-      return <ArtifactToolFailed toolName={name} />
-    return null
-  }
-  const failed = state === 'failed'
-  const StateIcon = pending ? Icon.Code : failed ? Icon.Close : Icon.Check
-  return (
-    <span
-      className={cn(
-        'me-1.5 mt-2 inline-flex items-center gap-1.5 rounded-md border border-separator bg-raised px-2 py-1 align-top text-xs font-semibold',
-        liveEnter,
-        failed ? 'text-error-ink' : 'text-ink-muted',
-      )}
-    >
-      <StateIcon
-        className={cn(
-          'size-3 shrink-0',
-          // Each state is its own icon, so the settled one pops in.
-          pending
-            ? 'animate-pulse motion-reduce:animate-none'
-            : 'in-data-live:animate-in in-data-live:fade-in in-data-live:zoom-in-30 in-data-live:-spin-in-45',
-        )}
-      />
-      <span>{humanize(name)}</span>
-      {failed && ' · failed'}
-      {state === 'pending' && !running && ' · did not finish'}
-    </span>
-  )
+  if (!ARTIFACT_TOOLS.has(name)) return null
+  const state = hostCallState(str(call.state), running)
+  if (state === 'running') return <ArtifactPendingCard toolName={name} />
+  if (state === 'failed' && !produced)
+    return <ArtifactToolFailed toolName={name} />
+  return null
 }
 
 /**
- * A check the agent asked this page to make of an App: that it is being
- * made, and what it found. Kit's operations draw nothing here; the fox on
- * the stage shows what they did.
- */
-/**
- * What the chip for an `app.check` request says, or null for any other
+ * What the row for an `app.check` request says, or null for any other
  * operation. `wrong` is anything short of a check that was made and found
  * nothing: a type check that could not be made found nothing either, and says
  * so with its `reason`.
@@ -217,146 +366,52 @@ export function appCheckSummary(
   return { words, pending, wrong, reason }
 }
 
+/** The problems an App check listed, one to a line, each after where it is when the check says. */
+export function appCheckProblems(data: unknown): string | undefined {
+  const { problems } = object(object(object(data).receipt).result)
+  if (!Array.isArray(problems)) return undefined
+  const lines = problems.flatMap((entry) => {
+    const problem = object(entry)
+    const message = str(problem.message)
+    if (!message) return []
+    const file = str(problem.file)
+    const line = typeof problem.line === 'number' ? `:${problem.line}` : ''
+    return [file ? `${file}${line}  ${message}` : message]
+  })
+  return lines.length > 0 ? lines.join('\n') : undefined
+}
+
+/**
+ * Something the agent asked this page to do. Nothing draws here: a check of
+ * an App is a row of the tool-calls section, and the fox on the stage shows
+ * what Kit's operations did. A `ui.present` call is the exception: the tree
+ * it carries is the reply's interface, drawn from the styled vocabulary.
+ */
 const ClientOperationPart: DataMessagePartComponent = ({ data }) => {
+  const call = object(data)
+  const args = object(call.args)
   const running = useAuiState((s) => s.message.status?.type === 'running')
-  const summary = appCheckSummary(data, running)
-  if (!summary) return null
-  const { words, pending, wrong, reason } = summary
-  const StateIcon = pending ? Icon.Code : wrong ? Icon.Close : Icon.Check
+  if (str(call.operation) !== PRESENT) return null
+  const state = str(call.state) ?? 'pending'
+  // While the call streams, the tree is partial; the renderer tolerates that.
+  const status = state === 'pending' && running ? 'streaming' : 'done'
   return (
-    <span
-      data-slot="app-check"
-      title={reason}
-      className={cn(
-        'me-1.5 mt-2 inline-flex items-center gap-1.5 rounded-md border border-separator bg-raised px-2 py-1 align-top text-xs font-semibold',
-        liveEnter,
-        wrong ? 'text-error-ink' : 'text-ink-muted',
-      )}
-    >
-      <StateIcon
-        className={cn(
-          'size-3 shrink-0',
-          pending && 'animate-pulse motion-reduce:animate-none',
-        )}
-      />
-      <span>{words}</span>
-    </span>
+    <div data-slot="theorem-present" className="aui-p-present my-2">
+      {renderGenerativeUI(args, styledGenerativeUILibrary, { status })}
+    </div>
   )
 }
 
 /* ------------------------------------------------------------------ approvals */
 
-export type TheoremApproval = {
-  approvalId: string
-  toolCallId: string
-  toolName: string
-  summary: string
-  risk: string
-  status: string
-  approved: boolean | undefined
-  /** The host's words for an approval that settled unanswered: expired or replaced. */
-  reason: string | undefined
-  options: Array<{ optionId: string; name: string; kind: string }>
-}
-
-/** What became of an approval, as `ApprovalPart::outcome` in theorem-surface-contracts collapses it. */
-export type ApprovalOutcome =
-  'awaiting' | 'approved' | 'declined' | 'failed' | 'unanswered'
-
-const AWAITING_STATUSES = new Set(['requires_action', 'pending', 'open'])
-
-/**
- * An approval is awaited only while its status says so. An expired or
- * replaced request settles `incomplete` with `approved` still unset, so an
- * unset decision alone is not a question anyone can answer.
- */
-export function approvalOutcome(
-  approval: Pick<TheoremApproval, 'status' | 'approved'>,
-): ApprovalOutcome {
-  if (AWAITING_STATUSES.has(approval.status)) return 'awaiting'
-  if (approval.approved === true) return 'approved'
-  if (approval.approved === false) return 'declined'
-  return approval.status === 'failed' ? 'failed' : 'unanswered'
-}
-
-/**
- * The approval a tool call carries, settled or not. The SDK keeps the latest
- * `tool_approval` snapshot on the part's `artifact.theoremApproval` and sets
- * its human `interrupt` only while the approval awaits a decision, so an
- * answered, expired or replaced approval is read here without holding the
- * message in requires-action.
- */
-export function readApproval(toolCall: {
-  readonly artifact?: unknown
-}): TheoremApproval | undefined {
-  const part = object(object(toolCall.artifact).theoremApproval)
-  const approvalId = str(part.approvalId)
-  const toolCallId = str(part.toolCallId)
-  if (!approvalId || !toolCallId) return undefined
-  const options = Array.isArray(part.options)
-    ? part.options.map(object).flatMap((o) =>
-        str(o.optionId) && str(o.kind)
-          ? [
-              {
-                optionId: o.optionId as string,
-                name: str(o.name) ?? (o.kind as string),
-                kind: o.kind as string,
-              },
-            ]
-          : [],
-      )
-    : []
-  return {
-    approvalId,
-    toolCallId,
-    toolName: str(part.toolName) ?? 'tool',
-    summary:
-      str(part.summary) ?? `Allow ${str(part.toolName) ?? 'this tool'} to run?`,
-    risk: str(part.risk) ?? 'unknown',
-    status: str(part.status) ?? 'pending',
-    approved: typeof part.approved === 'boolean' ? part.approved : undefined,
-    reason: str(part.reason),
-    options,
-  }
-}
-
-type ApprovalChoice = { optionId: string } | { decision: 'allow' | 'deny' }
+// The reading of an approval lives in lib/theorem/approval; these are re-exported for the files that import it from here.
+export { approvalChoice, approvalOutcome, readApproval, sendApprovalDecision }
+export type { ApprovalOutcome, TheoremApproval }
 
 /** The tool, and its risk when Theorem marks it above low. */
 function approvalSubtitle({ toolName, risk }: TheoremApproval) {
   const elevated = risk === 'medium' || risk === 'high'
   return elevated ? `${humanize(toolName)} · ${risk} risk` : humanize(toolName)
-}
-
-/** What a plain allow or deny sends: allow once, or reject; a bare decision when the approval offers no options. */
-export function approvalChoice(
-  options: TheoremApproval['options'],
-  allow: boolean,
-): ApprovalChoice | undefined {
-  if (!options.length) return { decision: allow ? 'allow' : 'deny' }
-  const byKind = (kind: string) => options.find((o) => o.kind === kind)
-  const option = allow
-    ? byKind('allow_once')
-    : (byKind('reject_once') ?? byKind('reject_always'))
-  return option && { optionId: option.optionId }
-}
-
-/** Sends a decision to the run that asked for the approval. */
-export function sendApprovalDecision(
-  runId: string,
-  approval: Pick<TheoremApproval, 'approvalId' | 'toolCallId'>,
-  choice: ApprovalChoice,
-) {
-  return mutate((headers) =>
-    theorem().chat.runs.command({
-      runId,
-      command: 'approval',
-      approvalId: approval.approvalId,
-      toolCallId: approval.toolCallId,
-      ...choice,
-      ...headers,
-    }),
-  )
 }
 
 /** Pending Theorem approvals, artifacts and plans render standalone so they are never folded into a tool group. */
@@ -431,8 +486,9 @@ const TheoremApprovalCard: FC<{
         title={approval.summary}
         subtitle={approvalSubtitle(approval)}
         command={argsText || undefined}
-        icon={<Icon.Settings className="size-4" />}
-        className="max-w-md rounded-artifact border-separator bg-artifact"
+        variant={approval.risk === 'high' ? 'destructive' : 'default'}
+        icon={<Icon.Approval aria-hidden />}
+        className="max-w-md"
         onAllowOnce={allow && (() => decide(allow, true))}
         allowOnceLabel={allowOnce?.name ?? 'Allow once'}
         onAlwaysAllow={
@@ -453,6 +509,39 @@ const TheoremApprovalCard: FC<{
   )
 }
 
+/** A small bordered tag in the conversation: a source, a file. */
+const CHIP =
+  'inline-flex max-w-64 items-center gap-1.5 rounded-md border border-separator bg-raised px-2 py-1 text-xs text-ink-muted'
+
+/**
+ * The file a tool worked on, which opens in the IDE as its own tab with the
+ * lines it touched selected; from chat it takes the person to the IDE.
+ */
+function OpenInIde({ open }: { open: Open }) {
+  const reveal = useRevealFile()
+  const name = open.path.split('/').pop() || open.path
+  const lines =
+    open.start === undefined
+      ? ''
+      : open.end !== undefined && open.end !== open.start
+        ? `:${open.start}–${open.end}`
+        : `:${open.start}`
+  return (
+    <button
+      type="button"
+      title={`Open ${open.path} in the IDE`}
+      onClick={() => reveal(open.path, open.start, open.end)}
+      className={cn(CHIP, 'min-w-0 py-0.5 hover:bg-hover hover:text-ink')}
+    >
+      <Icon.File className="size-3 shrink-0" />
+      <span className="truncate font-mono">
+        {name}
+        {lines}
+      </span>
+    </button>
+  )
+}
+
 /** ToolFallback slot: artifact tools, plans, Theorem approvals, then the generic tool card. */
 export const TheoremToolCall: ToolCallMessagePartComponent = (props) => {
   if (ARTIFACT_TOOLS.has(props.toolName)) return <ArtifactToolCall {...props} />
@@ -460,10 +549,23 @@ export const TheoremToolCall: ToolCallMessagePartComponent = (props) => {
   const approval = readApproval(props)
   if (approval && props.result === undefined)
     return <TheoremApprovalCard approval={approval} argsText={props.argsText} />
-  return <ToolFallback {...props} />
+  const open = openOf(pathOf(props.args), props.args, props.result)
+  return <ToolFallback {...props} aside={open && <OpenInIde open={open} />} />
 }
 
-/* ------------------------------------------------------------- run summary */
+/* ---------------------------------------------------------------- activity */
+
+/** What a call returned, as the reply's own code block: its glass, copy and palette. */
+const ToolOutput: FC<{ text: string }> = ({ text }) => (
+  <GlassCodeBlock
+    code={text}
+    language="text"
+    title="output"
+    lineNumbers={false}
+    frameClassName="my-0"
+    className="aui-code-wrap [&_pre]:max-h-60 [&_pre]:overflow-y-auto [&_pre]:break-words [&_pre]:whitespace-pre-wrap"
+  />
+)
 
 const LIVE_STATUSES = new Set([
   'running',
@@ -491,59 +593,78 @@ function progressLabels(
   })
 }
 
-/**
- * Theorem publishes answer text at turn end, so a running turn needs a visible
- * state: the latest progress label, or "Thinking", beside a thinking orb.
- */
-export const RunningIndicator: FC = () => {
-  const running = useAuiState((s) => s.message.status?.type === 'running')
-  const awaiting = useAuiState((s) =>
-    s.message.content.some((part) => {
-      if (part.type !== 'tool-call' || part.result !== undefined) return false
-      const approval = readApproval(part)
-      return approval !== undefined && approvalOutcome(approval) === 'awaiting'
-    }),
-  )
-  const label = useAuiState((s) => {
-    const last = s.message.content.findLast(
-      (part) => part.type === 'data' && part.name === 'theorem-progress',
-    )
-    const data = last?.type === 'data' ? object(last.data) : {}
-    return LIVE_STATUSES.has(str(data.status) ?? '')
-      ? str(data.label)
-      : undefined
-  })
-  if (!running) return null
-  return (
-    <ThinkingIndicator
-      className="my-2"
-      label={awaiting ? 'Waiting for your approval' : (label ?? 'Thinking')}
-      orb={awaiting ? 'breathing' : 'working'}
-    />
-  )
+/** How long the person waited for this reply: from their message to its arrival. */
+const waitedSeconds = (s: AssistantState) => {
+  const { messages } = s.thread
+  const at = messages.findIndex((message) => message.id === s.message.id)
+  const asked = messages
+    .slice(0, Math.max(at, 0))
+    .findLast((message) => message.role === 'user')
+  const replied = messages[at]
+  if (!asked || !replied) return undefined
+  // A live reply is stamped when its run begins; its timing says when it settled.
+  const timing =
+    replied.role === 'assistant' ? replied.metadata.timing : undefined
+  const settled =
+    timing?.totalStreamTime === undefined
+      ? replied.createdAt.getTime()
+      : timing.streamStartTime + timing.totalStreamTime
+  return Math.round((settled - asked.createdAt.getTime()) / 1000)
 }
 
+const spokenSeconds = (seconds: number) =>
+  seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+
+const ACTIVITY_CONTROL =
+  '-mx-1 cursor-pointer rounded-sm px-1 outline-offset-2 outline-focus transition-colors duration-(--duration-snap) ease-snap hover:bg-hover hover:text-ink focus-visible:outline-2 data-panel-open:bg-hover data-panel-open:text-ink'
+
 /**
- * A settled run's one line: its outcome, opening to its steps and to the tool
- * calls it made. Tool calls draw no row of their own; the thread folds them
- * here (`tools` holds their part indices), so a finished turn reads as its
- * answer under one quiet line, each call's arguments and result a click away.
+ * What the agent is doing, then what it did, as one unboxed line by its name:
+ * the live step while it works ("Theorem · Checking the examples"), and once
+ * it settles how long the reply took and a Details control ("Theorem · 42s ·
+ * Details"). Theorem publishes answer text at turn end, so the live step is
+ * the running turn's visible state. Either opens the steps, the reasoning and
+ * the tool calls on a small sheet of paper; until then the work takes no room
+ * of its own. A run that stopped or did not finish says so on the line, and an
+ * approval still to give keeps its card in the reply.
  */
-export const RunSummary: FC<{
-  tools: readonly number[]
-  Tool: ToolCallMessagePartComponent
-}> = ({ tools, Tool }) => {
-  const settled = useAuiState((s) => s.message.status?.type !== 'running')
+export const Activity: FC<{
+  /** Whose line this is. A specialist's run in a delegation panel has no name to sit by. */
+  speaker?: string | undefined
+  /** The reply's reasoning and tool calls as the thread draws them, when it has any. */
+  work?: ReactNode
+}> = ({ speaker, work }) => {
+  const running = useAuiState((s) => s.message.status?.type === 'running')
   // Select the store's own content array; deriving inside the selector would
   // hand back a fresh array on every read and loop the subscription.
   const content = useAuiState((s) => s.message.content)
+  const calls = useMemo(() => hostCalls(content, running), [content, running])
+  const toolCalls = useMemo(
+    () => toolCallEntries(content, running),
+    [content, running],
+  )
+  const awaiting =
+    useAuiState((s) =>
+      s.message.content.some((part) => {
+        if (part.type !== 'tool-call' || part.result !== undefined) return false
+        const approval = readApproval(part)
+        return (
+          approval !== undefined && approvalOutcome(approval) === 'awaiting'
+        )
+      }),
+    ) || calls.some(({ state }) => state === 'awaiting')
+  // What the agent's program is doing now, when no progress event says more.
+  const calling = calls.findLast(
+    ({ name, state }) => state === 'running' && !isKitCall(name),
+  )
   const labels = useMemo(() => progressLabels(content), [content])
-  const lastStatus = useAuiState((s) => {
-    const last = s.message.content.findLast(
+  const progress = useMemo(() => {
+    const last = content.findLast(
       (part) => part.type === 'data' && part.name === 'theorem-progress',
     )
-    return last?.type === 'data' ? str(object(last.data).status) : undefined
-  })
+    return last?.type === 'data' ? object(last.data) : {}
+  }, [content])
+  const status = str(progress.status)
   // Labels are what the run was doing while live ("Working"), even on the
   // step that completes, so the line names the outcome from the statuses: the
   // message's, then the last step's.
@@ -556,56 +677,214 @@ export const RunSummary: FC<{
           : 'Did not finish'
         : undefined,
   )
-  const components = useMemo(() => ({ tools: { Fallback: Tool } }), [Tool])
-  if (!settled || (labels.length === 0 && tools.length === 0)) return null
-  const finished = DONE_STATUSES.has(lastStatus ?? 'complete')
-  const result = outcome ?? (finished ? 'Done' : 'Did not finish')
-  const StatusIcon = result === 'Done' ? Icon.Check : Icon.Close
-  const steps = labels.length > 1
-  const line = (
-    <>
-      <StatusIcon className="size-3.5" />
-      {steps
-        ? `${result} ${result === 'Done' ? 'in' : 'after'} ${labels.length} steps`
-        : result}
-    </>
+  const seconds = useAuiState(waitedSeconds)
+  const [open, setOpen] = useState(false)
+  // The tool calls folded away here, as one string so the selector hands back
+  // the same value until one of them changes.
+  const folded = useAuiState((s) =>
+    s.message.parts
+      .flatMap((part) =>
+        part.type === 'tool-call' && !isStandaloneToolCall(part)
+          ? [
+              [
+                part.toolCallId,
+                part.toolName,
+                toolState(part.status, part.isError) ?? '',
+              ].join('\t'),
+            ]
+          : [],
+      )
+      .join('\n'),
   )
-  if (!steps && tools.length === 0)
-    return (
-      <p
-        data-slot="run-summary"
-        className="my-1 flex items-center gap-1.5 py-1 text-sm text-ink-faint"
-      >
-        {line}
-      </p>
+
+  const steps = labels.length > 1
+  const openable = steps || Boolean(work)
+  const notes: ReactNode[] = []
+  if (running) {
+    const doing = (
+      <ThinkingIndicator
+        label={
+          awaiting
+            ? 'Waiting for your approval'
+            : ((LIVE_STATUSES.has(status ?? '')
+                ? str(progress.label)
+                : undefined) ??
+              (calling ? callWords(calling.name, 'running') : 'Thinking'))
+        }
+        orb={awaiting ? 'breathing' : 'working'}
+      />
     )
+    notes.push(
+      openable ? (
+        <CollapsibleTrigger
+          nativeButton={false}
+          render={doing}
+          className={ACTIVITY_CONTROL}
+        />
+      ) : (
+        doing
+      ),
+    )
+  } else if (labels.length > 0 || work) {
+    const result =
+      outcome ??
+      (DONE_STATUSES.has(status ?? 'complete') ? 'Done' : 'Did not finish')
+    if (result !== 'Done') notes.push(result)
+    if (seconds)
+      notes.push(<span className="tabular-nums">{spokenSeconds(seconds)}</span>)
+    if (openable)
+      notes.push(
+        <CollapsibleTrigger className={ACTIVITY_CONTROL}>
+          Details
+        </CollapsibleTrigger>,
+      )
+  }
+  const tools = <ToolTrace calls={toolCalls} />
+  if (!speaker && notes.length === 0) return tools
+
   return (
-    <ToolGroupRoot
-      variant="ghost"
-      data-slot="run-summary"
-      className="my-1 text-sm text-ink-faint"
+    <Collapsible
+      data-slot="activity"
+      // Theo points here for a tool call that is folded away inside.
+      data-face-holder=""
+      className="mb-1.5"
+      open={open}
+      onOpenChange={setOpen}
     >
-      <CollapsibleTrigger className="group/trigger flex items-center gap-1.5 py-1 hover:text-ink">
-        {line}
-        <Icon.Next className="size-3 shrink-0 transition-transform duration-(--duration-snap) ease-snap group-data-panel-open/trigger:rotate-90 motion-reduce:transition-none" />
-      </CollapsibleTrigger>
-      <ToolGroupContent>
-        {steps && (
-          <ol className="ms-5 list-decimal text-sm leading-6">
-            {labels.map((label, index) => (
-              <li key={index}>{label}</li>
-            ))}
-          </ol>
+      {!open && folded !== '' && (
+        // Closed, the calls are not drawn: these stand for them by name.
+        <span hidden>
+          {folded.split('\n').map((call) => {
+            const [id = '', name = '', state] = call.split('\t')
+            return (
+              <span
+                key={id}
+                {...thingProps('tool', id, { label: humanize(name), state })}
+              />
+            )
+          })}
+        </span>
+      )}
+      <div className="flex min-h-6 flex-wrap items-center gap-x-2">
+        {speaker && (
+          <span
+            data-appearance-recipe="ui.section"
+            {...appearancePair('primary', 'assistant-reading')}
+            className="text-ink"
+          >
+            {speaker}
+          </span>
         )}
-        {tools.map((index) => (
-          <MessagePrimitive.PartByIndex
-            key={index}
-            index={index}
-            components={components}
-          />
-        ))}
-      </ToolGroupContent>
-    </ToolGroupRoot>
+        {notes.length > 0 && (
+          <span
+            data-slot="activity-line"
+            data-appearance-recipe="metadata"
+            {...appearancePair('secondary', 'assistant-reading')}
+            className="flex min-w-0 items-center gap-x-2 text-sm text-ink-muted"
+          >
+            {notes.map((note, index) => (
+              <Fragment key={index}>
+                {(speaker || index > 0) && (
+                  <span aria-hidden className="text-ink-faint">
+                    ·
+                  </span>
+                )}
+                {note}
+              </Fragment>
+            ))}
+          </span>
+        )}
+      </div>
+      {openable && (
+        <CollapsiblePanel>
+          {/* Room for the sheet's shadow inside the panel's clip. */}
+          <div className="px-2 pt-2 pb-3">
+            <div
+              data-slot="activity-details"
+              className="surface-paper-subtle rounded-xl px-3 py-2 text-sm"
+            >
+              {steps && (
+                <ol className="ms-5 list-decimal py-1 leading-6 text-ink-muted">
+                  {labels.map((label, index) => (
+                    <li key={index}>{label}</li>
+                  ))}
+                </ol>
+              )}
+              {work}
+            </div>
+          </div>
+        </CollapsiblePanel>
+      )}
+      {tools}
+    </Collapsible>
+  )
+}
+
+/** A call's own row: it opens to its output when it has one. */
+const ToolTraceRow: FC<{ call: ToolCallEntry }> = ({ call }) => {
+  const line = (
+    <TraceLine status={call.status}>
+      <TraceIcon>
+        {getToolCategoryIcon(call.tool_category, {
+          showBackground: false,
+          size: 14,
+          width: 16,
+          height: 16,
+        }) ?? <Icon.ToolDone />}
+      </TraceIcon>
+      <TraceTitle>{call.message}</TraceTitle>
+    </TraceLine>
+  )
+  if (!call.output) return <div>{line}</div>
+  return (
+    <TraceCollapsible>
+      <TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
+      <TraceCollapsibleContent>
+        <ToolOutput text={call.output} />
+      </TraceCollapsibleContent>
+    </TraceCollapsible>
+  )
+}
+
+/**
+ * The reply's tool calls folded into one Trace row above the answer ("Used 3
+ * tools"), opening to a row per call. The summary says in words when a call
+ * is still running or did not finish, since Trace marks those by colour and
+ * motion alone.
+ */
+const ToolTrace: FC<{ calls: ToolCallEntry[] }> = ({ calls }) => {
+  const [choice, setChoice] = useState<boolean>()
+  if (calls.length === 0) return null
+  const count = `${calls.length} tool${calls.length === 1 ? '' : 's'}`
+  const running = calls.some(({ status }) => status === 'running')
+  const failed = calls.filter(({ status }) => status === 'error').length
+  const summary = running
+    ? `Using ${count}…`
+    : failed
+      ? `Used ${count}, ${failed} did not finish`
+      : `Used ${count}`
+  return (
+    <Trace data-slot="tool-trace" className="my-1">
+      <TraceCollapsible open={choice ?? false} onOpenChange={setChoice}>
+        <TraceCollapsibleTrigger>
+          <TraceLine
+            status={running ? 'running' : failed ? 'error' : undefined}
+          >
+            <TraceIcon>
+              {running ? <Icon.ToolRunning /> : <Icon.ToolDone />}
+            </TraceIcon>
+            <TraceTitle>{summary}</TraceTitle>
+          </TraceLine>
+        </TraceCollapsibleTrigger>
+        <TraceCollapsibleContent>
+          <Trace>
+            {calls.map((call, index) => (
+              <ToolTraceRow key={call.tool_name + index} call={call} />
+            ))}
+          </Trace>
+        </TraceCollapsibleContent>
+      </TraceCollapsible>
+    </Trace>
   )
 }
 
@@ -616,7 +895,7 @@ const ReasoningSummaryPart: DataMessagePartComponent = ({ data }) => {
   const running = useAuiState((s) => s.message.status?.type === 'running')
   if (!text) return null
   return (
-    <ReasoningRoot streaming={running}>
+    <ReasoningRoot streaming={running} variant="ghost" className="mb-1">
       <ReasoningTrigger active={running} />
       <ReasoningContent>
         <ReasoningText>
@@ -627,55 +906,13 @@ const ReasoningSummaryPart: DataMessagePartComponent = ({ data }) => {
   )
 }
 
-/** External evidence links must name an absolute web URL; never infer a destination. */
-function citationUrl(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined
-  try {
-    const url = new URL(value)
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : undefined
-  } catch {
-    return undefined
-  }
-}
-
 /**
- * Sources a web search or page read retrieved. Each result arrived as its own
- * citation and drew a tag, eight to a search, crowding the answer; the answer
- * links what it uses and the tool call keeps every result, so these draw none.
+ * Citations draw nothing in the part flow: the message's sources are drawn
+ * once after its parts (CitationSources in the thread) — full link previews
+ * where metadata resolved, one Sources hyperlink row with a dropdown for
+ * the rest. The part renderer stays registered so the data part is claimed.
  */
-const RETRIEVED_SOURCES = new Set<unknown>(['web_search', 'web_read'])
-
-const CitationPart: DataMessagePartComponent = ({ data }) => {
-  const part = object(data)
-  if (RETRIEVED_SOURCES.has(part.sourceKind)) return null
-  const provenance = object(part.provenance)
-  const url = citationUrl(provenance.url)
-  const label = str(part.label) ?? (url && new URL(url).hostname) ?? 'Source'
-  const title = str(provenance.excerpt) ?? url
-  const chip =
-    'me-1.5 mt-2 inline-flex max-w-64 items-center gap-1.5 rounded-md border border-separator bg-raised px-2 py-1 align-top text-xs text-ink-muted'
-  const content = (
-    <>
-      <Icon.Link className="size-3 shrink-0" />
-      <span className="truncate">{label}</span>
-    </>
-  )
-  return url ? (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      title={title}
-      className={cn(chip, 'hover:text-ink')}
-    >
-      {content}
-    </a>
-  ) : (
-    <span title={title} className={chip}>
-      {content}
-    </span>
-  )
-}
+const CitationPart: DataMessagePartComponent = () => null
 
 const ErrorPart: DataMessagePartComponent = ({ data }) => {
   const part = object(data)
@@ -744,53 +981,24 @@ const UserInputPart: DataMessagePartComponent = ({ data }) => {
         ? `not delivered${reason && INPUT_REFUSALS[reason] ? `: ${INPUT_REFUSALS[reason]}` : ''}`
         : 'queued for its next step'
   return (
-    <p
+    <div
       data-slot="theorem-user-input"
       data-status={status}
-      className={`my-2 border-s-2 border-separator ps-3 text-sm whitespace-pre-wrap ${status === 'delivered' ? 'text-ink' : 'text-ink-muted'}`}
+      className={`my-2 border-s-2 border-separator ps-3 text-sm ${status === 'delivered' ? 'text-ink' : 'text-ink-muted'}`}
     >
-      {text}
+      <UserMarkdown text={text} />
       {note && <span className="ms-2 text-xs text-ink-faint">· {note}</span>}
-    </p>
+    </div>
   )
 }
 
 /* --------------------------------------------------------------------- scenes */
 
-/**
- * A reply's interactive scene (scene-part.tsx), drawn above its text. Fix
- * sends the failure to the agent as the next turn; a pick becomes a
- * reference to this reply, with what was picked as its excerpt.
- */
+/** A reply's interactive scene (scene-part.tsx), drawn above its text. */
 const ScenePart: DataMessagePartComponent = ({ data }) => {
-  const aui = useAui()
-  const theme = useSceneTheme()
-  const threadId = useAuiState((s) => s.threadListItem.remoteId)
-  const messageId = useAuiState((s) => s.message.id)
   const scene = readScene(data)
   if (!scene) return <PartNotice name={SCENE_PART} />
-  return (
-    <SceneCard
-      scene={scene}
-      theme={theme}
-      onRepair={(error) => aui.thread.append(repairRequest(scene.title, error))}
-      onAsk={
-        threadId
-          ? (entity) =>
-              askAbout({
-                label: `${scene.title ?? 'Scene'}: ${entity.label ?? entity.id}`,
-                excerpt: JSON.stringify({
-                  scene: { sceneId: scene.sceneId, title: scene.title },
-                  entity,
-                }),
-                location: {
-                  resource: { kind: 'message', threadId, messageId },
-                },
-              })
-          : undefined
-      }
-    />
-  )
+  return <SceneInReply scene={scene} />
 }
 
 /** Inspector-only or figure-only parts: retained inert, never drawn in the transcript. */
@@ -806,8 +1014,11 @@ const PartNotice: FC<{ name: string }> = ({ name }) => (
   </p>
 )
 
+// New runtime metadata is not a failed piece of user content. Keep its name
+// inspectable without adding a bubble to every streaming reply. Known content
+// renderers still use PartNotice for malformed payloads and render failures.
 const FallbackPart: DataMessagePartComponent = ({ name }) => (
-  <PartNotice name={name} />
+  <span hidden data-part={name} />
 )
 
 /** Keeps a part that throws inside its own slot instead of unmounting the chat. */
@@ -843,6 +1054,14 @@ const RENDERERS = (
     ['theorem-attachment', AttachmentPart],
     ['theorem-host_call', HostCallPart],
     ['theorem-user_input', UserInputPart],
+    // A run's completion: why it stopped, and the way back up when a limit stopped it.
+    ['theorem-completion', CompletionFooter],
+    // The saved records a reply was given, each at its saved revision, and what was held back.
+    ['theorem-context_manifest', ContextManifestPart],
+    ['theorem-skill_load', SkillLoadPart],
+    // A change the assistant proposes to a saved record: nothing is saved until the person approves.
+    ['theorem-record_change_proposal', RecordChangeProposalPart],
+    ['theorem-record_change_outcome', RecordChangeOutcomePart],
     ...DELEGATION_RENDERERS,
   ] satisfies Array<[string, DataMessagePartComponent]>
 )
@@ -851,18 +1070,19 @@ const RENDERERS = (
     guarded(name, render),
   ])
   .concat([
-    // The run's steps are drawn once per message by RunSummary.
+    // The run's steps are drawn once per message by Activity.
     ['theorem-progress', Inert],
     ['theorem-usage', Inert],
     ['theorem-expression', Inert],
     ['theorem-expression_refused', Inert],
     // The page's client operations: a check of an App shows as a chip.
-    ['theorem-client_operation', ClientOperationPart],
-    // The native agent's program: what it does shows up as its host calls
-    // and their artifacts, and its stored source is not the full program.
-    ['theorem-program', Inert],
-    // How the reply was set up (style, frameworks, suggestions) is offered
-    // from the reply's More menu, not drawn in the transcript.
+    // A ui.present tree is model-supplied; a render failure stays in its slot.
+    ['theorem-client_operation', guarded('theorem-client_operation', ClientOperationPart)],
+    // A TypeScript program the agent wrote is shown as one, closed, with its
+    // source inside. What it did shows up as its calls and their artifacts.
+    ['theorem-program', ProgramPart],
+    // Response style, frameworks, and suggestions are available in the
+    // reply's More menu rather than the transcript.
     ['theorem-response_style', Inert],
   ])
 

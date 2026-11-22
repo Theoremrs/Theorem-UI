@@ -1,7 +1,7 @@
 // The page side of scripts/e2e/app-db.mjs: it mounts a hosted App the way the
 // app does (the hosted document, the block sandbox, the frame connection and
 // the App's databases), without a signed-in Theorem behind it.
-import { documentAppDatabases } from '@/lib/blocks/app-db'
+import { documentAppDatabases, openAppDatabase } from '@/lib/blocks/app-db'
 import { parseHtmlDeclarations } from '@/lib/blocks/declarations'
 import { pinnedAppHost, pinnedAppState } from '@/lib/blocks/document-app'
 import { BLOCK_SANDBOX, FrameConnection } from '@/lib/blocks/executor'
@@ -27,6 +27,7 @@ async function mount(
   await state.ready
   const databases = documentAppDatabases(options.documentId, {
     writable: options.writable ?? true,
+    historyDays: declarations.dbHistoryDays,
   })
   const page = await hostedAppDocument(html)
   const url = URL.createObjectURL(new Blob([page], { type: 'text/html' }))
@@ -39,7 +40,6 @@ async function mount(
     pinnedAppHost(
       html,
       options.documentId,
-      declarations.capabilities,
       state.state,
       databases,
     ),
@@ -68,4 +68,26 @@ async function clear(): Promise<void> {
       await root.removeEntry(name, { recursive: true })
 }
 
-Object.assign(window, { oracle: { mount, unmount, clear } })
+/**
+ * Write three versions and compact keeping none of the past: what the cut
+ * leaves, in the file and after reopening it.
+ */
+async function retention() {
+  const directory = 'theorem-app.retention.records'
+  const db = await openAppDatabase(directory)
+  for (const name of ['Alder', 'Birch', 'Cedar'])
+    await db.mutate({
+      upsertNodes: [{ id: 'org:a', labels: ['Org'], properties: { name } }],
+    })
+  const before = await db.inspect()
+  const report = await db.compact({ historyDays: 0 })
+  const after = await db.inspect()
+  await db.close()
+  const again = await openAppDatabase(directory)
+  const reopened = await again.inspect()
+  const node = await again.getNode('org:a')
+  await again.close()
+  return { before, report, after, reopened, node }
+}
+
+Object.assign(window, { oracle: { mount, unmount, clear, retention } })

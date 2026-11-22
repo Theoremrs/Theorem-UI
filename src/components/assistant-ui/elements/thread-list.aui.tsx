@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  threadDisplayTitle,
+  useRecoveredSearchTitles,
+  useThreadDisplayTitle,
+} from '@/lib/theorem/thread-title'
 import { useGlideHighlight, useLayoutSprings } from "@/components/motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -281,19 +286,22 @@ export const useThreadListGroups = (searchQuery = "") => {
   const threadItems = useAuiState((s) => s.threads.threadItems);
 
   const query = searchQuery.trim().toLowerCase();
+  const recoveredTitles = useRecoveredSearchTitles(Boolean(query));
   const startOfToday = useStartOfToday();
 
   return useMemo(() => {
     const itemsById = new Map(threadItems.map((item) => [item.id, item]));
     const matches = threadIds
       .map((id, index) => ({ id, index }))
-      .filter(
-        ({ id }) =>
-          !query ||
-          (itemsById.get(id)?.title || "New Chat")
-            .toLowerCase()
-            .includes(query),
-      );
+      .filter(({ id }) => {
+        if (!query) return true;
+        const item = itemsById.get(id);
+        const recovered = item?.remoteId
+          ? recoveredTitles?.get(item.remoteId)?.title
+          : undefined;
+        const title = threadDisplayTitle(item?.title, recovered) || "New Chat";
+        return title.toLowerCase().includes(query);
+      });
 
     const idByRemoteId = new Map<string, string>();
     for (const { id } of matches) {
@@ -346,7 +354,7 @@ export const useThreadListGroups = (searchQuery = "") => {
       }
     }
     return { threadIds, filteredIndices, groups: result, childrenOf };
-  }, [threadIds, threadItems, query, startOfToday]);
+  }, [threadIds, threadItems, query, recoveredTitles, startOfToday]);
 };
 
 /** The listed threads forked or continued from each thread, by its list id. */
@@ -396,6 +404,8 @@ const ThreadListItemGroups: FC<{
         <Fragment key={group.label}>
           <div
             data-slot="aui_thread-list-group-label"
+            data-appearance-part="navigation-section"
+            data-appearance-recipe="ui.section"
             className="text-ink-faint-sheet px-2 pt-4 pb-1 text-sm"
           >
             {group.label}
@@ -588,6 +598,10 @@ export const ThreadListItem: FC = () => {
           render={
             <ThreadListItemPrimitive.Root
               data-slot="aui_thread-list-item"
+              data-appearance-part="navigation-row"
+              data-appearance-radius-role="control"
+              data-appearance-recipe="ui.label"
+              data-appearance-pair={isCurrent ? "primary/selected" : "primary/navigation"}
               data-active={isCurrent || undefined}
               aria-current={isCurrent || undefined}
               className="group hover:bg-hover has-focus-visible:bg-hover has-data-[state=open]:bg-hover data-popup-open:bg-hover data-active:bg-transparent relative flex h-8 items-center gap-1 rounded-md ps-2 pe-1 text-base transition-colors duration-100"
@@ -615,7 +629,7 @@ export const ThreadListItem: FC = () => {
                 className="focus-visible:before:outline-focus min-w-0 truncate text-start outline-none before:absolute before:inset-0 before:rounded-md focus-visible:before:outline-2 focus-visible:before:-outline-offset-2"
               >
                 {origin && <OriginMark kind={origin.kind} />}
-                <ThreadListItemPrimitive.Title fallback="New Chat" />
+                <ThreadDisplayTitle />
                 {origin && <span className="sr-only">, {originLabel[origin.kind]}</span>}
                 {status && <span className="sr-only">, {statusLabel[status]}</span>}
               </ThreadListItemPrimitive.Trigger>
@@ -798,11 +812,14 @@ export const OriginMark: FC<{ kind: Theorem.ThreadOrigin["kind"] }> = ({ kind })
     />
   );
 };
+function ThreadDisplayTitle() {
+  return useThreadDisplayTitle() || "New Chat";
+}
 const ThreadListItemRename: FC<{
   onDone: (restoreFocus: boolean) => void;
 }> = ({ onDone }) => {
   const aui = useAui();
-  const title = useAuiState((s) => s.threadListItem.title) ?? "";
+  const title = useThreadDisplayTitle() ?? "";
   const [value, setValue] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
   const settledRef = useRef(false);

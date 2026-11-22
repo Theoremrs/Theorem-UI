@@ -1,4 +1,4 @@
-// SOURCING: @assistant-ui/react (useRemoteThreadListRuntime + useLocalRuntime) with @theoremharness/sdk/assistant-ui (createTheoremChatAdapter, toAssistantMessages); @tanstack/react-query's QueryClientContext for the cached model list a send checks its effort level against; each thread runtime also reports to Kit (lib/kit)
+// SOURCING: @assistant-ui/react (useRemoteThreadListRuntime + useLocalRuntime) with @theoremharness/sdk/assistant-ui (createTheoremChatAdapter, toAssistantMessages); each thread runtime also reports to Kit (lib/kit) and reads replies aloud through lib/speech (on request, or as they stream in when narration is on)
 //
 // Theorem owns durable history, execution and approvals. assistant-ui owns the
 // view state. The thread list maps onto Theorem threads in the active project;
@@ -28,16 +28,19 @@ import {
   toAssistantMessages,
 } from '@theoremharness/sdk/assistant-ui'
 import type { TheoremChatAdapterOptions } from '@theoremharness/sdk/assistant-ui'
+import type { TheoremContextReference } from '@theoremharness/sdk'
 import { QueryClientContext } from '@tanstack/react-query'
 import { createAssistantStream } from 'assistant-stream'
-import pMap from 'p-map'
-import { useContext, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef } from 'react'
 import { create } from 'zustand'
 import { refreshConversation } from './conversation-refresh'
+import type { RefreshCursor } from './conversation-refresh'
 import type { ReactNode } from 'react'
 import { toastManager } from '@/components/coss/toast'
 import { useComposerReferences } from '@/components/chat/composer-references'
-import { planningTurnOptions, usePlanning, webTurnOptions } from '@/components/chat/composer-tools'
+import { codingTurnOptions, planningTurnOptions, useCodeMode, usePlanning, webTurnOptions } from '@/components/chat/composer-tools'
+import { skillTurnOptions } from './skill-selection'
+import { connectionTurnOptions } from './tool-selection'
 import { DRAFT_PLAN } from './plans'
 import {
   consumePendingStyle,
@@ -65,14 +68,24 @@ import {
 import type { Theorem } from './client'
 import { chatAttachments, turnUploads } from './chat-attachments'
 import { RefusedSend } from './send-recovery'
+import { generationTurnOptions, requestedEffort, useGenerationOverrides } from './generation'
+import { saveThreadGeneration, takeThreadGeneration } from './thread-generation'
 import { modelTurnOptions } from './models'
+import { bindRunInput } from './run-input-runtime'
 
 import { toHistoryMessages } from './message-history'
-import { isUntitledTitle, threadTitle } from './thread-title'
+import { isUntitledTitle, recoveredTitle, rememberTitle, threadTitle } from './thread-title'
 
-import { KitStage } from '@/components/kit/kit-stage'
+import { Figures } from '@/components/face/figures'
 import { useKitRequests } from '@/lib/kit/operations'
+import { usePresentRequests } from '@/lib/generative/operations'
 import { useAppRequests } from '@/lib/blocks/app-operations'
+import { useFaceRequests } from '@/lib/face/operations'
+import { useWorkbenchRequests } from '@/lib/workbench/agent/operations'
+import { useSessionNoticeDelivery } from '@/lib/workbench/agent/deliver'
+import { speechAdapter } from '@/lib/speech/adapter'
+import { dictationAdapter } from '@/lib/speech/dictation'
+import { useNarrateReplies } from '@/lib/speech/narrate'
 import { clientSurfaceTurnOptions } from './client-surface'
 
 type RemoteThreadMetadata = Awaited<
@@ -192,11 +205,21 @@ async function alignWithDurableBranch(
       : user.id
   // The SDK's adapter takes text turns; what they carry goes as upload ids.
   const content = user.content.filter((part) => part.type === 'text')
-  const text = content.map((part) => part.text).join('\n')
+  // A quote carried in from a reply rides the message's metadata; the text
+  // turn must still carry the passage, or the question loses its subject.
+  // Older saved turns and test fixtures may carry no metadata at all.
+  const custom = (user as { metadata?: { custom?: unknown } }).metadata?.custom
+  const quoteText = (custom as { quote?: { text?: string } } | undefined)?.quote
+    ?.text
+  const quoted =
+    quoteText && !content.some((part) => part.text.includes(quoteText))
+      ? [{ type: 'text' as const, text: `> ${quoteText.replace(/\n/g, '\n> ')}` }]
+      : []
+  const text = [...quoted, ...content].map((part) => part.text).join('\n')
   return {
     messages: [
       ...messages.slice(0, -1),
-      { ...user, id, content, attachments: [] },
+      { ...user, id, content: [...quoted, ...content], attachments: [] },
     ],
     uploadIds: turnUploads(
       text,
@@ -353,6 +376,7 @@ const loadedForResume = new Map<
  */
 async function durableHistory(threadId: string) {
   const snapshot = await theorem().chat.threads.get({ threadId })
+  takeThreadGeneration(snapshot.thread)
   const { lastRun, pendingTurn } = snapshot.thread
   const unanswered = snapshot.messages.at(-1)?.role === 'user' && !pendingTurn
   const runId =
@@ -606,6 +630,22 @@ export async function* runTurn(
     noteLiveRun(threadId, undefined)
   }
 }
+/**
+ * A turn's steps, then how long they took. assistant-ui stamps a live reply
+ * when its run begins and records no end, so this is what lets the reply say
+ * how long the person waited; a reply read from history has its stored time.
+ */
+export async function* timed(turn: AsyncIterable<ChatModelRunResult>): AsyncGenerator<ChatModelRunResult> {
+  const streamStartTime = Date.now()
+  let totalChunks = 0
+  let toolCallCount = 0
+  for await (const step of turn) {
+    totalChunks += 1
+    toolCallCount = (step.content ?? []).filter((part) => part.type === 'tool-call').length
+    yield step
+  }
+  yield { metadata: { timing: { streamStartTime, totalStreamTime: Date.now() - streamStartTime, totalChunks, toolCallCount } } }
+}
 /** Whether a streamed step carries a finished `draft_plan` call. */
 export function draftedPlan(step: ChatModelRunResult): boolean {
   return (step.content ?? []).some(
@@ -614,37 +654,44 @@ export function draftedPlan(step: ChatModelRunResult): boolean {
 }
 function useTheoremThreadRuntime() {
   const aui = useAui()
-  // Absent outside the app's query provider; a send there carries no effort level.
   const queryClient = useContext(QueryClientContext)
-  const turnOptions = useMemo(() => modelTurnOptions(queryClient), [queryClient])
   const adapter = useMemo<ChatModelAdapter>(
     () => ({
       async *run(options) {
         try {
-          const references = useComposerReferences.getState().references
-          // Read before initialize() creates the conversation: the style picked for a new one becomes that conversation's, and rides its messages until one is accepted.
-          const existed = Boolean(aui.threadListItem.getState().remoteId)
+          // A send that names its own context (a question asked from inside an App) goes with that;
+          // otherwise the composer's references go, unless the turn is a run's own input.
+          const given = options.runConfig.custom?.theoremContextReferences as TheoremContextReference[] | undefined
+          const references = given ?? (options.runConfig.custom?.theoremRunInput === true
+            ? [] : useComposerReferences.getState().references)
+          const { id: localId, remoteId: existingId } = aui.threadListItem.getState()
+          const isNew = !existingId
           const { remoteId } = await aui.threadListItem.initialize()
-          if (!existed) holdPendingStyle(remoteId)
-          // A style picked for this conversation a moment ago may still be on its way to Theorem; the turn starts once it is kept or refused.
+          // A new chat's response settings were kept as a draft until it had a thread to belong to.
+          if (isNew) useGenerationOverrides.getState().adopt(remoteId)
+          // The override belongs on the thread; what is not there yet goes with the turn below.
+          await saveThreadGeneration(remoteId)
           await conversationStyleSettled(remoteId)
+          const style = styleTurnOptions(remoteId)
           // The composer's model pick; read at each send, so switching mid-thread takes effect.
           const custom = options.runConfig.custom ?? {}
           const configured = custom.theoremTurnOptions as Record<string,unknown> | undefined
-          // The composer's context, Web and Plan toggles, read at each send like the model pick.
-          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(),...clientSurfaceTurnOptions(),...styleTurnOptions(remoteId)}
+          // The composer's context, Web, Plan and Code mode toggles, client surface and connection choice, read at each send like the model pick.
+          // The skills picked in the draft ride as structured ids, so the harness loads them.
+          const draftText = options.messages.at(-1)?.content.map((part) => part.type === 'text' ? part.text : '').join('\n') ?? ''
+          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(localId,remoteId),...codingTurnOptions(localId,remoteId),...clientSurfaceTurnOptions(),...connectionTurnOptions(localId,remoteId),...skillTurnOptions(draftText),...generationTurnOptions(remoteId),...style}
           const composed = Object.keys(added).length ? {
             ...options,
             runConfig:{...options.runConfig,custom:{...custom,theoremTurnOptions:{...configured,...added}}},
           } : options
-          const turn = runTurn(remoteId,composed,turnOptions,()=>{
+          const turn = runTurn(remoteId,composed,modelTurnOptions,()=>{
             // Recovery replays its saved request; only a newly accepted send consumes these references.
-            useComposerReferences.setState(state=>({references:state.references.filter(reference=>!references.includes(reference))}))
-            consumePendingStyle(remoteId, added.responseStyle, queryClient)
+            if (!given) useComposerReferences.setState(state=>({references:state.references.filter(reference=>!references.includes(reference))}))
+            consumePendingStyle(remoteId, style.responseStyle, queryClient)
           })
-          for await (const step of turn) {
-            // Plan stays on until a plan is written; the turn that writes one turns it off.
-            if (draftedPlan(step)) usePlanning.getState().set(false)
+          for await (const step of timed(turn)) {
+            // Plan stays on until a plan is written; the turn that writes one turns it off for this conversation.
+            if (draftedPlan(step)) usePlanning.getState().set(remoteId,false)
             yield step
           }
         } catch (error) {
@@ -655,27 +702,50 @@ function useTheoremThreadRuntime() {
         }
       },
     }),
-    [aui, queryClient, turnOptions],
+    [aui, queryClient],
   )
-  const runtime = useLocalRuntime(adapter)
+  // Replies are read aloud by the page's own voice, when the person asks.
+  const speech = useMemo(() => speechAdapter(), [])
+  // Dictation is Parakeet where its model is here, the browser's own
+  // recognition otherwise; the composer's mic appears only where one can run.
+  const dictation = useMemo(() => dictationAdapter(), [])
+  const runtime = useLocalRuntime(adapter, { adapters: { speech, dictation } })
+  useEffect(() => bindRunInput(runtime, {
+    threadKey: aui.threadListItem.getState().id,
+    threadId: () => aui.threadListItem.getState().remoteId,
+    liveRuns: useLiveRuns,
+    subscribe: (listener) => aui.subscribe(listener),
+  }), [aui, runtime])
+  // A new chat can get its durable id before any send (an attachment upload creates the thread); Plan and Code mode move with it then, so the chip shows what the next send asks for.
+  useEffect(() => {
+    const follow = () => {
+      const { id, remoteId } = aui.threadListItem.getState()
+      if (remoteId && remoteId !== id) {
+        usePlanning.getState().adopt(id, remoteId)
+        useCodeMode.getState().adopt(id, remoteId)
+      }
+    }
+    follow()
+    return aui.subscribe(follow)
+  }, [aui])
+  // The effort this conversation's sends ask for, for Theo to show while one runs.
+  const faceEffort = useCallback(() => requestedEffort(aui.threadListItem.getState().remoteId ?? undefined), [aui])
   useKitSource(runtime)
+  // Theo narrates a reply as it streams in, when the person has asked for that.
+  const onScreen = useCallback(() => aui.threads.getState().mainThreadId === aui.threadListItem.getState().id, [aui])
+  const followThreads = useCallback((listener: () => void) => aui.subscribe(listener), [aui])
+  useNarrateReplies(runtime, onScreen, followThreads)
   useKitRequests(runtime)
   // The agent checks Apps with the page's compiler; this answers it.
   useAppRequests(runtime)
-  useEffect(() => {
-    let busy = false
-    const abort = new AbortController()
-    const refresh = async () => {
-      const remoteId = aui.threadListItem.getState().remoteId
-      if (busy || !remoteId || document.visibilityState !== 'visible') return
-      busy = true
-      try { await refreshConversation(runtime.thread,()=>theorem().chat.threads.get({threadId:remoteId},{abortSignal:abort.signal})) }
-      catch { /* A failed refresh leaves the last confirmed transcript intact. */ }
-      finally { busy = false }
-    }
-    const timer = setInterval(()=>void refresh(),3000)
-    return () => {clearInterval(timer);abort.abort()}
-  },[aui,runtime])
+  // The agent drives Theo, its face, through the page; this answers it.
+  useFaceRequests(runtime, faceEffort)
+  // The agent reads and acts on the workbench; this answers it.
+  useWorkbenchRequests(runtime)
+  // The agent paints an interface into its reply; this answers it.
+  usePresentRequests(runtime)
+  // A coding session the agent started that stops working wakes the agent; this tells it.
+  useSessionNoticeDelivery(runtime)
   return runtime
 }
 
@@ -687,6 +757,36 @@ export function createThreadListAdapter(
   activeProject: () => string,
 ): RemoteThreadListAdapter {
   const client = theorem()
+  const queued = new Map<string, Theorem.Thread>()
+  const pending = new Set<string>()
+  let workers = 0
+  const recoverTitles = () => {
+    const work = async () => {
+      workers += 1
+      try {
+        for (const [id, thread] of queued) {
+          queued.delete(id)
+          if (thread.projectId !== activeProject()) continue
+          pending.add(id)
+          try {
+            const snapshot = await client.chat.threads.get(
+              { threadId: id },
+              { timeoutInSeconds: 10, maxRetries: 0 },
+            )
+            rememberTitle(snapshot.thread, threadTitle(snapshot))
+          } catch {
+            // Leave authoritative list metadata visible if history is inaccessible.
+          } finally {
+            pending.delete(id)
+          }
+        }
+      } finally {
+        workers -= 1
+      }
+    }
+    const start = Math.min(4 - workers, queued.size)
+    for (let worker = 0; worker < start; worker++) void work()
+  }
   return {
     async list(params) {
       const page = await client.chat.threads.list({
@@ -701,24 +801,20 @@ export function createThreadListAdapter(
         ...useShell.getState().terminalThreadIds,
         ...documentThreadIds(),
       ])
+      const visible = page.items.filter((thread) => !apart.has(thread.threadId))
+      const threads = visible.map((thread) => {
+        if (!isUntitledTitle(thread.title)) {
+          rememberTitle(thread, thread.title)
+          return toMetadata(thread)
+        }
+        const recovered = recoveredTitle(thread)
+        if (!recovered && (thread.lastMessageAtMs !== undefined || thread.revision > 1) && !pending.has(thread.threadId))
+          queued.set(thread.threadId, thread)
+        return toMetadata(thread, recovered ?? thread.title)
+      })
+      if (queued.size) setTimeout(recoverTitles, 0)
       return {
-        threads: await pMap(
-          page.items.filter((thread) => !apart.has(thread.threadId)),
-          async (thread) => {
-            if (!isUntitledTitle(thread.title)) return toMetadata(thread)
-            try {
-              const snapshot = await client.chat.threads.get(
-                { threadId: thread.threadId },
-                { timeoutInSeconds: 10, maxRetries: 0 },
-              )
-              return toMetadata(snapshot.thread, threadTitle(snapshot))
-            } catch {
-              // One inaccessible history must not hide the rest of the chats.
-              return toMetadata(thread)
-            }
-          },
-          { concurrency: 4 },
-        ),
+        threads,
         nextCursor: page.nextCursor,
       }
     },
@@ -727,6 +823,8 @@ export function createThreadListAdapter(
         const created = await mutate((headers) =>
           client.chat.threads.create({ projectId: activeProject(), ...headers }),
         )
+        // An attachment upload can create the thread before its first turn.
+        holdPendingStyle(created.record.threadId)
         return { remoteId: created.record.threadId }
       } catch (error) {
         toastManager.add({
@@ -767,7 +865,9 @@ export function createThreadListAdapter(
     },
     async fetch(remoteId) {
       const snapshot = await client.chat.threads.get({ threadId: remoteId })
-      return toMetadata(snapshot.thread, threadTitle(snapshot))
+      const title = threadTitle(snapshot)
+      rememberTitle(snapshot.thread, title)
+      return toMetadata(snapshot.thread, title)
     },
     // This callback runs concurrently with sends; only runTurn writes titles.
     async generateTitle(remoteId, messages) {
@@ -785,11 +885,13 @@ export function TheoremRuntimeProvider({
   projectId,
   threadId,
   onThreadIdChange,
+  refreshVisible = true,
   children,
 }: {
   projectId: string
   threadId: string | undefined
   onThreadIdChange: (threadId: string | undefined) => void
+  refreshVisible?: boolean
   children: ReactNode
 }) {
   const project = useRef(projectId)
@@ -808,12 +910,64 @@ export function TheoremRuntimeProvider({
     threadId,
     onThreadIdChange,
   })
+  useEffect(() => {
+    if (!refreshVisible) return
+    let busy = false
+    let activeId: string | undefined
+    let pending: AbortController | undefined
+    let cursor: RefreshCursor = {}
+    const followSelection = () => {
+      const id = runtime.threads.mainItem.getState().remoteId ?? undefined
+      if (id === activeId) return
+      pending?.abort()
+      activeId = id
+      cursor = {}
+    }
+    const refresh = async () => {
+      followSelection()
+      const id = activeId
+      if (busy || !id || document.visibilityState !== 'visible') return
+      const request = new AbortController()
+      pending = request
+      const active = () => !request.signal.aborted && document.visibilityState === 'visible'
+      busy = true
+      try {
+        await refreshConversation(
+          runtime.thread,
+          () => theorem().chat.threads.get(
+            { threadId: id },
+            { abortSignal: request.signal, timeoutInSeconds: 10, maxRetries: 0 },
+          ),
+          cursor,
+          active,
+        )
+      } catch {
+        // A failed refresh leaves the last confirmed transcript intact.
+      } finally {
+        busy = false
+        pending = undefined
+      }
+    }
+    const visibility = () => {
+      if (document.visibilityState === 'visible') void refresh()
+      else pending?.abort()
+    }
+    const stop = runtime.threads.mainItem.subscribe(followSelection)
+    const timer = setInterval(() => void refresh(), 3000)
+    document.addEventListener('visibilitychange', visibility)
+    return () => {
+      stop()
+      clearInterval(timer)
+      pending?.abort()
+      document.removeEventListener('visibilitychange', visibility)
+    }
+  }, [runtime, refreshVisible])
   useKitClock()
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <TheoremPartRenderers />
       {children}
-      <KitStage />
+      <Figures />
     </AssistantRuntimeProvider>
   )
 }

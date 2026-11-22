@@ -1,11 +1,12 @@
 // SOURCING: @puckeditor/core 0.24's Render (a mode's page in use, as a page
 // is), Base UI useMediaQuery (the phone keeps the Index's own overlay), the
-// Index's navigation (the /index URL is Index mode's place) and its library
-// publication. A mode's page is `Modes/<mode>.page.json` in the vault, else
+// Index's navigation (the /index URL is Index mode's place), its library
+// publication, and the CRM's shared reading of the record types (components/crm/context), records themselves read only where a record surface is drawn. A mode's page is `Modes/<mode>.page.json` in the vault, else
 // its template (lib/modules/templates.ts); it is arranged in Pages.
 import { useMediaQuery } from '@base-ui/react/unstable-use-media-query'
 import { Render } from '@puckeditor/core'
 import { useMemo, useState } from 'react'
+import { CrmScopeProvider, useCrmScopeValue } from '@/components/crm/context'
 import { PhoneIndex } from '@/components/index/index-surface'
 import {
   IndexPlaceContext,
@@ -49,6 +50,8 @@ export function ModePage({ mode }: { mode: PageMode }) {
   const { client, isPending, missing } = useVaultClient()
   if (client) return <VaultModePage client={client} mode={mode} />
   if (isPending) return <PageSkeleton />
+  // Without a vault the mode is its built-in arrangement, which is how it
+  // looks until one is saved; there is nothing to say about it in use.
   return (
     <PageRuntimeProvider>
       <ModeSurface
@@ -151,9 +154,14 @@ export function IndexMode() {
   useLibraryPublication()
   const place = useUrlIndexPlace()
   const desktop = useMediaQuery('(min-width: 1024px)', { noSsr: true })
+  // One reading of the types and their counts for the panel. No record is
+  // downloaded here: a record view or preview reads its own (CrmBoundary).
+  const records = useCrmScopeValue({ records: false })
   return (
     <IndexPlaceContext.Provider value={place}>
-      {desktop ? <ModePage mode="index" /> : <PhoneIndex />}
+      <CrmScopeProvider value={records}>
+        {desktop ? <ModePage mode="index" /> : <PhoneIndex />}
+      </CrmScopeProvider>
     </IndexPlaceContext.Provider>
   )
 }

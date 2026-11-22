@@ -17,6 +17,7 @@ import type {
   Proposal,
   Scope,
 } from './contract'
+import { useWorkTracker } from '@/components/work/settings'
 import { libraryRecord } from './library'
 import { observer } from './observe'
 
@@ -35,6 +36,8 @@ const keys = {
   binding: (binding: Binding) => [...INDEX, 'binding', binding] as const,
   document: (documentId: string) => [...INDEX, 'document', documentId] as const,
   filings: (documentId: string) => [...INDEX, 'filings', documentId] as const,
+  recordFilings: (documentId: string) =>
+    [...INDEX, 'record-filings', documentId] as const,
 }
 
 /** Writes that change filing, so a running view knows to read again. */
@@ -115,24 +118,44 @@ export const useFilings = (documentId: string | undefined) =>
     retry,
   })
 
+/** The records a document is about, why, and the corrections made to that. */
+export const useRecordFilings = (documentId: string | undefined) =>
+  useQuery({
+    queryKey: keys.recordFilings(documentId ?? ''),
+    queryFn: () => api.recordFilingHistory(documentId!),
+    enabled: !!documentId,
+    retry,
+  })
+
 /**
  * Publishes this build's component library when Theorem holds a different
  * one, so the improver composes against exactly what this build renders.
  */
-export const useLibraryPublication = () =>
-  useQuery({
-    queryKey: keys.library,
+export function useLibraryPublication() {
+  // Theorem is told about the Work components only while the tracker is on.
+  // Both libraries share the one slot on the server, so every switch and
+  // every mount looks at what the server holds again: a cached answer from
+  // the other switch would skip the publication and leave Theorem composing
+  // against a library this build no longer renders. The digest check keeps
+  // the publication itself to the times the server's copy differs.
+  const tracker = useWorkTracker()
+  const work = tracker.state === 'on'
+  return useQuery({
+    queryKey: [...keys.library, work] as const,
     queryFn: async () => {
       const [published, record] = await Promise.all([
         api.readLibrary(),
-        libraryRecord(),
+        libraryRecord(work),
       ])
       if (published?.digest === record.digest) return published
       return api.publishLibrary(record)
     },
-    staleTime: Infinity,
+    enabled: tracker.state !== 'loading',
+    staleTime: 0,
+    refetchOnWindowFocus: false,
     retry,
   })
+}
 
 /** Every write that changes views refreshes the lists, the view and the proposals. */
 function useInvalidateIndex() {
@@ -273,7 +296,7 @@ function useInvalidateMaterial() {
       predicate: ({ queryKey }) =>
         queryKey[0] === INDEX[0] &&
         queryKey[1] === INDEX[1] &&
-        ['collections', 'binding', 'document', 'filings'].includes(
+        ['collections', 'binding', 'document', 'filings', 'record-filings'].includes(
           String(queryKey[2]),
         ),
     })
@@ -321,6 +344,26 @@ export function useUndoCorrection() {
   return useMutation({
     mutationKey: MATERIAL,
     mutationFn: (correctionId: string) => api.undoCorrection(correctionId),
+    onSuccess: () => invalidate(),
+  })
+}
+
+/** Move a record link, or with `recordItemId: null` say the document is not about that record. */
+export function useCorrectRecordFiling() {
+  const invalidate = useInvalidateMaterial()
+  return useMutation({
+    mutationKey: MATERIAL,
+    mutationFn: (input: { receiptId: string; recordItemId: string | null }) =>
+      api.correctRecordFiling(input.receiptId, input.recordItemId),
+    onSuccess: () => invalidate(),
+  })
+}
+
+export function useUndoRecordFiling() {
+  const invalidate = useInvalidateMaterial()
+  return useMutation({
+    mutationKey: MATERIAL,
+    mutationFn: (correctionId: string) => api.undoRecordFiling(correctionId),
     onSuccess: () => invalidate(),
   })
 }

@@ -8,10 +8,9 @@
 // a reference to the delegation or the change in the composer; "Open in IDE"
 // shows the changes in Theia.
 import type { DataMessagePartComponent } from '@assistant-ui/react'
-import { MultiFileDiff, PatchDiff } from '@pierre/diffs/react'
 import { useTheme } from 'next-themes'
 import type { FC, ReactNode } from 'react'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import {
   CollapsibleContent,
   CollapsibleRoot,
@@ -37,7 +36,9 @@ import {
   useDelegationContent,
   useDelegationDock,
   useLiveDelegation,
+  useSpecialistRun,
 } from '@/lib/theorem/delegations'
+import { useSpecialistAppRequests } from '@/lib/blocks/app-operations'
 import type {
   ChangeAdmission,
   ChangeSetEntry,
@@ -46,6 +47,20 @@ import type {
   ReviewVerdict,
 } from '@/lib/theorem/delegations'
 import { cn } from '@/lib/utils'
+import { thingProps } from '@/lib/face/things'
+
+/**
+ * Pierre's diffs build their wasm highlighter at import time, which the
+ * server bundle cannot do: the import throws before any request is answered.
+ * A diff is only ever shown when a person opens a change row, in the browser,
+ * so the components load lazily there and never on the server.
+ */
+const PatchDiff = lazy(() =>
+  import('@pierre/diffs/react').then((m) => ({ default: m.PatchDiff })),
+)
+const MultiFileDiff = lazy(() =>
+  import('@pierre/diffs/react').then((m) => ({ default: m.MultiFileDiff })),
+)
 
 const card =
   'my-3 flex w-full max-w-2xl flex-col rounded-artifact border border-separator bg-artifact'
@@ -149,7 +164,7 @@ const ChangeDiff: FC<{
   const before = useDelegationContent(
     runId,
     delegationId,
-    sides ? change.beforeRef : undefined,
+    sides ? (change.beforeRef ?? undefined) : undefined,
   )
   const after = useDelegationContent(
     runId,
@@ -183,17 +198,19 @@ const ChangeDiff: FC<{
     overflow: 'scroll' as const,
   }
   return (
-    <div className="max-h-96 overflow-auto border-t border-separator text-xs">
-      {patch.data !== undefined ? (
-        <PatchDiff patch={gitPatch(patch.data, change)} options={options} />
-      ) : (
-        <MultiFileDiff
-          oldFile={{ name: change.path, contents: before.data ?? '' }}
-          newFile={{ name: change.path, contents: after.data ?? '' }}
-          options={options}
-        />
-      )}
-    </div>
+    <Suspense fallback={null}>
+      <div className="max-h-96 overflow-auto border-t border-separator text-xs">
+        {patch.data !== undefined ? (
+          <PatchDiff patch={gitPatch(patch.data, change)} options={options} />
+        ) : (
+          <MultiFileDiff
+            oldFile={{ name: change.path, contents: before.data ?? '' }}
+            newFile={{ name: change.path, contents: after.data ?? '' }}
+            options={options}
+          />
+        )}
+      </div>
+    </Suspense>
   )
 }
 
@@ -215,6 +232,10 @@ const ChangeRow: FC<{ delegation: DelegationPart; change: ChangeSetEntry }> = ({
       open={open}
       onOpenChange={setOpen}
       className="border-t border-separator first:border-t-0"
+      // Named, so Theo can be sent to this file's diff and to a line of it.
+      {...thingProps('change', `${delegation.delegationId}/${change.path}`, {
+        label: change.path,
+      })}
     >
       <div className="flex items-center gap-2 px-4 py-1.5">
         <CollapsibleTrigger
@@ -420,7 +441,8 @@ const Notes: FC<{ title: string; items: string[] }> = ({ title, items }) =>
 
 function workProblems({ receipt, problem }: DelegationPart): string[] {
   const terminal = receipt?.terminal
-  const workerFailure = terminal?.kind === 'failed' ? terminal.message : undefined
+  const workerFailure =
+    terminal?.kind === 'failed' ? terminal.message : undefined
   return [
     workerFailure && withoutCode(workerFailure),
     problem && problem !== workerFailure
@@ -490,7 +512,10 @@ export const DelegationBody: FC<{
             )}
           </p>
           <p
-            className={cn('text-sm text-ink-muted', !detailed && 'line-clamp-3')}
+            className={cn(
+              'text-sm text-ink-muted',
+              !detailed && 'line-clamp-3',
+            )}
             title={detailed ? undefined : objective}
           >
             {objective}
@@ -662,6 +687,31 @@ export const DelegationBody: FC<{
   )
 }
 
+/**
+ * Follows a specialist's run while it works, so what it asks of this page is
+ * answered: a builder checks the App it is writing in the person's browser,
+ * as the conversation's own turn does. It draws nothing while it follows the
+ * run; once the run's stream has given up, it says that its checks are no
+ * longer answered here.
+ */
+function SpecialistPage({
+  runId,
+  roleLabel,
+}: {
+  runId: string
+  roleLabel: string
+}) {
+  const { message, error } = useSpecialistRun(runId)
+  useSpecialistAppRequests(runId, message)
+  if (!error) return null
+  return (
+    <p role="alert" className="px-4 pb-4 text-xs text-error-ink">
+      This page stopped following the {roleLabel.toLowerCase()}’s run, so its
+      App checks are not answered here. {error.message}
+    </p>
+  )
+}
+
 const DelegationCard: DataMessagePartComponent = ({ data }) => {
   const delegation = useLiveDelegation(readDelegation(data))
   if (!delegation) return null
@@ -672,6 +722,13 @@ const DelegationCard: DataMessagePartComponent = ({ data }) => {
       className={cn(card, liveEnter)}
     >
       <DelegationBody delegation={delegation} />
+      {LIVE_DELEGATION_STATES.has(delegation.state) &&
+        delegation.childRunId && (
+          <SpecialistPage
+            runId={delegation.childRunId}
+            roleLabel={delegation.roleLabel}
+          />
+        )}
     </article>
   )
 }

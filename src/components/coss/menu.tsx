@@ -1,9 +1,12 @@
 // SOURCING: coss ui menu (vendored as-is from https://coss.com/ui/r/menu.json; registry imports point at this folder)
 "use client";
 
+import { appearancePair } from '@/lib/appearance-policy'
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { ChevronRightIcon } from "lucide-react";
 import type * as React from "react";
+import { useMenuGlass } from "@/components/glass/menu-glass";
+import { useComposedRefs } from "@/lib/composition";
 import { cn } from "@/lib/utils";
 
 export const MenuCreateHandle: typeof MenuPrimitive.createHandle =
@@ -38,6 +41,7 @@ export function MenuPopup({
   side = "bottom",
   anchor,
   portalProps,
+  ref,
   ...props
 }: MenuPrimitive.Popup.Props & {
   align?: MenuPrimitive.Positioner.Props["align"];
@@ -47,6 +51,10 @@ export function MenuPopup({
   anchor?: MenuPrimitive.Positioner.Props["anchor"];
   portalProps?: MenuPrimitive.Portal.Props;
 }): React.ReactElement {
+  // A menu opened from a glass surface (a MenuGlass around it) is a pane of
+  // that surface's glass.
+  const { attach: glassRef, className: glassClass } = useMenuGlass();
+  const popupRef = useComposedRefs(ref, glassRef);
   return (
     <MenuPortal {...portalProps}>
       <MenuPrimitive.Positioner
@@ -61,9 +69,16 @@ export function MenuPopup({
         <MenuPrimitive.Popup
           className={cn(
             "relative flex not-[class*='w-']:min-w-32 origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] focus:outline-none dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+            glassClass,
             className,
           )}
+          ref={popupRef}
           data-slot="menu-popup"
+          data-appearance-part="popover"
+          data-appearance-radius-role="field"
+          data-appearance-recipe="ui.label"
+          data-surface-role="popover"
+          {...appearancePair('primary', 'popover')}
           {...props}
         >
           <div className="max-h-(--available-height) w-full overflow-y-auto p-1">

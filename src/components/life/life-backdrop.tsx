@@ -1,18 +1,22 @@
-// SOURCING: textmode.js through mountLife; assistant-ui useAuiState for the working turn (as ide/follow reads it); ResizeObserver to keep the canvas at its box; MutationObserver on <html> to repaint when next-themes or the palette changes; Base UI context menu for the controls, styled as the thread list's
+// SOURCING: coss Toolbar with the app's TooltipIconButton for the visible pause/hide; textmode.js through mountLife; assistant-ui useAuiState for the working turn (as ide/follow reads it); ResizeObserver to keep the canvas at its box; MutationObserver on <html> to repaint when next-themes or the palette changes; Base UI context menu for the controls, styled as the thread list's
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { useAuiState } from '@assistant-ui/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
+import { Toolbar, ToolbarButton } from '@/components/coss/toolbar'
 import { Icon } from '@/components/icons'
 import { pulsesSince, signalOf } from '@/lib/life/energy'
 import type { Reading } from '@/lib/life/energy'
 import { PATTERNS, PATTERN_LABELS } from '@/lib/life/patterns'
 import type { PatternName } from '@/lib/life/patterns'
-import { useLifeControls, useLifeCounts } from '@/lib/life/store'
+import { useLifeControls, useLifeCounts, useLifeShown } from '@/lib/life/store'
 import type { Brush } from '@/lib/life/store'
 import { prefersReducedMotion } from '@/lib/motion'
 import { mountLife } from './mount-life'
+import { mountLife2d } from './mount-life-2d'
 import type { LifeGame } from './mount-life'
+import type { ClientBox } from '@/lib/life/occlusion'
 
 const BRUSHES: ReadonlyArray<Brush> = ['cell', ...(Object.keys(PATTERNS) as PatternName[])]
 
@@ -20,8 +24,17 @@ const brushLabel = (brush: Brush) => (brush === 'cell' ? 'Cell' : PATTERN_LABELS
 
 const isBrush = (value: unknown): value is Brush => BRUSHES.some((brush) => brush === value)
 
-const supportsWebGL2 = () =>
-  typeof document !== 'undefined' && !!document.createElement('canvas').getContext('webgl2')
+// Mobile Safari sometimes composites the transparent WebGL textmode layer as
+// broad opaque bands. Canvas 2D preserves the same simulation over the CSS
+// gradient on narrow viewports without going through that WebGL path.
+const lifeRenderer = (): 'webgl' | 'canvas2d' | undefined => {
+  if (typeof document === 'undefined') return undefined
+  const canvas = document.createElement('canvas')
+  const narrow = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches
+  if (narrow) return canvas.getContext('2d') ? 'canvas2d' : undefined
+  if (canvas.getContext('webgl2')) return 'webgl'
+  return canvas.getContext('2d') ? 'canvas2d' : undefined
+}
 
 /**
  * The empty space of the conversation: a press there draws on the field and a
@@ -31,10 +44,65 @@ const supportsWebGL2 = () =>
 const CHAT_CONTENT =
   '[data-message-id], .aui-thread-viewport-footer, button, a, input, textarea, [contenteditable], [role="menu"]'
 
+/**
+ * Where a press draws: the conversation's box (marked `data-life-space`). The
+ * field alone is that box; a field under the whole sheet shows beneath the
+ * side panel too, but only the conversation draws on it.
+ */
+const LIFE_SPACE = '[data-life-space]'
+
 // React portal events bubble through this component even when their DOM nodes
 // belong to a popup outside the field. Never capture those menu interactions.
 const isFieldSpace = (target: EventTarget, field: Element) =>
-  target instanceof Element && field.contains(target) && target.closest(CHAT_CONTENT) === null
+  target instanceof Element &&
+  field.contains(target) &&
+  target.closest(LIFE_SPACE) !== null &&
+  target.closest(CHAT_CONTENT) === null
+
+/**
+ * The blocks of a conversation whose words the field keeps clear of. Code
+ * sits on its own glass, which frosts the field instead.
+ */
+const TEXT_BLOCKS =
+  '[data-message-id] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote, th, td, dt, dd, summary):not(figure[data-glass-code] *)'
+
+/** How far the quiet reaches past the ends of a line: a cell and a half, so the field resumes a word's width away. */
+const LINE_REACH = 14
+
+/**
+ * Each line of the conversation's text that lies over the field, from the
+ * browser's own line boxes (Range.getClientRects). Those boxes are the
+ * glyphs' height, not the line's, so each grows by half the leading above
+ * and below: a paragraph's lines then meet and the field stays quiet between
+ * them, while past a short line's end it keeps running. The ends reach a
+ * little past the ink.
+ */
+function textLines(scope: Element, field: Element): ClientBox[] {
+  const bounds = field.getBoundingClientRect()
+  const range = document.createRange()
+  const lines: ClientBox[] = []
+  for (const block of scope.querySelectorAll(TEXT_BLOCKS)) {
+    const box = block.getBoundingClientRect()
+    if (box.bottom < bounds.top || box.top > bounds.bottom || box.width === 0) continue
+    const style = getComputedStyle(block)
+    const leading = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.2
+    range.selectNodeContents(block)
+    for (const line of range.getClientRects()) {
+      if (line.width === 0 || line.bottom < bounds.top || line.top > bounds.bottom) continue
+      const half = Math.max(1, (leading - line.height) / 2)
+      lines.push({
+        left: line.left - LINE_REACH,
+        top: line.top - half,
+        right: line.right + LINE_REACH,
+        bottom: line.bottom + half,
+      })
+    }
+  }
+  return lines
+}
+
+/** A field above draws for the conversation, which then only marks its box. */
+const FieldAbove = createContext(false)
 
 const menuItem =
   'data-highlighted:bg-hover data-disabled:opacity-50 flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-sm outline-none select-none'
@@ -42,10 +110,109 @@ const menuItem =
 const menuPopup =
   'bg-popover text-popover-foreground shadow-popover border-separator min-w-48 origin-(--transform-origin) rounded-lg border p-1 outline-none transition-[opacity,scale] duration-100 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0'
 
-/** A Game of Life behind the conversation, livelier the harder the model works. */
+/**
+ * A Game of Life behind the conversation, livelier the harder the model works.
+ * Under a field that runs beneath the whole sheet (`LifeSheet`) it draws
+ * nothing of its own and marks the conversation as the space that draws.
+ */
 export function LifeBackdrop({ children }: { children: ReactNode }) {
-  const shown = useLifeControls((state) => state.shown)
-  const [supported] = useState(supportsWebGL2)
+  if (useContext(FieldAbove))
+    return (
+      <div data-life-space="" className="@container relative h-full">
+        {children}
+        <LifeControls />
+      </div>
+    )
+  return (
+    <LifeField space active>
+      {children}
+      <LifeControls />
+    </LifeField>
+  )
+}
+
+/**
+ * The field's pause and hide, in sight in the conversation's lower corner
+ * rather than only behind a right click. Hidden in a narrow pane, where the
+ * menu and Settings still reach them.
+ */
+function LifeControls() {
+  const shown = useLifeShown()
+  const playing = useLifeControls((state) => state.playing)
+  const set = useLifeControls.setState
+  if (!shown) return null
+  return (
+    <Toolbar
+      aria-label="Background animation"
+      className="life-controls absolute end-3 bottom-3 z-10 hidden gap-0.5 rounded-lg border-separator bg-(--surface-raised)/80 p-0.5 shadow-xs backdrop-blur-sm @3xl:flex"
+    >
+      <ToolbarButton
+        render={
+          <TooltipIconButton
+            tooltip={playing ? 'Pause the background' : 'Play the background'}
+            side="top"
+            aria-pressed={!playing}
+            className="text-ink-muted hover:text-ink size-7"
+            onClick={() => set({ playing: !playing })}
+          />
+        }
+      >
+        {playing ? <Icon.Pause className="size-4" /> : <Icon.Play className="size-4" />}
+      </ToolbarButton>
+      <ToolbarButton
+        render={
+          <TooltipIconButton
+            tooltip="Hide the background"
+            side="top"
+            className="text-ink-muted hover:text-ink size-7"
+            onClick={() => set({ shown: false })}
+          />
+        }
+      >
+        <Icon.Hide className="size-4" />
+      </ToolbarButton>
+    </Toolbar>
+  )
+}
+
+/**
+ * The field under the desktop sheet, so the side panel's frosted glass shows
+ * it running behind. The conversation's own LifeBackdrop always defers to it,
+ * and it runs only while `active` (the conversation is the sheet's view); in
+ * the other modes there is no field. Neither switch changes the tree, so the
+ * dock and the conversation under it stay mounted through a change of mode.
+ */
+export function LifeSheet({
+  active,
+  children,
+}: {
+  active: boolean
+  children: ReactNode
+}) {
+  return (
+    <FieldAbove.Provider value>
+      <LifeField space={false} active={active}>
+        {children}
+      </LifeField>
+    </FieldAbove.Provider>
+  )
+}
+
+/**
+ * `space`: the field's own box is the space a press draws in.
+ * `active`: whether the field runs at all.
+ */
+function LifeField({
+  children,
+  space,
+  active,
+}: {
+  children: ReactNode
+  space: boolean
+  active: boolean
+}) {
+  const shown = useLifeShown()
+  const [renderer] = useState(lifeRenderer)
   const [game, setGame] = useState<LifeGame>()
   const stroking = useRef(false)
   useTurnPulses(game)
@@ -56,9 +223,29 @@ export function LifeBackdrop({ children }: { children: ReactNode }) {
     if (!host) return
     const reducedMotion = prefersReducedMotion()
     if (reducedMotion) useLifeControls.setState({ playing: false })
-    const mounted = mountLife(host, { reducedMotion })
+    const mounted = renderer === 'canvas2d'
+      ? mountLife2d(host, { reducedMotion })
+      : mountLife(host, { reducedMotion })
     setGame(mounted)
-    const resize = new ResizeObserver(() => mounted.resize(host.clientWidth, host.clientHeight))
+    // The text over the field, measured once a frame at most, whenever the
+    // conversation scrolls, streams, or the field changes size.
+    const scope = host.parentElement ?? host
+    let measuring = 0
+    const measure = () => {
+      measuring = 0
+      mounted.occlude(textLines(scope, host))
+    }
+    const remeasure = () => {
+      if (!measuring) measuring = requestAnimationFrame(measure)
+    }
+    scope.addEventListener('scroll', remeasure, { capture: true, passive: true })
+    const text = new MutationObserver(remeasure)
+    text.observe(scope, { subtree: true, childList: true, characterData: true })
+    remeasure()
+    const resize = new ResizeObserver(() => {
+      mounted.resize(host.clientWidth, host.clientHeight)
+      remeasure()
+    })
     resize.observe(host)
     // Styles land after the attribute changes, so read them on the next frame.
     const theme = new MutationObserver(() => requestAnimationFrame(() => mounted.repaint()))
@@ -67,15 +254,18 @@ export function LifeBackdrop({ children }: { children: ReactNode }) {
       attributeFilter: ['class', 'data-palette'],
     })
     return () => {
+      scope.removeEventListener('scroll', remeasure, { capture: true })
+      text.disconnect()
+      cancelAnimationFrame(measuring)
       resize.disconnect()
       theme.disconnect()
       mounted.destroy()
       setGame(undefined)
     }
-  }, [])
+  }, [renderer])
 
-  if (!supported) return children
-  const draws = shown
+  if (!renderer) return children
+  const draws = shown && active
 
   // Touch scrolls the conversation, so only a mouse or pen draws.
   const onPointerDown = (event: ReactPointerEvent) => {
@@ -111,6 +301,7 @@ export function LifeBackdrop({ children }: { children: ReactNode }) {
         render={
           <div
             data-life-backdrop=""
+            data-life-space={space ? '' : undefined}
             className="relative h-full"
             onPointerDown={draws ? onPointerDown : undefined}
             onPointerMove={draws ? onPointerMove : undefined}
@@ -123,7 +314,7 @@ export function LifeBackdrop({ children }: { children: ReactNode }) {
         {draws && (
           <div ref={attach} aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden" />
         )}
-        <div className="relative h-full">{children}</div>
+        <div className="@container relative h-full">{children}</div>
       </ContextMenu.Trigger>
       <LifeMenu game={draws ? game : undefined} />
     </ContextMenu.Root>
@@ -152,7 +343,8 @@ function useTurnPulses(game: LifeGame | undefined) {
 }
 
 function LifeMenu({ game }: { game: LifeGame | undefined }) {
-  const { shown, playing, brush, companion } = useLifeControls()
+  const { playing, brush, companion } = useLifeControls()
+  const shown = useLifeShown()
   const { population, pace } = useLifeCounts()
   const set = useLifeControls.setState
   return (

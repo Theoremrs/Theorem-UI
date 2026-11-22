@@ -206,10 +206,21 @@ export class AppDocument {
 
 // Every view and source action shares the same save queue and revision owner.
 const documents = new Map<string, AppDocument>()
+let owner: { api?: AppDocuments; change?: typeof mutate } = {}
+
+/**
+ * Where this page's Apps are read and saved, when not through the page's own
+ * session: the App host a native app embeds (routes/app-host.tsx) reaches
+ * Theorem through that app's sign-in. Set once, before any App is opened.
+ */
+export function ownAppDocumentsThrough(api: AppDocuments, change: typeof mutate) {
+  owner = { api, change }
+}
+
 export function appDocumentFor(id: string): AppDocument {
   let app = documents.get(id)
   if (!app) {
-    app = new AppDocument(id)
+    app = new AppDocument(id, owner.api, owner.change)
     documents.set(id, app)
   }
   return app

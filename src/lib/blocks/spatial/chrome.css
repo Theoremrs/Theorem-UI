@@ -1,0 +1,263 @@
+/* The spatial view's frame: the scene above, the playback strip below it, and
+   on narrow widths the part in hand's controls below that. Nothing covers the
+   scene but labels and notes the annotation layer places. */
+.theorem-spatial {
+  display: flex;
+  flex-direction: column;
+}
+.theorem-spatial .ts-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.theorem-spatial .ts-chrome {
+  /* Over the glass canvas liquidGL draws across the view (glass.tsx). */
+  position: relative;
+  z-index: 2;
+  flex: none;
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.375rem;
+}
+.ts-crumbs-slot {
+  position: absolute;
+  left: 0.5rem;
+  top: 0.375rem;
+  z-index: 50;
+}
+.ts-crumbs-slot:empty {
+  display: none;
+}
+.ts-crumbs {
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-element);
+}
+/* The breadcrumb and the playback strip are glass, as notes are. */
+.ts-crumbs[data-glass],
+.ts-bar[data-glass] {
+  background: var(--tn-glass-surface);
+}
+.ts-crumbs[data-glass='css'],
+.ts-bar[data-glass='css'] {
+  backdrop-filter: blur(6px);
+}
+.ts-bar {
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-element);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 2rem;
+}
+.ts-hint {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ts-dock {
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.5rem;
+}
+.ts-dock .tn-note-frame,
+.ts-dock .tn-note {
+  min-width: 0;
+}
+.ts-rows {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, auto) 1fr;
+  align-items: center;
+  /* No gaps: each row's hairline runs the full width, across both columns. */
+  gap: 0;
+}
+.ts-rows + .ts-rows {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+.ts-row {
+  display: contents;
+}
+.ts-row-value {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding-left: 0.75rem;
+}
+.ts-row-wide {
+  grid-column: 1 / -1;
+  display: grid;
+  padding-block: 0.25rem;
+}
+.ts-row-wide > * {
+  width: 100%;
+}
+.ts-rows > .ts-row > :first-child,
+.ts-rows > .ts-row > .ts-row-value {
+  padding-block: 0.125rem;
+}
+.ts-row[data-tone='quiet'] {
+  opacity: 0.7;
+}
+.ts-bits {
+  display: inline-flex;
+  gap: 0.125rem;
+}
+.ts-bit {
+  min-width: 1.75rem;
+  font-family: var(--font-family-code);
+}
+.ts-actions {
+  display: flex;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+  padding-top: 0.375rem;
+  border-top: 1px solid var(--color-border);
+}
+.ts-actions > * + * {
+  border-left: 1px solid var(--color-border);
+  border-radius: 0;
+}
+.ts-dossier {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+/* The conversation in an expanded note: the readings above it stay the note's subject. */
+.ts-dossier-body,
+.ts-dossier-thread {
+  display: grid;
+  gap: 0.375rem;
+}
+.ts-dossier-head,
+.ts-dossier-elsewhere {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.ts-dossier-head > :first-child {
+  margin-right: auto;
+}
+.ts-dossier-messages {
+  display: grid;
+  gap: 0.375rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.ts-dossier-messages:empty {
+  display: none;
+}
+.ts-dossier-message {
+  font: 400 12px/1.45 var(--font-family-body, inherit);
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ts-dossier-message[data-role='user'] {
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+.ts-dossier-starters {
+  display: grid;
+  gap: 0.25rem;
+}
+.ts-dossier-starter {
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: 400 11.5px/1.35 var(--font-family-body, inherit);
+  text-align: left;
+  cursor: pointer;
+}
+.ts-dossier-starter:hover {
+  color: var(--color-text-primary);
+}
+.ts-dossier-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.375rem;
+}
+.ts-dossier-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  resize: none;
+  padding: 0.3125rem 0.375rem;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  background: var(--color-background-surface);
+  color: var(--color-text-primary);
+  font: 400 12px/1.4 var(--font-family-body, inherit);
+}
+.ts-dossier-input:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 0;
+}
+.ts-dossier-problem {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--color-danger, light-dark(#b42318, #f97066));
+}
+.ts-port {
+  display: inline-block;
+  font: 500 10.5px/1.2 var(--font-family-code);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 0 4px var(--color-background-surface), 0 0 2px var(--color-background-surface);
+}
+.ts-port b {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.ts-port[data-editable] {
+  color: var(--color-accent);
+}
+.ts-port[data-on] b {
+  color: var(--color-success);
+}
+.ts-port[data-changed] {
+  font-weight: 700;
+}
+.theorem-spatial .ts-outline {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: pre;
+}
+/* A note beside a part fits the band the camera leaves for it (NOTE_BAND in view.ts). */
+.tn-slot.ts-card {
+  max-width: 18rem;
+}
+/* Rows read as a table: a hairline between each name and value. */
+.ts-rows > .ts-row:not(:first-child) > * {
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
+/* A self-describing choice (Add / AND) is a plain bordered rectangle whose
+   chosen half is filled with the signal colour; a straight divider between. */
+.ts-card [role='radiogroup'] {
+  padding: 0;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  background: transparent;
+}
+.ts-card [role='radiogroup'] [role='radio'] {
+  flex: 1 1 0;
+  justify-content: center;
+  border-radius: 0;
+}
+.ts-card [role='radiogroup'] [role='radio'] + [role='radio'] {
+  border-left: 1px solid var(--color-border);
+}
+.ts-card [role='radiogroup'] [role='radio'][aria-checked='true'] {
+  background: var(--theorem-success, light-dark(#1d6f68, #6cc5b8));
+  color: var(--color-background-surface);
+}

@@ -10,21 +10,21 @@ import {
   spyOn,
   test,
 } from 'bun:test'
-import { useAui, useAuiState } from '@assistant-ui/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { defaultDirectiveFormatter, useAui, useAuiState } from '@assistant-ui/react'
 import { toastManager } from '@/components/coss/toast'
 import { TheoremError } from '@theoremharness/sdk'
 import type { ChatModelRunOptions } from '@assistant-ui/react'
 import { act, createElement, useEffect, useState } from 'react'
 import { cleanup, render, waitFor } from '../../../test/workspace'
 import { usePlanning, useWebSearch } from '@/components/chat/composer-tools'
-import { usePendingStyle, useSelectionMutation } from './response-styles'
+import { usePendingStyle } from './response-styles'
 import {
   mutateThread,
   pendingSendKey,
   takeRefusedText,
   theorem,
 } from './client'
+import { useToolSelections } from './tool-selection'
 import {
   TheoremRuntimeProvider,
   createHistoryAdapter,
@@ -39,22 +39,23 @@ type Send = {
   capabilityScope?: string[]
   webResearch?: boolean
   planning?: boolean
+  toolSelection?: { connections: string[]; tools?: string[] }
+  skills?: { ids: string[] }
   model?: { provider: string; model: string }
   executionMode?: string
   responseStyle?: string
+  uploadIds?: string[]
+  responseDetail?: string
+  effort?: string
+  maxOutputTokens?: number
+  runBudget?: { maxOutputTokens?: number; maxSteps?: number }
 }
 
 let sends: Send[] = []
-/** Whether the page may create threads, as a new chat's first message does; named in the order made. */
-let createsThreads = false
-let createdThreads = 0
 /** Sends whose reply is lost after Theorem received them. */
 let lostReplies = 0
 /** How the next sends are answered, in place of a run. */
 let answers: Array<Response | Promise<Response>> = []
-/** Writes of a conversation's response style, and what each waits for before it is answered. */
-let styleWrites = 0
-let styleWriteGate: Promise<void> | undefined
 /** The run a thread's snapshot says is live. */
 let liveRunId: string | undefined
 const titleThreads = new Map<string, { title: string; revision: number; text: string }>()
@@ -63,11 +64,13 @@ let titleEvents: string[] = []
 let concurrentTitle: string | undefined
 let titleReadGate: (() => Promise<void>) | undefined
 let titleReads: string[] = []
+/** The event streams the next runs answer with; a run past them answers with `closedRun`. */
+let runEvents: string[] = []
 
 function titleSnapshot(threadId: string) {
   const saved = titleThreads.get(threadId)!
   return {
-    thread: { threadId, title: saved.title, revision: saved.revision, status: 'regular', selectedBranchId: 'branch-1' },
+    thread: { threadId, projectId: 'project', title: saved.title, revision: saved.revision, status: 'regular', selectedBranchId: 'branch-1', lastMessageAtMs: saved.text ? 1000 : undefined },
     messages: saved.text ? [{ messageId: 'first-user', role: 'user', parts: [{ partId: 'text-1', type: 'text', payload: { text: saved.text } }] }] : [],
   }
 }
@@ -93,24 +96,55 @@ const closedRun = [
   .map((event) => `data: ${JSON.stringify(event)}\n\n`)
   .join('')
 
+/** A run that answers by drafting a plan: a finished `draft_plan` call. */
+const draftingRun = [
+  {
+    seq: 1,
+    sourceEventType: 'CHAT.MESSAGE.PART',
+    payload: {
+      part: {
+        partId: 'call-1',
+        type: 'tool_call',
+        toolCallId: 'plan-call',
+        toolName: 'draft_plan',
+        safeArguments: {},
+      },
+    },
+  },
+  {
+    seq: 2,
+    sourceEventType: 'CHAT.MESSAGE.PART',
+    payload: {
+      part: {
+        partId: 'result-1',
+        type: 'tool_result',
+        toolCallId: 'plan-call',
+        toolName: 'draft_plan',
+        safeOutput: { planId: 'plan:1' },
+        status: 'completed',
+      },
+    },
+  },
+  { seq: 3, sourceEventType: 'RUN.CLOSED', payload: {} },
+]
+  .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+  .join('')
+
 async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
   const request = new Request(input, init)
   const path = new URL(request.url).pathname
   if (path.endsWith('/bootstrap'))
     return Response.json({ csrfToken: 'csrf', tenantId: 't' })
   if (path.endsWith('/events')) {
-    return new Response(closedRun, {
+    return new Response(runEvents.shift() ?? closedRun, {
       headers: { 'content-type': 'text/event-stream' },
     })
   }
-  if (path.endsWith('/response-styles/selection')) {
-    styleWrites += 1
-    await styleWriteGate
-    return Response.json({ conversation: 'theorem.style.formal' })
-  }
+  if (path.endsWith('/projects/project/uploads') && request.method === 'POST')
+    return Response.json({ record: { uploadId: 'upload-1' } }, { status: 201 })
   if (path.endsWith('/messages') && request.method === 'POST') {
     titleEvents.push(`send:${request.headers.get('If-Match')}`)
-    const { text, capabilityScope, webResearch, planning, model, executionMode, responseStyle } =
+    const { text, capabilityScope, webResearch, planning, toolSelection, skills, model, executionMode, ...limits } =
       (await request.json()) as Omit<Send, 'key'>
     sends.push({
       key: request.headers.get('Idempotency-Key') ?? '',
@@ -118,9 +152,15 @@ async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
       ...(capabilityScope ? { capabilityScope } : {}),
       ...(webResearch !== undefined ? { webResearch } : {}),
       ...(planning !== undefined ? { planning } : {}),
+      ...(toolSelection ? { toolSelection } : {}),
+      ...(skills ? { skills } : {}),
       ...(model ? { model } : {}),
       ...(executionMode ? { executionMode } : {}),
-      ...(responseStyle ? { responseStyle } : {}),
+      ...Object.fromEntries(
+        ['responseStyle', 'uploadIds', 'responseDetail', 'effort', 'maxOutputTokens', 'runBudget'].flatMap((field) =>
+          field in limits ? [[field, (limits as Record<string, unknown>)[field]]] : [],
+        ),
+      ),
     })
     if (lostReplies > 0) {
       lostReplies -= 1
@@ -134,11 +174,6 @@ async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
       )
     )
   }
-  if (createsThreads && path.endsWith('/threads') && request.method === 'POST')
-    return Response.json(
-      { record: { threadId: `created-${++createdThreads}` } },
-      { status: 201 },
-    )
   if (path.endsWith('/threads')) return Response.json({ items: [...titleThreads.keys()].map((id) => titleSnapshot(id).thread) })
   const threadId = path.split('/').pop()!
   if (inaccessibleTitles.has(threadId)) return Response.json({ code: 'forbidden' }, { status: 403 })
@@ -164,6 +199,7 @@ async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
   return Response.json({
     thread: {
       threadId: path.split('/').pop(),
+      projectId: 'project',
       status: 'regular',
       selectedBranchId: 'branch-1',
       revision: 1,
@@ -189,12 +225,8 @@ afterAll(() => {
 })
 beforeEach(() => {
   sends = []
-  createsThreads = false
-  createdThreads = 0
   lostReplies = 0
   answers = []
-  styleWrites = 0
-  styleWriteGate = undefined
   liveRunId = undefined
   titleThreads.clear()
   inaccessibleTitles.clear()
@@ -202,8 +234,10 @@ beforeEach(() => {
   concurrentTitle = undefined
   titleReadGate = undefined
   titleReads = []
+  runEvents = []
   useWebSearch.setState({ on: false })
-  usePlanning.setState({ on: false })
+  usePlanning.setState({ byThread: {} })
+  useToolSelections.setState({ byThread: {} })
   usePendingStyle.setState({ styleId: undefined, held: {} })
 })
 afterEach(cleanup)
@@ -422,8 +456,8 @@ test.each<[boolean, boolean]>([
   [false, false],
 ])('a send with Web %p and Plan %p keeps research additive', async (on, planning) => {
   useWebSearch.setState({ on })
-  usePlanning.setState({ on: planning })
   const threadId = `thread-${crypto.randomUUID()}`
+  usePlanning.getState().set(threadId, planning)
   function Sender() {
     const aui = useAui()
     useEffect(() => {
@@ -449,172 +483,217 @@ test.each<[boolean, boolean]>([
   })
 })
 
-/** A chat the person types into, with its composer in hand. */
-async function openComposer(threadId?: string) {
-  createsThreads = !threadId
-  const handle: { aui?: ReturnType<typeof useAui> } = {}
-  function Probe() {
-    handle.aui = useAui()
-    return null
-  }
-  await render(
-    createElement(TheoremRuntimeProvider, {
-      projectId: 'project',
-      threadId,
-      onThreadIdChange: () => {},
-      children: createElement(Probe),
-    }),
-  )
-  const mounted = () => {
-    if (!handle.aui) throw new Error('the chat did not mount')
-    return handle.aui
-  }
-  return {
-    say: (text: string) =>
-      act(async () => {
-        mounted().composer.setText(text)
-        mounted().composer.send()
+/**
+ * A chat whose composer row holds the Plan switch (on and off for the
+ * conversation it sits in, by the same thread key, as the + menu's is), opened on `threadId` (a new
+ * conversation when undefined) and switchable to another, as the rail does.
+ */
+async function chatWithPlanChip(threadId: string | undefined) {
+  let aui: ReturnType<typeof useAui> | undefined
+  let switchTo = (_: string | undefined) => {}
+  function Composer() {
+    aui = useAui()
+    const open = useAuiState(
+      (s) => s.threadListItem.remoteId ?? s.threadListItem.id,
+    )
+    const planning = usePlanning((state) => state.byThread[open] === true)
+    return createElement(
+      'div',
+      { 'data-open': open },
+      createElement('button', {
+        type: 'button',
+        'aria-label': 'Plan',
+        'aria-pressed': planning,
+        onClick: () => usePlanning.getState().set(open, !planning),
       }),
-    idle: () => waitFor(() => !mounted().thread().getState().isRunning),
+    )
+  }
+  function Chat() {
+    const [open, setOpen] = useState(threadId)
+    switchTo = setOpen
+    return createElement(TheoremRuntimeProvider, {
+      projectId: 'project',
+      threadId: open,
+      onThreadIdChange: () => {},
+      children: createElement(Composer),
+    })
+  }
+  const { container } = await render(createElement(Chat))
+  const chip = () =>
+    container.querySelector<HTMLButtonElement>('[aria-label="Plan"]')!
+  const open = () =>
+    container.querySelector<HTMLElement>('[data-open]')?.dataset.open
+  await waitFor(() => chip())
+  return {
+    pressed: () => chip().getAttribute('aria-pressed') === 'true',
+    async press() {
+      await act(async () => chip().click())
+    },
+    /** Gives a new conversation its durable id without a send, as an attachment upload does. */
+    async initialize() {
+      await act(async () => {
+        await aui!.threadListItem.initialize()
+      })
+    },
+    async attach(file: File) {
+      await act(async () => aui!.composer.addAttachment(file))
+    },
+    async switchChat(to: string | undefined) {
+      const from = open()
+      await act(async () => switchTo(to))
+      await waitFor(() => (to ? open() === to : open() !== from))
+    },
+    /** Sends `text`, waits for its run to end, and gives back what went out. */
+    async send(text: string, attempts = 1) {
+      const before = sends.length
+      await act(async () => {
+        aui!.composer.setText(text)
+        aui!.composer.send()
+      })
+      await waitFor(() => sends.length === before + attempts)
+      await waitFor(() => !aui!.thread.getState().isRunning)
+      return sends.at(-1)!
+    },
   }
 }
 
-test('the style picked for a new chat goes with its first message and no later one', async () => {
-  usePendingStyle.getState().choose('theorem.style.concise')
-  const { say, idle } = await openComposer()
-  await say('Explain B-trees')
-  await waitFor(() => sends.length === 1)
-  expect(sends[0]).toEqual({
-    key: expect.any(String),
-    text: 'Explain B-trees',
-    responseStyle: 'theorem.style.concise',
-  })
-  // The conversation holds the choice now, so the pick is spent.
-  await waitFor(() => !('created-1' in usePendingStyle.getState().held))
-  expect(usePendingStyle.getState().styleId).toBeUndefined()
+test("Plan pressed in one conversation is not on in another, and that one's sends carry no planning", async () => {
+  const first = `thread-${crypto.randomUUID()}`
+  const second = `thread-${crypto.randomUUID()}`
+  const chat = await chatWithPlanChip(first)
+  await chat.press()
+  expect(chat.pressed()).toBe(true)
 
-  // A pick made after that is for the next new chat, not for this one.
-  usePendingStyle.getState().choose('theorem.style.formal')
-  await idle()
-  await say('And skip lists?')
-  await waitFor(() => sends.length === 2)
-  expect(sends[1]?.responseStyle).toBeUndefined()
-  expect(usePendingStyle.getState().styleId).toBe('theorem.style.formal')
+  await chat.switchChat(second)
+  expect(chat.pressed()).toBe(false)
+  expect(
+    (await chat.send('What does this error mean?')).planning,
+  ).toBeUndefined()
+
+  // The first conversation still has it on.
+  await chat.switchChat(first)
+  expect(chat.pressed()).toBe(true)
+  expect((await chat.send('Plan my move to Denver')).planning).toBe(true)
 })
 
-test('a chat that already exists never sends a pending style', async () => {
-  usePendingStyle.getState().choose('theorem.style.formal')
-  const { say } = await openComposer(`thread-${crypto.randomUUID()}`)
-  await say('Hello')
-  await waitFor(() => sends.length === 1)
-  expect(sends[0]?.responseStyle).toBeUndefined()
-  expect(usePendingStyle.getState().styleId).toBe('theorem.style.formal')
-})
+test('a new conversation starts with Plan off, and Plan pressed before its first send goes with it', async () => {
+  const created = `thread-${crypto.randomUUID()}`
+  type Created = Awaited<
+    ReturnType<ReturnType<typeof theorem>['chat']['threads']['create']>
+  >
+  const createThread = spyOn(
+    theorem().chat.threads,
+    'create',
+  ).mockResolvedValue({
+    record: { threadId: created },
+  } as Created)
+  try {
+    const chat = await chatWithPlanChip(`thread-${crypto.randomUUID()}`)
+    await chat.press()
 
-test('a new chat with no pick sends no style', async () => {
-  const { say } = await openComposer()
-  await say('Hello')
-  await waitFor(() => sends.length === 1)
-  expect(Object.keys(sends[0]!)).toEqual(['key', 'text'])
-})
-
-test('a lost first send is replayed with the style it went out with, and spends the pick once', async () => {
-  usePendingStyle.getState().choose('theorem.style.concise')
-  lostReplies = 1
-  const { say } = await openComposer()
-  await say('Explain B-trees')
-  await waitFor(() => sends.length === 2)
-  expect(sends[1]?.key).toBe(sends[0]?.key)
-  expect(sends.map((send) => send.responseStyle)).toEqual([
-    'theorem.style.concise',
-    'theorem.style.concise',
-  ])
-  await waitFor(() => !('created-1' in usePendingStyle.getState().held))
-  expect(usePendingStyle.getState().styleId).toBeUndefined()
-})
-
-test('a first message that is refused leaves the pick with its chat, and the next one carries it', async () => {
-  usePendingStyle.getState().choose('theorem.style.concise')
-  answers = [revisionConflict()]
-  const { say, idle } = await openComposer()
-  await say('Explain B-trees')
-  await waitFor(() => sends.length === 1)
-  expect(sends[0]?.responseStyle).toBe('theorem.style.concise')
-  await idle()
-  // The chat was made for that message, so the pick is its own now, and the next new chat starts without one.
-  expect(usePendingStyle.getState()).toMatchObject({
-    styleId: undefined,
-    held: { 'created-1': 'theorem.style.concise' },
-  })
-
-  await say('Explain B-trees')
-  await waitFor(() => sends.length === 2)
-  expect(sends[1]?.responseStyle).toBe('theorem.style.concise')
-  expect(sends[1]?.key).not.toBe(sends[0]?.key)
-  // Accepted this time: the conversation holds the choice, and no later message carries it.
-  await waitFor(() => !('created-1' in usePendingStyle.getState().held))
-  await idle()
-  await say('And skip lists?')
-  await waitFor(() => sends.length === 3)
-  expect(sends[2]?.responseStyle).toBeUndefined()
-})
-
-test("a message sent while its chat's style is still being written waits for that write", async () => {
-  const threadId = `thread-${crypto.randomUUID()}`
-  let kept = () => {}
-  styleWriteGate = new Promise<void>((resolve) => {
-    kept = resolve
-  })
-  const handle: {
-    aui?: ReturnType<typeof useAui>
-    select?: ReturnType<typeof useSelectionMutation>
-  } = {}
-  function Probe() {
-    handle.aui = useAui()
-    handle.select = useSelectionMutation()
-    return null
+    await chat.switchChat(undefined)
+    expect(chat.pressed()).toBe(false)
+    await chat.press()
+    expect((await chat.send('Plan a launch')).planning).toBe(true)
+    // It belongs to the conversation's durable id once it has one, so it is still on.
+    expect(chat.pressed()).toBe(true)
+  } finally {
+    createThread.mockRestore()
   }
-  await render(
-    createElement(
-      QueryClientProvider,
-      { client: new QueryClient() },
-      createElement(TheoremRuntimeProvider, {
-        projectId: 'project',
-        threadId,
-        onThreadIdChange: () => {},
-        children: createElement(Probe),
-      }),
-    ),
-  )
-  const say = (text: string) =>
-    act(async () => {
-      handle.aui!.composer.setText(text)
-      handle.aui!.composer.send()
-    })
-  const idle = () =>
-    waitFor(() => !handle.aui!.thread().getState().isRunning)
+})
 
-  // With no choice on its way a message goes out at once.
-  await say('Hello')
-  await waitFor(() => sends.length === 1)
-  await idle()
+test('Plan pressed in a new conversation stays on when an attachment upload gives it its durable id', async () => {
+  const created = `thread-${crypto.randomUUID()}`
+  type Created = Awaited<
+    ReturnType<ReturnType<typeof theorem>['chat']['threads']['create']>
+  >
+  const createThread = spyOn(
+    theorem().chat.threads,
+    'create',
+  ).mockResolvedValue({
+    record: { threadId: created },
+  } as Created)
+  try {
+    const chat = await chatWithPlanChip(undefined)
+    await chat.press()
 
-  await act(async () =>
-    handle.select!.mutate({
-      scope: 'conversation',
-      threadId,
-      style: 'theorem.style.formal',
-    }),
-  )
-  await waitFor(() => styleWrites === 1)
-  await say('Explain B-trees')
-  await new Promise((resolve) => setTimeout(resolve, 30))
-  expect(sends).toHaveLength(1)
+    // An upload creates the thread before any send; if it then fails, nothing is sent.
+    await chat.initialize()
+    await waitFor(() => usePlanning.getState().byThread[created] === true)
+    expect(chat.pressed()).toBe(true)
 
-  await act(async () => kept())
-  await waitFor(() => sends.length === 2)
-  // The conversation's choice was kept before the turn began, so the turn names none of its own.
-  expect(sends[1]).toEqual({ key: expect.any(String), text: 'Explain B-trees' })
+    // Turned off now, it stays off: the send that follows asks for no plan.
+    await chat.press()
+    expect(chat.pressed()).toBe(false)
+    expect((await chat.send('What is in this file?')).planning).toBeUndefined()
+  } finally {
+    createThread.mockRestore()
+  }
+})
+
+test.each([
+  ['text', false, false, false],
+  ['an attachment', true, false, false],
+  ['a lost reply', false, true, false],
+  ['a refused send', false, false, true],
+] as const)('a new conversation keeps its style through %s', async (_, attachment, lost, refused) => {
+  const created = `thread-${crypto.randomUUID()}`
+  type Created = Awaited<
+    ReturnType<ReturnType<typeof theorem>['chat']['threads']['create']>
+  >
+  const createThread = spyOn(
+    theorem().chat.threads,
+    'create',
+  ).mockResolvedValue({ record: { threadId: created } } as Created)
+  try {
+    const chat = await chatWithPlanChip(undefined)
+    const style = 'theorem.style.concise'
+    usePendingStyle.getState().choose(style)
+    if (attachment) await chat.attach(new File(['notes'], 'notes.txt', { type: 'text/plain' }))
+    if (lost) lostReplies = 1
+    if (refused) answers = [revisionConflict()]
+
+    const first = await chat.send('Explain B-trees', lost ? 2 : 1)
+    expect(first.responseStyle).toBe(style)
+    expect(first.uploadIds).toEqual(attachment ? ['upload-1'] : undefined)
+    expect(usePendingStyle.getState().styleId).toBeUndefined()
+    if (lost) {
+      expect(sends.map(({ key, responseStyle }) => ({ key, responseStyle }))).toEqual([
+        { key: first.key, responseStyle: style },
+        { key: first.key, responseStyle: style },
+      ])
+    }
+    if (refused) {
+      expect(usePendingStyle.getState().held[created]).toBe(style)
+      const retry = await chat.send('Explain B-trees')
+      expect(retry.responseStyle).toBe(style)
+      expect(retry.key).not.toBe(first.key)
+    }
+    expect(usePendingStyle.getState().held).toEqual({})
+
+    usePendingStyle.getState().choose('theorem.style.formal')
+    expect((await chat.send('And skip lists?')).responseStyle).toBeUndefined()
+    expect(usePendingStyle.getState().styleId).toBe('theorem.style.formal')
+  } finally {
+    createThread.mockRestore()
+  }
+})
+
+test('inside one conversation Plan stays on across a clarifying question, then turns off once a plan is drafted', async () => {
+  const chat = await chatWithPlanChip(`thread-${crypto.randomUUID()}`)
+  await chat.press()
+
+  // The model answers with a question rather than a plan.
+  expect((await chat.send('Plan my move')).planning).toBe(true)
+  expect(chat.pressed()).toBe(true)
+
+  runEvents.push(draftingRun)
+  expect((await chat.send('To Denver, in March')).planning).toBe(true)
+  await waitFor(() => !chat.pressed())
+
+  expect(
+    (await chat.send('What should I pack first?')).planning,
+  ).toBeUndefined()
 })
 
 test('existing New Chat rows get meaningful projected titles without revision writes', async () => {
@@ -637,13 +716,14 @@ test('existing New Chat rows get meaningful projected titles without revision wr
   const adapter = createThreadListAdapter(() => 'project')
   const page = await adapter.list()
   expect(page.threads.map((thread) => thread.title)).toEqual([
-    'Compare SQLite and PostgreSQL',
+    'New Chat',
     'My database notes',
     'New Chat',
   ])
   expect((await adapter.fetch('title-old')).title).toBe(
     'Compare SQLite and PostgreSQL',
   )
+  expect((await adapter.list()).threads[0]?.title).toBe('Compare SQLite and PostgreSQL')
   expect(titleEvents).toEqual([])
   expect(titleReads).not.toContain('title-custom')
 })
@@ -685,7 +765,7 @@ test('a concurrent custom rename wins over automatic naming', async () => {
   expect(titleEvents).toEqual(['title:1', 'send:2'])
 })
 
-test('old title recovery bounds concurrent history reads', async () => {
+test('metadata returns before the bounded background title reads finish', async () => {
   for (let index = 0; index < 9; index += 1) {
     titleThreads.set(`title-bound-${index}`, {
       title: 'New Chat',
@@ -702,7 +782,11 @@ test('old title recovery bounds concurrent history reads', async () => {
     await new Promise<void>((resolve) => releases.push(resolve))
     active -= 1
   }
-  const pending = createThreadListAdapter(() => 'project').list()
+  const adapter = createThreadListAdapter(() => 'project')
+  const firstPage = await adapter.list()
+  expect(firstPage.threads).toHaveLength(9)
+  expect(firstPage.threads.every((thread) => thread.title === 'New Chat')).toBe(true)
+  expect(titleReads).toEqual([])
   await waitFor(() => titleReads.length === 4)
   expect(active).toBe(4)
   releases.splice(0).forEach((release) => release())
@@ -710,7 +794,11 @@ test('old title recovery bounds concurrent history reads', async () => {
   releases.splice(0).forEach((release) => release())
   await waitFor(() => titleReads.length === 9)
   releases.splice(0).forEach((release) => release())
-  expect((await pending).threads).toHaveLength(9)
+  await waitFor(() => active === 0)
+  const reloaded = await adapter.list()
+  expect(reloaded.threads.map((thread) => thread.title)).toEqual(
+    Array.from({ length: 9 }, (_, index) => `Question ${index}`),
+  )
   expect(peak).toBe(4)
   expect(titleEvents).toEqual([])
 })
@@ -727,6 +815,93 @@ test('only a finished draft_plan call turns Plan off', () => {
 })
 
 // A cached SDK adapter may first be created by the terminal, then used by chat.
+/** Sends one message from inside the runtime, after `prepare` has set the thread's choices up. */
+async function sendFromComposer(
+  threadId: string,
+  prepare: (localId: string) => void = () => {},
+) {
+  function Sender() {
+    const aui = useAui()
+    useEffect(() => {
+      prepare(aui.threadListItem.getState().id)
+      aui.composer.setText('Look at the open pull requests')
+      aui.composer.send()
+    }, [aui])
+    return null
+  }
+  await render(
+    createElement(TheoremRuntimeProvider, {
+      projectId: 'project',
+      threadId,
+      onThreadIdChange: () => {},
+      children: createElement(Sender),
+    }),
+  )
+  await waitFor(() => sends.length === 1)
+}
+
+test('a send with the default connections carries no toolSelection', async () => {
+  await sendFromComposer(`thread-${crypto.randomUUID()}`)
+  expect(sends[0]?.toolSelection).toBeUndefined()
+})
+
+test('a skill picked in the draft rides the send as structured ids', async () => {
+  const threadId = `thread-${crypto.randomUUID()}`
+  const directive = defaultDirectiveFormatter.serialize({
+    id: 'mcp:docs/skill://review/SKILL.md',
+    type: 'skill',
+    label: 'review',
+  })
+  function Sender() {
+    const aui = useAui()
+    useEffect(() => {
+      aui.composer.setText(`${directive} Review this change.`)
+      aui.composer.send()
+    }, [aui])
+    return null
+  }
+  await render(
+    createElement(TheoremRuntimeProvider, {
+      projectId: 'project',
+      threadId,
+      onThreadIdChange: () => {},
+      children: createElement(Sender),
+    }),
+  )
+  await waitFor(() => sends.length === 1)
+  expect(sends[0]?.skills).toEqual({ ids: ['mcp:docs/skill://review/SKILL.md'] })
+})
+
+test('a send with no skill pick carries no skills field', async () => {
+  await sendFromComposer(`thread-${crypto.randomUUID()}`)
+  expect(sends[0]?.skills).toBeUndefined()
+})
+
+test("a send carries the conversation's connection choice, and no other conversation's", async () => {
+  const threadId = `thread-${crypto.randomUUID()}`
+  const selection = { connections: ['mcp:abc'], tools: ['mcp:abc/search'] }
+  await sendFromComposer(threadId, () => {
+    useToolSelections.getState().set(threadId, selection)
+    useToolSelections.getState().set('another-thread', { connections: [] })
+  })
+  expect(sends[0]?.toolSelection).toEqual(selection)
+})
+
+test('a choice made before the first send moves to the new conversation\'s durable id', async () => {
+  const threadId = `thread-${crypto.randomUUID()}`
+  const selection = { connections: ['github'] }
+  let localId = ''
+  await sendFromComposer(threadId, (id) => {
+    localId = id
+    useToolSelections.getState().set(id, selection)
+  })
+  expect(sends[0]?.toolSelection).toEqual(selection)
+  expect(useToolSelections.getState().byThread[threadId]).toEqual(selection)
+  // The local id is only meaningful when it differs from the durable one.
+  if (localId !== threadId)
+    expect(useToolSelections.getState().byThread[localId]).toBeUndefined()
+})
+
 test('each surface sends its current model and mode on a shared durable thread', async () => {
   const threadId = 'switch-model-after-terminal'
   await drain(runTurn(threadId, options('Terminal first'), { executionMode: 'coding' }))
@@ -748,6 +923,17 @@ test('research and planning retain an explicit caller capability scope', async (
   expect(sends[0]?.capabilityScope).toEqual(['web_read'])
 })
 
+
+test('the response limits a turn names go out on its send, and a turn that names none sends none', async () => {
+  const limited = {
+    ...options('Keep it short'),
+    runConfig: { custom: { theoremTurnOptions: { responseDetail: 'concise', effort: 'max', maxOutputTokens: 4000, runBudget: { maxOutputTokens: 20000, maxSteps: 6 } } } },
+  }
+  await drain(runTurn(`limits-${crypto.randomUUID()}`, limited))
+  expect(sends.at(-1)).toMatchObject({ responseDetail: 'concise', effort: 'max', maxOutputTokens: 4000, runBudget: { maxOutputTokens: 20000, maxSteps: 6 } })
+  await drain(runTurn(`limits-${crypto.randomUUID()}`, options('Plain')))
+  expect(Object.keys(sends.at(-1)!).sort()).toEqual(['key', 'text'])
+})
 
 test('new chat creation failures are visible and still reject admission', async () => {
   const failure = new TheoremError({ statusCode: 500, body: {

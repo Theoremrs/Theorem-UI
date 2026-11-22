@@ -10,7 +10,7 @@ import {
   JSONRPCServer,
   JSONRPCServerAndClient,
 } from 'json-rpc-2.0'
-import type { ThemeState } from './theme'
+import type { AppTheme, ThemeState } from './theme'
 
 /** How a file is read: its text, parsed JSON, CSV rows, or its bytes. */
 export type FileFormat = 'text' | 'json' | 'csv' | 'bytes'
@@ -133,7 +133,8 @@ export interface PageMethods {
   'frame.selection': { params: AppSelection; result: null }
   /** The frame's code threw and nothing caught it. */
   'frame.error': { params: FrameError; result: null }
-  'frame.resize': { params: { height: number }; result: null }
+  /** `fills`: the page is laid out by its viewport and has no height of its own. */
+  'frame.resize': { params: { height: number; fills?: boolean }; result: null }
   /** A static copy of the frame, for where a live frame would cost too much. */
   'frame.snapshot': {
     params: { html: string; outline?: string }
@@ -145,6 +146,127 @@ export interface PageMethods {
   'module.used': { params: Record<string, never>; result: null }
   /** A page module sending one of its declared events. */
   'module.emit': { params: { name: string; payload: unknown }; result: null }
+  /**
+   * A question about the App, put to the page's conversation with the App's
+   * revision and `context`: what the App says is selected, its inputs and
+   * outputs, the step it is on, what can be done there.
+   */
+  'dossier.ask': { params: { text: string; context: DossierContext }; result: null }
+  /** The App's part of the conversation now; `dossier.changed` follows it. */
+  'dossier.watch': { params: Record<string, never>; result: DossierState }
+  /** Opens the App's source where `name` is written, for a person to read or edit. */
+  'dossier.source': { params: { name: string }; result: { found: boolean } }
+  /** A model trace written as a Rerun recording (`.rrd` bytes), for Rerun's viewer. */
+  'trace.recording': { params: ModelTrace; result: Uint8Array }
+  /**
+   * A run's next observations, kept durably for this person: the run (a
+   * `@theorem/runtime` RunRef) is recorded with its first observations, and
+   * each call continues exactly where the last ended. `through` is the last
+   * index stored; `source` is the revision the stored run names, which a
+   * question about one of its moments names too.
+   */
+  'artifacts.record': {
+    params: { run: unknown; domain: string; observations: Array<ArtifactObservation> }
+    result: { through: string | null; source: unknown }
+  }
+  /** A result the App produced (a ResultRef), kept durably with its bytes. */
+  'artifacts.result': { params: { result: unknown; bytes: Uint8Array }; result: { id: string } }
+  /** Whether a subject (a SubjectRef) is held durably, exactly; never the latest instead. */
+  'artifacts.resolve': { params: { subject: unknown }; result: ArtifactResolution }
+  /** The revision running (an ArtifactSourceRef), for a result computed now to name. */
+  'artifacts.source': { params: Record<string, never>; result: unknown }
+  /** A kept result (a ResultRef) by id, with its bytes, both checked against their digests. */
+  'artifacts.open': { params: { id: string }; result: { result: unknown; bytes: Uint8Array } }
+  /**
+   * A kept run (a RunRef) by id, with every moment it holds in order from
+   * index 0 and its checkpoints; each moment is checked against its stored
+   * chunk, and a kept state against its digest.
+   */
+  'artifacts.run': { params: { id: string }; result: ReopenedRun }
+}
+
+/** A kept run as it is read back, from this or any other conversation or App. */
+export interface ReopenedRun {
+  run: unknown
+  observations: Array<ArtifactObservation & { domain: string }>
+  checkpoints: Array<unknown>
+}
+
+/** One observation of a run as it is kept: its place, its time and its state's digest. */
+export interface ArtifactObservation {
+  index: string
+  time: string
+  stateDigest: string
+  /**
+   * The state `stateDigest` is the SHA-256 of, as its canonical JSON text
+   * (`@theorem/runtime` canonicalJson). Kept with the observation, so the
+   * moment can be read back once the App is closed; refused when it is not
+   * the state the digest names.
+   */
+  state?: string
+}
+
+/** Whether a subject is held durably, and if not, why. */
+export type ArtifactResolution =
+  | { status: 'available' }
+  | { status: 'unavailable'; reason: string }
+
+/** A primitive value a model trace records: a number or text. */
+export type TraceValue = number | string
+
+/** What one settle of an App's model produced. */
+export interface TraceFrame {
+  cycle: number
+  /** What caused it, such as `step` or `regb.value = 3`. */
+  cause: string
+  /** Port values by part path, then port name. */
+  values: Record<string, Record<string, TraceValue>>
+}
+
+/** An App's model run, cycle by cycle, as Rerun's SDK is asked to write it. */
+export interface ModelTrace {
+  /** The App's choice: a run it shows again under a new id is a new recording. */
+  recordingId: string
+  frames: Array<TraceFrame>
+  /** Sent when a recording opens: the viewer's layout. Without plots, one per top-level part. */
+  layout?: { plots?: Array<TracePlot> }
+}
+
+/** One time series in the viewer: ports of parts, or state keys under `<part>/state`. */
+export interface TracePlot {
+  title: string
+  ports: Array<{ part: string; port: string }>
+}
+
+/** What an App says about where the person is, for a question about it. JSON. */
+export type DossierContext = Record<string, unknown>
+
+/** One message of the App's part of the page's conversation. */
+export interface DossierMessage {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+  status: 'running' | 'complete' | 'incomplete'
+  /**
+   * What the question was asked about (`@theorem/runtime`'s SubjectRef: a
+   * source, a result or a run moment); a reply carries its question's. JSON,
+   * read with readSubjectRef.
+   */
+  subject?: unknown
+  /** Held until the conversation's current turn ends, so asking does not stop it. */
+  queued?: boolean
+  /** Why a held question could not be sent; it stays shown, not dropped. */
+  undelivered?: string
+}
+
+/**
+ * The questions asked from an App and the replies to them, in the page's one
+ * conversation. Not `available` where the App is shown outside a conversation.
+ */
+export interface DossierState {
+  available: boolean
+  running: boolean
+  messages: Array<DossierMessage>
 }
 
 /** What a page module is handed: its settings and its inputs' values. */
@@ -175,17 +297,50 @@ export interface SandboxMethods {
   'module.inputs': { params: ModuleValues; result: null }
   /** A route reached one of a page module's declared actions. */
   'module.action': { params: { name: string; payload: unknown }; result: null }
-  /** The page's theme changed: its tokens, resolved, and its mode. */
-  'theme.changed': { params: ThemeState; result: null }
+  /** The App's part of the conversation changed, after `dossier.watch`. */
+  'dossier.changed': { params: DossierState; result: null }
+  /**
+   * The page's theme changed. A notebook's frame is handed its tokens,
+   * resolved, and its mode, for its root; a hosted App's is handed its look
+   * (`scheme` tells them apart), for the host stylesheet under the App's own.
+   */
+  'theme.changed': { params: ThemeState | AppTheme; result: null }
   /**
    * The frame as it is now, without waiting for it to settle: what a snapshot
    * holds. Null when the copy is too large to send.
    */
   'frame.look': {
     params: Record<string, never>
-    result: { html: string; outline: string } | null
+    result: { html: string; outline: string; page?: PageAttributes } | null
   }
 }
+
+/**
+ * The attributes on a frame's root and body that its CSS reads: a snapshot is
+ * the body's contents, and what styles them may be a class or a style on the
+ * elements above.
+ */
+export interface PageAttributes {
+  root: Record<string, string>
+  body: Record<string, string>
+  /**
+   * The body's background colour, where the root has none. A browser paints
+   * that behind the whole page and not in the body's box, so a copy has to be
+   * told. Absent where the root has its own or neither has one.
+   */
+  background?: string
+}
+
+/** What a computed colour looks like; nothing else is drawn with. */
+export const PAGE_BACKGROUND =
+  /^(?:rgba?|color|oklch|oklab|lab|lch|hsla?)\([\w\s.,%/+-]{1,80}\)$/
+
+/** The attributes carried: what CSS can select on or read, and nothing that runs. */
+export const PAGE_ATTRIBUTE = /^(?:class|style|dir|lang|data-[\w-]{1,64})$/
+/** A computed colour that paints nothing. */
+export const TRANSPARENT = /^(?:transparent|rgba\(0, 0, 0, 0\))$/
+/** The most text one page's carried attributes are, all together. */
+export const MAX_PAGE_ATTRIBUTES = 32 * 1024
 
 /** Something that carries messages: a MessagePort, a Worker or a worker's global scope. */
 export interface MessageCarrier {

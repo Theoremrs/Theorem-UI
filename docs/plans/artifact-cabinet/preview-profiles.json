@@ -1,0 +1,202 @@
+{
+  "schema": "theorem-artifact-preview-profiles/1",
+  "status": "proposed defaults; implementation benchmarks and visual calibration required",
+  "profiles": {
+    "standard": {
+      "width": 128,
+      "height": 84,
+      "image_content_bounds": {
+        "width": 96,
+        "height": 60
+      },
+      "palette_size_max": 32
+    },
+    "compact": {
+      "width": 64,
+      "height": 42,
+      "image_content_bounds": {
+        "width": 48,
+        "height": 30
+      },
+      "palette_size_max": 32,
+      "use": "explicit compact recipe or reflow; not an arbitrary CSS downscale"
+    }
+  },
+  "image_method": {
+    "normalization": "oriented sRGB source; linear-light premultiplied alpha during reduction",
+    "fit": "contain",
+    "filter": "triangle",
+    "quantization_space": "oklab",
+    "quantizer": "custom fixed palette nearest color; deterministic lowest-index tie break",
+    "dither": "none",
+    "upscale": "nearest; integer device-pixel scale preferred",
+    "reference_matte_role": "black"
+  },
+  "reference_palette": {
+    "id": "flexoki-illustration-reference-32",
+    "version": 1,
+    "source": "https://github.com/kepano/flexoki/blob/main/css/flexoki.css",
+    "license": "MIT; retain upstream notice when vendoring palette",
+    "colors": [
+      {
+        "role": "black",
+        "srgb_hex": "#100F0F"
+      },
+      {
+        "role": "base-950",
+        "srgb_hex": "#1C1B1A"
+      },
+      {
+        "role": "base-800",
+        "srgb_hex": "#403E3C"
+      },
+      {
+        "role": "base-600",
+        "srgb_hex": "#6F6E69"
+      },
+      {
+        "role": "base-400",
+        "srgb_hex": "#9F9D96"
+      },
+      {
+        "role": "base-200",
+        "srgb_hex": "#CECDC3"
+      },
+      {
+        "role": "base-50",
+        "srgb_hex": "#F2F0E5"
+      },
+      {
+        "role": "paper",
+        "srgb_hex": "#FFFCF0"
+      },
+      {
+        "role": "red-200",
+        "srgb_hex": "#F89A8A"
+      },
+      {
+        "role": "red-400",
+        "srgb_hex": "#D14D41"
+      },
+      {
+        "role": "red-700",
+        "srgb_hex": "#942822"
+      },
+      {
+        "role": "orange-200",
+        "srgb_hex": "#F9AE77"
+      },
+      {
+        "role": "orange-400",
+        "srgb_hex": "#DA702C"
+      },
+      {
+        "role": "orange-700",
+        "srgb_hex": "#9D4310"
+      },
+      {
+        "role": "yellow-200",
+        "srgb_hex": "#ECCB60"
+      },
+      {
+        "role": "yellow-400",
+        "srgb_hex": "#D0A215"
+      },
+      {
+        "role": "yellow-700",
+        "srgb_hex": "#8E6B01"
+      },
+      {
+        "role": "green-200",
+        "srgb_hex": "#BEC97E"
+      },
+      {
+        "role": "green-400",
+        "srgb_hex": "#879A39"
+      },
+      {
+        "role": "green-700",
+        "srgb_hex": "#536907"
+      },
+      {
+        "role": "cyan-200",
+        "srgb_hex": "#87D3C3"
+      },
+      {
+        "role": "cyan-400",
+        "srgb_hex": "#3AA99F"
+      },
+      {
+        "role": "cyan-700",
+        "srgb_hex": "#1C6C66"
+      },
+      {
+        "role": "blue-200",
+        "srgb_hex": "#92BFDB"
+      },
+      {
+        "role": "blue-400",
+        "srgb_hex": "#4385BE"
+      },
+      {
+        "role": "blue-700",
+        "srgb_hex": "#1A4F8C"
+      },
+      {
+        "role": "purple-200",
+        "srgb_hex": "#C4B9E0"
+      },
+      {
+        "role": "purple-400",
+        "srgb_hex": "#8B7EC8"
+      },
+      {
+        "role": "purple-700",
+        "srgb_hex": "#4F3685"
+      },
+      {
+        "role": "magenta-200",
+        "srgb_hex": "#F4A4C2"
+      },
+      {
+        "role": "magenta-400",
+        "srgb_hex": "#CE5D97"
+      },
+      {
+        "role": "magenta-700",
+        "srgb_hex": "#87285E"
+      }
+    ]
+  },
+  "worker_defaults": {
+    "concurrency": 2,
+    "visible_and_buffered_card_limit": 24,
+    "preferred_normalized_long_edge": 1024,
+    "encoded_input_limit_bytes": 33554432,
+    "decoded_source_max_width": 4096,
+    "decoded_source_max_height": 4096,
+    "decoded_source_max_pixels": 4194304,
+    "accounted_working_set_target_bytes": 100663296,
+    "note": "Validate before allocation; use an existing bounded derivative path for larger inputs. Allocation tracking is not a hard browser-process memory sandbox."
+  },
+  "preference_defaults": {
+    "expressive": "pixel",
+    "calm": "full_fidelity",
+    "unset_preference": "theme_default",
+    "explicit_override_survives_theme_change": true
+  },
+  "geometry_targets": {
+    "rail_css_px": 46,
+    "navigation_css_px": 210,
+    "docked_cabinet_css_px": 466,
+    "project_content_min_css_px": 480,
+    "project_content_max_css_px": 680,
+    "cabinet_horizontal_padding_css_px": 20,
+    "docked_column_gap_css_px": 14,
+    "expanded_column_gap_css_px": 22,
+    "card_min_css_px": 178,
+    "docked_columns_max": 2,
+    "expanded_columns_max": 3
+  },
+  "claim_boundary": "This JSON is a proposed profile, not an installed production theme, measured performance result, or validated application schema."
+}

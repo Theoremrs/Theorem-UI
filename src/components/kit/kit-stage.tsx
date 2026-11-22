@@ -76,12 +76,42 @@ export function KitStage() {
     return () => clearTimeout(timer)
   }, [expires])
 
-  // A turn going out: Kit hops where it stands.
+  // A response coming in: Kit leaves the composer for its rail slot and sits
+  // there while the agent works, then goes back to where it stood. Without
+  // the rail on screen (collapsed, or a phone layout) it hops where it is.
   const previous = useRef(liveness)
+  const returnTo = useRef<{ perch: PerchName; at: number } | undefined>(
+    undefined,
+  )
   useEffect(() => {
-    if (liveness === 'work' && previous.current !== 'work')
-      void kitDriver()?.hop()
+    const was = previous.current
     previous.current = liveness
+    const driver = kitDriver()
+    if (!driver) return
+    const state = useKitStage.getState()
+    if (liveness === 'work' && was !== 'work') {
+      const rail = document.querySelector('[data-kit-perch="rail"]')
+      if (!rail || state.perch === 'rail' || state.motion === 'held') {
+        void driver.hop()
+        return
+      }
+      returnTo.current = { perch: state.perch, at: state.at }
+      void driver
+        .moveTo('rail', 0.5, 'jump')
+        .catch(() => (returnTo.current = undefined))
+      return
+    }
+    if (was === 'work' && liveness !== 'work' && returnTo.current) {
+      const back = returnTo.current
+      returnTo.current = undefined
+      // Only if it is still where the response put it: the person or the
+      // agent may have moved it since.
+      if (state.perch !== 'rail' || state.motion === 'held') return
+      const perch = document.querySelector(`[data-kit-perch="${back.perch}"]`)
+        ? back.perch
+        : 'composer'
+      void driver.moveTo(perch, back.at, 'jump').catch(() => false)
+    }
   }, [liveness])
 
   // Strolls of its own while nothing is happening.
@@ -163,6 +193,8 @@ export function KitStage() {
         ref={hold}
         tabIndex={0}
         role="button"
+        // The shell's press squeeze clears the transform that places Kit; a tap plays Kit's own gesture instead.
+        data-press="off"
         aria-label="Kit, the agent's figure. Press to pet it, or drag it somewhere."
         onKeyDown={(event) => {
           if (event.key !== 'Enter' && event.key !== ' ') return

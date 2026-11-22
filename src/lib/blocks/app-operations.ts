@@ -14,9 +14,16 @@ import { appDocumentFor } from '@/lib/theorem/apps'
 import { hasStatus, mutate, theorem } from '@/lib/theorem/client'
 import { MAX_RUN_MS, inspectApp } from './app-inspect'
 import type { AppInspection } from './app-inspect'
+import { canonicalJson, digestBytes } from './artifact-runtime'
+import {
+  libraryDeclarations,
+  theoremAppDeclarations,
+} from './check/theorem-app.generated'
 
 /** The operation that checks an App, as the turn's tool `app__check`. */
 export const APP_CHECK = 'app.check'
+/** What `app.check` with `library` calls the declarations of `window.theorem` itself. */
+export const BRIDGE_LIBRARY = 'window.theorem'
 
 /** The largest App a check is given, as the server allows one to be. */
 const MAX_HTML = 1024 * 1024
@@ -28,8 +35,10 @@ const MAX_HTML = 1024 * 1024
 export const APP_OPERATIONS = [
   {
     name: APP_CHECK,
+    // One operation for both, since a send admits sixteen and Kit, the face,
+    // the workbench and the present one take the rest (client-surface.ts).
     description:
-      "Builds and checks an App in the person's browser and returns what is wrong with it. Pass `html`, a complete App document exactly as it would be published, to check a draft before publishing it; or pass `documentId` to check a published App as it is saved now. The result says whether it built, lists its build, type and runtime problems with file, line and column, and gives what the App showed: its text, and `outline`, each thing on the page by role, name and state as assistive technology reads it, with the source place that made it. Nothing is changed and nothing is shown to the person: the App runs hidden for a moment with no network, empty state and an empty in-memory database, so records it reads are not the person's.",
+      "Builds and checks an App in the person's browser and returns what is wrong with it. Pass `html`, a complete App document exactly as it would be published, to check a draft, or `documentId` to check a published App as saved now. The result says whether it built, lists build, type and runtime problems by file, line and column, and gives what the App showed: its text, and `outline`, each thing on the page by role, name and state with the source place that made it. `picture: true` adds an image of the App as drawn, if you read images. Nothing is changed or shown to the person: the App runs hidden for a moment with empty state and an empty in-memory database. Pass `library` instead to read the TypeScript declarations an App is checked against: window.theorem, @theorem/runtime, @theorem/spatial, @theorem/annotate. It lists the files, returns index.d.ts or `file`, and a `digest` of the whole API. Read what you use instead of guessing its shape.",
     effect: 'read',
     inputSchema: {
       type: 'object',
@@ -54,10 +63,77 @@ export const APP_OPERATIONS = [
           description:
             'How long to run the App and listen for errors. 0 builds and checks types without running it. Default 1500.',
         },
+        picture: {
+          type: 'boolean',
+          description:
+            'Also return an image of what the App showed. Only a model that reads images is shown it.',
+        },
+        library: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 100,
+          description:
+            'Read declarations instead of checking: window.theorem, @theorem/runtime, @theorem/spatial or @theorem/annotate.',
+        },
+        file: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 100,
+          description:
+            'With library: one declaration file its listing names, such as operations.d.ts.',
+        },
       },
     },
   },
 ] as const
+
+/** A library's declaration files as the App check reads them, by file name. */
+const declarationsOf = (library: string): Record<string, string> | undefined =>
+  library === BRIDGE_LIBRARY
+    ? theoremAppDeclarations
+    : Object.hasOwn(libraryDeclarations, library)
+      ? libraryDeclarations[library]
+      : undefined
+
+/** What `app.check` with `library` answers: the library's files, its identity, and the text asked for. */
+export interface AppLibraryRead {
+  library: string
+  digest: string
+  files: Array<{ name: string; bytes: number }>
+  file: string
+  text: string
+}
+
+/**
+ * Reads one library's declarations as the page's App check holds them, so
+ * what the agent reads is what an App it writes is checked against. Answers
+ * undefined, with the libraries there are, for a library or file not held.
+ */
+export async function readAppLibrary(
+  library: string,
+  file = 'index.d.ts',
+): Promise<AppLibraryRead | { missing: string }> {
+  const files = declarationsOf(library)
+  if (!files)
+    return {
+      missing: `There is no library ${library}; there are ${[BRIDGE_LIBRARY, ...Object.keys(libraryDeclarations)].join(', ')}.`,
+    }
+  if (!Object.hasOwn(files, file))
+    return {
+      missing: `${library} has no file ${file}; it has ${Object.keys(files).join(', ')}.`,
+    }
+  const encoder = new TextEncoder()
+  return {
+    library,
+    digest: await digestBytes(encoder.encode(canonicalJson(files))),
+    files: Object.entries(files).map(([name, text]) => ({
+      name,
+      bytes: encoder.encode(text).length,
+    })),
+    file,
+    text: files[file]!,
+  }
+}
 
 /** What a send carries so the turn can check Apps. */
 export const appTurnOptions = () => ({ clientOperations: APP_OPERATIONS })
@@ -77,19 +153,12 @@ const record = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {}
 
-/**
- * The App requests pending in the conversation's live turn: the last
- * assistant message, while it runs.
- */
-export function appRequestsOf(
-  messages: readonly ThreadMessage[],
-  running: boolean,
+/** The App requests still pending among one run's message parts. */
+function pendingAppRequests(
+  runId: string,
+  content: ThreadMessage['content'],
 ): Array<AppRequest> {
-  const last = messages.at(-1)
-  if (!running || last?.role !== 'assistant') return []
-  const runId = record(last.metadata.custom).theoremRunId
-  if (typeof runId !== 'string') return []
-  return last.content.flatMap((part) => {
+  return content.flatMap((part) => {
     if (part.type !== 'data' || part.name !== 'theorem-client_operation')
       return []
     const data = record(part.data)
@@ -114,16 +183,47 @@ export function appRequestsOf(
   })
 }
 
+/**
+ * The App requests pending in the conversation's live turn: the last
+ * assistant message, while it runs.
+ */
+export function appRequestsOf(
+  messages: readonly ThreadMessage[],
+  running: boolean,
+): Array<AppRequest> {
+  const last = messages.at(-1)
+  if (!running || last?.role !== 'assistant') return []
+  const runId = record(last.metadata.custom).theoremRunId
+  if (typeof runId !== 'string') return []
+  return pendingAppRequests(runId, last.content)
+}
+
+/**
+ * The App requests pending in a specialist's run. A builder is handed the
+ * page's check when the turn that started it was sent from a page, and asks on
+ * its own run, which is not a message of the conversation: the page follows
+ * that run by its id while the specialist works.
+ */
+export function appRequestsOfRun(
+  runId: string,
+  message: ThreadMessage | undefined,
+): Array<AppRequest> {
+  if (message?.status?.type !== 'running') return []
+  return pendingAppRequests(runId, message.content)
+}
+
 type Outcome = 'applied' | 'rejected' | 'failed'
 
 /** What the page says back: the check's findings, or why there are none. */
 export interface AppAnswer {
   readonly outcome: Outcome
   readonly reason?: string
-  readonly result?: AppInspection & {
-    /** The saved revision that was checked, when a published App was. */
-    revision?: string
-  }
+  readonly result?:
+    | (AppInspection & {
+        /** The saved revision that was checked, when a published App was. */
+        revision?: string
+      })
+    | AppLibraryRead
 }
 
 /** What answering needs of the page: the check, and an App's saved source. */
@@ -156,8 +256,23 @@ export async function answerAppRequest(
       outcome: 'rejected',
       reason: `This page has no operation ${request.operation}.`,
     }
-  const { html, documentId, runMs } = request.args
-  const options = typeof runMs === 'number' ? { runMs } : {}
+  if (request.args.library !== undefined) {
+    const { library, file } = request.args
+    if (typeof library !== 'string' || !library)
+      return { outcome: 'rejected', reason: 'Name the library to read.' }
+    const read = await readAppLibrary(
+      library,
+      typeof file === 'string' && file ? file : undefined,
+    )
+    return 'missing' in read
+      ? { outcome: 'rejected', reason: read.missing }
+      : { outcome: 'applied', result: read }
+  }
+  const { html, documentId, runMs, picture } = request.args
+  const options = {
+    ...(typeof runMs === 'number' ? { runMs } : {}),
+    ...(picture === true ? { picture: true } : {}),
+  }
   try {
     if (typeof html === 'string' && html)
       return { outcome: 'applied', result: await host.inspect(html, options) }
@@ -247,6 +362,16 @@ interface ThreadSource {
     }
     subscribe: (callback: () => void) => () => void
   }
+}
+
+/** Serves the App requests of one specialist's run for as long as it is mounted. */
+export function useSpecialistAppRequests(
+  runId: string,
+  message: ThreadMessage | undefined,
+) {
+  useEffect(() => {
+    void serveAppRequests(appRequestsOfRun(runId, message))
+  }, [runId, message])
 }
 
 /** Serves App requests from one conversation for as long as it is mounted. */

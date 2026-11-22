@@ -81,7 +81,7 @@ afterEach(async () => {
   useArtifactView.getState().reset()
 })
 
-test('an App shows a passive preview of its pinned revision, runs live only on Interact, and opens the workspace', async () => {
+test('a live App runs once inside its answer and never opens a workspace of its own', async () => {
   const originalUrl = window.location.href
   window.location.href = 'https://theorem.test/'
   const store = await appDocumentFixture()
@@ -95,27 +95,20 @@ test('an App shows a passive preview of its pinned revision, runs live only on I
   )
   try {
     const { container } = await render(<Harness />)
-    const preview = await waitFor(() =>
-      container.querySelector('[data-slot="app-preview"]'),
+    // The answer holds the live runtime directly: no card, no activation
+    // step, and nothing opens in the dock beside it.
+    const answer = await waitFor(() =>
+      container.querySelector<HTMLElement>(
+        '[data-slot="inline-artifact"][data-current="true"]',
+      ),
     )
-    expect(preview.getAttribute('role')).toBe('img')
-    expect(preview.getAttribute('aria-label')).toContain('Browser shortlist')
-    // Off screen (happy-dom never intersects) the preview holds no live frame.
-    expect(container.querySelector('iframe')).toBeNull()
-    expect(buttonNamed(container, 'Run App')).toBeUndefined()
-    await click(buttonNamed(container, 'Interact')!)
-    const frame = await waitFor(() => container.querySelector('iframe'), 10_000)
+    const frame = await waitFor(() => answer.querySelector('iframe'), 10_000)
     expect(frame.getAttribute('sandbox')).toBe(BLOCK_SANDBOX)
+    expect(buttonNamed(answer, 'Stop App')).toBeDefined()
+    expect(container.querySelectorAll('iframe')).toHaveLength(1)
     expect(useArtifactView.getState().openId).toBeUndefined()
-    await click(buttonNamed(container, 'Stop App')!)
-    expect(container.querySelector('iframe')).toBeNull()
-    await click(buttonNamed(container, 'Done')!)
-    expect(container.querySelector('[data-slot="inline-app"]')).toBeNull()
-    expect(container.querySelector('[data-slot="app-preview"]')).not.toBeNull()
-    await click(
-      container.querySelector('[aria-label="Open Browser shortlist"]')!,
-    )
-    expect(useArtifactView.getState().openId).toBe('inline-result')
+    await click(buttonNamed(answer, 'Stop App')!)
+    expect(answer.querySelector('iframe')).toBeNull()
   } finally {
     compile.mockRestore()
     fetch.mockRestore()
@@ -136,28 +129,46 @@ test('a document card keeps opening the document panel', async () => {
 
 for (const kind of ['app', 'document']) {
   test(`a newly arriving ${kind} preserves the intended follow behavior`, async () => {
-    const { container } = await render(<Harness kind={kind} running />)
-    await waitFor(() =>
-      container.querySelector('[aria-label="Open Browser shortlist"]'),
+    const originalUrl = window.location.href
+    window.location.href = 'https://theorem.test/'
+    // A live App reads its document on arrival; answer the read the same way
+    // offline it would fail, so no frame can start during a working turn.
+    const fetch = spyOn(window, 'fetch').mockImplementation(
+      Object.assign(
+        async () => Response.json({ detail: 'offline' }, { status: 503 }),
+        { preconnect: window.fetch.preconnect },
+      ),
     )
-    expect(useArtifactView.getState().openId).toBe(
-      kind === 'app' ? undefined : 'inline-result',
-    )
-    expect(container.querySelector('iframe')).toBeNull()
+    try {
+      const { container } = await render(<Harness kind={kind} running />)
+      // A live artifact belongs to the working answer itself; a card stands
+      // for everything else. Follow the Agent opens the card's panel, never
+      // a live session.
+      await waitFor(() =>
+        kind === 'app'
+          ? container.querySelector('[data-slot="inline-artifact"]')
+          : container.querySelector('[aria-label="Open Browser shortlist"]'),
+      )
+      expect(useArtifactView.getState().openId).toBe(
+        kind === 'app' ? undefined : 'inline-result',
+      )
+      expect(container.querySelector('iframe')).toBeNull()
+    } finally {
+      fetch.mockRestore()
+      window.location.href = originalUrl
+    }
   })
 }
 
-test('an App without a saved document reports the missing reference inline', async () => {
+test('an App without a saved document reports the missing reference in its answer', async () => {
   const { container } = await render(<Harness documentId="" />)
-  await click(await waitFor(() => buttonNamed(container, 'Interact')))
-  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
-    "This App couldn't be opened.",
-  )
+  const alert = await waitFor(() => container.querySelector('[role="alert"]'))
+  expect(alert.textContent).toContain("This App couldn't be opened.")
   expect(container.querySelector('iframe')).toBeNull()
   expect(useArtifactView.getState().openId).toBeUndefined()
 })
 
-test('a failed App load shows the actual failure inline and never starts a frame', async () => {
+test('a failed App load shows the actual failure in the answer and never starts a frame', async () => {
   const originalUrl = window.location.href
   window.location.href = 'https://theorem.test/'
   const fetch = spyOn(window, 'fetch').mockImplementation(
@@ -171,7 +182,6 @@ test('a failed App load shows the actual failure inline and never starts a frame
     const { container } = await render(
       <Harness documentId="inline-app-unavailable" />,
     )
-    await click(await waitFor(() => buttonNamed(container, 'Interact')))
     await waitFor(() => container.querySelector('[role="alert"]'))
     expect(container.textContent).toContain('App source unavailable')
     expect(container.querySelector('iframe')).toBeNull()
@@ -182,16 +192,39 @@ test('a failed App load shows the actual failure inline and never starts a frame
   }
 })
 
-test('replacing a card with another saved App requires a new click', async () => {
-  const { container, rerender } = await render(<Harness documentId="" />)
-  await click(await waitFor(() => buttonNamed(container, 'Interact')))
-  expect(container.querySelector('[data-slot="inline-app"]')).not.toBeNull()
-  await rerender(<Harness documentId="replacement-app" />)
-  expect(container.querySelector('[data-slot="inline-app"]')).toBeNull()
-  expect(buttonNamed(container, 'Interact')?.getAttribute('aria-pressed')).toBe(
-    'false',
+test('replacing the App in the answer with another saved App replaces the live runtime rather than reusing it', async () => {
+  const originalUrl = window.location.href
+  window.location.href = 'https://theorem.test/'
+  const store = await appDocumentFixture()
+  const fetch = spyOn(window, 'fetch').mockImplementation(
+    Object.assign(async () => Response.json(store.saved()), {
+      preconnect: window.fetch.preconnect,
+    }),
   )
-})
+  const compile = spyOn(hosted, 'hostedAppDocument').mockImplementation(
+    (html) => originalHosted(html, esbuild),
+  )
+  try {
+    const { container, rerender } = await render(
+      <Harness documentId="inline-app-original" />,
+    )
+    const first = await waitFor(() => container.querySelector('iframe'), 10_000)
+    await rerender(<Harness documentId="inline-app-replacement" />)
+    // The new saved App starts its own runtime; the previous document's
+    // frame is gone, not carried over to another identity.
+    const second = await waitFor(() => {
+      const frame = container.querySelector('iframe')
+      return frame && frame !== first ? frame : undefined
+    }, 10_000)
+    expect(container.querySelectorAll('iframe')).toHaveLength(1)
+    expect(second).not.toBe(first)
+    expect(useArtifactView.getState().openId).toBeUndefined()
+  } finally {
+    compile.mockRestore()
+    fetch.mockRestore()
+    window.location.href = originalUrl
+  }
+}, 20_000)
 
 test('a document shows its excerpt inline and offers no live session', async () => {
   const { container } = await render(<Harness kind="document" />)

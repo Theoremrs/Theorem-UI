@@ -8,7 +8,9 @@ import {
   organizedViews,
   planMove,
   primaryProjectId,
+  projectToOpenIn,
   rehome,
+  sessionLists,
 } from './organization'
 import type { Membership, ProjectEntry, ThreadEntry } from './organization'
 import type { Theorem } from './client'
@@ -87,6 +89,19 @@ describe('organizedViews', () => {
     ],
   }
 
+  test('projects keep the order a person gave them, with the rest after', () => {
+    const views = organizedViews(
+      { ...organization, projects: [...organization.projects, project('c')] },
+      new Set(),
+      ['b', 'gone', 'a'],
+    )
+    expect(views.projects.map((p) => p.project.projectId)).toEqual([
+      'b',
+      'a',
+      'c',
+    ])
+  })
+
   test('a thread in two projects shows in each and in its attention view', () => {
     const views = organizedViews(organization)
     expect(views.projects.map((p) => p.project.projectId)).toEqual(['a', 'b'])
@@ -101,7 +116,7 @@ describe('organizedViews', () => {
     expect(views.running.map((t) => t.threadId)).toEqual(['live'])
   })
 
-  test('no live membership is Unsorted and the inbox is not a project', () => {
+  test('no live membership is Chats (unsorted) and the inbox is not a project', () => {
     const views = organizedViews(organization)
     expect(views.unsorted.map((t) => t.threadId)).toEqual([
       'snoozed',
@@ -139,6 +154,100 @@ describe('organizedViews', () => {
   })
 })
 
+describe('sessionLists', () => {
+  const lists = sessionLists(
+    organizedViews({
+      projects: [
+        project('inbox', { isInbox: true }),
+        project('todo'),
+        project('player'),
+        project('release', { createdBy: 'librarian' }),
+      ],
+      threads: [
+        thread('checklist', {
+          memberships: [member('todo')],
+          lastMessageAtMs: 50,
+        }),
+        thread('both', {
+          memberships: [
+            member('player', { atMs: 2 }),
+            member('todo', { pinned: true, atMs: 3 }),
+          ],
+        }),
+        thread('notes', {
+          memberships: [member('release'), member('player', { atMs: 4 })],
+        }),
+        thread('drafted', {
+          memberships: [member('release')],
+          createdAtMs: 30,
+        }),
+        thread('loose', { lastMessageAtMs: 40 }),
+        thread('quiz', {
+          lastMessageAtMs: 20,
+          attention: {
+            reasons: [
+              {
+                kind: 'review',
+                reviewId: 'r',
+                title: 'Pick one',
+                optionCount: 2,
+                atMs: 20,
+              },
+            ],
+            running: false,
+          },
+        }),
+        thread('migrate', {
+          memberships: [member('todo')],
+          lastMessageAtMs: 60,
+          attention: {
+            reasons: [
+              {
+                kind: 'approval',
+                runId: 'run',
+                approvalId: 'a',
+                toolName: 'shell',
+                atMs: 60,
+              },
+            ],
+            running: false,
+          },
+        }),
+        thread('flaky', {
+          lastMessageAtMs: 10,
+          attention: {
+            reasons: [{ kind: 'failed', runId: 'run', atMs: 10 }],
+            running: false,
+          },
+        }),
+      ],
+    }),
+  )
+  const ids = (threads: readonly ThreadEntry[]) =>
+    threads.map((t) => t.threadId)
+
+  test('sections are the projects the user made', () => {
+    expect(lists.sections.map((s) => s.project.projectId)).toEqual([
+      'todo',
+      'player',
+    ])
+  })
+
+  test('Recent is every session in no such section, newest first', () => {
+    expect(ids(lists.recent)).toEqual(['loose', 'drafted', 'quiz', 'flaky'])
+  })
+
+  test('a session sits in its primary section, else its first one the user made', () => {
+    expect(lists.home.get('both')).toBe('todo')
+    expect(lists.home.get('notes')).toBe('player')
+    expect(lists.home.get('drafted')).toBe('recent')
+  })
+
+  test('Review is what waits on a review or an approval, not a failure', () => {
+    expect(ids(lists.review)).toEqual(['migrate', 'quiz'])
+  })
+})
+
 describe('primaryProjectId', () => {
   test('a pinned placement outranks an older Librarian one', () => {
     expect(
@@ -160,6 +269,23 @@ describe('primaryProjectId', () => {
   })
 })
 
+describe('projectToOpenIn', () => {
+  const shared = thread('t', {
+    homeProjectId: 'home',
+    memberships: [member('first', { atMs: 1 }), member('second', { atMs: 5 })],
+  })
+
+  test('a project the thread is placed in is the one it opens under when asked for', () => {
+    expect(projectToOpenIn(shared, 'second')).toBe('second')
+    expect(projectToOpenIn(shared, 'home')).toBe('home')
+  })
+
+  test('nothing asked for, or a project it is not in, opens it in its primary one', () => {
+    expect(projectToOpenIn(shared)).toBe('first')
+    expect(projectToOpenIn(shared, 'elsewhere')).toBe('first')
+  })
+})
+
 describe('nestByOrigin', () => {
   test('a fork sits under a source in the same list and stands alone otherwise', () => {
     const fork = thread('fork', {
@@ -176,6 +302,53 @@ describe('nestByOrigin', () => {
     const { roots, children } = nestByOrigin([thread('source'), fork, orphan])
     expect(roots.map((t) => t.threadId)).toEqual(['source', 'orphan'])
     expect(children.get('source')?.map((t) => t.threadId)).toEqual(['fork'])
+  })
+
+  test('a continuation is provenance, not ancestry: it stays at the top level', () => {
+    const continued = thread('continued', {
+      origin: { kind: 'continued', threadId: 'source' },
+    })
+    const { roots, children } = nestByOrigin([thread('source'), continued])
+    expect(roots.map((t) => t.threadId)).toEqual(['source', 'continued'])
+    expect(children.size).toBe(0)
+  })
+
+  test('a malformed cycle of forks hides no thread', () => {
+    const forkOf = (threadId: string, source: string, createdAtMs: number) =>
+      thread(threadId, {
+        createdAtMs,
+        origin: {
+          kind: 'forked',
+          threadId: source,
+          branchId: 'b',
+          messageId: 'm',
+        },
+      })
+    const threads = [
+      forkOf('a', 'b', 2),
+      forkOf('b', 'c', 1),
+      forkOf('c', 'a', 3),
+    ]
+    const { roots, children } = nestByOrigin(threads)
+    // Broken at its oldest member, b; the rest hang beneath it.
+    expect(roots.map((t) => t.threadId)).toEqual(['b'])
+    const shown = new Set(['b'])
+    for (const kids of children.values())
+      for (const kid of kids) shown.add(kid.threadId)
+    expect([...shown].sort()).toEqual(['a', 'b', 'c'])
+    expect(rootOf(threads, 'c')).toBe('b')
+  })
+
+  test('a self-referencing fork is a root', () => {
+    const self = thread('self', {
+      origin: {
+        kind: 'forked',
+        threadId: 'self',
+        branchId: 'b',
+        messageId: 'm',
+      },
+    })
+    expect(nestByOrigin([self]).roots.map((t) => t.threadId)).toEqual(['self'])
   })
 })
 
@@ -196,7 +369,9 @@ describe('rootOf', () => {
         origin: { kind: 'continued', threadId: 'elsewhere' },
       }),
     ]
-    expect(rootOf(threads, 'deep')).toBe('root')
+    // A continuation of a fork stands on its own: only forks nest.
+    expect(rootOf(threads, 'deep')).toBe('deep')
+    expect(rootOf(threads, 'fork')).toBe('root')
     expect(rootOf(threads, 'orphan')).toBe('orphan')
     expect(rootOf(threads, 'root')).toBe('root')
   })
@@ -244,7 +419,7 @@ describe('organizationFromThreads', () => {
       ...over,
     }) as Theorem.Thread
 
-  test('the oldest project is the inbox and its threads are Unsorted', () => {
+  test('the oldest project is the inbox and its threads are Chats (unsorted)', () => {
     const read = organizationFromThreads(
       [apiProject('later', 5), apiProject('first', 1)],
       [apiThread('here', 'first'), apiThread('there', 'later')],
@@ -254,6 +429,12 @@ describe('organizationFromThreads', () => {
     const views = organizedViews(read)
     expect(views.unsorted.map((t) => t.threadId)).toEqual(['here'])
     expect(views.projects[0]!.threads.map((t) => t.threadId)).toEqual(['there'])
+  })
+
+  test('a read says whether every page was read', () => {
+    const projects = [apiProject('p', 1)]
+    expect(organizationFromThreads(projects, []).complete).toBe(true)
+    expect(organizationFromThreads(projects, [], false).complete).toBe(false)
   })
 
   test('run state and failures are read from the thread', () => {
@@ -305,7 +486,7 @@ describe('planMove', () => {
     expect(planMove(served, t, 'view:running', 'a')).toBeUndefined()
   })
 
-  test('served: Unsorted drops every membership, and an unsorted thread needs nothing', () => {
+  test('served: Chats (unsorted) drops every membership, and an unsorted thread needs nothing', () => {
     const t = thread('t', { memberships: [member('a'), member('b')] })
     expect(planMove(served, t, 'a', null)).toEqual({
       kind: 'placement',
@@ -314,7 +495,7 @@ describe('planMove', () => {
     expect(planMove(served, thread('u'), 'unsorted', null)).toBeUndefined()
   })
 
-  test('unserved: a move changes home, and Unsorted is the inbox', () => {
+  test('unserved: a move changes home, and Chats (unsorted) is the inbox', () => {
     const t = thread('t', { homeProjectId: 'a' })
     expect(planMove(unserved, t, 'a', 'b')).toEqual({
       kind: 'home',

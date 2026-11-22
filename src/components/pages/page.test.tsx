@@ -337,9 +337,9 @@ test("a saved module's parts are presented as the page around it is", async () =
   }
 })
 
-// IDE mode became Theia alone on a page that fills the window, and a module
-// placed straight on such a page kept the height it would have on a page
-// that scrolls, so Theia would not reach the bottom of the window.
+// IDE mode's page fills the window, and a module placed straight on such a
+// page kept the height it would have on a page that scrolls, so Theia would
+// not reach the bottom of the window.
 test('on a page that fills the window, a module placed on the page fills it', async () => {
   const frameOf = async (fill: boolean) => {
     const { container } = await renderPage({
@@ -602,6 +602,15 @@ test('an inspector acts in the scope its item was opened in', async () => {
     const json = (body: unknown) =>
       new Response(JSON.stringify(body), {
         headers: { 'content-type': 'application/json' },
+      })
+    // The inspector also shows the records the document is about: none.
+    if (path.endsWith('/record-filings'))
+      return json({
+        schema: 'theorem-document/2',
+        documentId: 'd1',
+        receipts: [],
+        links: [],
+        corrections: [],
       })
     if (path.endsWith('/filings'))
       return json(

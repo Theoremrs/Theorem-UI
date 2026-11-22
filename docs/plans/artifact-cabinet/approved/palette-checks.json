@@ -1,0 +1,170 @@
+{
+  "expressive-neutral": {
+    "sampleData": true,
+    "backendConnected": false,
+    "renderer": "HTML/Canvas prototype; not Ratatui",
+    "state": {
+      "preset": "expressive",
+      "palette": "neutral",
+      "preview": "auto",
+      "filter": "all",
+      "search": "",
+      "selected": "coast",
+      "expanded": true,
+      "activeTab": "cabinet"
+    },
+    "contrasts": {
+      "text": 10.765127271492412,
+      "muted": 6.336581165406398,
+      "focus": 6.024034190401989,
+      "accent": 6.024034190401989
+    }
+  },
+  "expressive-paper": {
+    "sampleData": true,
+    "backendConnected": false,
+    "renderer": "HTML/Canvas prototype; not Ratatui",
+    "state": {
+      "preset": "expressive",
+      "palette": "paper",
+      "preview": "auto",
+      "filter": "all",
+      "search": "",
+      "selected": "coast",
+      "expanded": true,
+      "activeTab": "cabinet"
+    },
+    "contrasts": {
+      "text": 13.61050612662364,
+      "muted": 6.3555791797435,
+      "focus": 5.399756946720476,
+      "accent": 5.399756946720476
+    }
+  },
+  "expressive-slate": {
+    "sampleData": true,
+    "backendConnected": false,
+    "renderer": "HTML/Canvas prototype; not Ratatui",
+    "state": {
+      "preset": "expressive",
+      "palette": "slate",
+      "preview": "auto",
+      "filter": "all",
+      "search": "",
+      "selected": "coast",
+      "expanded": true,
+      "activeTab": "cabinet"
+    },
+    "contrasts": {
+      "text": 10.751391929304157,
+      "muted": 6.34652957131223,
+      "focus": 5.986020215171878,
+      "accent": 5.986020215171878
+    }
+  },
+  "expressive-forest": {
+    "sampleData": true,
+    "backendConnected": false,
+    "renderer": "HTML/Canvas prototype; not Ratatui",
+    "state": {
+      "preset": "expressive",
+      "palette": "forest",
+      "preview": "auto",
+      "filter": "all",
+      "search": "",
+      "selected": "coast",
+      "expanded": true,
+      "activeTab": "cabinet"
+    },
+    "contrasts": {
+      "text": 10.703647878963475,
+      "muted": 6.297172055436168,
+      "focus": 6.0095346069390265,
+      "accent": 6.0095346069390265
+    }
+  },
+  "calm-neutral": {
+    "sampleData": true,
+    "backendConnected": false,
+    "renderer": "HTML/Canvas prototype; not Ratatui",
+    "state": {
+      "preset": "calm",
+      "palette": "neutral",
+      "preview": "auto",
+      "filter": "all",
+      "search": "",
+      "selected": "coast",
+      "expanded": true,
+      "activeTab": "cabinet"
+    },
+    "contrasts": {
+      "text": 10.765127271492412,
+      "muted": 6.336581165406398,
+      "focus": 6.024034190401989,
+      "accent": 6.024034190401989
+    }
+  },
+  "calm-paper": {
+    "sampleData": true,
+    "backendConnected": false,
+    "renderer": "HTML/Canvas prototype; not Ratatui",
+    "state": {
+      "preset": "calm",
+      "palette": "paper",
+      "preview": "auto",
+      "filter": "all",
+      "search": "",
+      "selected": "coast",
+      "expanded": true,
+      "activeTab": "cabinet"
+    },
+    "contrasts": {
+      "text": 13.61050612662364,
+      "muted": 6.3555791797435,
+      "focus": 5.399756946720476,
+      "accent": 5.399756946720476
+    }
+  },
+  "calm-slate": {
+    "sampleData": true,
+    "backendConnected": false,
+    "renderer": "HTML/Canvas prototype; not Ratatui",
+    "state": {
+      "preset": "calm",
+      "palette": "slate",
+      "preview": "auto",
+      "filter": "all",
+      "search": "",
+      "selected": "coast",
+      "expanded": true,
+      "activeTab": "cabinet"
+    },
+    "contrasts": {
+      "text": 10.751391929304157,
+      "muted": 6.34652957131223,
+      "focus": 5.986020215171878,
+      "accent": 5.986020215171878
+    }
+  },
+  "calm-forest": {
+    "sampleData": true,
+    "backendConnected": false,
+    "renderer": "HTML/Canvas prototype; not Ratatui",
+    "state": {
+      "preset": "calm",
+      "palette": "forest",
+      "preview": "auto",
+      "filter": "all",
+      "search": "",
+      "selected": "coast",
+      "expanded": true,
+      "activeTab": "cabinet"
+    },
+    "contrasts": {
+      "text": 10.703647878963475,
+      "muted": 6.297172055436168,
+      "focus": 6.0095346069390265,
+      "accent": 6.0095346069390265
+    }
+  }
+}

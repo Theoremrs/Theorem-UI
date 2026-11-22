@@ -170,7 +170,7 @@ function useGroups(close: () => void): Group[] {
           label: plugin.name,
           hint: plugin.description,
           Mark: Icon.Plugin,
-          run: go('/settings/ai'),
+          run: go('/settings/plugins'),
         })),
       },
       {
@@ -181,7 +181,7 @@ function useGroups(close: () => void): Group[] {
           hint: skill.plugin,
           keywords: skill.description,
           Mark: Icon.Article,
-          run: go('/settings/ai'),
+          run: go('/settings/plugins'),
         })),
       },
     ]
@@ -218,7 +218,7 @@ export function CommandPalette() {
                   <CommandGroupLabel>{group.label}</CommandGroupLabel>
                   <CommandCollection>
                     {(entry: Entry) => (
-                      <CommandItem key={entry.id} value={entry} onClick={entry.run}>
+                      <CommandItem key={entry.id} value={entry} onClick={entry.run} className="gap-2">
                         <entry.Mark className="size-4 shrink-0 text-ink-muted" />
                         <span className="truncate">{entry.label}</span>
                         {entry.hint && (

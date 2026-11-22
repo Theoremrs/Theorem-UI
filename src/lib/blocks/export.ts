@@ -12,19 +12,19 @@ import { checkPath, decodeFile } from './bridge'
 import type { StateCollections } from './bridge'
 import { AppBuildError } from './app-source'
 import type { AppProblem, AppSources } from './app-source'
+import { appDependencies } from './app-dependencies'
+import type { AppDependencies, AppModule } from './app-dependencies'
 import { compileCell } from './compile'
 import type { CompiledCell } from './compile'
-import {
-  BLOCK_DOCUMENT_STYLE,
-  connectSources,
-  contentSecurityPolicy,
-} from './document'
+import { BLOCK_DOCUMENT_STYLE } from './document'
 import { runtimeSources } from './runtime-sources'
 import type { ExportedData } from './sandbox/standalone'
 import { encodeRows } from './sandbox/standalone'
 import { toBase64 } from './state'
 import { importMap } from './vendor/manifest'
 import { vendorModules } from './vendor/modules'
+import { libraryModule } from './app-library-sources'
+import { canonicalJson, digestBytes } from './artifact-runtime'
 
 type Bundler = Pick<typeof Esbuild, 'build'>
 
@@ -65,6 +65,63 @@ const NAMESPACE = {
   runtime: 'theorem-runtime',
   vendor: 'theorem-vendor',
   app: 'theorem-app',
+  dependency: 'theorem-app-dependency',
+  library: 'theorem-library',
+  worker: 'theorem-app-worker',
+  implementation: 'theorem-app-implementation',
+}
+
+/**
+ * The digest of the modules a build read (esbuild's metafile inputs, as
+ * `namespace:path`): an App file or library module by the SHA-256 of its
+ * text, a `?worker` or `?implementation` file by the digest of its own build
+ * (`nested`, so what it imports at any depth counts), a remote dependency by
+ * the SHA-256 of the bytes the build was given for it (`load`, so a mutable
+ * URL that serves new code is a new implementation), and anything else, the
+ * vendored modules Theorem ships, by its path. `entry`, the file the build
+ * started from, is part of it: two files that import each other read the same
+ * modules but run different code.
+ */
+export async function implementationDigest(
+  files: Record<string, string>,
+  entry: string,
+  inputs: Array<string>,
+  nested: ReadonlyMap<string, string> = new Map(),
+  load?: (url: string) => Promise<AppModule>,
+): Promise<`sha256:${string}`> {
+  const encoder = new TextEncoder()
+  const read: Record<string, string> = {}
+  for (const input of inputs) {
+    const colon = input.indexOf(':')
+    const namespace = colon < 0 ? '' : input.slice(0, colon)
+    const path = colon < 0 ? input : input.slice(colon + 1)
+    if (namespace === NAMESPACE.worker || namespace === NAMESPACE.implementation) {
+      const built = nested.get(input)
+      if (built === undefined)
+        throw new Error(`No fingerprint for "${path}", which this build read`)
+      read[input] = built
+      continue
+    }
+    if (namespace === NAMESPACE.app && Object.hasOwn(files, path)) {
+      read[input] = await digestBytes(encoder.encode(files[path]))
+      continue
+    }
+    if (namespace === NAMESPACE.library) {
+      const slash = path.lastIndexOf('/')
+      const module = libraryModule(path.slice(0, slash), path.slice(slash + 1))
+      if (module) {
+        read[input] = await digestBytes(encoder.encode(module.source))
+        continue
+      }
+    }
+    if (namespace === NAMESPACE.dependency && load) {
+      const module = await load(path)
+      read[input] = await digestBytes(module.bytes ?? encoder.encode(module.source))
+      continue
+    }
+    read[input] = input
+  }
+  return digestBytes(encoder.encode(canonicalJson({ entry, read })))
 }
 
 /** A bare import, through the import map, to the vendored file that serves it. */
@@ -133,14 +190,6 @@ function exportPlugin(entry: string, cell: string): Esbuild.Plugin {
  * or regular expression alike.
  */
 const inlineSafe = (code: string) => code.replaceAll('<!--', '<\\x21--')
-
-async function sha256Base64(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(text),
-  )
-  return toBase64(new Uint8Array(digest))
-}
 
 const escapeHtml = (text: string) =>
   text.replace(
@@ -279,16 +328,18 @@ export const SOURCE_ATTRIBUTE = 'data-theorem-source'
 const JSX_SOURCE = 'theorem-app-jsx'
 
 /**
- * The JSX runtime an App is built with: React's, with each element that
- * becomes a DOM node stamped with where it was written. esbuild passes that
- * place to `jsxDEV`, so nothing is parsed and nothing is written into the
- * App's own source.
+ * The JSX runtime an App is built with: React's, with each element the App's
+ * own files write that becomes a DOM node stamped with where it was written.
+ * A library's elements are not stamped: the place to change is the App line
+ * that used the library. esbuild passes that place to `jsxDEV`, so nothing is
+ * parsed and nothing is written into the App's own source.
  */
 const JSX_RUNTIME = `import { Fragment, jsx, jsxs } from 'react/jsx-runtime'
 export { Fragment }
 export function jsxDEV(type, props, key, isStatic, source) {
   const stamped =
-    typeof type === 'string' && source && props['${SOURCE_ATTRIBUTE}'] === undefined
+    typeof type === 'string' && source && String(source.fileName).startsWith('${NAMESPACE.app}:') &&
+    props['${SOURCE_ATTRIBUTE}'] === undefined
       ? {
           ...props,
           '${SOURCE_ATTRIBUTE}':
@@ -301,10 +352,25 @@ export function jsxDEV(type, props, key, isStatic, source) {
 `
 
 /**
- * Resolves an App's own files from memory and every other import through the
- * import map to the vendored files: the modules a block frame has, no others.
+ * Resolves the App's files and browser-compatible npm/HTTPS dependencies.
+ * Vendored modules remain an offline fast path, not an import ceiling.
  */
-function appPlugin({ files, entry }: AppSources): Esbuild.Plugin {
+/**
+ * What the nested builds of one App share: the `?worker` and `?implementation`
+ * files being built around this one, outermost first, so a file that reaches
+ * itself is refused instead of building forever, and the fingerprint of each
+ * nested build already made, by its metafile input name.
+ */
+interface NestedBuilds {
+  ancestry: ReadonlyArray<string>
+  fingerprints: Map<string, string>
+}
+
+function appPlugin(
+  { files, entry }: AppSources,
+  dependencies: AppDependencies,
+  nested: NestedBuilds = { ancestry: [], fingerprints: new Map() },
+): Esbuild.Plugin {
   return {
     name: 'theorem-app',
     setup(build) {
@@ -320,22 +386,139 @@ function appPlugin({ files, entry }: AppSources): Esbuild.Plugin {
         contents: JSX_RUNTIME,
         loader: 'js',
       }))
+      const appFile = (importer: string, path: string, namespace: string) => {
+        const base = joinSource(importer, path)
+        const found =
+          base === null
+            ? undefined
+            : RESOLVED.map((suffix) => base + suffix).find((candidate) =>
+                Object.hasOwn(files, candidate),
+              )
+        return found
+          ? { path: found, namespace }
+          : { errors: [{ text: `No file "${path}" in this App` }] }
+      }
+      // `import digest from './solver.ts?implementation'`: the SHA-256 of what
+      // that file runs, so an operation's key follows its code and not a name
+      // someone remembered to bump (artifact-runtime Operation.implementation).
+      // It is the canonical JSON of every module the file's own build reads,
+      // each App file and library module by the digest of its text and each
+      // pinned dependency by its exact URL, so a change to anything it
+      // imports, at any depth, is a new implementation and a change elsewhere
+      // in the App is not.
+      build.onResolve(
+        { filter: /^\.\.?\/.*\?implementation$/, namespace: NAMESPACE.app },
+        ({ path, importer }) =>
+          appFile(importer, path.slice(0, -'?implementation'.length), NAMESPACE.implementation),
+      )
+      // `import url from './work.ts?worker'`, as in Vite: that file is bundled
+      // on its own and handed over as a blob URL for `new Worker(url)`. A
+      // module worker from a blob does not start in the App's sandboxed frame
+      // (its origin is opaque), so it is a classic script: the bundle runs in
+      // an async function, which keeps top-level await, and a failure in it is
+      // thrown again so it reaches the worker's `onerror`.
+      build.onResolve(
+        { filter: /^\.\.?\/.*\?worker$/, namespace: NAMESPACE.app },
+        ({ path, importer }) => appFile(importer, path.slice(0, -'?worker'.length), NAMESPACE.worker),
+      )
       build.onResolve(
         { filter: /^\.\.?\//, namespace: NAMESPACE.app },
-        ({ path, importer }) => {
-          const base = joinSource(importer, path)
-          const found =
-            base === null
-              ? undefined
-              : RESOLVED.map((suffix) => base + suffix).find((candidate) =>
-                  Object.hasOwn(files, candidate),
-                )
-          return found
-            ? { path: found, namespace: NAMESPACE.app }
-            : { errors: [{ text: `No file "${path}" in this App` }] }
-        },
+        ({ path, importer }) => appFile(importer, path, NAMESPACE.app),
       )
-      build.onResolve({ filter: /.*/ }, ({ path }) => vendored(path))
+      // A nested build of `path`, refused when `path` is already being built
+      // around it, and the fingerprint of what it read, kept for the builds
+      // around it: theirs include it.
+      const nestedBuild = async (
+        path: string,
+        namespace: string,
+        options: Esbuild.BuildOptions,
+      ) => {
+        if (nested.ancestry.includes(path))
+        {
+          const text = `"${path}" imports itself: ${[...nested.ancestry, path].join(' imports ')}`
+          throw Object.assign(new Error(text), { errors: [{ text }] })
+        }
+        const result = await build.esbuild.build({
+          ...build.initialOptions,
+          ...options,
+          sourcemap: false,
+          metafile: true,
+          // The same build an App of only this file would be, from `theorem:app`.
+          plugins: [appPlugin({ files, entry: path }, dependencies, {
+            ancestry: [...nested.ancestry, path],
+            fingerprints: nested.fingerprints,
+          })],
+        })
+        const fingerprint = await implementationDigest(
+          files,
+          path,
+          Object.keys(result.metafile.inputs),
+          nested.fingerprints,
+          (url) => dependencies.load(url),
+        )
+        nested.fingerprints.set(`${namespace}:${path}`, fingerprint)
+        return { result, fingerprint }
+      }
+      build.onLoad({ filter: /.*/, namespace: NAMESPACE.implementation }, async ({ path }) => {
+        try {
+          const { fingerprint } = await nestedBuild(path, NAMESPACE.implementation, {
+            outfile: 'implementation.js',
+          })
+          return { contents: `export default ${JSON.stringify(fingerprint)}`, loader: 'js' }
+        } catch (error) {
+          const errors = (error as Partial<Esbuild.BuildFailure>).errors
+          if (!errors?.length) throw error
+          return { errors }
+        }
+      })
+      build.onLoad({ filter: /.*/, namespace: NAMESPACE.worker }, async ({ path }) => {
+        try {
+          const { result } = await nestedBuild(path, NAMESPACE.worker, {
+            outfile: 'worker.js',
+            define: { 'import.meta.url': 'self.location.href' },
+          })
+          const code = (result.outputFiles?.find((file) => file.path.endsWith('worker.js'))?.text ?? '')
+            // What the worker file exports has no one to go to.
+            .replace(/\nexport \{[^}]*\};\s*$/, '\n')
+          const script = `(async () => {\n${code}\n})().catch((error) => setTimeout(() => { throw error }))\n`
+          return {
+            contents: `export default URL.createObjectURL(new Blob([${JSON.stringify(script)}], { type: 'text/javascript' }))`,
+            loader: 'js',
+          }
+        } catch (error) {
+          const errors = (error as Partial<Esbuild.BuildFailure>).errors
+          if (!errors?.length) throw error
+          return { errors }
+        }
+      })
+      // A library's own modules, `./name` beside the one importing them.
+      build.onResolve(
+        { filter: /^\.\/[\w-]+(?:\.\w+)?$/, namespace: NAMESPACE.library },
+        ({ path, importer }) => ({
+          path: `${importer.slice(0, importer.lastIndexOf('/'))}/${path.slice(2)}`,
+          namespace: NAMESPACE.library,
+        }),
+      )
+      build.onResolve({ filter: /.*/ }, async ({ path, importer, namespace, kind }) => {
+        if (kind === 'url-token' && /^(?:data:|#)/.test(path))
+          return { path, external: true }
+        try {
+          const resolved = dependencies.resolve(
+            path,
+            namespace === NAMESPACE.dependency ? importer : undefined,
+          )
+          if (resolved.kind === 'vendor')
+            return { path: resolved.path, namespace: NAMESPACE.vendor }
+          if (resolved.kind === 'library')
+            return { path: `${resolved.path}/index`, namespace: NAMESPACE.library }
+          // Follow redirects before choosing the namespace path, so a remote
+          // module's relative imports use its final URL, not its request URL.
+          const module = await dependencies.load(resolved.path)
+          return { path: module.url, namespace: NAMESPACE.dependency }
+        } catch (error) {
+          return { errors: [{ text: error instanceof Error ? error.message : String(error) }] }
+        }
+      })
       build.onLoad({ filter: /.*/, namespace: NAMESPACE.app }, ({ path }) => ({
         contents: files[path],
         loader: LOADERS[path.slice(path.lastIndexOf('.') + 1)] ?? 'js',
@@ -343,6 +526,20 @@ function appPlugin({ files, entry }: AppSources): Esbuild.Plugin {
       build.onLoad(
         { filter: /.*/, namespace: NAMESPACE.vendor },
         ({ path }) => ({ contents: vendorModules[path], loader: 'js' }),
+      )
+      build.onLoad({ filter: /.*/, namespace: NAMESPACE.library }, ({ path }) => {
+        const slash = path.lastIndexOf('/')
+        const module = libraryModule(path.slice(0, slash), path.slice(slash + 1))
+        return module === undefined
+          ? { errors: [{ text: `No module "${path}"` }] }
+          : { contents: module.source, loader: LOADERS[module.file.slice(module.file.lastIndexOf('.') + 1)] ?? 'ts' }
+      })
+      build.onLoad(
+        { filter: /.*/, namespace: NAMESPACE.dependency },
+        async ({ path }) => {
+          const module = await dependencies.load(path)
+          return { contents: module.bytes ?? module.source, loader: module.loader }
+        },
       )
     },
   }
@@ -414,6 +611,7 @@ const fromApp = (file: string) =>
 export async function bundleAppSources(
   sources: AppSources,
   esbuild?: Bundler,
+  dependencies?: AppDependencies,
 ): Promise<AppBundle> {
   let result: Esbuild.BuildResult
   try {
@@ -433,7 +631,7 @@ export async function bundleAppSources(
       sourcesContent: false,
       legalComments: 'none',
       logLevel: 'silent',
-      plugins: [appPlugin(sources)],
+      plugins: [appPlugin(sources, dependencies ?? appDependencies(sources))],
     })
   } catch (error) {
     const messages = (error as Partial<Esbuild.BuildFailure>).errors
@@ -483,27 +681,11 @@ async function bundleScript(
   return inlineSafe(output.text)
 }
 
-/** The page: one inline module, allowed by its hash and nothing else. */
-async function exportDocument(
-  name: string,
-  script: string,
-  net: Array<string>,
-): Promise<string> {
-  const policy = contentSecurityPolicy({
-    'default-src': "'none'",
-    'script-src': `'sha256-${await sha256Base64(script)}'`,
-    'style-src': "'unsafe-inline'",
-    'img-src': 'data: blob:',
-    'font-src': 'data:',
-    'media-src': 'data: blob:',
-    'connect-src': connectSources(net),
-    'form-action': "'none'",
-    'base-uri': "'none'",
-  })
+/** The page: one inline module, the whole tool. */
+function exportDocument(name: string, script: string): string {
   return `<!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="${escapeHtml(policy)}">
 <title>${escapeHtml(name)}</title>
 <style>${BLOCK_DOCUMENT_STYLE}</style>
 </head><body><div id="root"></div>
@@ -535,7 +717,7 @@ export async function exportTool(
     data,
     await (options.esbuild ?? browserEsbuild)(),
   )
-  const html = await exportDocument(name, script, cell.capabilities.net)
+  const html = exportDocument(name, script)
   const out = `Exports/${name}.html`
   await client.write(out, html)
   return { path: out, bytes: new TextEncoder().encode(html).length }

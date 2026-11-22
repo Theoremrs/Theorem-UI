@@ -36,7 +36,10 @@ export async function recoverPendingSend(
 ) {
   theorem()
   if (!sendRecovery?.has(threadId)) return undefined
-  const session = await theorem().session.bootstrap({}, { abortSignal })
+  const session = await theorem().session.bootstrap(
+    {},
+    { abortSignal, timeoutInSeconds: 30, maxRetries: 0 },
+  )
   return sendRecovery.resume(
     threadId,
     window.location.origin,
@@ -50,6 +53,12 @@ export async function recoverPendingSend(
 export function pendingSendKey(threadId: string) {
   theorem()
   return sendRecovery?.pendingKey(threadId)
+}
+
+/** The text of the send saved for recovery on this thread, once that write has happened. */
+export function pendingSendText(threadId: string) {
+  theorem()
+  return sendRecovery?.pendingText(threadId)
 }
 
 /** Keeps a refused send's text under its thread until that chat can take it. */
@@ -88,7 +97,7 @@ let bootstrapPromise: Promise<Theorem.Bootstrap> | undefined
 export function bootstrap(force = false): Promise<Theorem.Bootstrap> {
   if (force || !bootstrapPromise) {
     bootstrapPromise = theorem()
-      .session.bootstrap()
+      .session.bootstrap({}, { timeoutInSeconds: 30, maxRetries: 0 })
       .catch((error: unknown) => {
         bootstrapPromise = undefined
         throw error
@@ -144,6 +153,45 @@ export async function mutateThread<T>(
   }
 }
 
+/** The project, read from every page of the list until it turns up. */
+async function findProject(projectId: string) {
+  let cursor: string | undefined
+  do {
+    const page = await theorem().chat.projects.list({ limit: 100, cursor })
+    const project = page.items.find((item) => item.projectId === projectId)
+    if (project) return project
+    cursor = page.nextCursor
+  } while (cursor)
+  return undefined
+}
+
+/**
+ * As mutateThread, for a project. Projects have no single read, so the
+ * revision comes from the list.
+ */
+export async function mutateProject<T>(
+  projectId: string,
+  run: (headers: MutationHeaders & { 'If-Match': string }) => Promise<T>,
+): Promise<T> {
+  const attempt = async () => {
+    const project = await findProject(projectId)
+    if (!project) throw new Error('That section is no longer there')
+    return mutate((headers) =>
+      run({ ...headers, 'If-Match': String(project.revision) }),
+    )
+  }
+  try {
+    return await attempt()
+  } catch (error) {
+    if (
+      error instanceof Theorem.ConflictError ||
+      error instanceof Theorem.PreconditionError
+    )
+      return attempt()
+    throw error
+  }
+}
+
 /** The proxy answers 401 when nobody is signed in or the session has lapsed. */
 export const isSignedOut = (error: unknown) =>
   error instanceof TheoremError && error.statusCode === 401
@@ -156,8 +204,14 @@ export function hasStatus(error: unknown, ...codes: number[]): boolean {
   )
 }
 /** This public store error identifies capacity exhaustion, not commit status. */
-function explainStorageCapacity(code: unknown, detail: string | undefined): string | undefined {
-  if (code === 'chat_store_error' && detail?.startsWith('tenant_memory_quota_exceeded:')) {
+function explainStorageCapacity(
+  code: unknown,
+  detail: string | undefined,
+): string | undefined {
+  if (
+    code === 'chat_store_error' &&
+    detail?.startsWith('tenant_memory_quota_exceeded:')
+  ) {
     return 'The chat store reached its configured memory budget. The server operator must restore capacity before this request can succeed.'
   }
   if (
@@ -170,7 +224,10 @@ function explainStorageCapacity(code: unknown, detail: string | undefined): stri
   return detail
 }
 
-export function describeError(error: unknown, service: 'chat' | 'document' = 'chat'): string {
+export function describeError(
+  error: unknown,
+  service: 'chat' | 'document' | 'Files' = 'chat',
+): string {
   if (error instanceof TheoremError) {
     const body =
       error.body && typeof error.body === 'object'
@@ -180,10 +237,7 @@ export function describeError(error: unknown, service: 'chat' | 'document' = 'ch
       typeof value === 'string' && value.trim() ? value.trim() : undefined
     const detail = explainStorageCapacity(body?.code, text(body?.detail))
     let message =
-      detail ??
-      text(body?.title) ??
-      text(body?.message) ??
-      text(body?.error)
+      detail ?? text(body?.title) ?? text(body?.message) ?? text(body?.error)
     if (error instanceof RefusedSend) {
       // The title, as the detail talks in revision numbers.
       const reason = text(body?.title) ?? detail
@@ -205,7 +259,12 @@ export function describeError(error: unknown, service: 'chat' | 'document' = 'ch
           message = 'You do not have permission to perform this action.'
           break
         case 413:
-          message = service === 'document' ? 'The document is too large.' : 'The message or attachment is too large.'
+          message =
+            service === 'document'
+              ? 'The document is too large.'
+              : service === 'Files'
+                ? 'The file is too large.'
+                : 'The message or attachment is too large.'
           break
         case 429:
           message = 'Too many requests. Try again shortly.'

@@ -1,4 +1,5 @@
-// SOURCING: dockview-react (docking layout: tabs, splits, floating and edge groups, maximize, serialization, always-rendered panels), the shell's ModeView (assistant-ui Thread in chat mode), FilePanel, NotePanel (Milkdown Crepe), WorkspaceFilePanel, the inspector's panels (the graph via React.lazy, so cosmos.gl loads only when it opens), the arrangements, the IDE frame (browser-only Theia), Base UI Menu (the panels menu: arrangements, the inspector, the terminal drawers), zustand stores for artifact view, note view, workspace file view, the inspected file, saved layouts and the drawers
+// SOURCING: dockview-react (docking layout: tabs, splits, floating and edge groups, maximize, serialization, always-rendered panels), the shell's ModeView (assistant-ui Thread in chat mode), FilePanel, NotePanel (Milkdown Crepe), WorkspaceFilePanel, the inspector's panels (the graph via React.lazy, so cosmos.gl loads only when it opens), the arrangements, the IDE frame (browser-only Theia), Base UI Menu (the one layout menu: Follow the agent and the Gallery, arrangements, the inspector, the terminal drawers), zustand stores for artifact view, note view, workspace file view, the inspected file, saved layouts and the drawers
+import { useThreadDisplayTitle } from '@/lib/theorem/thread-title'
 import { useAuiState } from '@assistant-ui/react'
 import { Menu } from '@base-ui/react/menu'
 import { DockviewDefaultTab, DockviewReact } from 'dockview-react'
@@ -14,6 +15,7 @@ import {
   Suspense,
   lazy,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   useSyncExternalStore,
@@ -31,6 +33,7 @@ import { INSPECTOR_TOOLS } from '@/components/inspector/inspector-state'
 import type { InspectorTool } from '@/components/inspector/inspector-state'
 import { NotePanel } from '@/components/notes/note-panel'
 import { ThreadHeader } from '@/components/organize/thread-header'
+import { useProjectHomeTitle } from '@/components/projects/project-home'
 import { useNoteView } from '@/components/notes/note-view'
 import { Button } from '@/components/ui/button'
 import {
@@ -62,16 +65,22 @@ import type { ShellMode } from './modes'
 import { openBeside } from './open-beside'
 import { useShell } from './shell-state'
 import { menuItem, menuPopup } from './sidebar'
+import { adaptDock } from './responsive-dock'
 
 import { useFollow } from '@/components/ide/follow'
 import { IdeFrame } from '@/components/ide/ide-frame'
 import { flyGhost, popIn } from '@/lib/motion'
-import { cn } from '@/lib/utils'
+import { sheetShown } from '@/components/workbench/placement'
+import { useWorkbenchPlacement } from '@/components/workbench/use-workbench-placement'
 
 import { DelegationPanel } from '@/components/chat/delegation-panel'
 import { ComparePane } from '@/components/review/compare-pane'
-import { useDelegationDock, useThreadDelegation } from '@/lib/theorem/delegations'
+import {
+  useDelegationDock,
+  useThreadDelegation,
+} from '@/lib/theorem/delegations'
 import { useReview, useReviewDock } from '@/lib/theorem/reviews'
+import { WORKBENCH_LABEL } from '@/components/workbench/label'
 
 const ARTIFACT = 'artifact:'
 const NOTE = 'note-panel:'
@@ -111,39 +120,43 @@ function subscribe(event: (listener: () => void) => { dispose: () => void }) {
 
 /** The main panel: the conversation, or the mode's view in the Index, Pages, Spaces and the canvas. Theia covers the dock in IDE mode. */
 function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
-  const title = useAuiState((s) => s.threadListItem.title)
+  const threadTitle = useThreadDisplayTitle()
+  const title = useProjectHomeTitle() ?? threadTitle
   const mode = useShellMode()
   useEffect(
     () =>
-      api.setTitle(
-        hasOwnView(mode)
-          ? modeLabel(mode)
-          : title || 'New chat',
-      ),
+      api.setTitle(hasOwnView(mode) ? modeLabel(mode) : title || 'New chat'),
     [api, mode, title],
   )
   // Chat's breadcrumb stands in for the tab while the conversation is
-  // alone in its group; a tab dropped beside it brings the tab bar back.
+  // alone in its group, and Notes' panes draw their own pills; a tab dropped
+  // beside it brings the tab bar back.
   const inChat = mode === 'chat'
+  const ownTop = inChat || mode === 'notes'
   const alone = useSyncExternalStore(
     subscribe(api.group.api.onDidActivePanelChange),
     () => api.group.panels.length === 1,
   )
   useEffect(() => {
     // eslint-disable-next-line react-hooks/immutability -- dockview's header takes this as a setter, and has no method for it.
-    api.group.header.hidden = inChat && alone
-  }, [api, inChat, alone])
+    api.group.header.hidden = ownTop && alone
+  }, [api, ownTop, alone])
+  const actions = alone ? (
+    <GroupActions group={api.group} containerApi={containerApi} />
+  ) : undefined
   return (
-    <div className="flex h-full flex-col">
+    <div
+      data-appearance-part="main"
+      data-appearance-width-role="main"
+      className="flex h-full min-w-0 flex-col"
+    >
       {inChat && (
         <ThreadHeader
-          actions={
-            alone ? <GroupActions group={api.group} containerApi={containerApi} /> : undefined
-          }
+          actions={actions}
         />
       )}
       <div className="relative min-h-0 flex-1">
-        <ModeView docked />
+        <ModeView docked actions={mode === 'notes' ? actions : undefined} />
       </div>
     </div>
   )
@@ -223,7 +236,11 @@ function DelegationDockPanel({
   return <DelegationPanel delegationId={params.delegationId} />
 }
 
-/** Compare draws its own header, with a way out of the window and back. */
+/**
+ * Compare draws its own header: a way to fill the workspace with every option
+ * side by side, and a way out of the window and back. Wherever the
+ * conversation is not beside it, it carries the conversation's composer.
+ */
 function ReviewDockPanel({
   api,
   containerApi,
@@ -237,6 +254,20 @@ function ReviewDockPanel({
   const location = useSyncExternalStore(
     subscribe(api.onDidLocationChange),
     () => api.location.type,
+  )
+  const expanded = useSyncExternalStore(
+    subscribe(containerApi.onDidMaximizedGroupChange),
+    () => api.isMaximized(),
+  )
+  // A dock too narrow for both opens Compare as a tab over the conversation.
+  const overThread = useSyncExternalStore(
+    subscribe(containerApi.onDidLayoutChange),
+    () => api.group.panels.some((panel) => panel.id === THREAD),
+  )
+  // A tab opened quietly behind the conversation answers nothing until shown.
+  const visible = useSyncExternalStore(
+    subscribe(api.onDidVisibilityChange),
+    () => api.isVisible,
   )
   const close = () => {
     const panel = containerApi.getPanel(api.id)
@@ -261,6 +292,9 @@ function ReviewDockPanel({
       onClose={close}
       onDetach={() => void detach()}
       detached={location !== 'grid'}
+      expanded={expanded}
+      onExpandedChange={(next) => (next ? api.maximize() : api.exitMaximized())}
+      standalone={visible && (expanded || overThread || location !== 'grid')}
     />
   )
 }
@@ -283,6 +317,9 @@ const inspector = (Panel: React.ComponentType) =>
     )
   }
 
+/** The id the outputs side panel had; only old saved layouts still name it. */
+const RETIRED_OUTPUTS_PANEL = 'outputs'
+
 const components = {
   thread: ThreadPanel,
   outline: inspector(OutlinePanel),
@@ -296,6 +333,9 @@ const components = {
   file: FileDockPanel,
   delegation: DelegationDockPanel,
   review: ReviewDockPanel,
+  // The outputs were a side panel until 2026-11-14; a layout saved then still
+  // names it, so it restores and is removed (restoreLayout).
+  [RETIRED_OUTPUTS_PANEL]: () => null,
 }
 
 const tabComponents = {
@@ -306,18 +346,30 @@ const tabComponents = {
 }
 
 /** Follow the Agent across the dock: files in the IDE, artifacts in their panels. */
-function FollowToggle() {
-  const following = useFollow((s) => s.following)
-  const { pause, resume } = useFollow.getState()
+/** Opens and closes the artifact cabinet for the project that is open. */
+/** A checkbox row in the panels menu. */
+function MenuCheck({
+  checked,
+  onCheckedChange,
+  children,
+}: {
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+  children: React.ReactNode
+}) {
   return (
-    <TooltipIconButton
-      tooltip={following ? 'Following the agent' : 'Follow the agent'}
-      aria-pressed={following}
-      onClick={following ? pause : resume}
-      className={cn('size-7 p-1.5', !following && 'text-ink-faint')}
+    <Menu.CheckboxItem
+      className={menuItem}
+      checked={checked}
+      onCheckedChange={onCheckedChange}
     >
-      <Icon.Follow className="size-4" />
-    </TooltipIconButton>
+      <span className="flex size-4 items-center justify-center">
+        <Menu.CheckboxItemIndicator>
+          <Icon.Check className="size-3.5" />
+        </Menu.CheckboxItemIndicator>
+      </span>
+      {children}
+    </Menu.CheckboxItem>
   )
 }
 
@@ -344,8 +396,9 @@ function useShownInspector(api: DockviewApi) {
 }
 
 /**
- * The conversation's panels menu: the arrangements, the inspector beside the
- * files, and the terminal drawers. New chat lives in the sidebar.
+ * The conversation's one layout menu: Follow the agent and the Gallery, the
+ * arrangements, the inspector beside the files, and the terminal drawers.
+ * New chat lives in the sidebar.
  */
 function GroupActions({
   group,
@@ -366,15 +419,16 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
     if (panel) api.removePanel(panel)
     else addInspector(api, tool)
   }
+  const following = useFollow((s) => s.following)
+  const gallery = useShell((s) => s.sideDrawer === 'outputs')
   return (
     <div className="flex h-full items-center pe-1">
-      <FollowToggle />
       <Menu.Root>
         <Menu.Trigger
           render={
             <TooltipIconButton
-              tooltip="Open a panel"
-              className="size-7 p-1.5"
+              tooltip="Layout and panels"
+              className="min-h-(--appearance-control-min) min-w-(--appearance-control-min) p-1.5"
             />
           }
         >
@@ -383,6 +437,30 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
         <Menu.Portal>
           <Menu.Positioner align="end" sideOffset={6} className="z-50">
             <Menu.Popup className={`min-w-52 ${menuPopup}`}>
+              <Menu.Group>
+                <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
+                  Workspace
+                </Menu.GroupLabel>
+                <MenuCheck
+                  checked={following}
+                  onCheckedChange={(on) =>
+                    on
+                      ? useFollow.getState().resume()
+                      : useFollow.getState().pause()
+                  }
+                >
+                  Follow the agent
+                </MenuCheck>
+                <MenuCheck
+                  checked={gallery}
+                  onCheckedChange={(on) =>
+                    useShell.getState().setSideDrawer(on ? 'outputs' : undefined)
+                  }
+                >
+                  Gallery
+                </MenuCheck>
+              </Menu.Group>
+              <Menu.Separator className="my-1 h-px bg-separator" />
               <Menu.Group>
                 <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
                   Arrange
@@ -406,39 +484,40 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
                 </Menu.GroupLabel>
                 {(Object.keys(INSPECTOR_TOOLS) as Array<InspectorTool>).map(
                   (tool) => (
-                    <Menu.CheckboxItem
+                    <MenuCheck
                       key={tool}
-                      className={menuItem}
                       checked={shown.has(tool)}
                       onCheckedChange={() => toggle(tool)}
                     >
-                      <span className="flex size-4 items-center justify-center">
-                        <Menu.CheckboxItemIndicator>
-                          <Icon.Check className="size-3.5" />
-                        </Menu.CheckboxItemIndicator>
-                      </span>
                       {INSPECTOR_TOOLS[tool]}
-                    </Menu.CheckboxItem>
+                    </MenuCheck>
                   ),
                 )}
               </Menu.Group>
               <Menu.Separator className="my-1 h-px bg-separator" />
               <Menu.Item
                 className={menuItem}
-                onClick={() => useShell.getState().setSideDrawer('terminal')}
+                onClick={() => useShell.getState().setWorkbench('side')}
               >
                 <Icon.Terminal className="size-4 text-ink-muted" />
-                Terminal on the right
+                {`${WORKBENCH_LABEL} on the right`}
               </Menu.Item>
               <Menu.Item
                 className={menuItem}
-                onClick={() => useShell.getState().setTerminalOpen(true)}
+                onClick={() => useShell.getState().setWorkbench('bottom')}
               >
                 <Icon.Terminal className="size-4 text-ink-muted" />
-                Terminal at the bottom
+                {`${WORKBENCH_LABEL} at the bottom`}
                 <span className="ms-auto ps-4 font-mono text-xs text-ink-faint">
                   ctrl+`
                 </span>
+              </Menu.Item>
+              <Menu.Item
+                className={menuItem}
+                onClick={() => useShell.getState().setWorkbench('full')}
+              >
+                <Icon.Terminal className="size-4 text-ink-muted" />
+                {`${WORKBENCH_LABEL} full screen`}
               </Menu.Item>
             </Menu.Popup>
           </Menu.Positioner>
@@ -448,13 +527,16 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
   )
 }
 
+/** Below this the conversation's column is not laid out. */
+const THREAD_MIN_WIDTH = 0
+
 function buildDefaultLayout(api: DockviewApi) {
   api.addPanel({
     id: THREAD,
     component: 'thread',
     tabComponent: 'fixed',
     title: 'New chat',
-    minimumWidth: 360,
+    minimumWidth: THREAD_MIN_WIDTH,
   })
 }
 
@@ -472,6 +554,8 @@ function restoreLayout(
   // Theia now covers the sheet in IDE mode, so an IDE panel would load it twice.
   const ide = api.getPanel('ide')
   if (ide) api.removePanel(ide)
+  const outputs = api.getPanel(RETIRED_OUTPUTS_PANEL)
+  if (outputs) api.removePanel(outputs)
   if (api.getPanel(THREAD)) return true
   api.clear()
   return false
@@ -520,9 +604,16 @@ function openDelegation(api: DockviewApi, delegationId: string, title: string) {
     title,
   })
 }
+/** Compare's column opens this wide, or at 40% of a dock too narrow for that. */
+const COMPARE_WIDTH = 380
+/** The conversation keeps this much beside Compare, which otherwise opens over it. */
+const CONVERSATION_WIDTH = 480
+
 /**
  * Compare opens in a column of its own, with its own header in place of the
- * tab, and a quiet open leaves the keyboard in the conversation.
+ * tab, and a quiet open leaves the keyboard in the conversation. The column
+ * has a set width, so a wide window gives the room to the conversation; a
+ * dock with no room for both opens Compare over the conversation as a tab.
  */
 function openReviewPanel(
   api: DockviewApi,
@@ -545,7 +636,8 @@ function openReviewPanel(
       minimumWidth: 340,
     },
     THREAD,
-    0.4,
+    Math.min(0.4, COMPARE_WIDTH / api.width),
+    CONVERSATION_WIDTH - THREAD_MIN_WIDTH,
   )
   const panel = api.getPanel(id)
   if (panel && panel.group.panels.length === 1) panel.group.header.hidden = true
@@ -643,8 +735,28 @@ export function DockShell({
   threadId: string | undefined
 }) {
   const [dock, setDock] = useState<DockviewApi>()
+  const host = useRef<HTMLDivElement>(null)
+  const adaptation = useRef<ReturnType<typeof adaptDock> | null>(null)
+  useEffect(() => {
+    if (!dock || !host.current) return
+    const adapter = adaptDock(dock, host.current)
+    adaptation.current = adapter
+    return () => {
+      adapter.dispose()
+      adaptation.current = null
+    }
+  }, [dock])
   /** Conversation the layout's artifact panels belong to. */
   const layoutThread = useRef<string | undefined>(undefined)
+  // A full-screen workbench covers this dock: a review asked for there (its
+  // Artifacts panel, its conversation's review card) brings the sheet back
+  // beside it so the review can be seen and used.
+  const { requestedPlacement } = useWorkbenchPlacement()
+  const showSheet = useEffectEvent(() => {
+    const shell = useShell.getState()
+    const moved = sheetShown(requestedPlacement, shell.lastCompanion)
+    if (moved) shell.setWorkbench(moved)
+  })
 
   const onReady = ({ api }: DockviewReadyEvent) => {
     const saved = useShell.getState().layouts[projectId]
@@ -657,11 +769,16 @@ export function DockShell({
   // Connects the artifact store to this dock and saves every layout change.
   useEffect(() => {
     if (!dock) return
-    const save = () =>
-      useShell.getState().saveLayout(projectId, {
-        threadId: layoutThread.current,
-        dock: dock.toJSON(),
-      })
+    const save = () => {
+      const layout = adaptation.current
+        ? adaptation.current.layoutForSave()
+        : dock.toJSON()
+      if (layout)
+        useShell.getState().saveLayout(projectId, {
+          threadId: layoutThread.current,
+          dock: layout,
+        })
+    }
     const active = dock.activePanel && artifactIdOf(dock.activePanel.id)
     if (active) useArtifactView.getState().focused(active)
     useArtifactView.setState({
@@ -692,8 +809,15 @@ export function DockShell({
       open: (delegationId, title) => openDelegation(dock, delegationId, title),
     })
     useReviewDock.setState({
-      open: (reviewId, options) =>
-        openReviewPanel(dock, reviewId, options?.quiet),
+      open: (reviewId, options) => {
+        // A quiet open is the dock noticing a new review, not someone asking.
+        if (!options?.quiet) showSheet()
+        openReviewPanel(dock, reviewId, options?.quiet)
+      },
+      close: (reviewId) => {
+        const panel = dock.getPanel(reviewPanelId(reviewId))
+        if (panel) dock.removePanel(panel)
+      },
     })
     const listeners = [
       dock.onDidActivePanelChange(({ panel }) => {
@@ -715,7 +839,7 @@ export function DockShell({
       useWorkspaceFileView.setState({ dock: undefined })
       useFileDock.setState({ open: undefined })
       useDelegationDock.setState({ open: undefined })
-      useReviewDock.setState({ open: undefined })
+      useReviewDock.setState({ open: undefined, close: undefined })
     }
   }, [dock, projectId])
 
@@ -735,32 +859,39 @@ export function DockShell({
           dock.removePanel(panel)
       useArtifactView.getState().reset()
     }
-    useShell.getState().saveLayout(projectId, {
-      threadId,
-      dock: dock.toJSON(),
-    })
+    const layout = adaptation.current
+      ? adaptation.current.layoutForSave()
+      : dock.toJSON()
+    if (layout)
+      useShell.getState().saveLayout(projectId, {
+        threadId,
+        dock: layout,
+      })
   }, [dock, threadId, projectId])
 
   return (
-    <DockviewReact
-      className="h-full w-full"
-      theme={theme}
-      components={components}
-      tabComponents={tabComponents}
-      rightHeaderActionsComponent={GroupActions}
-      defaultRenderer="always"
-      getTabContextMenuItems={({ panel, api }) => {
-        // The built-in float opens at 300px, narrower than these panels' minimums.
-        const float = {
-          label: 'Float',
-          action: () =>
-            api.addFloatingGroup(panel, { width: 480, height: 560 }),
-        }
-        return panel.id === THREAD
-          ? ['maximize', float]
-          : ['maximize', float, 'separator', 'close']
-      }}
-      onReady={onReady}
-    />
+    <div ref={host} data-appearance-part="dock" className="h-full min-w-0">
+      <DockviewReact
+        className="h-full w-full"
+        theme={theme}
+        components={components}
+        tabComponents={tabComponents}
+        rightHeaderActionsComponent={GroupActions}
+        defaultRenderer="always"
+        floatingGroupBounds="boundedWithinViewport"
+        getTabContextMenuItems={({ panel, api }) => {
+          // The built-in float opens at 300px, narrower than these panels' minimums.
+          const float = {
+            label: 'Float',
+            action: () =>
+              api.addFloatingGroup(panel, { width: 480, height: 560 }),
+          }
+          return panel.id === THREAD
+            ? ['maximize', float]
+            : ['maximize', float, 'separator', 'close']
+        }}
+        onReady={onReady}
+      />
+    </div>
   )
 }

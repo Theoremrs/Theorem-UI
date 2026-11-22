@@ -1,7 +1,6 @@
 // SOURCING: bun:test over the standalone HTML export (export.ts), bundled
 // with esbuild-wasm into a temporary folder.
 import { afterEach, expect, test } from 'bun:test'
-import { createHash } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -22,22 +21,9 @@ afterEach(async () => {
   localStorage.clear()
 })
 
-function policyOf(html: string): Record<string, string> {
-  const content = /http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(
-    html,
-  )?.[1]
-  if (!content) throw new Error('The export has no policy')
-  return Object.fromEntries(
-    content.split('; ').map((directive) => {
-      const [name, ...value] = directive.split(' ')
-      return [name!, value.join(' ')]
-    }),
-  )
-}
-
 // esbuild-wasm compiles its WebAssembly on first use, which outlasts bun's 5 s
 // default on its own.
-test('a tool exports as one page that runs with only what it declared', async () => {
+test('a tool exports as one page that runs anywhere, carrying the data it declared', async () => {
   const client = memoryWorkspace(await loadFixtures(FIXTURES))
   const state = memoryState()
   state.set('habits', 'run', true)
@@ -49,17 +35,12 @@ test('a tool exports as one page that runs with only what it declared', async ()
   const html = new TextDecoder().decode(client.files.get(exported.path))
   expect(exported.bytes).toBe(client.files.get(exported.path)!.length)
 
-  // One inline module, allowed by its hash; nothing reaches the network.
+  // One inline module, and no policy of ours: it reaches what any page can.
   const script = /<script type="module">([\s\S]*)<\/script>/.exec(html)?.[1]
   if (!script) throw new Error('The export has no script')
   expect(html.match(/<\/script/gi)).toHaveLength(1)
   expect(script).not.toContain('<!--')
-  const policy = policyOf(html)
-  expect(policy['default-src']).toBe("'none'")
-  expect(policy['connect-src']).toBe("'none'")
-  expect(policy['script-src']).toBe(
-    `'sha256-${createHash('sha256').update(script).digest('base64')}'`,
-  )
+  expect(html).not.toContain('Content-Security-Policy')
   // It carries the declared CSV, not the folder's other files.
   expect(html).toContain('Data/habits.csv')
   expect(html).not.toContain('Today.md')

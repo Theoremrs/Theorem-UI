@@ -1,6 +1,7 @@
 // SOURCING: @tanstack/react-query over lib/theorem/passthrough (the routes in docs/plans/thread-organization-and-review.md, which the vendored SDK has no client for yet), @theoremharness/sdk projects.list and threads.list for a Theorem that predates those routes. The membership and Librarian rules are translated from mikecann/threadbear@78b77e1 (MIT, Mike Cann); Theorem enforces them, this only reads and asks.
 import {
   queryOptions,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -8,7 +9,7 @@ import {
 import { useMemo } from 'react'
 import { useShell } from '@/components/shell/shell-state'
 import { documentThreadIds } from '@/lib/documents/ask-store'
-import { mutate, mutateThread, theorem } from './client'
+import { mutate, mutateProject, mutateThread, theorem } from './client'
 import type { MutationHeaders, Theorem } from './client'
 import { isNotServed, theoremJson } from './passthrough'
 
@@ -75,6 +76,7 @@ export type Glyph =
   | 'research'
   | 'map'
   | 'chat'
+  | 'todo'
 
 export type ThreadEntry = {
   threadId: string
@@ -166,10 +168,49 @@ export type ProjectOutput = {
   documentId?: string
   uploadId?: string
   reviewId?: string
+  /** Card facts (Theorem's cabinet catalog); absent from an older Theorem. */
+  category?: OutputCategory
+  mediaType?: string
+  artifactKind?: string
+  digest?: string
+  byteLen?: number
+  description?: {
+    text: string
+    provenance: 'authored' | 'metadata' | 'derived'
+  }
 }
 
+export type OutputCategory =
+  | 'document'
+  | 'image'
+  | 'app'
+  | 'code'
+  | 'diagram'
+  | 'chart'
+  | 'review'
+  | 'other'
+
+/** One page of a project's outputs: an exact total of what matched, and where to go on. */
+export type ProjectOutputPage = {
+  items: ProjectOutput[]
+  total: number
+  nextCursor?: string
+}
+
+/** What the cabinet asks of the outputs route; the authority filters and counts (§3.3). */
+export type OutputsFilter = { q?: string; category?: OutputCategory }
+
 /** What the sidebar reads: the organization, and whether this Theorem serves the routes that change it. */
-export type OrganizationRead = Organization & { served: boolean }
+export type OrganizationRead = Organization & {
+  served: boolean
+  /**
+   * Every project and thread the person has was read. The organization route
+   * reads them all; the fallback for an older Theorem reads one page of each
+   * and says whether more were left, so nothing is taken as deleted only
+   * because it was not on the page.
+   */
+  complete: boolean
+}
 
 const BASE = '/api/chat/v1'
 const threadPath = (threadId: string) =>
@@ -197,6 +238,7 @@ export const inboxOf = (projects: readonly Theorem.Project[]) =>
 export function organizationFromThreads(
   projects: Theorem.Project[],
   threads: Theorem.Thread[],
+  complete = true,
 ): OrganizationRead {
   const inbox = inboxOf(projects)
   const entries = threads
@@ -238,6 +280,7 @@ export function organizationFromThreads(
   return {
     schema: 'theorem-organization/1',
     served: false,
+    complete,
     projects: projects
       .map((project): ProjectEntry => ({
         projectId: project.projectId,
@@ -265,15 +308,16 @@ export function organizationFromThreads(
   }
 }
 
-async function readOrganization(): Promise<OrganizationRead> {
+export async function readOrganization(): Promise<OrganizationRead> {
   try {
     const organization = await theoremJson<Organization>(`${BASE}/organization`)
-    return { ...organization, served: true }
+    return { ...organization, served: true, complete: true }
   } catch (error) {
     if (!isNotServed(error)) throw error
   }
   const client = theorem()
-  const projects = (await client.chat.projects.list({ limit: 100 })).items
+  const listed = await client.chat.projects.list({ limit: 100 })
+  const projects = listed.items
   const pages = await Promise.all(
     projects.map((project) =>
       client.chat.threads.list({ projectId: project.projectId, limit: 100 }),
@@ -282,6 +326,7 @@ async function readOrganization(): Promise<OrganizationRead> {
   return organizationFromThreads(
     projects,
     pages.flatMap((page) => page.items),
+    !listed.nextCursor && pages.every((page) => !page.nextCursor),
   )
 }
 
@@ -306,13 +351,15 @@ export const useOrganization = () => useQuery(organizationQuery())
 export function useOrganizedViews() {
   const { data } = useOrganization()
   const terminalThreads = useShell((state) => state.terminalThreadIds)
+  const projectOrder = useShell((state) => state.projectOrder)
   return useMemo(
     () =>
       organizedViews(
         data ?? { projects: [], threads: [] },
         new Set([...terminalThreads, ...documentThreadIds()]),
+        projectOrder,
       ),
-    [data, terminalThreads],
+    [data, terminalThreads, projectOrder],
   )
 }
 
@@ -323,24 +370,33 @@ export type OrganizedViews = {
   projects: Array<{ project: ProjectEntry; threads: ThreadEntry[] }>
   unsorted: ThreadEntry[]
   byId: ReadonlyMap<string, ThreadEntry>
+  /** Sessions that others were forked from. */
+  forkedFrom: ReadonlySet<string>
 }
 
 /**
  * The quick views and the tree: every view reads the same threads, and sorting
  * is by title and creation time, so a badge changing never moves a row.
  * `apart` holds threads that live elsewhere (the agent terminal's, a note's).
+ * `order` is the projects as the person arranged them; ones it does not name
+ * follow, as Theorem lists them.
  */
 export function organizedViews(
   organization: Pick<Organization, 'projects' | 'threads'>,
   apart: ReadonlySet<string> = new Set(),
+  order: readonly string[] = [],
 ): OrganizedViews {
   const threads = organization.threads.filter((t) => !apart.has(t.threadId))
+  const place = new Map(order.map((projectId, index) => [projectId, index]))
+  const placeOf = (project: ProjectEntry) =>
+    place.get(project.projectId) ?? order.length
   return {
     attention: threads.filter((t) => t.attention.reasons.length > 0),
     running: threads.filter((t) => t.attention.running),
     later: threads.filter((t) => t.later),
     projects: organization.projects
       .filter((project) => !project.isInbox)
+      .sort((a, b) => placeOf(a) - placeOf(b))
       .map((project) => ({
         project,
         threads: threads.filter((thread) =>
@@ -349,6 +405,66 @@ export function organizedViews(
       })),
     unsorted: threads.filter((thread) => thread.memberships.length === 0),
     byId: new Map(threads.map((thread) => [thread.threadId, thread])),
+    forkedFrom: new Set(
+      organization.threads.flatMap((thread) =>
+        thread.origin?.kind === 'forked' ? [thread.origin.threadId] : [],
+      ),
+    ),
+  }
+}
+
+/** When a session last moved: its last message, else when it began. */
+export const lastMoved = (thread: ThreadEntry) =>
+  thread.lastMessageAtMs ?? thread.createdAtMs
+
+export type SessionLists = {
+  /** Projects the user made, each with its sessions, in the organization's order. */
+  sections: Array<{ project: ProjectEntry; threads: ThreadEntry[] }>
+  /** Every session in none of those sections, newest first. */
+  recent: ThreadEntry[]
+  /** Sessions waiting on a person's review or approval, newest first. */
+  review: ThreadEntry[]
+  /** Where each session's highlight sits: its primary section if the user made it, its first such section, else `recent`. */
+  home: ReadonlyMap<string, string>
+}
+
+/**
+ * The IDE's sidebar over the same views: the sections the user made, and the
+ * rest as Recent. Sections keep the tree's stable order; Recent is by when a
+ * session last moved, since that is what it lists.
+ */
+export function sessionLists(views: OrganizedViews): SessionLists {
+  const sections = views.projects.filter(
+    ({ project }) => project.createdBy === 'user',
+  )
+  const inSection = new Set(sections.map(({ project }) => project.projectId))
+  const threads = [...views.byId.values()]
+  const home = new Map<string, string>()
+  for (const thread of threads) {
+    const placed = thread.memberships
+      .map((m) => m.projectId)
+      .filter((projectId) => inSection.has(projectId))
+    const primary = primaryProjectId(thread)
+    home.set(
+      thread.threadId,
+      placed.includes(primary) ? primary : (placed[0] ?? 'recent'),
+    )
+  }
+  const newestFirst = (a: ThreadEntry, b: ThreadEntry) =>
+    lastMoved(b) - lastMoved(a)
+  return {
+    sections,
+    recent: threads
+      .filter((thread) => home.get(thread.threadId) === 'recent')
+      .sort(newestFirst),
+    review: threads
+      .filter((thread) =>
+        thread.attention.reasons.some(
+          (reason) => reason.kind === 'review' || reason.kind === 'approval',
+        ),
+      )
+      .sort(newestFirst),
+    home,
   }
 }
 
@@ -363,31 +479,86 @@ export function primaryProjectId(thread: ThreadEntry) {
   return first?.projectId ?? thread.homeProjectId
 }
 
-/** A forked or continued thread sits under its source when the source is in the same list. */
+/**
+ * The project a thread opens under: the one asked for when the thread is
+ * placed there (its row under that project was the one picked), else its
+ * primary one.
+ */
+export function projectToOpenIn(thread: ThreadEntry, asked?: string) {
+  const placed =
+    asked !== undefined &&
+    (thread.homeProjectId === asked ||
+      thread.memberships.some(({ projectId }) => projectId === asked))
+  return placed ? asked : primaryProjectId(thread)
+}
+
+/**
+ * The session a thread was created from, when that creation nests it in
+ * navigation. Only an explicit new-session fork does: a continuation keeps its
+ * source as a provenance reference and stands at the top level, and edits,
+ * regenerations and other conversation branches never become sessions at all.
+ * (An explicit child-session origin joins this once Theorem records one.)
+ */
+export const nestingSource = (thread: ThreadEntry) =>
+  thread.origin?.kind === 'forked' ? thread.origin.threadId : undefined
+
+/**
+ * Each thread's parent in this list. A source that is missing, filtered out
+ * or the thread itself leaves the thread a root. A malformed cycle of origins
+ * is broken at its oldest member, so every thread in the list stays visible.
+ */
+function parentsIn(threads: readonly ThreadEntry[]) {
+  const byId = new Map(threads.map((thread) => [thread.threadId, thread]))
+  const parent = new Map<string, string>()
+  for (const thread of threads) {
+    const source = nestingSource(thread)
+    if (source && source !== thread.threadId && byId.has(source))
+      parent.set(thread.threadId, source)
+  }
+  const settled = new Set<string>()
+  for (const thread of threads) {
+    const path: string[] = []
+    const onPath = new Set<string>()
+    let at: string | undefined = thread.threadId
+    while (at !== undefined && !settled.has(at) && !onPath.has(at)) {
+      path.push(at)
+      onPath.add(at)
+      at = parent.get(at)
+    }
+    if (at !== undefined && onPath.has(at)) {
+      const cycle = path.slice(path.indexOf(at))
+      const oldest = cycle
+        .map((id) => byId.get(id)!)
+        .sort(
+          (a, b) =>
+            a.createdAtMs - b.createdAtMs ||
+            a.threadId.localeCompare(b.threadId),
+        )[0]!
+      parent.delete(oldest.threadId)
+    }
+    for (const id of path) settled.add(id)
+  }
+  return parent
+}
+
+/** A forked thread sits under its source when the source is in the same list. */
 export function nestByOrigin(threads: readonly ThreadEntry[]) {
-  const here = new Set(threads.map((thread) => thread.threadId))
+  const parent = parentsIn(threads)
   const children = new Map<string, ThreadEntry[]>()
   const roots: ThreadEntry[] = []
   for (const thread of threads) {
-    const source = thread.origin?.threadId
-    if (source && source !== thread.threadId && here.has(source))
-      children.set(source, [...(children.get(source) ?? []), thread])
+    const source = parent.get(thread.threadId)
+    if (source) children.set(source, [...(children.get(source) ?? []), thread])
     else roots.push(thread)
   }
   return { roots, children } as const
 }
 
-/** The root a thread nests under in this list, by following its origins up. */
+/** The root a thread nests under in this list, by following its forks up. */
 export function rootOf(threads: readonly ThreadEntry[], threadId: string) {
-  const byId = new Map(threads.map((thread) => [thread.threadId, thread]))
-  const seen = new Set<string>()
+  const parent = parentsIn(threads)
   let at = threadId
-  while (!seen.has(at)) {
-    seen.add(at)
-    const source = byId.get(at)?.origin?.threadId
-    if (!source || !byId.has(source)) break
-    at = source
-  }
+  for (let next = parent.get(at); next; next = parent.get(at)) at = next
   return at
 }
 
@@ -707,6 +878,33 @@ export function useProjectOutputs(projectId: string | undefined) {
   })
 }
 
+const CABINET_PAGE = 48
+
+/**
+ * A project's outputs, filtered and searched by Theorem, a page at a time.
+ * The total is the authority's count of every match, not the loaded pages'.
+ */
+export function useCabinetOutputs(
+  projectId: string | undefined,
+  filter: OutputsFilter,
+) {
+  return useInfiniteQuery({
+    queryKey: [...outputsKey(projectId ?? ''), 'cabinet', filter] as const,
+    enabled: projectId !== undefined,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page: ProjectOutputPage) => page.nextCursor,
+    queryFn: ({ pageParam }) => {
+      const query = new URLSearchParams({ limit: String(CABINET_PAGE) })
+      if (pageParam) query.set('cursor', pageParam)
+      if (filter.q) query.set('q', filter.q)
+      if (filter.category) query.set('category', filter.category)
+      return theoremJson<ProjectOutputPage>(
+        `${BASE}/projects/${encodeURIComponent(projectId!)}/outputs?${query}`,
+      )
+    },
+  })
+}
+
 /** A person's own word on where a project stands, or null to hand it back. */
 export function useProjectState() {
   const client = useQueryClient()
@@ -725,6 +923,59 @@ export function useProjectState() {
       ),
     onSettled: () => invalidate(client),
   })
+}
+
+/**
+ * A section's edits: a new title, new instructions, or archiving its project, which takes the
+ * section away and sends its sessions back to Recent. Theorem has no way to
+ * delete a project, and archiving keeps it to restore.
+ */
+export function useProjectEdits() {
+  const client = useQueryClient()
+  const settled = () =>
+    Promise.all([
+      invalidate(client),
+      client.invalidateQueries({ queryKey: ['theorem', 'projects'] }),
+    ])
+  const update = (
+    projectId: string,
+    change: { title?: string; instructions?: string; archived?: boolean },
+  ) =>
+    mutateProject(projectId, (headers) =>
+      theorem().chat.projects.update({ projectId, ...change, ...headers }),
+    )
+  return {
+    rename: useMutation({
+      mutationFn: ({
+        projectId,
+        title,
+      }: {
+        projectId: string
+        title: string
+      }) => update(projectId, { title }),
+      onSettled: settled,
+    }),
+    archive: useMutation({
+      mutationFn: (projectId: string) => update(projectId, { archived: true }),
+      onSettled: settled,
+    }),
+    /**
+     * The project's title and instructions, as the project home edits them.
+     * Only what is given is sent: a field left out keeps its stored value.
+     */
+    describe: useMutation({
+      mutationFn: ({
+        projectId,
+        title,
+        instructions,
+      }: {
+        projectId: string
+        title?: string
+        instructions?: string
+      }) => update(projectId, { title, instructions }),
+      onSettled: settled,
+    }),
+  }
 }
 
 /** The thread edits the sidebar's rows make, each followed by a fresh tree. */

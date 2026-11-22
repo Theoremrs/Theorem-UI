@@ -24,8 +24,12 @@ import { sameScope } from './contract'
 import { useDebounced } from './library'
 import { useIndexNavigate, useIndexSearch } from './navigation'
 import { observer } from './observe'
-import { activeObjectTypes, useDataModel } from '@/components/records/queries'
-import { ATLAS_VIEW_ID, DATA_MODEL_VIEW_ID, recordsViewId } from './programs'
+import { RecordsSection } from '@/components/crm/crm-panel'
+import { useWorkEvents } from '@/components/work/events'
+import { useInboxUnread, useWorkViews } from '@/components/work/queries'
+import { parseWorkView, workViewId } from '@/components/work/route'
+import { useWorkAvailable } from '@/components/work/settings'
+import { ATLAS_VIEW_ID, DATA_MODEL_VIEW_ID } from './programs'
 import {
   useBinding,
   useCollections,
@@ -365,40 +369,60 @@ function ViewList({
   )
 }
 
-/** Each declared object, opening its records as a table. */
-function RecordsList({ activeViewId }: { activeViewId: string | undefined }) {
-  const model = useDataModel()
+/** The work tracker's screens; the rows exist only while the tracker is on, and nothing is asked of it otherwise. */
+function WorkRows({ activeViewId }: { activeViewId: string | undefined }) {
+  useWorkEvents()
   const navigate = useIndexNavigate()
-  const types = activeObjectTypes(model.data).filter((type) => !type.system)
-  if (model.isError)
-    return (
-      <>
-        <Heading>Records</Heading>
-        <p className="px-2 py-1 text-sm text-ink-faint-sheet">
-          {describeError(model.error)}
-        </p>
-      </>
-    )
-  if (!types.length) return null
+  const views = useWorkViews()
+  const unread = useInboxUnread()
+  const home: Scope = { kind: 'home' }
+  const inbox = workViewId({ kind: 'inbox' })
+  const projects = workViewId({ kind: 'projects' })
+  // Shipped views first, then the person's own; the inbox and projects have rows of their own.
+  const listed = (views.data ?? [])
+    .filter((v) => v.scope === 'items')
+    .sort((a, b) => Number(b.builtin) - Number(a.builtin))
   return (
     <>
-      <Heading>Records</Heading>
-      {types.map((type) => (
-        <Row
-          key={type.object_type_id}
-          active={activeViewId === recordsViewId(type.name_singular)}
-          onClick={() =>
-            navigate.openView(recordsViewId(type.name_singular), {
-              kind: 'home',
-            })
-          }
-          trailing={type.record_count}
-        >
-          {type.label_plural}
-        </Row>
-      ))}
+      <Heading>Work</Heading>
+      <Row
+        active={activeViewId === inbox}
+        onClick={() => navigate.openView(inbox, home)}
+        trailing={unread || undefined}
+      >
+        Work inbox
+      </Row>
+      {listed.map((v) => {
+        const id = workViewId({ kind: 'view', viewId: v.id })
+        return (
+          <Row
+            key={v.id}
+            active={activeViewId === id}
+            onClick={() => navigate.openView(id, home)}
+          >
+            {v.name}
+          </Row>
+        )
+      })}
+      {views.error && (
+        <p className="px-2 py-1 text-sm text-ink-faint-sheet">
+          {describeError(views.error)}
+        </p>
+      )}
+      <Row
+        active={
+          activeViewId === projects || parseWorkView(activeViewId)?.kind === 'project'
+        }
+        onClick={() => navigate.openView(projects, home)}
+      >
+        Work projects
+      </Row>
     </>
   )
+}
+
+function WorkSection({ activeViewId }: { activeViewId: string | undefined }) {
+  return useWorkAvailable() ? <WorkRows activeViewId={activeViewId} /> : null
 }
 
 /** Index mode's panel: search, the scopes (everything, the Atlas, collections) and the views of the open scope. */
@@ -439,7 +463,8 @@ export function IndexPanel() {
         >
           Data model
         </Row>
-        <RecordsList activeViewId={view} />
+        <RecordsSection />
+        <WorkSection activeViewId={view} />
         <Heading
           action={
             <TooltipIconButton

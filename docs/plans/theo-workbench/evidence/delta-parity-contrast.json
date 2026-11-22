@@ -1,0 +1,4976 @@
+{
+  "about": "Token-pair contrast of the Delta-parity ladder, derived by terminal-ladder.ts from each theme. WCAG 2 ratio. `applicable` marks the surfaces a role is drawn on; `pass` is the ratio against `needs` (4.5 for text, 3 for disabled). Token pairs only: not a rendered-accessibility claim.",
+  "rule": {
+    "canvasStepL": -0.06,
+    "selectedStepL": 0.06,
+    "readTargetsOnSelectedBand": {
+      "primary": 7,
+      "secondary": 5,
+      "disabled": 3.2,
+      "register": 5.5,
+      "brand": 4.5
+    },
+    "registerChroma": 0.1,
+    "diffRow": {
+      "step": 0.05,
+      "chroma": 0.045,
+      "hue": {
+        "added": 146.3,
+        "removed": 26.8
+      }
+    }
+  },
+  "themes": {
+    "github-sharp-light": {
+      "selector": ":root",
+      "surfaces": [
+        {
+          "surface": "canvas",
+          "hex": "#121924",
+          "oklchL": 0.2119,
+          "deltaToNext": 0.0595
+        },
+        {
+          "surface": "panel",
+          "hex": "#202733",
+          "oklchL": 0.2714,
+          "deltaToNext": 0.0376
+        },
+        {
+          "surface": "raised",
+          "hex": "#273042",
+          "oklchL": 0.309,
+          "deltaToNext": 0.061
+        },
+        {
+          "surface": "selected",
+          "hex": "#364052",
+          "oklchL": 0.3701,
+          "deltaToNext": null
+        }
+      ],
+      "decisionRows": {
+        "approval": "#3b2e14",
+        "failure": "#452829"
+      },
+      "diffRows": {
+        "addition": "#1f3521",
+        "deletion": "#462825",
+        "lightnessAbovePanel": {
+          "addition": 0.0326,
+          "deletion": 0.0429
+        }
+      },
+      "text": {
+        "primary": "#e4eaee",
+        "body": "#c8d0d8",
+        "secondary": "#abb5bd",
+        "disabled": "#8f98a0"
+      },
+      "registers": {
+        "informational": "#92c4ff",
+        "success": "#96d299",
+        "approval": "#dfbb72",
+        "failure": "#faa6aa"
+      },
+      "brand": "#f49250",
+      "secondaryMinusDisabledLightness": 0.0928,
+      "before": {
+        "secondary": "#8f98a0",
+        "disabled": "#6c747c",
+        "secondaryMinusDisabledLightness": 0.12,
+        "pairs": [
+          {
+            "text": "secondary",
+            "surface": "panel",
+            "textColour": "#8f98a0",
+            "surfaceColour": "#202733",
+            "wcag": 5.12
+          },
+          {
+            "text": "secondary",
+            "surface": "raised",
+            "textColour": "#8f98a0",
+            "surfaceColour": "#273042",
+            "wcag": 4.51
+          },
+          {
+            "text": "disabled",
+            "surface": "panel",
+            "textColour": "#6c747c",
+            "surfaceColour": "#202733",
+            "wcag": 3.16
+          },
+          {
+            "text": "disabled",
+            "surface": "raised",
+            "textColour": "#6c747c",
+            "surfaceColour": "#273042",
+            "wcag": 2.79
+          }
+        ]
+      },
+      "paletteOverrides": {
+        "canvas": "#121924",
+        "selectedRow": "#364052",
+        "completedRow": "#121924",
+        "runningRow": "#273042",
+        "pendingRow": "#3b2e14",
+        "failedRow": "#452829",
+        "completedInk": "#abb5bd",
+        "info": "#92c4ff",
+        "textDisabled": "#8f98a0",
+        "diffAddedMark": "#96d299",
+        "diffRemovedMark": "#faa6aa"
+      },
+      "pairs": [
+        {
+          "text": "primary",
+          "surface": "canvas",
+          "textColour": "#e4eaee",
+          "surfaceColour": "#121924",
+          "wcag": 14.54,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "panel",
+          "textColour": "#e4eaee",
+          "surfaceColour": "#202733",
+          "wcag": 12.36,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "raised",
+          "textColour": "#e4eaee",
+          "surfaceColour": "#273042",
+          "wcag": 10.9,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "selected",
+          "textColour": "#e4eaee",
+          "surfaceColour": "#364052",
+          "wcag": 8.6,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffAddition",
+          "textColour": "#e4eaee",
+          "surfaceColour": "#1f3521",
+          "wcag": 10.89,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffDeletion",
+          "textColour": "#e4eaee",
+          "surfaceColour": "#462825",
+          "wcag": 10.88,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "approvalRow",
+          "textColour": "#e4eaee",
+          "surfaceColour": "#3b2e14",
+          "wcag": 10.9,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "failureRow",
+          "textColour": "#e4eaee",
+          "surfaceColour": "#452829",
+          "wcag": 10.89,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "canvas",
+          "textColour": "#c8d0d8",
+          "surfaceColour": "#121924",
+          "wcag": 11.32,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "panel",
+          "textColour": "#c8d0d8",
+          "surfaceColour": "#202733",
+          "wcag": 9.63,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "raised",
+          "textColour": "#c8d0d8",
+          "surfaceColour": "#273042",
+          "wcag": 8.48,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "selected",
+          "textColour": "#c8d0d8",
+          "surfaceColour": "#364052",
+          "wcag": 6.69,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffAddition",
+          "textColour": "#c8d0d8",
+          "surfaceColour": "#1f3521",
+          "wcag": 8.47,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffDeletion",
+          "textColour": "#c8d0d8",
+          "surfaceColour": "#462825",
+          "wcag": 8.47,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "approvalRow",
+          "textColour": "#c8d0d8",
+          "surfaceColour": "#3b2e14",
+          "wcag": 8.49,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "failureRow",
+          "textColour": "#c8d0d8",
+          "surfaceColour": "#452829",
+          "wcag": 8.48,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "canvas",
+          "textColour": "#abb5bd",
+          "surfaceColour": "#121924",
+          "wcag": 8.47,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "panel",
+          "textColour": "#abb5bd",
+          "surfaceColour": "#202733",
+          "wcag": 7.2,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "raised",
+          "textColour": "#abb5bd",
+          "surfaceColour": "#273042",
+          "wcag": 6.35,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "selected",
+          "textColour": "#abb5bd",
+          "surfaceColour": "#364052",
+          "wcag": 5.01,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffAddition",
+          "textColour": "#abb5bd",
+          "surfaceColour": "#1f3521",
+          "wcag": 6.34,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffDeletion",
+          "textColour": "#abb5bd",
+          "surfaceColour": "#462825",
+          "wcag": 6.33,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "approvalRow",
+          "textColour": "#abb5bd",
+          "surfaceColour": "#3b2e14",
+          "wcag": 6.35,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "failureRow",
+          "textColour": "#abb5bd",
+          "surfaceColour": "#452829",
+          "wcag": 6.34,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "canvas",
+          "textColour": "#8f98a0",
+          "surfaceColour": "#121924",
+          "wcag": 6.02,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "panel",
+          "textColour": "#8f98a0",
+          "surfaceColour": "#202733",
+          "wcag": 5.12,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "raised",
+          "textColour": "#8f98a0",
+          "surfaceColour": "#273042",
+          "wcag": 4.51,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "selected",
+          "textColour": "#8f98a0",
+          "surfaceColour": "#364052",
+          "wcag": 3.56,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffAddition",
+          "textColour": "#8f98a0",
+          "surfaceColour": "#1f3521",
+          "wcag": 4.51,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffDeletion",
+          "textColour": "#8f98a0",
+          "surfaceColour": "#462825",
+          "wcag": 4.51,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "approvalRow",
+          "textColour": "#8f98a0",
+          "surfaceColour": "#3b2e14",
+          "wcag": 4.52,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "failureRow",
+          "textColour": "#8f98a0",
+          "surfaceColour": "#452829",
+          "wcag": 4.51,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "canvas",
+          "textColour": "#f49250",
+          "surfaceColour": "#121924",
+          "wcag": 7.62,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "panel",
+          "textColour": "#f49250",
+          "surfaceColour": "#202733",
+          "wcag": 6.48,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "raised",
+          "textColour": "#f49250",
+          "surfaceColour": "#273042",
+          "wcag": 5.72,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "selected",
+          "textColour": "#f49250",
+          "surfaceColour": "#364052",
+          "wcag": 4.51,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffAddition",
+          "textColour": "#f49250",
+          "surfaceColour": "#1f3521",
+          "wcag": 5.71,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffDeletion",
+          "textColour": "#f49250",
+          "surfaceColour": "#462825",
+          "wcag": 5.7,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "approvalRow",
+          "textColour": "#f49250",
+          "surfaceColour": "#3b2e14",
+          "wcag": 5.72,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "failureRow",
+          "textColour": "#f49250",
+          "surfaceColour": "#452829",
+          "wcag": 5.71,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "canvas",
+          "textColour": "#92c4ff",
+          "surfaceColour": "#121924",
+          "wcag": 9.71,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "panel",
+          "textColour": "#92c4ff",
+          "surfaceColour": "#202733",
+          "wcag": 8.26,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "raised",
+          "textColour": "#92c4ff",
+          "surfaceColour": "#273042",
+          "wcag": 7.28,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "selected",
+          "textColour": "#92c4ff",
+          "surfaceColour": "#364052",
+          "wcag": 5.75,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffAddition",
+          "textColour": "#92c4ff",
+          "surfaceColour": "#1f3521",
+          "wcag": 7.27,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffDeletion",
+          "textColour": "#92c4ff",
+          "surfaceColour": "#462825",
+          "wcag": 7.27,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "approvalRow",
+          "textColour": "#92c4ff",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.29,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "failureRow",
+          "textColour": "#92c4ff",
+          "surfaceColour": "#452829",
+          "wcag": 7.28,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "canvas",
+          "textColour": "#96d299",
+          "surfaceColour": "#121924",
+          "wcag": 10.06,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "panel",
+          "textColour": "#96d299",
+          "surfaceColour": "#202733",
+          "wcag": 8.56,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "raised",
+          "textColour": "#96d299",
+          "surfaceColour": "#273042",
+          "wcag": 7.54,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "selected",
+          "textColour": "#96d299",
+          "surfaceColour": "#364052",
+          "wcag": 5.95,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffAddition",
+          "textColour": "#96d299",
+          "surfaceColour": "#1f3521",
+          "wcag": 7.53,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffDeletion",
+          "textColour": "#96d299",
+          "surfaceColour": "#462825",
+          "wcag": 7.53,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "approvalRow",
+          "textColour": "#96d299",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.55,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "failureRow",
+          "textColour": "#96d299",
+          "surfaceColour": "#452829",
+          "wcag": 7.54,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "canvas",
+          "textColour": "#dfbb72",
+          "surfaceColour": "#121924",
+          "wcag": 9.65,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "panel",
+          "textColour": "#dfbb72",
+          "surfaceColour": "#202733",
+          "wcag": 8.21,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "raised",
+          "textColour": "#dfbb72",
+          "surfaceColour": "#273042",
+          "wcag": 7.24,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "selected",
+          "textColour": "#dfbb72",
+          "surfaceColour": "#364052",
+          "wcag": 5.71,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffAddition",
+          "textColour": "#dfbb72",
+          "surfaceColour": "#1f3521",
+          "wcag": 7.23,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffDeletion",
+          "textColour": "#dfbb72",
+          "surfaceColour": "#462825",
+          "wcag": 7.22,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "approvalRow",
+          "textColour": "#dfbb72",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.24,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "failureRow",
+          "textColour": "#dfbb72",
+          "surfaceColour": "#452829",
+          "wcag": 7.23,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "canvas",
+          "textColour": "#faa6aa",
+          "surfaceColour": "#121924",
+          "wcag": 9.33,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "panel",
+          "textColour": "#faa6aa",
+          "surfaceColour": "#202733",
+          "wcag": 7.93,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "raised",
+          "textColour": "#faa6aa",
+          "surfaceColour": "#273042",
+          "wcag": 6.99,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "selected",
+          "textColour": "#faa6aa",
+          "surfaceColour": "#364052",
+          "wcag": 5.52,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffAddition",
+          "textColour": "#faa6aa",
+          "surfaceColour": "#1f3521",
+          "wcag": 6.98,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffDeletion",
+          "textColour": "#faa6aa",
+          "surfaceColour": "#462825",
+          "wcag": 6.98,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "approvalRow",
+          "textColour": "#faa6aa",
+          "surfaceColour": "#3b2e14",
+          "wcag": 6.99,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "failureRow",
+          "textColour": "#faa6aa",
+          "surfaceColour": "#452829",
+          "wcag": 6.99,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        }
+      ]
+    },
+    "github-sharp-dark": {
+      "selector": ".dark",
+      "surfaces": [
+        {
+          "surface": "canvas",
+          "hex": "#14191f",
+          "oklchL": 0.211,
+          "deltaToNext": 0.0597
+        },
+        {
+          "surface": "panel",
+          "hex": "#22272e",
+          "oklchL": 0.2708,
+          "deltaToNext": 0.0373
+        },
+        {
+          "surface": "raised",
+          "hex": "#2a303b",
+          "oklchL": 0.3081,
+          "deltaToNext": 0.0588
+        },
+        {
+          "surface": "selected",
+          "hex": "#393f4b",
+          "oklchL": 0.3669,
+          "deltaToNext": null
+        }
+      ],
+      "decisionRows": {
+        "approval": "#3b2e14",
+        "failure": "#452829"
+      },
+      "diffRows": {
+        "addition": "#1f3521",
+        "deletion": "#462825",
+        "lightnessAbovePanel": {
+          "addition": 0.0333,
+          "deletion": 0.0435
+        }
+      },
+      "text": {
+        "primary": "#e6eaec",
+        "body": "#cad0d4",
+        "secondary": "#adb4b8",
+        "disabled": "#92989c"
+      },
+      "registers": {
+        "informational": "#91c3fe",
+        "success": "#95d198",
+        "approval": "#deba71",
+        "failure": "#f9a5a9"
+      },
+      "brand": "#f68f57",
+      "secondaryMinusDisabledLightness": 0.0896,
+      "before": {
+        "secondary": "#92989c",
+        "disabled": "#6e7478",
+        "secondaryMinusDisabledLightness": 0.1209,
+        "pairs": [
+          {
+            "text": "secondary",
+            "surface": "panel",
+            "textColour": "#92989c",
+            "surfaceColour": "#22272e",
+            "wcag": 5.15
+          },
+          {
+            "text": "secondary",
+            "surface": "raised",
+            "textColour": "#92989c",
+            "surfaceColour": "#2a303b",
+            "wcag": 4.54
+          },
+          {
+            "text": "disabled",
+            "surface": "panel",
+            "textColour": "#6e7478",
+            "surfaceColour": "#22272e",
+            "wcag": 3.17
+          },
+          {
+            "text": "disabled",
+            "surface": "raised",
+            "textColour": "#6e7478",
+            "surfaceColour": "#2a303b",
+            "wcag": 2.8
+          }
+        ]
+      },
+      "paletteOverrides": {
+        "canvas": "#14191f",
+        "selectedRow": "#393f4b",
+        "completedRow": "#14191f",
+        "runningRow": "#2a303b",
+        "pendingRow": "#3b2e14",
+        "failedRow": "#452829",
+        "completedInk": "#adb4b8",
+        "info": "#91c3fe",
+        "textDisabled": "#92989c",
+        "diffAddedMark": "#95d198",
+        "diffRemovedMark": "#f9a5a9"
+      },
+      "pairs": [
+        {
+          "text": "primary",
+          "surface": "canvas",
+          "textColour": "#e6eaec",
+          "surfaceColour": "#14191f",
+          "wcag": 14.59,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "panel",
+          "textColour": "#e6eaec",
+          "surfaceColour": "#22272e",
+          "wcag": 12.41,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "raised",
+          "textColour": "#e6eaec",
+          "surfaceColour": "#2a303b",
+          "wcag": 10.95,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "selected",
+          "textColour": "#e6eaec",
+          "surfaceColour": "#393f4b",
+          "wcag": 8.73,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffAddition",
+          "textColour": "#e6eaec",
+          "surfaceColour": "#1f3521",
+          "wcag": 10.91,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffDeletion",
+          "textColour": "#e6eaec",
+          "surfaceColour": "#462825",
+          "wcag": 10.9,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "approvalRow",
+          "textColour": "#e6eaec",
+          "surfaceColour": "#3b2e14",
+          "wcag": 10.93,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "failureRow",
+          "textColour": "#e6eaec",
+          "surfaceColour": "#452829",
+          "wcag": 10.92,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "canvas",
+          "textColour": "#cad0d4",
+          "surfaceColour": "#14191f",
+          "wcag": 11.34,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "panel",
+          "textColour": "#cad0d4",
+          "surfaceColour": "#22272e",
+          "wcag": 9.65,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "raised",
+          "textColour": "#cad0d4",
+          "surfaceColour": "#2a303b",
+          "wcag": 8.51,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "selected",
+          "textColour": "#cad0d4",
+          "surfaceColour": "#393f4b",
+          "wcag": 6.79,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffAddition",
+          "textColour": "#cad0d4",
+          "surfaceColour": "#1f3521",
+          "wcag": 8.48,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffDeletion",
+          "textColour": "#cad0d4",
+          "surfaceColour": "#462825",
+          "wcag": 8.48,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "approvalRow",
+          "textColour": "#cad0d4",
+          "surfaceColour": "#3b2e14",
+          "wcag": 8.5,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "failureRow",
+          "textColour": "#cad0d4",
+          "surfaceColour": "#452829",
+          "wcag": 8.49,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "canvas",
+          "textColour": "#adb4b8",
+          "surfaceColour": "#14191f",
+          "wcag": 8.41,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "panel",
+          "textColour": "#adb4b8",
+          "surfaceColour": "#22272e",
+          "wcag": 7.15,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "raised",
+          "textColour": "#adb4b8",
+          "surfaceColour": "#2a303b",
+          "wcag": 6.31,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "selected",
+          "textColour": "#adb4b8",
+          "surfaceColour": "#393f4b",
+          "wcag": 5.03,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffAddition",
+          "textColour": "#adb4b8",
+          "surfaceColour": "#1f3521",
+          "wcag": 6.29,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffDeletion",
+          "textColour": "#adb4b8",
+          "surfaceColour": "#462825",
+          "wcag": 6.29,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "approvalRow",
+          "textColour": "#adb4b8",
+          "surfaceColour": "#3b2e14",
+          "wcag": 6.3,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "failureRow",
+          "textColour": "#adb4b8",
+          "surfaceColour": "#452829",
+          "wcag": 6.29,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "canvas",
+          "textColour": "#92989c",
+          "surfaceColour": "#14191f",
+          "wcag": 6.05,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "panel",
+          "textColour": "#92989c",
+          "surfaceColour": "#22272e",
+          "wcag": 5.15,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "raised",
+          "textColour": "#92989c",
+          "surfaceColour": "#2a303b",
+          "wcag": 4.54,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "selected",
+          "textColour": "#92989c",
+          "surfaceColour": "#393f4b",
+          "wcag": 3.62,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffAddition",
+          "textColour": "#92989c",
+          "surfaceColour": "#1f3521",
+          "wcag": 4.53,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffDeletion",
+          "textColour": "#92989c",
+          "surfaceColour": "#462825",
+          "wcag": 4.52,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "approvalRow",
+          "textColour": "#92989c",
+          "surfaceColour": "#3b2e14",
+          "wcag": 4.53,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "failureRow",
+          "textColour": "#92989c",
+          "surfaceColour": "#452829",
+          "wcag": 4.53,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "canvas",
+          "textColour": "#f68f57",
+          "surfaceColour": "#14191f",
+          "wcag": 7.56,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "panel",
+          "textColour": "#f68f57",
+          "surfaceColour": "#22272e",
+          "wcag": 6.43,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "raised",
+          "textColour": "#f68f57",
+          "surfaceColour": "#2a303b",
+          "wcag": 5.67,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "selected",
+          "textColour": "#f68f57",
+          "surfaceColour": "#393f4b",
+          "wcag": 4.52,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffAddition",
+          "textColour": "#f68f57",
+          "surfaceColour": "#1f3521",
+          "wcag": 5.65,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffDeletion",
+          "textColour": "#f68f57",
+          "surfaceColour": "#462825",
+          "wcag": 5.65,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "approvalRow",
+          "textColour": "#f68f57",
+          "surfaceColour": "#3b2e14",
+          "wcag": 5.66,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "failureRow",
+          "textColour": "#f68f57",
+          "surfaceColour": "#452829",
+          "wcag": 5.66,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "canvas",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#14191f",
+          "wcag": 9.63,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "panel",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#22272e",
+          "wcag": 8.19,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "raised",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#2a303b",
+          "wcag": 7.22,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "selected",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#393f4b",
+          "wcag": 5.76,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffAddition",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#1f3521",
+          "wcag": 7.2,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffDeletion",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#462825",
+          "wcag": 7.19,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "approvalRow",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.21,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "failureRow",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#452829",
+          "wcag": 7.2,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "canvas",
+          "textColour": "#95d198",
+          "surfaceColour": "#14191f",
+          "wcag": 9.97,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "panel",
+          "textColour": "#95d198",
+          "surfaceColour": "#22272e",
+          "wcag": 8.48,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "raised",
+          "textColour": "#95d198",
+          "surfaceColour": "#2a303b",
+          "wcag": 7.48,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "selected",
+          "textColour": "#95d198",
+          "surfaceColour": "#393f4b",
+          "wcag": 5.97,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffAddition",
+          "textColour": "#95d198",
+          "surfaceColour": "#1f3521",
+          "wcag": 7.46,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffDeletion",
+          "textColour": "#95d198",
+          "surfaceColour": "#462825",
+          "wcag": 7.45,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "approvalRow",
+          "textColour": "#95d198",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.47,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "failureRow",
+          "textColour": "#95d198",
+          "surfaceColour": "#452829",
+          "wcag": 7.46,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "canvas",
+          "textColour": "#deba71",
+          "surfaceColour": "#14191f",
+          "wcag": 9.56,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "panel",
+          "textColour": "#deba71",
+          "surfaceColour": "#22272e",
+          "wcag": 8.13,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "raised",
+          "textColour": "#deba71",
+          "surfaceColour": "#2a303b",
+          "wcag": 7.17,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "selected",
+          "textColour": "#deba71",
+          "surfaceColour": "#393f4b",
+          "wcag": 5.72,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffAddition",
+          "textColour": "#deba71",
+          "surfaceColour": "#1f3521",
+          "wcag": 7.15,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffDeletion",
+          "textColour": "#deba71",
+          "surfaceColour": "#462825",
+          "wcag": 7.15,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "approvalRow",
+          "textColour": "#deba71",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.16,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "failureRow",
+          "textColour": "#deba71",
+          "surfaceColour": "#452829",
+          "wcag": 7.16,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "canvas",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#14191f",
+          "wcag": 9.24,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "panel",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#22272e",
+          "wcag": 7.86,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "raised",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#2a303b",
+          "wcag": 6.93,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "selected",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#393f4b",
+          "wcag": 5.53,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffAddition",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#1f3521",
+          "wcag": 6.91,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffDeletion",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#462825",
+          "wcag": 6.9,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "approvalRow",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#3b2e14",
+          "wcag": 6.92,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "failureRow",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#452829",
+          "wcag": 6.91,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        }
+      ]
+    },
+    "stone-light": {
+      "selector": "[data-palette='stone']",
+      "surfaces": [
+        {
+          "surface": "canvas",
+          "hex": "#1b1815",
+          "oklchL": 0.2114,
+          "deltaToNext": 0.0594
+        },
+        {
+          "surface": "panel",
+          "hex": "#292623",
+          "oklchL": 0.2708,
+          "deltaToNext": 0.0372
+        },
+        {
+          "surface": "raised",
+          "hex": "#332f2b",
+          "oklchL": 0.308,
+          "deltaToNext": 0.0595
+        },
+        {
+          "surface": "selected",
+          "hex": "#433e3a",
+          "oklchL": 0.3675,
+          "deltaToNext": null
+        }
+      ],
+      "decisionRows": {
+        "approval": "#3b2e14",
+        "failure": "#452829"
+      },
+      "diffRows": {
+        "addition": "#1f3421",
+        "deletion": "#452825",
+        "lightnessAbovePanel": {
+          "addition": 0.0303,
+          "deletion": 0.0421
+        }
+      },
+      "text": {
+        "primary": "#ebe9e8",
+        "body": "#d1cfcd",
+        "secondary": "#b5b2b0",
+        "disabled": "#999695"
+      },
+      "registers": {
+        "informational": "#91c3fe",
+        "success": "#95d198",
+        "approval": "#deba71",
+        "failure": "#f9a5a9"
+      },
+      "brand": "#2ab8d9",
+      "secondaryMinusDisabledLightness": 0.0901,
+      "before": {
+        "secondary": "#999695",
+        "disabled": "#757270",
+        "secondaryMinusDisabledLightness": 0.1212,
+        "pairs": [
+          {
+            "text": "secondary",
+            "surface": "panel",
+            "textColour": "#999695",
+            "surfaceColour": "#292623",
+            "wcag": 5.12
+          },
+          {
+            "text": "secondary",
+            "surface": "raised",
+            "textColour": "#999695",
+            "surfaceColour": "#332f2b",
+            "wcag": 4.52
+          },
+          {
+            "text": "disabled",
+            "surface": "panel",
+            "textColour": "#757270",
+            "surfaceColour": "#292623",
+            "wcag": 3.15
+          },
+          {
+            "text": "disabled",
+            "surface": "raised",
+            "textColour": "#757270",
+            "surfaceColour": "#332f2b",
+            "wcag": 2.78
+          }
+        ]
+      },
+      "paletteOverrides": {
+        "canvas": "#1b1815",
+        "selectedRow": "#433e3a",
+        "completedRow": "#1b1815",
+        "runningRow": "#332f2b",
+        "pendingRow": "#3b2e14",
+        "failedRow": "#452829",
+        "completedInk": "#b5b2b0",
+        "info": "#91c3fe",
+        "textDisabled": "#999695",
+        "diffAddedMark": "#95d198",
+        "diffRemovedMark": "#f9a5a9"
+      },
+      "pairs": [
+        {
+          "text": "primary",
+          "surface": "canvas",
+          "textColour": "#ebe9e8",
+          "surfaceColour": "#1b1815",
+          "wcag": 14.61,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "panel",
+          "textColour": "#ebe9e8",
+          "surfaceColour": "#292623",
+          "wcag": 12.43,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "raised",
+          "textColour": "#ebe9e8",
+          "surfaceColour": "#332f2b",
+          "wcag": 10.97,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "selected",
+          "textColour": "#ebe9e8",
+          "surfaceColour": "#433e3a",
+          "wcag": 8.73,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffAddition",
+          "textColour": "#ebe9e8",
+          "surfaceColour": "#1f3421",
+          "wcag": 11.04,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffDeletion",
+          "textColour": "#ebe9e8",
+          "surfaceColour": "#452825",
+          "wcag": 10.96,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "approvalRow",
+          "textColour": "#ebe9e8",
+          "surfaceColour": "#3b2e14",
+          "wcag": 10.94,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "failureRow",
+          "textColour": "#ebe9e8",
+          "surfaceColour": "#452829",
+          "wcag": 10.92,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "canvas",
+          "textColour": "#d1cfcd",
+          "surfaceColour": "#1b1815",
+          "wcag": 11.38,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "panel",
+          "textColour": "#d1cfcd",
+          "surfaceColour": "#292623",
+          "wcag": 9.68,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "raised",
+          "textColour": "#d1cfcd",
+          "surfaceColour": "#332f2b",
+          "wcag": 8.54,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "selected",
+          "textColour": "#d1cfcd",
+          "surfaceColour": "#433e3a",
+          "wcag": 6.8,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffAddition",
+          "textColour": "#d1cfcd",
+          "surfaceColour": "#1f3421",
+          "wcag": 8.6,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffDeletion",
+          "textColour": "#d1cfcd",
+          "surfaceColour": "#452825",
+          "wcag": 8.54,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "approvalRow",
+          "textColour": "#d1cfcd",
+          "surfaceColour": "#3b2e14",
+          "wcag": 8.52,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "failureRow",
+          "textColour": "#d1cfcd",
+          "surfaceColour": "#452829",
+          "wcag": 8.51,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "canvas",
+          "textColour": "#b5b2b0",
+          "surfaceColour": "#1b1815",
+          "wcag": 8.38,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "panel",
+          "textColour": "#b5b2b0",
+          "surfaceColour": "#292623",
+          "wcag": 7.14,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "raised",
+          "textColour": "#b5b2b0",
+          "surfaceColour": "#332f2b",
+          "wcag": 6.29,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "selected",
+          "textColour": "#b5b2b0",
+          "surfaceColour": "#433e3a",
+          "wcag": 5.01,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffAddition",
+          "textColour": "#b5b2b0",
+          "surfaceColour": "#1f3421",
+          "wcag": 6.34,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffDeletion",
+          "textColour": "#b5b2b0",
+          "surfaceColour": "#452825",
+          "wcag": 6.29,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "approvalRow",
+          "textColour": "#b5b2b0",
+          "surfaceColour": "#3b2e14",
+          "wcag": 6.28,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "failureRow",
+          "textColour": "#b5b2b0",
+          "surfaceColour": "#452829",
+          "wcag": 6.27,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "canvas",
+          "textColour": "#999695",
+          "surfaceColour": "#1b1815",
+          "wcag": 6.02,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "panel",
+          "textColour": "#999695",
+          "surfaceColour": "#292623",
+          "wcag": 5.12,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "raised",
+          "textColour": "#999695",
+          "surfaceColour": "#332f2b",
+          "wcag": 4.52,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "selected",
+          "textColour": "#999695",
+          "surfaceColour": "#433e3a",
+          "wcag": 3.6,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffAddition",
+          "textColour": "#999695",
+          "surfaceColour": "#1f3421",
+          "wcag": 4.55,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffDeletion",
+          "textColour": "#999695",
+          "surfaceColour": "#452825",
+          "wcag": 4.52,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "approvalRow",
+          "textColour": "#999695",
+          "surfaceColour": "#3b2e14",
+          "wcag": 4.51,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "failureRow",
+          "textColour": "#999695",
+          "surfaceColour": "#452829",
+          "wcag": 4.5,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "canvas",
+          "textColour": "#2ab8d9",
+          "surfaceColour": "#1b1815",
+          "wcag": 7.54,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "panel",
+          "textColour": "#2ab8d9",
+          "surfaceColour": "#292623",
+          "wcag": 6.42,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "raised",
+          "textColour": "#2ab8d9",
+          "surfaceColour": "#332f2b",
+          "wcag": 5.66,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "selected",
+          "textColour": "#2ab8d9",
+          "surfaceColour": "#433e3a",
+          "wcag": 4.5,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffAddition",
+          "textColour": "#2ab8d9",
+          "surfaceColour": "#1f3421",
+          "wcag": 5.7,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffDeletion",
+          "textColour": "#2ab8d9",
+          "surfaceColour": "#452825",
+          "wcag": 5.66,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "approvalRow",
+          "textColour": "#2ab8d9",
+          "surfaceColour": "#3b2e14",
+          "wcag": 5.64,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "failureRow",
+          "textColour": "#2ab8d9",
+          "surfaceColour": "#452829",
+          "wcag": 5.64,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "canvas",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#1b1815",
+          "wcag": 9.63,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "panel",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#292623",
+          "wcag": 8.2,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "raised",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#332f2b",
+          "wcag": 7.23,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "selected",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#433e3a",
+          "wcag": 5.75,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffAddition",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#1f3421",
+          "wcag": 7.28,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffDeletion",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#452825",
+          "wcag": 7.23,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "approvalRow",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.21,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "failureRow",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#452829",
+          "wcag": 7.2,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "canvas",
+          "textColour": "#95d198",
+          "surfaceColour": "#1b1815",
+          "wcag": 9.98,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "panel",
+          "textColour": "#95d198",
+          "surfaceColour": "#292623",
+          "wcag": 8.49,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "raised",
+          "textColour": "#95d198",
+          "surfaceColour": "#332f2b",
+          "wcag": 7.49,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "selected",
+          "textColour": "#95d198",
+          "surfaceColour": "#433e3a",
+          "wcag": 5.96,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffAddition",
+          "textColour": "#95d198",
+          "surfaceColour": "#1f3421",
+          "wcag": 7.54,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffDeletion",
+          "textColour": "#95d198",
+          "surfaceColour": "#452825",
+          "wcag": 7.49,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "approvalRow",
+          "textColour": "#95d198",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.47,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "failureRow",
+          "textColour": "#95d198",
+          "surfaceColour": "#452829",
+          "wcag": 7.46,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "canvas",
+          "textColour": "#deba71",
+          "surfaceColour": "#1b1815",
+          "wcag": 9.57,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "panel",
+          "textColour": "#deba71",
+          "surfaceColour": "#292623",
+          "wcag": 8.14,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "raised",
+          "textColour": "#deba71",
+          "surfaceColour": "#332f2b",
+          "wcag": 7.18,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "selected",
+          "textColour": "#deba71",
+          "surfaceColour": "#433e3a",
+          "wcag": 5.72,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffAddition",
+          "textColour": "#deba71",
+          "surfaceColour": "#1f3421",
+          "wcag": 7.23,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffDeletion",
+          "textColour": "#deba71",
+          "surfaceColour": "#452825",
+          "wcag": 7.18,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "approvalRow",
+          "textColour": "#deba71",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.16,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "failureRow",
+          "textColour": "#deba71",
+          "surfaceColour": "#452829",
+          "wcag": 7.16,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "canvas",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#1b1815",
+          "wcag": 9.24,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "panel",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#292623",
+          "wcag": 7.87,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "raised",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#332f2b",
+          "wcag": 6.94,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "selected",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#433e3a",
+          "wcag": 5.52,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffAddition",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#1f3421",
+          "wcag": 6.99,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffDeletion",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#452825",
+          "wcag": 6.94,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "approvalRow",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#3b2e14",
+          "wcag": 6.92,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "failureRow",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#452829",
+          "wcag": 6.91,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        }
+      ]
+    },
+    "stone-dark": {
+      "selector": ".dark[data-palette='stone']",
+      "surfaces": [
+        {
+          "surface": "canvas",
+          "hex": "#151412",
+          "oklchL": 0.1916,
+          "deltaToNext": 0.0607
+        },
+        {
+          "surface": "panel",
+          "hex": "#232220",
+          "oklchL": 0.2523,
+          "deltaToNext": 0.0367
+        },
+        {
+          "surface": "raised",
+          "hex": "#2c2b28",
+          "oklchL": 0.289,
+          "deltaToNext": 0.0594
+        },
+        {
+          "surface": "selected",
+          "hex": "#3b3a37",
+          "oklchL": 0.3484,
+          "deltaToNext": null
+        }
+      ],
+      "decisionRows": {
+        "approval": "#372a10",
+        "failure": "#412426"
+      },
+      "diffRows": {
+        "addition": "#1c311d",
+        "deletion": "#412421",
+        "lightnessAbovePanel": {
+          "addition": 0.0366,
+          "deletion": 0.045
+        }
+      },
+      "text": {
+        "primary": "#e3e3e2",
+        "body": "#cbc9c8",
+        "secondary": "#aeacaa",
+        "disabled": "#949291"
+      },
+      "registers": {
+        "informational": "#8abcf7",
+        "success": "#8fca92",
+        "approval": "#d6b36b",
+        "failure": "#f29ea2"
+      },
+      "brand": "#27b0da",
+      "secondaryMinusDisabledLightness": 0.0841,
+      "before": {
+        "secondary": "#949291",
+        "disabled": "#6e6d6c",
+        "secondaryMinusDisabledLightness": 0.126,
+        "pairs": [
+          {
+            "text": "secondary",
+            "surface": "panel",
+            "textColour": "#949291",
+            "surfaceColour": "#232220",
+            "wcag": 5.13
+          },
+          {
+            "text": "secondary",
+            "surface": "raised",
+            "textColour": "#949291",
+            "surfaceColour": "#2c2b28",
+            "wcag": 4.57
+          },
+          {
+            "text": "disabled",
+            "surface": "panel",
+            "textColour": "#6e6d6c",
+            "surfaceColour": "#232220",
+            "wcag": 3.08
+          },
+          {
+            "text": "disabled",
+            "surface": "raised",
+            "textColour": "#6e6d6c",
+            "surfaceColour": "#2c2b28",
+            "wcag": 2.74
+          }
+        ]
+      },
+      "paletteOverrides": {
+        "canvas": "#151412",
+        "selectedRow": "#3b3a37",
+        "completedRow": "#151412",
+        "runningRow": "#2c2b28",
+        "pendingRow": "#372a10",
+        "failedRow": "#412426",
+        "completedInk": "#aeacaa",
+        "info": "#8abcf7",
+        "textDisabled": "#949291",
+        "diffAddedMark": "#8fca92",
+        "diffRemovedMark": "#f29ea2"
+      },
+      "pairs": [
+        {
+          "text": "primary",
+          "surface": "canvas",
+          "textColour": "#e3e3e2",
+          "surfaceColour": "#151412",
+          "wcag": 14.34,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "panel",
+          "textColour": "#e3e3e2",
+          "surfaceColour": "#232220",
+          "wcag": 12.38,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "raised",
+          "textColour": "#e3e3e2",
+          "surfaceColour": "#2c2b28",
+          "wcag": 11.02,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "selected",
+          "textColour": "#e3e3e2",
+          "surfaceColour": "#3b3a37",
+          "wcag": 8.86,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffAddition",
+          "textColour": "#e3e3e2",
+          "surfaceColour": "#1c311d",
+          "wcag": 10.85,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffDeletion",
+          "textColour": "#e3e3e2",
+          "surfaceColour": "#412421",
+          "wcag": 10.91,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "approvalRow",
+          "textColour": "#e3e3e2",
+          "surfaceColour": "#372a10",
+          "wcag": 10.89,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "failureRow",
+          "textColour": "#e3e3e2",
+          "surfaceColour": "#412426",
+          "wcag": 10.86,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "canvas",
+          "textColour": "#cbc9c8",
+          "surfaceColour": "#151412",
+          "wcag": 11.16,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "panel",
+          "textColour": "#cbc9c8",
+          "surfaceColour": "#232220",
+          "wcag": 9.63,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "raised",
+          "textColour": "#cbc9c8",
+          "surfaceColour": "#2c2b28",
+          "wcag": 8.58,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "selected",
+          "textColour": "#cbc9c8",
+          "surfaceColour": "#3b3a37",
+          "wcag": 6.89,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffAddition",
+          "textColour": "#cbc9c8",
+          "surfaceColour": "#1c311d",
+          "wcag": 8.45,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffDeletion",
+          "textColour": "#cbc9c8",
+          "surfaceColour": "#412421",
+          "wcag": 8.49,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "approvalRow",
+          "textColour": "#cbc9c8",
+          "surfaceColour": "#372a10",
+          "wcag": 8.48,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "failureRow",
+          "textColour": "#cbc9c8",
+          "surfaceColour": "#412426",
+          "wcag": 8.46,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "canvas",
+          "textColour": "#aeacaa",
+          "surfaceColour": "#151412",
+          "wcag": 8.14,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "panel",
+          "textColour": "#aeacaa",
+          "surfaceColour": "#232220",
+          "wcag": 7.03,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "raised",
+          "textColour": "#aeacaa",
+          "surfaceColour": "#2c2b28",
+          "wcag": 6.26,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "selected",
+          "textColour": "#aeacaa",
+          "surfaceColour": "#3b3a37",
+          "wcag": 5.03,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffAddition",
+          "textColour": "#aeacaa",
+          "surfaceColour": "#1c311d",
+          "wcag": 6.16,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffDeletion",
+          "textColour": "#aeacaa",
+          "surfaceColour": "#412421",
+          "wcag": 6.19,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "approvalRow",
+          "textColour": "#aeacaa",
+          "surfaceColour": "#372a10",
+          "wcag": 6.18,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "failureRow",
+          "textColour": "#aeacaa",
+          "surfaceColour": "#412426",
+          "wcag": 6.17,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "canvas",
+          "textColour": "#949291",
+          "surfaceColour": "#151412",
+          "wcag": 5.94,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "panel",
+          "textColour": "#949291",
+          "surfaceColour": "#232220",
+          "wcag": 5.13,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "raised",
+          "textColour": "#949291",
+          "surfaceColour": "#2c2b28",
+          "wcag": 4.57,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "selected",
+          "textColour": "#949291",
+          "surfaceColour": "#3b3a37",
+          "wcag": 3.67,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffAddition",
+          "textColour": "#949291",
+          "surfaceColour": "#1c311d",
+          "wcag": 4.5,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffDeletion",
+          "textColour": "#949291",
+          "surfaceColour": "#412421",
+          "wcag": 4.52,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "approvalRow",
+          "textColour": "#949291",
+          "surfaceColour": "#372a10",
+          "wcag": 4.52,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "failureRow",
+          "textColour": "#949291",
+          "surfaceColour": "#412426",
+          "wcag": 4.5,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "canvas",
+          "textColour": "#27b0da",
+          "surfaceColour": "#151412",
+          "wcag": 7.28,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "panel",
+          "textColour": "#27b0da",
+          "surfaceColour": "#232220",
+          "wcag": 6.29,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "raised",
+          "textColour": "#27b0da",
+          "surfaceColour": "#2c2b28",
+          "wcag": 5.6,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "selected",
+          "textColour": "#27b0da",
+          "surfaceColour": "#3b3a37",
+          "wcag": 4.5,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffAddition",
+          "textColour": "#27b0da",
+          "surfaceColour": "#1c311d",
+          "wcag": 5.52,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffDeletion",
+          "textColour": "#27b0da",
+          "surfaceColour": "#412421",
+          "wcag": 5.54,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "approvalRow",
+          "textColour": "#27b0da",
+          "surfaceColour": "#372a10",
+          "wcag": 5.54,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "failureRow",
+          "textColour": "#27b0da",
+          "surfaceColour": "#412426",
+          "wcag": 5.52,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "canvas",
+          "textColour": "#8abcf7",
+          "surfaceColour": "#151412",
+          "wcag": 9.31,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "panel",
+          "textColour": "#8abcf7",
+          "surfaceColour": "#232220",
+          "wcag": 8.04,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "raised",
+          "textColour": "#8abcf7",
+          "surfaceColour": "#2c2b28",
+          "wcag": 7.16,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "selected",
+          "textColour": "#8abcf7",
+          "surfaceColour": "#3b3a37",
+          "wcag": 5.75,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffAddition",
+          "textColour": "#8abcf7",
+          "surfaceColour": "#1c311d",
+          "wcag": 7.05,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffDeletion",
+          "textColour": "#8abcf7",
+          "surfaceColour": "#412421",
+          "wcag": 7.08,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "approvalRow",
+          "textColour": "#8abcf7",
+          "surfaceColour": "#372a10",
+          "wcag": 7.07,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "failureRow",
+          "textColour": "#8abcf7",
+          "surfaceColour": "#412426",
+          "wcag": 7.05,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "canvas",
+          "textColour": "#8fca92",
+          "surfaceColour": "#151412",
+          "wcag": 9.67,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "panel",
+          "textColour": "#8fca92",
+          "surfaceColour": "#232220",
+          "wcag": 8.35,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "raised",
+          "textColour": "#8fca92",
+          "surfaceColour": "#2c2b28",
+          "wcag": 7.44,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "selected",
+          "textColour": "#8fca92",
+          "surfaceColour": "#3b3a37",
+          "wcag": 5.97,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffAddition",
+          "textColour": "#8fca92",
+          "surfaceColour": "#1c311d",
+          "wcag": 7.32,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffDeletion",
+          "textColour": "#8fca92",
+          "surfaceColour": "#412421",
+          "wcag": 7.36,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "approvalRow",
+          "textColour": "#8fca92",
+          "surfaceColour": "#372a10",
+          "wcag": 7.35,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "failureRow",
+          "textColour": "#8fca92",
+          "surfaceColour": "#412426",
+          "wcag": 7.33,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "canvas",
+          "textColour": "#d6b36b",
+          "surfaceColour": "#151412",
+          "wcag": 9.22,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "panel",
+          "textColour": "#d6b36b",
+          "surfaceColour": "#232220",
+          "wcag": 7.96,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "raised",
+          "textColour": "#d6b36b",
+          "surfaceColour": "#2c2b28",
+          "wcag": 7.09,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "selected",
+          "textColour": "#d6b36b",
+          "surfaceColour": "#3b3a37",
+          "wcag": 5.7,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffAddition",
+          "textColour": "#d6b36b",
+          "surfaceColour": "#1c311d",
+          "wcag": 6.98,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffDeletion",
+          "textColour": "#d6b36b",
+          "surfaceColour": "#412421",
+          "wcag": 7.02,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "approvalRow",
+          "textColour": "#d6b36b",
+          "surfaceColour": "#372a10",
+          "wcag": 7.01,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "failureRow",
+          "textColour": "#d6b36b",
+          "surfaceColour": "#412426",
+          "wcag": 6.99,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "canvas",
+          "textColour": "#f29ea2",
+          "surfaceColour": "#151412",
+          "wcag": 8.93,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "panel",
+          "textColour": "#f29ea2",
+          "surfaceColour": "#232220",
+          "wcag": 7.71,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "raised",
+          "textColour": "#f29ea2",
+          "surfaceColour": "#2c2b28",
+          "wcag": 6.87,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "selected",
+          "textColour": "#f29ea2",
+          "surfaceColour": "#3b3a37",
+          "wcag": 5.52,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffAddition",
+          "textColour": "#f29ea2",
+          "surfaceColour": "#1c311d",
+          "wcag": 6.76,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffDeletion",
+          "textColour": "#f29ea2",
+          "surfaceColour": "#412421",
+          "wcag": 6.8,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "approvalRow",
+          "textColour": "#f29ea2",
+          "surfaceColour": "#372a10",
+          "wcag": 6.79,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "failureRow",
+          "textColour": "#f29ea2",
+          "surfaceColour": "#412426",
+          "wcag": 6.77,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        }
+      ]
+    },
+    "vitesse-light": {
+      "selector": "[data-palette='vitesse']",
+      "surfaces": [
+        {
+          "surface": "canvas",
+          "hex": "#16191a",
+          "oklchL": 0.2106,
+          "deltaToNext": 0.0594
+        },
+        {
+          "surface": "panel",
+          "hex": "#242728",
+          "oklchL": 0.2701,
+          "deltaToNext": 0.0386
+        },
+        {
+          "surface": "raised",
+          "hex": "#2c3132",
+          "oklchL": 0.3087,
+          "deltaToNext": 0.0585
+        },
+        {
+          "surface": "selected",
+          "hex": "#3b4041",
+          "oklchL": 0.3672,
+          "deltaToNext": null
+        }
+      ],
+      "decisionRows": {
+        "approval": "#3c2e14",
+        "failure": "#452829"
+      },
+      "diffRows": {
+        "addition": "#203522",
+        "deletion": "#462825",
+        "lightnessAbovePanel": {
+          "addition": 0.0349,
+          "deletion": 0.0442
+        }
+      },
+      "text": {
+        "primary": "#e8e9e9",
+        "body": "#cdd0d0",
+        "secondary": "#b0b4b3",
+        "disabled": "#959898"
+      },
+      "registers": {
+        "informational": "#91c3fe",
+        "success": "#95d198",
+        "approval": "#deba71",
+        "failure": "#f9a5a9"
+      },
+      "brand": "#f188bf",
+      "secondaryMinusDisabledLightness": 0.0892,
+      "before": {
+        "secondary": "#959898",
+        "disabled": "#717373",
+        "secondaryMinusDisabledLightness": 0.1234,
+        "pairs": [
+          {
+            "text": "secondary",
+            "surface": "panel",
+            "textColour": "#959898",
+            "surfaceColour": "#242728",
+            "wcag": 5.17
+          },
+          {
+            "text": "secondary",
+            "surface": "raised",
+            "textColour": "#959898",
+            "surfaceColour": "#2c3132",
+            "wcag": 4.54
+          },
+          {
+            "text": "disabled",
+            "surface": "panel",
+            "textColour": "#717373",
+            "surfaceColour": "#242728",
+            "wcag": 3.15
+          },
+          {
+            "text": "disabled",
+            "surface": "raised",
+            "textColour": "#717373",
+            "surfaceColour": "#2c3132",
+            "wcag": 2.76
+          }
+        ]
+      },
+      "paletteOverrides": {
+        "canvas": "#16191a",
+        "selectedRow": "#3b4041",
+        "completedRow": "#16191a",
+        "runningRow": "#2c3132",
+        "pendingRow": "#3c2e14",
+        "failedRow": "#452829",
+        "completedInk": "#b0b4b3",
+        "info": "#91c3fe",
+        "textDisabled": "#959898",
+        "diffAddedMark": "#95d198",
+        "diffRemovedMark": "#f9a5a9"
+      },
+      "pairs": [
+        {
+          "text": "primary",
+          "surface": "canvas",
+          "textColour": "#e8e9e9",
+          "surfaceColour": "#16191a",
+          "wcag": 14.53,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "panel",
+          "textColour": "#e8e9e9",
+          "surfaceColour": "#242728",
+          "wcag": 12.37,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "raised",
+          "textColour": "#e8e9e9",
+          "surfaceColour": "#2c3132",
+          "wcag": 10.84,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "selected",
+          "textColour": "#e8e9e9",
+          "surfaceColour": "#3b4041",
+          "wcag": 8.65,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffAddition",
+          "textColour": "#e8e9e9",
+          "surfaceColour": "#203522",
+          "wcag": 10.83,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffDeletion",
+          "textColour": "#e8e9e9",
+          "surfaceColour": "#462825",
+          "wcag": 10.85,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "approvalRow",
+          "textColour": "#e8e9e9",
+          "surfaceColour": "#3c2e14",
+          "wcag": 10.84,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "failureRow",
+          "textColour": "#e8e9e9",
+          "surfaceColour": "#452829",
+          "wcag": 10.87,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "canvas",
+          "textColour": "#cdd0d0",
+          "surfaceColour": "#16191a",
+          "wcag": 11.39,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "panel",
+          "textColour": "#cdd0d0",
+          "surfaceColour": "#242728",
+          "wcag": 9.69,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "raised",
+          "textColour": "#cdd0d0",
+          "surfaceColour": "#2c3132",
+          "wcag": 8.5,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "selected",
+          "textColour": "#cdd0d0",
+          "surfaceColour": "#3b4041",
+          "wcag": 6.78,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffAddition",
+          "textColour": "#cdd0d0",
+          "surfaceColour": "#203522",
+          "wcag": 8.49,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffDeletion",
+          "textColour": "#cdd0d0",
+          "surfaceColour": "#462825",
+          "wcag": 8.51,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "approvalRow",
+          "textColour": "#cdd0d0",
+          "surfaceColour": "#3c2e14",
+          "wcag": 8.49,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "failureRow",
+          "textColour": "#cdd0d0",
+          "surfaceColour": "#452829",
+          "wcag": 8.52,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "canvas",
+          "textColour": "#b0b4b3",
+          "surfaceColour": "#16191a",
+          "wcag": 8.44,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "panel",
+          "textColour": "#b0b4b3",
+          "surfaceColour": "#242728",
+          "wcag": 7.18,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "raised",
+          "textColour": "#b0b4b3",
+          "surfaceColour": "#2c3132",
+          "wcag": 6.3,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "selected",
+          "textColour": "#b0b4b3",
+          "surfaceColour": "#3b4041",
+          "wcag": 5.02,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffAddition",
+          "textColour": "#b0b4b3",
+          "surfaceColour": "#203522",
+          "wcag": 6.29,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffDeletion",
+          "textColour": "#b0b4b3",
+          "surfaceColour": "#462825",
+          "wcag": 6.3,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "approvalRow",
+          "textColour": "#b0b4b3",
+          "surfaceColour": "#3c2e14",
+          "wcag": 6.29,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "failureRow",
+          "textColour": "#b0b4b3",
+          "surfaceColour": "#452829",
+          "wcag": 6.31,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "canvas",
+          "textColour": "#959898",
+          "surfaceColour": "#16191a",
+          "wcag": 6.08,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "panel",
+          "textColour": "#959898",
+          "surfaceColour": "#242728",
+          "wcag": 5.17,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "raised",
+          "textColour": "#959898",
+          "surfaceColour": "#2c3132",
+          "wcag": 4.54,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "selected",
+          "textColour": "#959898",
+          "surfaceColour": "#3b4041",
+          "wcag": 3.62,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffAddition",
+          "textColour": "#959898",
+          "surfaceColour": "#203522",
+          "wcag": 4.53,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffDeletion",
+          "textColour": "#959898",
+          "surfaceColour": "#462825",
+          "wcag": 4.54,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "approvalRow",
+          "textColour": "#959898",
+          "surfaceColour": "#3c2e14",
+          "wcag": 4.53,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "failureRow",
+          "textColour": "#959898",
+          "surfaceColour": "#452829",
+          "wcag": 4.55,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "canvas",
+          "textColour": "#f188bf",
+          "surfaceColour": "#16191a",
+          "wcag": 7.59,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "panel",
+          "textColour": "#f188bf",
+          "surfaceColour": "#242728",
+          "wcag": 6.46,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "raised",
+          "textColour": "#f188bf",
+          "surfaceColour": "#2c3132",
+          "wcag": 5.66,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "selected",
+          "textColour": "#f188bf",
+          "surfaceColour": "#3b4041",
+          "wcag": 4.52,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffAddition",
+          "textColour": "#f188bf",
+          "surfaceColour": "#203522",
+          "wcag": 5.66,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffDeletion",
+          "textColour": "#f188bf",
+          "surfaceColour": "#462825",
+          "wcag": 5.67,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "approvalRow",
+          "textColour": "#f188bf",
+          "surfaceColour": "#3c2e14",
+          "wcag": 5.66,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "failureRow",
+          "textColour": "#f188bf",
+          "surfaceColour": "#452829",
+          "wcag": 5.67,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "canvas",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#16191a",
+          "wcag": 9.63,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "panel",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#242728",
+          "wcag": 8.2,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "raised",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#2c3132",
+          "wcag": 7.18,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "selected",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#3b4041",
+          "wcag": 5.73,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffAddition",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#203522",
+          "wcag": 7.18,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffDeletion",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#462825",
+          "wcag": 7.19,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "approvalRow",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#3c2e14",
+          "wcag": 7.18,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "failureRow",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#452829",
+          "wcag": 7.2,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "canvas",
+          "textColour": "#95d198",
+          "surfaceColour": "#16191a",
+          "wcag": 9.98,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "panel",
+          "textColour": "#95d198",
+          "surfaceColour": "#242728",
+          "wcag": 8.49,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "raised",
+          "textColour": "#95d198",
+          "surfaceColour": "#2c3132",
+          "wcag": 7.44,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "selected",
+          "textColour": "#95d198",
+          "surfaceColour": "#3b4041",
+          "wcag": 5.94,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffAddition",
+          "textColour": "#95d198",
+          "surfaceColour": "#203522",
+          "wcag": 7.44,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffDeletion",
+          "textColour": "#95d198",
+          "surfaceColour": "#462825",
+          "wcag": 7.45,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "approvalRow",
+          "textColour": "#95d198",
+          "surfaceColour": "#3c2e14",
+          "wcag": 7.44,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "failureRow",
+          "textColour": "#95d198",
+          "surfaceColour": "#452829",
+          "wcag": 7.46,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "canvas",
+          "textColour": "#deba71",
+          "surfaceColour": "#16191a",
+          "wcag": 9.57,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "panel",
+          "textColour": "#deba71",
+          "surfaceColour": "#242728",
+          "wcag": 8.14,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "raised",
+          "textColour": "#deba71",
+          "surfaceColour": "#2c3132",
+          "wcag": 7.14,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "selected",
+          "textColour": "#deba71",
+          "surfaceColour": "#3b4041",
+          "wcag": 5.7,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffAddition",
+          "textColour": "#deba71",
+          "surfaceColour": "#203522",
+          "wcag": 7.13,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffDeletion",
+          "textColour": "#deba71",
+          "surfaceColour": "#462825",
+          "wcag": 7.15,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "approvalRow",
+          "textColour": "#deba71",
+          "surfaceColour": "#3c2e14",
+          "wcag": 7.14,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "failureRow",
+          "textColour": "#deba71",
+          "surfaceColour": "#452829",
+          "wcag": 7.16,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "canvas",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#16191a",
+          "wcag": 9.24,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "panel",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#242728",
+          "wcag": 7.87,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "raised",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#2c3132",
+          "wcag": 6.9,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "selected",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#3b4041",
+          "wcag": 5.5,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffAddition",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#203522",
+          "wcag": 6.89,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffDeletion",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#462825",
+          "wcag": 6.9,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "approvalRow",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#3c2e14",
+          "wcag": 6.89,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "failureRow",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#452829",
+          "wcag": 6.91,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        }
+      ]
+    },
+    "vitesse-dark": {
+      "selector": ".dark[data-palette='vitesse']",
+      "surfaces": [
+        {
+          "surface": "canvas",
+          "hex": "#191918",
+          "oklchL": 0.213,
+          "deltaToNext": 0.0593
+        },
+        {
+          "surface": "panel",
+          "hex": "#272726",
+          "oklchL": 0.2724,
+          "deltaToNext": 0.0365
+        },
+        {
+          "surface": "raised",
+          "hex": "#30302f",
+          "oklchL": 0.3088,
+          "deltaToNext": 0.0585
+        },
+        {
+          "surface": "selected",
+          "hex": "#3f3f3e",
+          "oklchL": 0.3673,
+          "deltaToNext": null
+        }
+      ],
+      "decisionRows": {
+        "approval": "#3b2e14",
+        "failure": "#452829"
+      },
+      "diffRows": {
+        "addition": "#1f3521",
+        "deletion": "#462825",
+        "lightnessAbovePanel": {
+          "addition": 0.0317,
+          "deletion": 0.0419
+        }
+      },
+      "text": {
+        "primary": "#eaeae9",
+        "body": "#d0d0cf",
+        "secondary": "#b4b3b1",
+        "disabled": "#989796"
+      },
+      "registers": {
+        "informational": "#91c3fe",
+        "success": "#95d198",
+        "approval": "#deba71",
+        "failure": "#f9a5a9"
+      },
+      "brand": "#9da1ff",
+      "secondaryMinusDisabledLightness": 0.09,
+      "before": {
+        "secondary": "#989796",
+        "disabled": "#737372",
+        "secondaryMinusDisabledLightness": 0.1217,
+        "pairs": [
+          {
+            "text": "secondary",
+            "surface": "panel",
+            "textColour": "#989796",
+            "surfaceColour": "#272726",
+            "wcag": 5.13
+          },
+          {
+            "text": "secondary",
+            "surface": "raised",
+            "textColour": "#989796",
+            "surfaceColour": "#30302f",
+            "wcag": 4.53
+          },
+          {
+            "text": "disabled",
+            "surface": "panel",
+            "textColour": "#737372",
+            "surfaceColour": "#272726",
+            "wcag": 3.15
+          },
+          {
+            "text": "disabled",
+            "surface": "raised",
+            "textColour": "#737372",
+            "surfaceColour": "#30302f",
+            "wcag": 2.78
+          }
+        ]
+      },
+      "paletteOverrides": {
+        "canvas": "#191918",
+        "selectedRow": "#3f3f3e",
+        "completedRow": "#191918",
+        "runningRow": "#30302f",
+        "pendingRow": "#3b2e14",
+        "failedRow": "#452829",
+        "completedInk": "#b4b3b1",
+        "info": "#91c3fe",
+        "textDisabled": "#989796",
+        "diffAddedMark": "#95d198",
+        "diffRemovedMark": "#f9a5a9"
+      },
+      "pairs": [
+        {
+          "text": "primary",
+          "surface": "canvas",
+          "textColour": "#eaeae9",
+          "surfaceColour": "#191918",
+          "wcag": 14.62,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "panel",
+          "textColour": "#eaeae9",
+          "surfaceColour": "#272726",
+          "wcag": 12.42,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "raised",
+          "textColour": "#eaeae9",
+          "surfaceColour": "#30302f",
+          "wcag": 10.97,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "selected",
+          "textColour": "#eaeae9",
+          "surfaceColour": "#3f3f3e",
+          "wcag": 8.76,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffAddition",
+          "textColour": "#eaeae9",
+          "surfaceColour": "#1f3521",
+          "wcag": 10.97,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "diffDeletion",
+          "textColour": "#eaeae9",
+          "surfaceColour": "#462825",
+          "wcag": 10.97,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "approvalRow",
+          "textColour": "#eaeae9",
+          "surfaceColour": "#3b2e14",
+          "wcag": 10.99,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "primary",
+          "surface": "failureRow",
+          "textColour": "#eaeae9",
+          "surfaceColour": "#452829",
+          "wcag": 10.98,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "canvas",
+          "textColour": "#d0d0cf",
+          "surfaceColour": "#191918",
+          "wcag": 11.4,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "panel",
+          "textColour": "#d0d0cf",
+          "surfaceColour": "#272726",
+          "wcag": 9.69,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "raised",
+          "textColour": "#d0d0cf",
+          "surfaceColour": "#30302f",
+          "wcag": 8.56,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "selected",
+          "textColour": "#d0d0cf",
+          "surfaceColour": "#3f3f3e",
+          "wcag": 6.83,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffAddition",
+          "textColour": "#d0d0cf",
+          "surfaceColour": "#1f3521",
+          "wcag": 8.56,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "diffDeletion",
+          "textColour": "#d0d0cf",
+          "surfaceColour": "#462825",
+          "wcag": 8.55,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "approvalRow",
+          "textColour": "#d0d0cf",
+          "surfaceColour": "#3b2e14",
+          "wcag": 8.57,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "body",
+          "surface": "failureRow",
+          "textColour": "#d0d0cf",
+          "surfaceColour": "#452829",
+          "wcag": 8.56,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "canvas",
+          "textColour": "#b4b3b1",
+          "surfaceColour": "#191918",
+          "wcag": 8.4,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "panel",
+          "textColour": "#b4b3b1",
+          "surfaceColour": "#272726",
+          "wcag": 7.14,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "raised",
+          "textColour": "#b4b3b1",
+          "surfaceColour": "#30302f",
+          "wcag": 6.31,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "selected",
+          "textColour": "#b4b3b1",
+          "surfaceColour": "#3f3f3e",
+          "wcag": 5.03,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffAddition",
+          "textColour": "#b4b3b1",
+          "surfaceColour": "#1f3521",
+          "wcag": 6.31,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "diffDeletion",
+          "textColour": "#b4b3b1",
+          "surfaceColour": "#462825",
+          "wcag": 6.3,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "approvalRow",
+          "textColour": "#b4b3b1",
+          "surfaceColour": "#3b2e14",
+          "wcag": 6.32,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "secondary",
+          "surface": "failureRow",
+          "textColour": "#b4b3b1",
+          "surfaceColour": "#452829",
+          "wcag": 6.31,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "canvas",
+          "textColour": "#989796",
+          "surfaceColour": "#191918",
+          "wcag": 6.03,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "panel",
+          "textColour": "#989796",
+          "surfaceColour": "#272726",
+          "wcag": 5.13,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "raised",
+          "textColour": "#989796",
+          "surfaceColour": "#30302f",
+          "wcag": 4.53,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "selected",
+          "textColour": "#989796",
+          "surfaceColour": "#3f3f3e",
+          "wcag": 3.62,
+          "needs": 3,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffAddition",
+          "textColour": "#989796",
+          "surfaceColour": "#1f3521",
+          "wcag": 4.53,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "diffDeletion",
+          "textColour": "#989796",
+          "surfaceColour": "#462825",
+          "wcag": 4.53,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "approvalRow",
+          "textColour": "#989796",
+          "surfaceColour": "#3b2e14",
+          "wcag": 4.54,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "disabled",
+          "surface": "failureRow",
+          "textColour": "#989796",
+          "surfaceColour": "#452829",
+          "wcag": 4.53,
+          "needs": 3,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "canvas",
+          "textColour": "#9da1ff",
+          "surfaceColour": "#191918",
+          "wcag": 7.52,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "panel",
+          "textColour": "#9da1ff",
+          "surfaceColour": "#272726",
+          "wcag": 6.39,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "raised",
+          "textColour": "#9da1ff",
+          "surfaceColour": "#30302f",
+          "wcag": 5.65,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "selected",
+          "textColour": "#9da1ff",
+          "surfaceColour": "#3f3f3e",
+          "wcag": 4.51,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffAddition",
+          "textColour": "#9da1ff",
+          "surfaceColour": "#1f3521",
+          "wcag": 5.65,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "diffDeletion",
+          "textColour": "#9da1ff",
+          "surfaceColour": "#462825",
+          "wcag": 5.64,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "approvalRow",
+          "textColour": "#9da1ff",
+          "surfaceColour": "#3b2e14",
+          "wcag": 5.66,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "brand",
+          "surface": "failureRow",
+          "textColour": "#9da1ff",
+          "surfaceColour": "#452829",
+          "wcag": 5.65,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "canvas",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#191918",
+          "wcag": 9.59,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "panel",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#272726",
+          "wcag": 8.15,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "raised",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#30302f",
+          "wcag": 7.2,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "selected",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#3f3f3e",
+          "wcag": 5.74,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffAddition",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#1f3521",
+          "wcag": 7.2,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "diffDeletion",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#462825",
+          "wcag": 7.19,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "approvalRow",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.21,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "informational",
+          "surface": "failureRow",
+          "textColour": "#91c3fe",
+          "surfaceColour": "#452829",
+          "wcag": 7.2,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "canvas",
+          "textColour": "#95d198",
+          "surfaceColour": "#191918",
+          "wcag": 9.93,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "panel",
+          "textColour": "#95d198",
+          "surfaceColour": "#272726",
+          "wcag": 8.44,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "raised",
+          "textColour": "#95d198",
+          "surfaceColour": "#30302f",
+          "wcag": 7.46,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "selected",
+          "textColour": "#95d198",
+          "surfaceColour": "#3f3f3e",
+          "wcag": 5.95,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffAddition",
+          "textColour": "#95d198",
+          "surfaceColour": "#1f3521",
+          "wcag": 7.46,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "diffDeletion",
+          "textColour": "#95d198",
+          "surfaceColour": "#462825",
+          "wcag": 7.45,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "approvalRow",
+          "textColour": "#95d198",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.47,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "success",
+          "surface": "failureRow",
+          "textColour": "#95d198",
+          "surfaceColour": "#452829",
+          "wcag": 7.46,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "canvas",
+          "textColour": "#deba71",
+          "surfaceColour": "#191918",
+          "wcag": 9.52,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "panel",
+          "textColour": "#deba71",
+          "surfaceColour": "#272726",
+          "wcag": 8.09,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "raised",
+          "textColour": "#deba71",
+          "surfaceColour": "#30302f",
+          "wcag": 7.15,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "selected",
+          "textColour": "#deba71",
+          "surfaceColour": "#3f3f3e",
+          "wcag": 5.71,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffAddition",
+          "textColour": "#deba71",
+          "surfaceColour": "#1f3521",
+          "wcag": 7.15,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "diffDeletion",
+          "textColour": "#deba71",
+          "surfaceColour": "#462825",
+          "wcag": 7.15,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "approvalRow",
+          "textColour": "#deba71",
+          "surfaceColour": "#3b2e14",
+          "wcag": 7.16,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "approval",
+          "surface": "failureRow",
+          "textColour": "#deba71",
+          "surfaceColour": "#452829",
+          "wcag": 7.16,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "canvas",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#191918",
+          "wcag": 9.2,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "panel",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#272726",
+          "wcag": 7.82,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "raised",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#30302f",
+          "wcag": 6.91,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "selected",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#3f3f3e",
+          "wcag": 5.51,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffAddition",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#1f3521",
+          "wcag": 6.91,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "diffDeletion",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#462825",
+          "wcag": 6.9,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "approvalRow",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#3b2e14",
+          "wcag": 6.92,
+          "needs": 4.5,
+          "applicable": false,
+          "pass": true
+        },
+        {
+          "text": "failure",
+          "surface": "failureRow",
+          "textColour": "#f9a5a9",
+          "surfaceColour": "#452829",
+          "wcag": 6.91,
+          "needs": 4.5,
+          "applicable": true,
+          "pass": true
+        }
+      ]
+    }
+  },
+  "failures": []
+}

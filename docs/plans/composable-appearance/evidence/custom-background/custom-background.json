@@ -1,0 +1,61 @@
+{
+  "checks": [
+    {
+      "mode": "light",
+      "passed": true,
+      "paint": {
+        "neutral": "#1c1d1e",
+        "from": "#1c1d1e",
+        "to": "#1c1d1e",
+        "shade": "#1c1d1e",
+        "ink": "rgb(195, 198, 200)",
+        "secondary": "#a2a5a8",
+        "link": "#7ebdf7",
+        "faintTop": "#a2a5a8",
+        "faintBottom": "#a2a5a8",
+        "sheet": "rgb(28, 29, 30)",
+        "raised": "#262829",
+        "rail": "#1c1d1e",
+        "reply": "rgba(0, 0, 0, 0)"
+      }
+    },
+    {
+      "mode": "dark",
+      "passed": true,
+      "paint": {
+        "neutral": "#ffffff",
+        "from": "#ffffff",
+        "to": "#ffffff",
+        "shade": "#ffffff",
+        "ink": "rgb(36, 41, 45)",
+        "secondary": "#586069",
+        "link": "#286394",
+        "faintTop": "#586069",
+        "faintBottom": "#586069",
+        "sheet": "rgb(255, 255, 255)",
+        "raised": "#ffffff",
+        "rail": "#f2f3f5",
+        "reply": "rgba(0, 0, 0, 0)"
+      }
+    },
+    {
+      "mode": "light",
+      "passed": true,
+      "paint": {
+        "neutral": "#1c1d1e",
+        "from": "#1c1d1e",
+        "to": "#1c1d1e",
+        "shade": "#1c1d1e",
+        "ink": "rgb(195, 198, 200)",
+        "secondary": "#a2a5a8",
+        "link": "#7ebdf7",
+        "faintTop": "#a2a5a8",
+        "faintBottom": "#a2a5a8",
+        "sheet": "rgb(28, 29, 30)",
+        "raised": "#262829",
+        "rail": "#1c1d1e",
+        "reply": "rgba(0, 0, 0, 0)"
+      }
+    }
+  ]
+}

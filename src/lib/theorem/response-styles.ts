@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import { TheoremError } from '@theoremharness/sdk'
+import { z } from 'zod'
 import { create } from 'zustand'
 import { mutate } from './client'
 import { isNotServed, theoremJson } from './passthrough'
@@ -405,15 +406,34 @@ const retry = (count: number, error: unknown) =>
  * suggestions setting. An older Theorem answers 404 or 405: see
  * `isResponseStylesAbsent`.
  */
+// Validate the fields shared with the older output-style controls. Keep the
+// full catalog intact for the editors, which use the rest of the contract.
+const catalogSelection = z.object({
+  styles: z.array(
+    z.object({ id: z.string(), name: z.string(), description: z.string() }),
+  ),
+  selection: z.object({
+    account: z.string().nullable(),
+    conversation: z.string().nullable(),
+    effective: z.object({
+      style: z.string(),
+      name: z.string(),
+      source: z.string(),
+    }),
+  }),
+})
+
 export const responseStylesQuery = (scope: StyleScope = {}) =>
   queryOptions({
     queryKey: catalogKey(scope),
-    queryFn: () => {
+    queryFn: async () => {
       const search = new URLSearchParams()
       if (scope.threadId) search.set('threadId', scope.threadId)
       if (scope.projectId) search.set('projectId', scope.projectId)
       const query = search.size ? `?${search}` : ''
-      return theoremJson<ResponseStyleCatalog>(`${ROOT}${query}`)
+      const catalog = await theoremJson<ResponseStyleCatalog>(`${ROOT}${query}`)
+      catalogSelection.parse(catalog)
+      return catalog
     },
     staleTime: 30_000,
     retry,
@@ -689,8 +709,15 @@ const showSelection = (
     (old) => (old ? withSelection(old, scope, style) : old),
   )
 
-/** The write of each conversation's choice that Theorem has not answered yet, by thread id. */
+/** The tail of each scope's write queue. Different conversations and projects can write independently. */
 const choiceWrites = new Map<string, Promise<void>>()
+
+const choiceKey = ({ scope, projectId, threadId }: Omit<SelectionChange, 'style'>) =>
+  scope === 'conversation'
+    ? `conversation:${threadId}`
+    : scope === 'project'
+      ? `project:${projectId}`
+      : 'account'
 
 /**
  * Resolves once no choice for this conversation is still being written,
@@ -698,11 +725,8 @@ const choiceWrites = new Map<string, Promise<void>>()
  * starts, so a style picked a moment before Send is the one the turn uses.
  */
 export async function conversationStyleSettled(threadId: string) {
-  for (
-    let write = choiceWrites.get(threadId);
-    write;
-    write = choiceWrites.get(threadId)
-  )
+  const key = choiceKey({ scope: 'conversation', threadId })
+  for (let write = choiceWrites.get(key); write; write = choiceWrites.get(key))
     await write
 }
 
@@ -714,25 +738,33 @@ export function useSelectionMutation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (change: SelectionChange) => {
-      const write = mutate((headers) =>
-        theoremJson<StyleSelection>(`${ROOT}/selection`, {
-          method: 'PUT',
-          body: change,
-          headers,
-        }),
-      )
-      const { threadId } = change
-      if (change.scope === 'conversation' && threadId) {
-        const done = () => {
-          if (choiceWrites.get(threadId) === settled)
-            choiceWrites.delete(threadId)
-        }
-        const settled: Promise<void> = write.then(done, done)
-        choiceWrites.set(threadId, settled)
+      // A choice on a durable thread replaces any pick held for its first send,
+      // regardless of which UI submitted the change.
+      if (change.scope === 'conversation' && change.threadId)
+        usePendingStyle.getState().choose(undefined, change.threadId)
+      const key = choiceKey(change)
+      const save = async () => {
+        const selection = await mutate((headers) =>
+          theoremJson<StyleSelection>(`${ROOT}/selection`, {
+            method: 'PUT',
+            body: change,
+            headers,
+          }),
+        )
+        showSelection(queryClient, change)
+        return selection
       }
+      // Persist picks to the same scope in the order made. Waiting on just
+      // the latest request would let an older request overwrite that pick.
+      const previous = choiceWrites.get(key)
+      const write = previous ? previous.then(save) : save()
+      const done = () => {
+        if (choiceWrites.get(key) === settled) choiceWrites.delete(key)
+      }
+      const settled = write.then(done, done)
+      choiceWrites.set(key, settled)
       return write
     },
-    onSuccess: (_, change) => showSelection(queryClient, change),
     onSettled: settle(queryClient),
   })
 }
@@ -831,9 +863,9 @@ type PendingStyle = {
   /** The style picked for the next new conversation; undefined inherits. */
   styleId: string | undefined
   /**
-   * Picks whose conversation was made by a send and has had no message
-   * accepted yet, by thread id. A refused first message leaves its pick here,
-   * so the next attempt on that conversation still carries it.
+   * Picks for newly created conversations that have had no message accepted
+   * yet, by thread id. A refused first message leaves its pick here, so the
+   * next attempt on that conversation still carries it.
    */
   held: Readonly<Record<string, string>>
   /** Sets or clears a pick: the next new conversation's, or, with a thread id, the one held for that conversation. */
@@ -869,8 +901,8 @@ export const pendingStyleFor = (
 ) => (threadId ? state.held[threadId] : state.styleId)
 
 /**
- * A send just made this conversation: the pick that was waiting for one is its
- * pick from here on, and the next new conversation starts without one.
+ * This conversation was just created: the pick that was waiting for one is
+ * its pick from here on, and the next new conversation starts without one.
  */
 export function holdPendingStyle(threadId: string) {
   usePendingStyle.setState((s) =>

@@ -1,6 +1,7 @@
 // SOURCING: @tanstack/react-query (load; saves as one scoped mutation queue), coss ui Sidebar and Tabs (the side panel), the
 // program canvas (React Flow). A standing program lives in Theorem; this surface
-// opens one, saves edits back as drafts, and shows what its runs report.
+// opens one, saves edits back as drafts, and shows what its runs report. A saved
+// or new session graph (components/sessions) opens on the same canvas.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearch } from '@tanstack/react-router'
 import { useDebouncedValue } from '@tanstack/react-pacer'
@@ -37,6 +38,8 @@ import { NodeInspector } from './node-inspector'
 import { ProgramCanvas } from './program-canvas'
 import { RunRail } from './run-rail'
 import { ToolError } from './section'
+import { SessionGraphSurface } from '@/components/sessions/session-graph-canvas'
+import { parseScope, scopeParam } from '@/lib/theorem/sessions'
 
 /** What one save writes, taken when it is asked for. */
 type SaveSnapshot = {
@@ -380,6 +383,15 @@ function SidePanel() {
 }
 
 export function ProgramSurface() {
-  const nodeId = useSearch({ strict: false }).program
+  const search = useSearch({ strict: false })
+  // A session graph opens on the same canvas as the programs (lib/theorem/sessions).
+  if (search.view)
+    return (
+      <SessionGraphSurface key={`view:${search.view}`} viewId={search.view} />
+    )
+  const scope = parseScope(search.sessions)
+  if (scope)
+    return <SessionGraphSurface key={scopeParam(scope)} scope={scope} />
+  const nodeId = search.program
   return nodeId ? <OpenProgram key={nodeId} nodeId={nodeId} /> : <GraphsHome />
 }

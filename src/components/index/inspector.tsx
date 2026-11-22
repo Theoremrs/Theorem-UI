@@ -1,4 +1,4 @@
-// SOURCING: Base UI Menu (move to a collection), the artifact panel's MarkdownDocument (react-markdown + remark-gfm), TooltipIconButton, @tanstack/react-query hooks in ./queries for the document, its filing receipts and what it is used with
+// SOURCING: Base UI Menu (move to a collection), ./record-links (the records the document is about), the artifact panel's MarkdownDocument (react-markdown + remark-gfm), TooltipIconButton, @tanstack/react-query hooks in ./queries for the document, its filing receipts and what it is used with
 import { Menu } from '@base-ui/react/menu'
 import { useState } from 'react'
 import { MarkdownDocument } from '@/components/artifacts/artifact-renderers'
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import type { FilingAttribution, FilingReceipt, Scope } from './contract'
 import { useAskTheorem } from './navigation'
 import { observer } from './observe'
+import { RecordLinks } from './record-links'
 import {
   useBinding,
   useCollections,
@@ -410,6 +411,8 @@ export function Inspector({
               }}
               scope={scope}
             />
+            {/* Keyed so one document's failed correction never shows on another. */}
+            <RecordLinks key={`about:${documentId}`} documentId={documentId} />
             {/* Keyed so answers given for one document never show on another. */}
             <UsedWith
               key={documentId}
