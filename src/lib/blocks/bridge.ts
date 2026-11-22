@@ -346,6 +346,45 @@ export function decodeFile(bytes: Uint8Array, as: FileFormat): unknown {
 }
 
 /**
+ * The capabilities the host lends, for one call. A module reaches a capability
+ * only through the host, and only where its manifest declared the instance
+ * (and the action) and the person allowed it; any other call is refused.
+ */
+function lentCapability(
+  host: BridgeHost,
+  instanceId: string,
+  method: CapabilityMethod,
+  actionKey?: string,
+) {
+  const lent = host.capability
+  const scope = lent?.scope.find((one) => one.instanceId === instanceId)
+  if (!lent || !scope)
+    throw new BridgeDenied(
+      `capability("${instanceId}") is not among the capability instances this module was allowed`,
+    )
+  if (!scope.methods.includes(method))
+    throw new BridgeDenied(
+      `capability.${method} on "${instanceId}" was not allowed`,
+    )
+  if (actionKey !== undefined && !scope.actions.includes(actionKey))
+    throw new BridgeDenied(
+      `the action "${actionKey}" of "${instanceId}" is not among the actions this module was allowed`,
+    )
+  return lent
+}
+
+/** A capability call as the frame is answered: its value, or the refusal it met. */
+async function capabilityOutcome(
+  reach: () => Promise<unknown>,
+): Promise<CapabilityOutcome> {
+  try {
+    return { ok: true, value: await reach() }
+  } catch (error) {
+    return { ok: false, error: capabilityFailure(error) }
+  }
+}
+
+/**
  * Serves the page side of one block's bridge. Every call is parsed, and
  * checked against the person's limit when they set one, before it touches
  * the folder.
@@ -561,44 +600,25 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
     artifacts().run(params.openRun.parse(raw).id),
   )
 
-  // A module reaches a capability only through the host, and only where its
-  // manifest declared the instance (and the action) and the person allowed it.
-  const capability = (instanceId: string, method: CapabilityMethod, actionKey?: string) => {
-    const lent = host.capability
-    const scope = lent?.scope.find((one) => one.instanceId === instanceId)
-    if (!lent || !scope)
-      throw new BridgeDenied(
-        `capability("${instanceId}") is not among the capability instances this module was allowed`,
-      )
-    if (!scope.methods.includes(method))
-      throw new BridgeDenied(`capability.${method} on "${instanceId}" was not allowed`)
-    if (actionKey !== undefined && !scope.actions.includes(actionKey))
-      throw new BridgeDenied(
-        `the action "${actionKey}" of "${instanceId}" is not among the actions this module was allowed`,
-      )
-    return lent
-  }
-  const outcome = async (reach: () => Promise<unknown>): Promise<CapabilityOutcome> => {
-    try {
-      return { ok: true, value: await reach() }
-    } catch (error) {
-      return { ok: false, error: capabilityFailure(error) }
-    }
-  }
   serve<PageMethods, 'capability.describe'>(rpc, 'capability.describe', (raw) => {
     const { instanceId } = params.capabilityDescribe.parse(raw)
-    const lent = capability(instanceId, 'describe')
-    return outcome(() => lent.describe(instanceId))
+    const lent = lentCapability(host, instanceId, 'describe')
+    return capabilityOutcome(() => lent.describe(instanceId))
   })
   serve<PageMethods, 'capability.query'>(rpc, 'capability.query', (raw) => {
     const request = params.capabilityQuery.parse(raw)
-    const lent = capability(request.instanceId, 'query')
-    return outcome(() => lent.query(request))
+    const lent = lentCapability(host, request.instanceId, 'query')
+    return capabilityOutcome(() => lent.query(request))
   })
   serve<PageMethods, 'capability.invoke'>(rpc, 'capability.invoke', (raw) => {
     const request = params.capabilityInvoke.parse(raw)
-    const lent = capability(request.instanceId, 'invoke', request.actionKey)
-    return outcome(() => lent.invoke(request))
+    const lent = lentCapability(
+      host,
+      request.instanceId,
+      'invoke',
+      request.actionKey,
+    )
+    return capabilityOutcome(() => lent.invoke(request))
   })
 
   serve<PageMethods, 'trace.recording'>(rpc, 'trace.recording', async (raw) => {
