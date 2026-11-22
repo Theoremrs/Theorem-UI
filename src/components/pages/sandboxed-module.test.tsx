@@ -3,7 +3,7 @@
 // the module really runs with. What is asserted is the fallback a person sees, the request each call
 // sends and the envelope the composer carries.
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { waitFor } from '../../../test/workspace'
+import { cleanup, waitFor } from '../../../test/workspace'
 import {
   button,
   named,
@@ -20,6 +20,7 @@ import {
   endModuleTest,
   frameOf,
   placeModule,
+  placeOnPage,
   placeOutsideVault,
 } from './module-harness'
 
@@ -146,6 +147,35 @@ test('asking about the module carries how an agent reads it, with its summary as
     summary: '1 task fits 25 minutes',
   })
 })
+
+test('asking about the module names its page by the page file’s vault path, on a page and on a mode page', async () => {
+  const pageIdOf = async () => {
+    useComposerReferences.setState({ references: [] })
+    const ask = await waitFor(() => named('Ask about Focus'), {
+      timeout: 10_000,
+    })
+    await press(ask)
+    const [reference] = useComposerReferences.getState().references
+    return (reference?.location.resource as { pageId?: string }).pageId
+  }
+  const page = await placeOnPage(JSON.stringify(manifest), source, {
+    page: 'Desk',
+  })
+  expect(page.path).toBe('Pages/Desk.page.json')
+  expect(await pageIdOf()).toBe('Pages/Desk.page.json')
+  cleanup()
+
+  const mode = await placeOnPage(JSON.stringify(manifest), source, {
+    mode: 'index',
+  })
+  expect(mode.path).toBe('Modes/index.page.json')
+  expect(await pageIdOf()).toBe('Modes/index.page.json')
+  cleanup()
+
+  // Off any page there is no page file to name.
+  await place()
+  expect(await pageIdOf()).toBeUndefined()
+}, 30_000)
 
 test('a running module reaches only what was granted, through the page’s own session', async () => {
   const { container, queryClient } = await place()

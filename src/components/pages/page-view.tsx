@@ -160,7 +160,8 @@ export function ModePageView({ mode }: { mode: PageMode }) {
   return <VaultModePage client={client} mode={mode} />
 }
 
-function VaultModePage({
+/** A mode's page of an open vault. Exported for its tests, which give the vault. */
+export function VaultModePage({
   client,
   mode,
 }: {

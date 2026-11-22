@@ -1,6 +1,7 @@
 // SOURCING: none — a test harness. A vault module's files in test/blocks/memory-workspace, placed as
 // a page places one (useInstance under a PageRuntimeProvider, test/workspace's render with a
-// QueryClient) and run through VaultModule (or SandboxedModule, which finds its own vault), with slice2-harness's stand-in for
+// QueryClient) and run through VaultModule (or SandboxedModule, which finds its own vault), or placed on a
+// page file or a mode's page that page-view's editor opens, with slice2-harness's stand-in for
 // /api/capabilities/v1 and the frame's document built with esbuild's Node build. happy-dom loads
 // no frame page, so frameOf says ready for the frame as its bridge script does and hands back the
 // frame's end of the port the page answers with: calls on it reach the host the module runs with.
@@ -14,8 +15,13 @@ import { useComposerReferences } from '@/components/chat/composer-references'
 import * as hosted from '@/lib/blocks/hosted-app'
 import { READY_MESSAGE, rpcOver } from '@/lib/blocks/sandbox/protocol'
 import type { Rpc } from '@/lib/blocks/sandbox/protocol'
-import { parseManifest } from '@/lib/modules/contract'
+import { pageText, parseManifest } from '@/lib/modules/contract'
+import type { LayoutData } from '@/lib/modules/contract'
+import { newPage } from '@/lib/modules/layout'
+import { modePagePath } from '@/lib/modules/templates'
+import type { PageMode } from '@/lib/modules/templates'
 import { useModuleGrants } from '@/lib/modules/grants'
+import * as store from '@/lib/modules/store'
 import { fromManifest } from '@/lib/modules/registry'
 import type { ModuleDefinition } from '@/lib/modules/registry'
 import type { WorkspaceClient } from '@/lib/workspace/types'
@@ -24,6 +30,7 @@ import {
   PageRuntimeProvider,
   useInstance,
 } from './page-runtime'
+import { VaultModePage, VaultPage } from './page-view'
 import { SandboxedModule, VaultModule } from './sandboxed-module'
 
 export const FOLDER = 'Modules/focus'
@@ -92,6 +99,49 @@ export async function placeOutsideVault(manifestText: string) {
   return { ...placed, definition }
 }
 
+let vaultFound: { mockRestore: () => void } | undefined
+
+/**
+ * Installs the module and places it as `focus-1` on a vault page the page
+ * editor opens: a page file in Pages, or a mode's page in Modes. The page's
+ * modules find this vault as the Theorem vault, as a server that serves it
+ * would make them. Returns the page file's vault path.
+ */
+export async function placeOnPage(
+  manifestText: string,
+  source: string,
+  on: { page: string } | { mode: PageMode },
+) {
+  const path =
+    'mode' in on ? modePagePath(on.mode) : `Pages/${on.page}.page.json`
+  const layout: LayoutData = {
+    root: { props: {} },
+    content: [
+      { type: definitionOf(manifestText).id, props: { id: 'focus-1' } },
+    ],
+  }
+  const client = memoryWorkspace({
+    [`${FOLDER}/module.json`]: manifestText,
+    [`${FOLDER}/index.html`]: source,
+    [path]: pageText({ ...newPage('Desk'), layout }),
+  }) as unknown as WorkspaceClient
+  const entry = (await client.tree()).find((one) => one.path === path)!
+  vaultFound?.mockRestore()
+  vaultFound = spyOn(store, 'useVaultClient').mockReturnValue({
+    client,
+    isPending: false,
+    missing: '',
+  })
+  const placed = await render(
+    'mode' in on ? (
+      <VaultModePage client={client} mode={on.mode} />
+    ) : (
+      <VaultPage client={client} entryId={entry.id} />
+    ),
+  )
+  return { ...placed, path }
+}
+
 /**
  * Says ready from the module's frame and returns the frame's end of the port
  * the page answers with.
@@ -140,4 +190,6 @@ export function endModuleTest() {
   cleanup()
   uninstall()
   building?.mockRestore()
+  vaultFound?.mockRestore()
+  vaultFound = undefined
 }
