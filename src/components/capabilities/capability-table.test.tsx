@@ -27,6 +27,7 @@ import {
   queryResult,
   readerGrant,
   taskRows,
+  trackerDefinition,
 } from './fixture'
 import type { ModuleViewProps } from '@/lib/modules/registry'
 import type { CapabilityContextReference } from '@/lib/capabilities/reference'
@@ -1144,6 +1145,56 @@ test('a grant list refused as stale is shown as read again, with the person’s 
     'user:ops',
     'agent:helper',
   ])
+})
+
+// set_agent sends both fields, so a form refused as stale and sent again as
+// it was would undo a description changed elsewhere meanwhile.
+test('discoverability refused as stale is shown as read again, with the person’s change still laid over it', async () => {
+  described = { ...describeResult(), definitionId: 'capdef:older' }
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await authoring()
+  await section('Agent access')
+  await waitFor(() => named('Discoverable to agents'))
+  // The person takes it out of agent discovery.
+  await press('Discoverable to agents')
+  // Meanwhile its description was changed elsewhere.
+  const elsewhere = {
+    ...trackerDefinition,
+    agent: { discoverable: true, description: 'Tasks for the team' },
+  }
+  described = { ...describeResult(), definition: elsewhere }
+  const before = reads().length
+  await press('Save discoverability')
+  await waitFor(() => screen().textContent.includes('submit it once more'))
+  await waitFor(() => reads().length > before)
+  await settle()
+  expect(dialogInput('Agent description')?.value).toBe('Tasks for the team')
+  expect(named('Discoverable to agents')?.getAttribute('aria-checked')).toBe(
+    'false',
+  )
+
+  // Sent again, both changes are kept, over the definition read again.
+  const sent = { discoverable: false, description: 'Tasks for the team' }
+  described = {
+    ...describeResult(),
+    definitionId: 'capdef:def',
+    definition: { ...trackerDefinition, agent: sent },
+  }
+  await press('Save discoverability')
+  await waitFor(() =>
+    screen().textContent.includes('the definition is now capdef:def'),
+  )
+  expect(authored().at(-1)).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [{ op: 'set_agent', agent: sent }],
+  })
+  // Read again once saved, the form shows what was sent.
+  await settle()
+  expect(dialogInput('Agent description')?.value).toBe('Tasks for the team')
+  expect(named('Discoverable to agents')?.getAttribute('aria-checked')).toBe(
+    'false',
+  )
 })
 
 // ── Agent access from the table ─────────────────────────────────────────────

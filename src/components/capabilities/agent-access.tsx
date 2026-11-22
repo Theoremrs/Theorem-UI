@@ -2,9 +2,10 @@
 // app's Button. The three separate agent-access controls of the spec's section 7: use this capability
 // in the current conversation (the composer reference path the table's Ask already uses), make it
 // discoverable (set_agent), and permit actions (set_grants over the grant list describe discloses to
-// an author). Each is its own control, so using one never implies another. The grant list read
-// again after a conflict gets the editor's changes laid over it here (rebase): grants are matched
-// by principal, which no general merge library knows to key on.
+// an author). Each is its own control, so using one never implies another. The agent metadata and
+// the grant list read again after a conflict get the editor's changes laid over them here
+// (useEditsOver, layOver, rebase): grants are matched by principal, which no general merge library
+// knows to key on, and laying changed fields over an object read again needs no dependency.
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { fieldControl } from '@/components/pages/resource-field'
@@ -78,6 +79,43 @@ export function AgentAccess({
   )
 }
 
+/** The parts of `edited` changed here from `read`, the value as it was read. */
+const changedFrom = <T extends object>(edited: T, read: T): Partial<T> =>
+  Object.fromEntries(
+    Object.entries(edited).filter(
+      ([key, value]) =>
+        JSON.stringify(value) !== JSON.stringify(read[key as keyof T]),
+    ),
+  ) as Partial<T>
+
+/** `now`, a value read again, with the parts of `edited` changed here from `read` over it. */
+const layOver = <T extends object>(edited: T, read: T, now: T): T => ({
+  ...now,
+  ...changedFrom(edited, read),
+})
+
+/**
+ * An editor's state over a value it was read from. When the value is read
+ * again (after a conflict, the authoring dialog reads the definition back),
+ * `readAgain` lays what was edited here over it, so the edits stay to be checked
+ * and sent once more and nothing changed elsewhere is sent back as it was.
+ */
+function useEditsOver<T, THeld>(
+  value: T,
+  start: (value: T) => THeld,
+  readAgain: (held: THeld, read: T, now: T) => THeld,
+) {
+  const [read, setRead] = useState(value)
+  const [held, setHeld] = useState(() => start(value))
+  if (value !== read) {
+    setRead(value)
+    setHeld(readAgain(held, read, value))
+  }
+  return [held, setHeld] as const
+}
+
+const asIs = <T,>(value: T) => value
+
 function Discoverable({
   definition,
   busy,
@@ -87,10 +125,7 @@ function Discoverable({
   busy: boolean
   onSubmit: Submit
 }) {
-  const [discoverable, setDiscoverable] = useState(
-    definition.agent.discoverable,
-  )
-  const [description, setDescription] = useState(definition.agent.description)
+  const [agent, setAgent] = useEditsOver(definition.agent, asIs, layOver)
   return (
     <section className="flex flex-col gap-1.5">
       <Heading>Discoverable to agents</Heading>
@@ -102,15 +137,17 @@ function Discoverable({
       <Tick
         label="Discoverable to agents"
         text="List it in agent discovery"
-        checked={discoverable}
-        onChange={setDiscoverable}
+        checked={agent.discoverable}
+        onChange={(discoverable) => setAgent({ ...agent, discoverable })}
       />
       <Row label="Description for agents">
         <input
           aria-label="Agent description"
           className={fieldControl}
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
+          value={agent.description}
+          onChange={(event) =>
+            setAgent({ ...agent, description: event.target.value })
+          }
         />
       </Row>
       <Button
@@ -123,11 +160,7 @@ function Discoverable({
             [
               {
                 op: 'set_agent',
-                agent: {
-                  ...definition.agent,
-                  discoverable,
-                  description: description.trim(),
-                },
+                agent: { ...agent, description: agent.description.trim() },
               },
             ],
             'Agent access saved',
@@ -161,15 +194,6 @@ interface HeldGrant {
 const asRead = (grants: Grant[]): HeldGrant[] =>
   grants.map((grant) => ({ grant, from: grant.principal }))
 
-/** The parts of `grant` changed here from `read`, the grant as it was read. */
-const changedFrom = (grant: Grant, read: Grant): Partial<Grant> =>
-  Object.fromEntries(
-    Object.entries(grant).filter(
-      ([key, value]) =>
-        JSON.stringify(value) !== JSON.stringify(read[key as keyof Grant]),
-    ),
-  )
-
 /**
  * The editor's grants laid over the list as read again (after a conflict):
  * each grant as now read with the parts changed here over it, none removed
@@ -184,8 +208,10 @@ function rebase(rows: HeldGrant[], read: Grant[], now: Grant[]) {
     const row = rows.find((one) => one.from === grant.principal)
     // Read before and gone from the rows: removed here.
     if (!row && readAs(grant.principal)) continue
-    const changed = row ? changedFrom(row.grant, readAs(row.from)!) : {}
-    next.push({ grant: { ...grant, ...changed }, from: grant.principal })
+    next.push({
+      grant: row ? layOver(row.grant, readAs(row.from)!, grant) : grant,
+      from: grant.principal,
+    })
   }
   // What is left: grants added here, and grants no longer listed, kept only
   // when changed here.
@@ -312,12 +338,7 @@ function GrantsEditor({
   // Each row is the grant as read with the edits laid over it, so a part this
   // editor does not show (background, for one) goes back unchanged. The list
   // read again after a conflict is shown with the edits laid over it again.
-  const [read, setRead] = useState(grants)
-  const [held, setHeld] = useState(() => asRead(grants))
-  if (grants !== read) {
-    setRead(grants)
-    setHeld(rebase(held, read, grants))
-  }
+  const [held, setHeld] = useEditsOver(grants, asRead, rebase)
   const rows = held.map((one) => one.grant)
   const set = (at: number, change: Partial<Grant>) =>
     setHeld((all) =>
