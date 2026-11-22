@@ -1,4 +1,5 @@
 // SOURCING: dockview-react via DockShell (desktop layout), the Life field under the desktop sheet (LifeSheet) seen through the side panel's frosted glass (styles.css glass-panel; under liquid glass, glass/liquid-glass curved on all four edges, a card lifted off the sheet after the AG-UI Dojo's floating sidebar the owner's review named), Base UI Drawer (the panel's card over a sheet too narrow to dock it, with the rail on a phone), Base UI useMediaQuery, the shell's ModeView (assistant-ui Thread in chat mode), AgentComposer (Base UI Popover), NotePanel (Milkdown Crepe), WorkspaceFilePanel, WorkspaceCommands (the folder dialogs and their shortcuts), the workbench docked full screen, beside or under the sheet (WorkbenchDock) and the SideTerminal's gallery, the Vault (React.lazy, so cosmos.gl loads only when it opens)
+import { useThreadDisplayTitle } from '@/lib/theorem/thread-title'
 import type { SplitviewApi, SplitviewReadyEvent } from 'dockview-react'
 import { useParams } from '@tanstack/react-router'
 import { AgentComposer } from '@/components/canvas/agent-composer'
@@ -24,8 +25,7 @@ import {
   useWorkbenchShortcut,
 } from '@/components/workbench/use-workbench-placement'
 import { WorkbenchDock } from '@/components/workbench/workbench-dock'
-import { Workbench } from '@/components/workbench/workbench'
-import { ThreadListPrimitive, useAuiState } from '@assistant-ui/react'
+import { ThreadListPrimitive } from '@assistant-ui/react'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { WorkspaceCommands } from '@/components/workspace/workspace-commands'
 import { cn } from '@/lib/utils'
@@ -35,6 +35,7 @@ import {
   lazy,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react'
@@ -43,6 +44,12 @@ import type { CSSProperties } from 'react'
 import { ModePage } from '@/components/pages/mode-page'
 import { IdePageShown, OnIdePage } from '@/components/ide/ide-page'
 import { IdeStatusBar } from '@/components/ide/ide-status-bar'
+
+const Workbench = lazy(() =>
+  import('@/components/workbench/workbench').then((module) => ({
+    default: module.Workbench,
+  })),
+)
 
 const VaultWorkspace = lazy(() =>
   import('@/components/vault/vault-workspace').then((module) => ({
@@ -53,7 +60,7 @@ const VaultWorkspace = lazy(() =>
 const iconButton = 'size-9 p-2'
 
 function ChatHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
-  const threadTitle = useAuiState((s) => s.threadListItem.title)
+  const threadTitle = useThreadDisplayTitle()
   const title = useProjectHomeTitle() ?? threadTitle
   const mode = useShellMode()
   return (
@@ -145,9 +152,8 @@ function DockView() {
   const [ideLoaded, setIdeLoaded] = useState(ide)
   if (ide && !ideLoaded) setIdeLoaded(true)
   return (
-    // The column the workbench attaches to at the bottom (workbench-dock.tsx):
-    // docked there, the column alone gives up room under itself, so the side
-    // panel beside it keeps its height.
+    // The bottom workspace overlays the full frame. Keep the conversation's
+    // composer above it while the sidebar retains its full height.
     <div
       data-workbench-anchor=""
       className="relative h-full pb-(--workbench-reserve,0px)"
@@ -383,14 +389,44 @@ function DesktopShell(route: DockRoute) {
   } = useWorkbenchPlacement()
   useWorkbenchShortcut(toggleWorkbench)
   const full = requestedPlacement === 'full'
-  // Only a docked side takes a place in the row; a drawer, or a card docked
-  // at the bottom, lies over the conversation column and moves nothing.
+  // Only the docked right placement takes space in the frame's row.
   const dockedSide = useShell(
     (s) => placement === 'side' && s.workbenchAttachment === 'docked',
   )
   // The row the workbench writes its sizes to (workbench-dock.tsx), kept as
   // the element so the workbench has it in its first layout effects.
   const [frame, setFrame] = useState<HTMLDivElement | null>(null)
+  const savedFocus = useRef<HTMLElement | null>(null)
+  const previousPlacement = useRef(placement)
+  useLayoutEffect(() => {
+    if (!frame) return
+    const sheet = frame.querySelector('[data-appearance-part="sheet-frame"]')
+    const remember = (event: Event) => {
+      const target = event.target
+      if (target instanceof HTMLElement && sheet?.contains(target))
+        savedFocus.current = target
+    }
+    frame.addEventListener('focusin', remember)
+    return () => frame.removeEventListener('focusin', remember)
+  }, [frame])
+  useLayoutEffect(() => {
+    const closedWithFocusLost =
+      previousPlacement.current !== undefined &&
+      placement === undefined &&
+      document.activeElement === document.body
+    if (
+      (previousPlacement.current === 'full' && !full) ||
+      closedWithFocusLost
+    ) {
+      const previous = savedFocus.current
+      const fallback = frame?.querySelector<HTMLElement>(
+        '[data-appearance-part="sheet-frame"] [aria-label="Message input"]',
+      )
+      const target = previous?.getClientRects().length ? previous : fallback
+      target?.focus({ preventScroll: true })
+    }
+    previousPlacement.current = placement
+  }, [frame, full, placement])
   // Mounted on its first showing, then kept, hidden while closed, so its runs
   // and terminals carry on (components/workbench/workbench-dock.tsx).
   const [workbenchMounted, setWorkbenchMounted] = useState(
@@ -417,13 +453,13 @@ function DesktopShell(route: DockRoute) {
       className={`appearance-shell flex h-full w-full ${FLOATING_CARD_VARS} [--sheet-h:calc(100dvh-2*var(--sheet-inset))] [--sheet-inset:3px]`}
     >
       <div className="appearance-docked-rail" data-appearance-width-role="rail">
-        <Rail collapsible />
+        <Rail collapsible workspaceFull={full} />
       </div>
       {/* A docked cabinet reserves its width here (side-terminal sets
           --cabinet-dock); an overlay reserves none. The workbench sits in the
-          same row whatever its placement, so moving it never remounts it: a
-          docked side beside the sheet, anything else over the sheet's
-          conversation column, never above or below the side panel. */}
+          same row whatever its placement, so moving it keeps the mounted
+          workspace. A right drawer covers the conversation column and a
+          bottom drawer spans this frame, including the sidebar. */}
       <div
         ref={setFrame}
         className="relative flex min-h-0 min-w-0 flex-1 flex-row me-(--cabinet-dock,0px) transition-[margin] duration-(--duration-glide) ease-glide"
@@ -439,7 +475,10 @@ function DesktopShell(route: DockRoute) {
           inert={covered}
         >
           <div aria-hidden="true" className="lift-glow" />
-          <div className="sheet relative h-full overflow-hidden rounded-xl bg-sheet shadow-sheet">
+          <div
+            data-active-surface={full ? undefined : ''}
+            className="sheet relative h-full overflow-hidden rounded-xl bg-sheet shadow-sheet"
+          >
             {/* Dockview layers its panels with z-index; isolate keeps them under the Vault. */}
             <div inert={vault} className="isolate flex h-full flex-col">
               <div className="min-h-0 flex-1">
@@ -477,11 +516,20 @@ function DesktopShell(route: DockRoute) {
         {workbenchMounted && (
           <WorkbenchDock placement={requestedPlacement} frame={frame}>
             {({ shown, companion }) => (
-              <Workbench
-                projectId={route.projectId}
-                shown={shown}
-                companion={companion}
-              />
+              <Suspense
+                fallback={
+                  <p role="status" className="p-3 text-sm">
+                    Opening workspace…
+                  </p>
+                }
+              >
+                <Workbench
+                  key={route.projectId}
+                  projectId={route.projectId}
+                  shown={shown}
+                  companion={companion}
+                />
+              </Suspense>
             )}
           </WorkbenchDock>
         )}
@@ -504,22 +552,6 @@ export function ChatShell({
       <AgentComposer projectId={projectId} />
       <WorkspaceCommands />
       <SideTerminal />
-    </div>
-  )
-}
-
-/** Full-height status for the shell before a project is available. */
-export function ShellStatus({
-  title,
-  detail,
-}: {
-  title: string
-  detail?: string
-}) {
-  return (
-    <div className="flex h-dvh flex-col items-center justify-center gap-2 bg-background px-6 text-center">
-      <p className="font-heading text-[20px] font-medium">{title}</p>
-      {detail && <p className="max-w-md text-sm text-ink-muted">{detail}</p>}
     </div>
   )
 }

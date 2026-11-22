@@ -1,19 +1,21 @@
-// SOURCING: assistant-ui registry element directive-text (https://r.assistant-ui.com/base/elements-directive-text.json), vendored with its Badge pointed at coss ui badge
+// SOURCING: assistant-ui registry element directive-text (https://r.assistant-ui.com/base/elements-directive-text.json), vendored with its Badge pointed at coss ui badge, and a renderChip option (Theorem's) passed to the Badge's base-ui render prop so a chip can be the link to what it names
 'use client'
 
 import type { FC } from 'react'
 import { Badge } from '@/components/coss/badge'
+import type { BadgeProps } from '@/components/coss/badge'
 
 type IconComponent = FC<{ className?: string }>
 
+export type DirectiveMention = {
+  readonly kind: 'mention'
+  readonly type: string
+  readonly label: string
+  readonly id: string
+}
+
 export type DirectiveTextSegment =
-  | { readonly kind: 'text'; readonly text: string }
-  | {
-      readonly kind: 'mention'
-      readonly type: string
-      readonly label: string
-      readonly id: string
-    }
+  { readonly kind: 'text'; readonly text: string } | DirectiveMention
 
 export type DirectiveTextFormatter = {
   /** Parse text into alternating text and directive segments. */
@@ -25,6 +27,11 @@ export type CreateDirectiveTextOptions = {
   iconMap?: Record<string, IconComponent>
   /** Icon rendered when `iconMap` has no entry for the segment type. */
   fallbackIcon?: IconComponent
+  /**
+   * The element a chip renders as, given to the Badge's `render` prop: a link
+   * or button makes the chip open what it names. Undefined keeps a `span`.
+   */
+  renderChip?: (mention: DirectiveMention) => BadgeProps['render']
 }
 
 /** Creates a text component that parses directive syntax and renders inline chips. */
@@ -34,6 +41,7 @@ export function createDirectiveText(
 ): FC<{ text: string }> {
   const iconMap = options?.iconMap
   const fallbackIcon = options?.fallbackIcon
+  const renderChip = options?.renderChip
 
   const Component: FC<{ text: string }> = ({ text }) => {
     const segments = formatter.parse(text)
@@ -57,6 +65,7 @@ export function createDirectiveText(
           return (
             <Badge
               key={i}
+              render={renderChip?.(seg)}
               variant="secondary"
               data-slot="directive-text-chip"
               data-directive-type={seg.type}

@@ -1,11 +1,17 @@
 // SOURCING: none — bun:test over ./dock-geometry and ./workbench-dock, rendered into happy-dom through test/blocks/render with the real shell state; a stub stands in for the wasm workbench
 import { afterEach, describe, expect, test } from 'bun:test'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { act, useState } from 'react'
 import { useShell } from '@/components/shell/shell-state'
 import { dockMaxWidth, dockMinWidth } from './dock-geometry'
 import type { Placement } from './placement'
 import { WorkbenchDock } from './workbench-dock'
-import { cleanup, render } from '../../../test/blocks/render'
+import { cleanup, click, render } from '../../../test/blocks/render'
 
 test('the resize bounds keep the conversation minimum at a narrow viewport', () => {
   expect(dockMaxWidth(700)).toBe(280)
@@ -54,10 +60,52 @@ const doubleClick = (element: Element) =>
     element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
   })
 
+const pointer = (
+  target: EventTarget,
+  type: string,
+  options: PointerEventInit = {},
+) =>
+  target.dispatchEvent(
+    new PointerEvent(type, {
+      bubbles: true,
+      pointerId: 11,
+      pointerType: 'mouse',
+      isPrimary: true,
+      button: 0,
+      buttons: type === 'pointerup' ? 0 : 1,
+      clientX: 100,
+      clientY: 100,
+      ...options,
+    }),
+  )
+
+const mouse = (
+  target: EventTarget,
+  type: string,
+  options: MouseEventInit = {},
+) =>
+  target.dispatchEvent(
+    new MouseEvent(type, {
+      bubbles: true,
+      button: 0,
+      buttons: type === 'mouseup' ? 0 : 1,
+      clientX: 100,
+      clientY: 100,
+      ...options,
+    }),
+  )
+
 async function open(placement: Placement) {
   let view: View | undefined
   useShell.getState().setWorkbench(placement)
-  await render(<Shell seen={(next) => (view = next)} />)
+  const router = createRouter({
+    routeTree: createRootRoute({
+      component: () => <Shell seen={(next) => (view = next)} />,
+    }),
+    history: createMemoryHistory(),
+  })
+  await router.load()
+  await render(<RouterProvider router={router} />)
   const by = (id: string) =>
     document.querySelector(`[data-testid="${id}"]`) as HTMLElement
   return {
@@ -84,33 +132,202 @@ describe('the Workspace is a drawer unless the person makes it part of the scree
     expect(useShell.getState().workbench).toBe('closed')
   })
 
-  test('a drawer covers the conversation, so the core is not told it stands beside it', async () => {
+  test('drawers accompany the conversation without a second Theo composer', async () => {
     const drawer = await open('bottom')
-    expect(drawer.view()).toEqual({ shown: true, companion: false })
+    expect(drawer.view()).toEqual({ shown: true, companion: true })
     await cleanup()
     useShell.getState().setWorkbenchAttachment('docked')
-    const docked = await open('bottom')
+    const docked = await open('side')
     expect(docked.view()).toEqual({ shown: true, companion: true })
   })
 
   test('as part of the screen it stays open on a double-click outside', async () => {
     useShell.getState().setWorkbenchAttachment('docked')
-    const { conversation } = await open('bottom')
+    const { conversation } = await open('side')
     await doubleClick(conversation)
-    expect(useShell.getState().workbench).toBe('bottom')
+    expect(useShell.getState().workbench).toBe('side')
   })
 
-  test('docked at the bottom, the conversation alone gives up room under it; a drawer or a right-hand dock takes none', async () => {
-    const reserve = (frame: HTMLElement) =>
-      frame.style.getPropertyValue('--workbench-reserve')
-    const drawer = await open('bottom')
-    expect(reserve(drawer.frame)).toBe('0px')
-    await cleanup()
+  test('Bottom overlays the frame while preserving the Right docking preference', async () => {
     useShell.getState().setWorkbenchAttachment('docked')
     const side = await open('side')
-    expect(reserve(side.frame)).toBe('0px')
-    await cleanup()
-    const bottom = await open('bottom')
-    expect(reserve(bottom.frame)).toContain('var(--dock-height)')
+    const region = side.frame.querySelector('[data-workbench-placement]')!
+    // Placement remains controlled by the shell's existing layout menu.
+    await act(async () => useShell.getState().setWorkbench('bottom'))
+    expect(region.getAttribute('data-workbench-attachment')).toBe('drawer')
+    expect(region.classList.contains('absolute')).toBe(true)
+    expect(side.view()).toEqual({ shown: true, companion: true })
+    expect(useShell.getState().workbenchAttachment).toBe('docked')
+
+    await act(async () => useShell.getState().setWorkbench('side'))
+    expect(region.getAttribute('data-workbench-attachment')).toBe('docked')
+    expect(side.view()).toEqual({ shown: true, companion: true })
+  })
+})
+
+describe('the drawer keeps only its edge handle around the terminal', () => {
+  for (const placement of ['side', 'bottom'] as const) {
+    test(`${placement} has no extra workspace navigation bar`, async () => {
+      const { frame } = await open(placement)
+      expect(
+        frame.querySelector('nav[aria-label="Workspace controls"]') === null,
+      ).toBe(true)
+    })
+
+    test(`${placement} closes from its handle`, async () => {
+      const { frame } = await open(placement)
+      await click(frame.querySelector('[role="separator"]')!)
+      expect(useShell.getState().workbench).toBe('closed')
+    })
+
+    test(
+      placement + ' ignores a middle-button release while the primary is held',
+      async () => {
+        const { frame } = await open(placement)
+        const handle = frame.querySelector('[role="separator"]')!
+
+        await act(async () => {
+          pointer(handle, 'pointerdown')
+          mouse(handle, 'mousedown')
+          // Anime's onRelease runs on this mouseup even though the primary is held.
+          mouse(document, 'mouseup', { button: 1, buttons: 1 })
+        })
+        expect(useShell.getState().workbench).toBe(placement)
+
+        await act(async () => {
+          pointer(document, 'pointerup')
+          mouse(document, 'mouseup')
+        })
+        expect(useShell.getState().workbench).toBe('closed')
+      },
+    )
+
+    test(
+      placement +
+        ' closes on a stationary primary release, without a click event',
+      async () => {
+        const { frame } = await open(placement)
+        const handle = frame.querySelector('[role="separator"]')!
+        await act(async () => {
+          pointer(handle, 'pointerdown')
+          mouse(handle, 'mousedown')
+          pointer(document, 'pointerup')
+          mouse(document, 'mouseup')
+        })
+        expect(useShell.getState().workbench).toBe('closed')
+      },
+    )
+
+    for (const move of [
+      { name: 'horizontal', x: 112, y: 100 },
+      { name: 'vertical', x: 100, y: 112 },
+    ]) {
+      test(
+        placement +
+          ' remains open after a ' +
+          move.name +
+          ' drag away and back',
+        async () => {
+          const { frame } = await open(placement)
+          const handle = frame.querySelector('[role="separator"]')!
+          await act(async () => {
+            pointer(handle, 'pointerdown')
+            mouse(handle, 'mousedown')
+            pointer(document, 'pointermove', {
+              button: -1,
+              clientX: move.x,
+              clientY: move.y,
+            })
+            mouse(document, 'mousemove', {
+              button: -1,
+              clientX: move.x,
+              clientY: move.y,
+            })
+            pointer(document, 'pointermove', { button: -1 })
+            mouse(document, 'mousemove', { button: -1 })
+            pointer(document, 'pointerup')
+            mouse(document, 'mouseup')
+          })
+          expect(useShell.getState().workbench).toBe(placement)
+        },
+      )
+    }
+
+    test(placement + ' ignores cancelled primary gestures', async () => {
+      const { frame } = await open(placement)
+      const handle = frame.querySelector('[role="separator"]')!
+      await act(async () => {
+        pointer(handle, 'pointerdown')
+        mouse(handle, 'mousedown')
+        pointer(document, 'pointercancel')
+        mouse(document, 'mouseup')
+      })
+      expect(useShell.getState().workbench).toBe(placement)
+    })
+
+    test(
+      placement + ' ignores a standalone nonprimary-button release',
+      async () => {
+        const { frame } = await open(placement)
+        const handle = frame.querySelector('[role="separator"]')!
+        await act(async () => {
+          pointer(handle, 'pointerdown', { button: 1, buttons: 4 })
+          mouse(handle, 'mousedown', { button: 1, buttons: 4 })
+          pointer(document, 'pointerup', { button: 1, buttons: 0 })
+          mouse(document, 'mouseup', { button: 1, buttons: 0 })
+        })
+        expect(useShell.getState().workbench).toBe(placement)
+      },
+    )
+
+    for (const key of ['Enter', ' ']) {
+      test(`${placement} handle closes with ${key === ' ' ? 'Space' : key}`, async () => {
+        const { frame } = await open(placement)
+        await act(async () => {
+          frame.querySelector('[role="separator"]')!.dispatchEvent(
+            new KeyboardEvent('keydown', {
+              key,
+              bubbles: true,
+              cancelable: true,
+            }),
+          )
+        })
+        expect(useShell.getState().workbench).toBe('closed')
+      })
+    }
+  }
+
+  test('the handle still resizes with arrow keys', async () => {
+    const { frame } = await open('side')
+    const width = useShell.getState().sideWidth
+    await act(async () => {
+      frame.querySelector('[role="separator"]')!.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'ArrowRight',
+          bubbles: true,
+          cancelable: true,
+        }),
+      )
+    })
+    expect(useShell.getState().sideWidth).toBe(width - 16)
+    expect(useShell.getState().workbench).toBe('side')
+  })
+
+  test('placement changes and closing keep the workspace mounted', async () => {
+    const { workspace } = await open('side')
+    for (const next of ['bottom', 'full', 'closed', 'side'] as const) {
+      await act(async () => useShell.getState().setWorkbench(next))
+      expect(
+        document.querySelector('[data-testid="workspace"]') === workspace,
+      ).toBe(true)
+    }
+  })
+
+  test('the full workspace retains its conversation view', async () => {
+    const { view, frame } = await open('full')
+    expect(view()).toEqual({ shown: true, companion: false })
+    expect(
+      frame.querySelector('nav[aria-label="Workspace controls"]') === null,
+    ).toBe(true)
   })
 })

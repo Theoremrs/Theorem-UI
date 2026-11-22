@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ChatRouteImport } from './routes/_chat'
+import { Route as AppHostRouteImport } from './routes/app-host'
 import { Route as GraphqlRouteImport } from './routes/graphql'
 import { Route as InstallRouteImport } from './routes/install'
 import { Route as LoginRouteImport } from './routes/login'
@@ -41,6 +42,7 @@ import { Route as SettingsPluginsRouteImport } from './routes/settings/plugins'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsResponsesRouteImport } from './routes/settings/responses'
 import { Route as SettingsWorkRouteImport } from './routes/settings/work'
+import { Route as StoryAssetsSceneHostDothtmlRouteImport } from './routes/story-assets.scene-host[.]html'
 import { Route as StoryIdRouteImport } from './routes/story.$id'
 import { Route as TheiaSplatRouteImport } from './routes/theia/$'
 import { Route as ChatCThreadIdRouteImport } from './routes/_chat/c.$threadId'
@@ -93,6 +95,11 @@ import { Route as V1TheoremAgentStreamSplatRouteImport } from './routes/v1/theor
 
 const ChatRoute = ChatRouteImport.update({
   id: '/_chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppHostRoute = AppHostRouteImport.update({
+  id: '/app-host',
+  path: '/app-host',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GraphqlRoute = GraphqlRouteImport.update({
@@ -251,6 +258,12 @@ const SettingsWorkRoute = SettingsWorkRouteImport.update({
   path: '/work',
   getParentRoute: () => SettingsRoute,
 } as any)
+const StoryAssetsSceneHostDothtmlRoute =
+  StoryAssetsSceneHostDothtmlRouteImport.update({
+    id: '/story-assets/scene-host.html',
+    path: '/story-assets/scene-host.html',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const StoryIdRoute = StoryIdRouteImport.update({
   id: '/story/$id',
   path: '/story/$id',
@@ -520,6 +533,7 @@ const V1TheoremAgentStreamSplatRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
+  '/app-host': typeof AppHostRoute
   '/graphql': typeof GraphqlRoute
   '/install': typeof InstallRoute
   '/login': typeof LoginRoute
@@ -549,6 +563,7 @@ export interface FileRoutesByFullPath {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
+  '/story-assets/scene-host.html': typeof StoryAssetsSceneHostDothtmlRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
   '/settings/': typeof SettingsIndexRoute
@@ -601,6 +616,7 @@ export interface FileRoutesByFullPath {
   '/v1/theorem/agent/stream/$': typeof V1TheoremAgentStreamSplatRoute
 }
 export interface FileRoutesByTo {
+  '/app-host': typeof AppHostRoute
   '/graphql': typeof GraphqlRoute
   '/install': typeof InstallRoute
   '/login': typeof LoginRoute
@@ -629,6 +645,7 @@ export interface FileRoutesByTo {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
+  '/story-assets/scene-host.html': typeof StoryAssetsSceneHostDothtmlRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
   '/': typeof ChatIndexRoute
@@ -684,6 +701,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
+  '/app-host': typeof AppHostRoute
   '/graphql': typeof GraphqlRoute
   '/install': typeof InstallRoute
   '/login': typeof LoginRoute
@@ -713,6 +731,7 @@ export interface FileRoutesById {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
+  '/story-assets/scene-host.html': typeof StoryAssetsSceneHostDothtmlRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
   '/_chat/': typeof ChatIndexRoute
@@ -769,6 +788,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/app-host'
     | '/graphql'
     | '/install'
     | '/login'
@@ -798,6 +818,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/responses'
     | '/settings/work'
+    | '/story-assets/scene-host.html'
     | '/story/$id'
     | '/theia/$'
     | '/settings/'
@@ -850,6 +871,7 @@ export interface FileRouteTypes {
     | '/v1/theorem/agent/stream/$'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/app-host'
     | '/graphql'
     | '/install'
     | '/login'
@@ -878,6 +900,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/responses'
     | '/settings/work'
+    | '/story-assets/scene-host.html'
     | '/story/$id'
     | '/theia/$'
     | '/'
@@ -932,6 +955,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_chat'
+    | '/app-host'
     | '/graphql'
     | '/install'
     | '/login'
@@ -961,6 +985,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/responses'
     | '/settings/work'
+    | '/story-assets/scene-host.html'
     | '/story/$id'
     | '/theia/$'
     | '/_chat/'
@@ -1016,6 +1041,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
+  AppHostRoute: typeof AppHostRoute
   GraphqlRoute: typeof GraphqlRoute
   InstallRoute: typeof InstallRoute
   LoginRoute: typeof LoginRoute
@@ -1028,6 +1054,7 @@ export interface RootRouteChildren {
   AuthSignInRoute: typeof AuthSignInRoute
   AuthSignOutRoute: typeof AuthSignOutRoute
   LoginCodeRoute: typeof LoginCodeRoute
+  StoryAssetsSceneHostDothtmlRoute: typeof StoryAssetsSceneHostDothtmlRoute
   StoryIdRoute: typeof StoryIdRoute
   TheiaSplatRoute: typeof TheiaSplatRoute
   ApiArtifactsSplatRoute: typeof ApiArtifactsSplatRoute
@@ -1080,6 +1107,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app-host': {
+      id: '/app-host'
+      path: '/app-host'
+      fullPath: '/app-host'
+      preLoaderRoute: typeof AppHostRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/graphql': {
@@ -1298,6 +1332,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/work'
       preLoaderRoute: typeof SettingsWorkRouteImport
       parentRoute: typeof SettingsRoute
+    }
+    '/story-assets/scene-host.html': {
+      id: '/story-assets/scene-host.html'
+      path: '/story-assets/scene-host.html'
+      fullPath: '/story-assets/scene-host.html'
+      preLoaderRoute: typeof StoryAssetsSceneHostDothtmlRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/story/$id': {
       id: '/story/$id'
@@ -1735,6 +1776,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
+  AppHostRoute: AppHostRoute,
   GraphqlRoute: GraphqlRoute,
   InstallRoute: InstallRoute,
   LoginRoute: LoginRoute,
@@ -1748,6 +1790,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthSignInRoute: AuthSignInRoute,
   AuthSignOutRoute: AuthSignOutRoute,
   LoginCodeRoute: LoginCodeRoute,
+  StoryAssetsSceneHostDothtmlRoute: StoryAssetsSceneHostDothtmlRoute,
   StoryIdRoute: StoryIdRoute,
   TheiaSplatRoute: TheiaSplatRoute,
   ApiArtifactsSplatRoute: ApiArtifactsSplatRoute,

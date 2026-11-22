@@ -14,9 +14,16 @@ import { appDocumentFor } from '@/lib/theorem/apps'
 import { hasStatus, mutate, theorem } from '@/lib/theorem/client'
 import { MAX_RUN_MS, inspectApp } from './app-inspect'
 import type { AppInspection } from './app-inspect'
+import { canonicalJson, digestBytes } from './artifact-runtime'
+import {
+  libraryDeclarations,
+  theoremAppDeclarations,
+} from './check/theorem-app.generated'
 
 /** The operation that checks an App, as the turn's tool `app__check`. */
 export const APP_CHECK = 'app.check'
+/** What `app.check` with `library` calls the declarations of `window.theorem` itself. */
+export const BRIDGE_LIBRARY = 'window.theorem'
 
 /** The largest App a check is given, as the server allows one to be. */
 const MAX_HTML = 1024 * 1024
@@ -28,8 +35,10 @@ const MAX_HTML = 1024 * 1024
 export const APP_OPERATIONS = [
   {
     name: APP_CHECK,
+    // One operation for both, since a send admits sixteen and Kit, the face,
+    // the workbench and the present one take the rest (client-surface.ts).
     description:
-      "Builds and checks an App in the person's browser and returns what is wrong with it. Pass `html`, a complete App document exactly as it would be published, to check a draft before publishing it; or pass `documentId` to check a published App as it is saved now. The result says whether it built, lists its build, type and runtime problems with file, line and column, and gives what the App showed: its text, and `outline`, each thing on the page by role, name and state as assistive technology reads it, with the source place that made it. Pass `picture: true` to also get `picture`, an image of the App as drawn, if you read images. Nothing is changed and nothing is shown to the person: the App runs hidden for a moment, reaching the network as it would on the page, with empty state and an empty in-memory database, so records it reads are not the person's.",
+      "Builds and checks an App in the person's browser and returns what is wrong with it. Pass `html`, a complete App document exactly as it would be published, to check a draft, or `documentId` to check a published App as saved now. The result says whether it built, lists build, type and runtime problems by file, line and column, and gives what the App showed: its text, and `outline`, each thing on the page by role, name and state with the source place that made it. `picture: true` adds an image of the App as drawn, if you read images. Nothing is changed or shown to the person: the App runs hidden for a moment with empty state and an empty in-memory database. Pass `library` instead to read the TypeScript declarations an App is checked against: window.theorem, @theorem/runtime, @theorem/spatial, @theorem/annotate. It lists the files, returns index.d.ts or `file`, and a `digest` of the whole API. Read what you use instead of guessing its shape.",
     effect: 'read',
     inputSchema: {
       type: 'object',
@@ -59,10 +68,72 @@ export const APP_OPERATIONS = [
           description:
             'Also return an image of what the App showed. Only a model that reads images is shown it.',
         },
+        library: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 100,
+          description:
+            'Read declarations instead of checking: window.theorem, @theorem/runtime, @theorem/spatial or @theorem/annotate.',
+        },
+        file: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 100,
+          description:
+            'With library: one declaration file its listing names, such as operations.d.ts.',
+        },
       },
     },
   },
 ] as const
+
+/** A library's declaration files as the App check reads them, by file name. */
+const declarationsOf = (library: string): Record<string, string> | undefined =>
+  library === BRIDGE_LIBRARY
+    ? theoremAppDeclarations
+    : Object.hasOwn(libraryDeclarations, library)
+      ? libraryDeclarations[library]
+      : undefined
+
+/** What `app.check` with `library` answers: the library's files, its identity, and the text asked for. */
+export interface AppLibraryRead {
+  library: string
+  digest: string
+  files: Array<{ name: string; bytes: number }>
+  file: string
+  text: string
+}
+
+/**
+ * Reads one library's declarations as the page's App check holds them, so
+ * what the agent reads is what an App it writes is checked against. Answers
+ * undefined, with the libraries there are, for a library or file not held.
+ */
+export async function readAppLibrary(
+  library: string,
+  file = 'index.d.ts',
+): Promise<AppLibraryRead | { missing: string }> {
+  const files = declarationsOf(library)
+  if (!files)
+    return {
+      missing: `There is no library ${library}; there are ${[BRIDGE_LIBRARY, ...Object.keys(libraryDeclarations)].join(', ')}.`,
+    }
+  if (!Object.hasOwn(files, file))
+    return {
+      missing: `${library} has no file ${file}; it has ${Object.keys(files).join(', ')}.`,
+    }
+  const encoder = new TextEncoder()
+  return {
+    library,
+    digest: await digestBytes(encoder.encode(canonicalJson(files))),
+    files: Object.entries(files).map(([name, text]) => ({
+      name,
+      bytes: encoder.encode(text).length,
+    })),
+    file,
+    text: files[file]!,
+  }
+}
 
 /** What a send carries so the turn can check Apps. */
 export const appTurnOptions = () => ({ clientOperations: APP_OPERATIONS })
@@ -147,10 +218,12 @@ type Outcome = 'applied' | 'rejected' | 'failed'
 export interface AppAnswer {
   readonly outcome: Outcome
   readonly reason?: string
-  readonly result?: AppInspection & {
-    /** The saved revision that was checked, when a published App was. */
-    revision?: string
-  }
+  readonly result?:
+    | (AppInspection & {
+        /** The saved revision that was checked, when a published App was. */
+        revision?: string
+      })
+    | AppLibraryRead
 }
 
 /** What answering needs of the page: the check, and an App's saved source. */
@@ -183,6 +256,18 @@ export async function answerAppRequest(
       outcome: 'rejected',
       reason: `This page has no operation ${request.operation}.`,
     }
+  if (request.args.library !== undefined) {
+    const { library, file } = request.args
+    if (typeof library !== 'string' || !library)
+      return { outcome: 'rejected', reason: 'Name the library to read.' }
+    const read = await readAppLibrary(
+      library,
+      typeof file === 'string' && file ? file : undefined,
+    )
+    return 'missing' in read
+      ? { outcome: 'rejected', reason: read.missing }
+      : { outcome: 'applied', result: read }
+  }
   const { html, documentId, runMs, picture } = request.args
   const options = {
     ...(typeof runMs === 'number' ? { runMs } : {}),

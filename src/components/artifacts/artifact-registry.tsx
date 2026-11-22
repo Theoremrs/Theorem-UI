@@ -17,6 +17,7 @@ import type {
   Distance,
   Representation,
 } from '@/lib/artifacts/contributions'
+import { SCENE_CONTRACT } from '@/components/chat/scene-model'
 import { resolvedTheme } from '@/lib/blocks/sandbox/theme'
 import { observableSource } from '@/lib/notebooks/observable-document'
 import { appDocumentFor } from '@/lib/theorem/apps'
@@ -134,6 +135,25 @@ export const UI_CONTRIBUTIONS: ReadonlyArray<ArtifactContribution> = [
     locators: ['entity', 'table_rows'],
     followsTheme: true,
   }),
+  // An interactive scene the agent wrote, on SceneOS. In the reply it is the
+  // whole surface, with its own Expand and Ask; in a panel it fills the
+  // panel in its full layout. Its code runs only in the scene's sandboxed
+  // page, so no presentation holds a live session and none waits behind
+  // Interact.
+  contribution('theorem.scene', 'Scene', {
+    provider: 'theorem-ui',
+    kinds: ['scene'],
+    schemas: [SCENE_CONTRACT],
+    presentations: [
+      presentation('artifact_native', 'theorem-scene.reply', ['preview']),
+      presentation('artifact_native', 'theorem-scene', [
+        'thing',
+        'interactive',
+      ]),
+    ],
+    locators: ['entity'],
+    followsTheme: true,
+  }),
 ]
 
 const invalid = validateAll(UI_CONTRIBUTIONS)
@@ -178,13 +198,42 @@ export function subjectOf(
 }
 
 let mounted: Readonly<Record<string, FC<RendererProps>>> = {}
+let bare: ReadonlySet<string> = new Set()
+let fills: ReadonlySet<string> = new Set()
 
 /**
  * Mounts the renderers this build ships. Called once, by the module that
  * defines them (artifact-renderers), so availability is what actually loaded.
+ *
+ * A `bare` renderer draws the whole surface in the reply itself: its own
+ * sizing, expansion, loading and failure, and Ask. The conversation adds no
+ * card around it (docs/plans/interactive-answer-artifacts.md: no visible
+ * chrome, an invisible frame contract). A renderer that `fills` takes the
+ * whole of a panel's body, with no reading column or padding, and sizes
+ * itself to it.
  */
-export function mountRenderers(table: Record<string, FC<RendererProps>>) {
+export function mountRenderers(
+  table: Record<string, FC<RendererProps>>,
+  options: { bare?: ReadonlyArray<string>; fills?: ReadonlyArray<string> } = {},
+) {
   mounted = { ...mounted, ...table }
+  bare = new Set([...bare, ...(options.bare ?? [])])
+  fills = new Set([...fills, ...(options.fills ?? [])])
+}
+
+/** Whether the artifact at `distance` takes the whole of a panel's body. */
+export function fillsPanel(
+  artifact: TheoremArtifact,
+  distance: Distance,
+): boolean {
+  const { renderer } = representationOf(artifact, distance)
+  return renderer !== undefined && renderer in mounted && fills.has(renderer)
+}
+
+/** Whether the reply shows the artifact bare at `distance`, with no card around it. */
+export function isBare(artifact: TheoremArtifact, distance: Distance): boolean {
+  const { renderer } = representationOf(artifact, distance)
+  return renderer !== undefined && renderer in mounted && bare.has(renderer)
 }
 
 export function rendererFor(
@@ -233,6 +282,12 @@ const SOURCES: Record<
     mediaType: 'text/plain',
     load: inline(artifact),
   }),
+  'theorem.scene': (artifact) => ({
+    noun: 'Scene package',
+    mediaType: 'application/json',
+    load: async () =>
+      JSON.stringify(artifact.scene?.scenePackage ?? {}, null, 2),
+  }),
   'theorem.diagram': (artifact) => ({
     noun: '',
     mediaType: 'text/vnd.mermaid',
@@ -248,7 +303,11 @@ const SOURCES: Record<
           mediaType: 'text/html',
           load: async () => observableSource(notebook, resolvedTheme()),
         }
-      : { noun: 'Notebook', mediaType: 'application/json', load: inline(artifact) }
+      : {
+          noun: 'Notebook',
+          mediaType: 'application/json',
+          load: inline(artifact),
+        }
   },
   'theorem.notebook.marimo': (artifact) => ({
     noun: 'Notebook source',

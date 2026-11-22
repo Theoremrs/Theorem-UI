@@ -1,8 +1,10 @@
-// SOURCING: @assistant-ui/react-native MessageState (each row of ThreadPrimitive.MessagesFlatList); parts as @theoremharness/sdk projects them
+// SOURCING: @assistant-ui/react-native MessageState (each row of ThreadPrimitive.MessagesFlatList); parts as @theoremharness/sdk projects them, drawn or silenced by the web's rules (./parts), printed with its stringifyJson (bigint-safe)
 import { memo, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import type { MessageState } from '@assistant-ui/react-native'
+import { stringifyJson } from '@theoremharness/sdk'
+import { openInBrowser } from '@/features/browser/store'
 import { radius, space } from '@/theme/tokens'
 import { StatusLabel, type Tone } from '@/ui/status'
 import { Text } from '@/ui/text'
@@ -10,6 +12,11 @@ import { useTheme } from '@/ui/theme'
 import { readApproval } from './approval'
 import { ApprovalCard } from './approval-card'
 import { LinkedText } from './linked-text'
+import { MarkdownText } from './markdown-text'
+import { citationOf, SILENT_PARTS, type Citation } from './parts'
+import { AppCheckRow } from '../apps/app-checks'
+import { AppFrame } from '../apps/app-frame'
+import { appRevisionOf, ARTIFACT_PART } from '../apps/operations'
 import { PROPOSE_EVENT } from '../phone-actions/calendar'
 import { EventProposalCard } from '../phone-actions/event-card'
 
@@ -75,7 +82,9 @@ function Disclosure({
         </Text>
       </Pressable>
       {open ? (
-        <View style={[styles.stepBody, { backgroundColor: palette.raised, borderColor: palette.lineSeparator }]}>
+        <View
+          style={[styles.stepBody, { backgroundColor: palette.raised, borderColor: palette.lineSeparator }]}
+        >
           {children}
         </View>
       ) : null}
@@ -94,13 +103,16 @@ const stepState = (part: Extract<Part, { type: 'tool-call' }>): { tone: Tone; la
 function stepTitleOf(part: Extract<Part, { type: 'tool-call' }>): string {
   const title = object(object(part.artifact).theoremStep).title
   if (typeof title === 'string' && title) return title
-  return part.toolName.replace(/^mcp__/, '').replace(/__/g, ' · ').replace(/_/g, ' ')
+  return part.toolName
+    .replace(/^mcp__/, '')
+    .replace(/__/g, ' · ')
+    .replace(/_/g, ' ')
 }
 
-function PartView({ part, runId }: { part: Part; runId: string | undefined }) {
+function PartView({ part, runId, running }: { part: Part; runId: string | undefined; running: boolean }) {
   switch (part.type) {
     case 'text':
-      return <LinkedText text={part.text} />
+      return <MarkdownText text={part.text} />
     case 'reasoning':
       // Only reasoning the provider supplied; nothing is inferred from prose.
       return (
@@ -123,7 +135,9 @@ function PartView({ part, runId }: { part: Part; runId: string | undefined }) {
           ) : null}
           {part.result !== undefined ? (
             <Text variant="code" tone={part.isError ? 'error' : 'ink'} selectable numberOfLines={40}>
-              {typeof part.result === 'string' ? part.result || 'No output.' : JSON.stringify(part.result, null, 2)}
+              {typeof part.result === 'string'
+                ? part.result || 'No output.'
+                : stringifyJson(part.result, null, 2)}
             </Text>
           ) : null}
         </Disclosure>
@@ -146,10 +160,34 @@ function PartView({ part, runId }: { part: Part; runId: string | undefined }) {
             }}
           />
         )
+      if (
+        part.name === 'theorem-client_operation' &&
+        typeof data.operation === 'string' &&
+        data.operation.startsWith('app.') &&
+        typeof data.requestRef === 'string'
+      )
+        return (
+          <AppCheckRow
+            runId={runId}
+            running={running}
+            data={part.data}
+            request={{
+              requestRef: data.requestRef,
+              operation: data.operation,
+              state: typeof data.state === 'string' ? data.state : 'pending',
+              args: object(data.args),
+              expectedRevision: typeof data.expectedRevision === 'number' ? data.expectedRevision : 0,
+            }}
+          />
+        )
+      if (part.name === ARTIFACT_PART) {
+        const app = appRevisionOf(part.data)
+        if (app) return <AppFrame app={app} />
+      }
       return (
         <Disclosure title={part.name.replace(/^theorem-/, '').replace(/_/g, ' ')}>
           <Text variant="code" selectable numberOfLines={40}>
-            {JSON.stringify(part.data, null, 2)}
+            {stringifyJson(part.data, null, 2)}
           </Text>
         </Disclosure>
       )
@@ -161,6 +199,46 @@ function PartView({ part, runId }: { part: Part; runId: string | undefined }) {
         </Text>
       )
   }
+}
+
+/** A source tag, as the web draws one; a web URL opens in the app's browser. */
+function CitationChip({ citation }: { citation: Citation }) {
+  const { palette } = useTheme()
+  const { url } = citation
+  return (
+    <Pressable
+      disabled={!url}
+      onPress={url ? () => openInBrowser(url) : undefined}
+      accessibilityRole={url ? 'link' : 'text'}
+      accessibilityLabel={`Source: ${citation.label}`}
+      style={({ pressed }) => [
+        styles.chip,
+        { backgroundColor: pressed ? palette.hover : palette.raised, borderColor: palette.lineSeparator },
+      ]}
+    >
+      <Text variant="label" tone="muted" numberOfLines={1}>
+        {citation.label}
+      </Text>
+    </Pressable>
+  )
+}
+
+/** A reply's parts as they draw: silent parts dropped, neighbouring source tags gathered into one row. */
+function replyItems(content: readonly Part[]): (Part | Citation[])[] {
+  const items: (Part | Citation[])[] = []
+  for (const part of content) {
+    if (part.type === 'data' && SILENT_PARTS.has(part.name)) continue
+    if (part.type === 'data' && part.name === 'theorem-citation') {
+      const citation = citationOf(part.data)
+      if (!citation) continue
+      const last = items.at(-1)
+      if (Array.isArray(last)) last.push(citation)
+      else items.push([citation])
+      continue
+    }
+    items.push(part)
+  }
+  return items
 }
 
 /** The files a stored message carries, by the name Theorem kept or, without one, as a plain count. */
@@ -178,6 +256,7 @@ export const MessageView = memo(function MessageView({ message }: { message: Mes
   const { palette } = useTheme()
   const status = statusOf(message)
   const runId = object(message.metadata?.custom).theoremRunId as string | undefined
+  const running = message.status?.type === 'running' || message.status?.type === 'requires-action'
   const copy = () => void Clipboard.setStringAsync(plainText(message))
   if (message.role === 'user')
     return (
@@ -208,9 +287,17 @@ export const MessageView = memo(function MessageView({ message }: { message: Mes
       accessibilityActions={[{ name: 'copy', label: 'Copy reply' }]}
       onAccessibilityAction={copy}
     >
-      {message.content.map((part, index) => (
-        <PartView key={index} part={part} runId={runId} />
-      ))}
+      {replyItems(message.content).map((item, index) =>
+        Array.isArray(item) ? (
+          <View key={index} style={styles.chips}>
+            {item.map((citation, at) => (
+              <CitationChip key={at} citation={citation} />
+            ))}
+          </View>
+        ) : (
+          <PartView key={index} part={item} runId={runId} running={running} />
+        ),
+      )}
       {status ? <StatusLabel {...status} /> : null}
     </View>
   )
@@ -235,6 +322,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.control,
   },
   stepTitle: { flex: 1 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
+  chip: {
+    maxWidth: 256,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderRadius: radius.control,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   chevron: { width: 12, textAlign: 'center' },
   stepBody: {
     padding: space.sm,

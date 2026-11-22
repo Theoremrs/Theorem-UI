@@ -14,7 +14,12 @@ import { BridgeDenied } from '../blocks/bridge'
 import type { AppArtifacts } from '../blocks/bridge'
 import { appSourceRef } from './app-dossier'
 import type { AppSnapshot } from './apps'
-import { ArtifactRefused, RunWriter, artifactStore } from './artifact-store'
+import {
+  ArtifactRefused,
+  RunWriter,
+  artifactStore,
+  reopenRun,
+} from './artifact-store'
 import type { ArtifactStore, RecordedObservation } from './artifact-store'
 
 /** The most runs one App keeps writing at once; the oldest is let go first. */
@@ -91,6 +96,14 @@ export function appArtifacts(
           throw new BridgeDenied(`The result read is not ${id}.`)
         // blob() checks the bytes against their digest.
         return { result, bytes: await store.blob(result.content) }
+      } catch (error) {
+        throw refusal(error)
+      }
+    },
+    async run(id) {
+      try {
+        // reopenRun checks every chunk's bytes, its place and each state's digest.
+        return await reopenRun(store, id)
       } catch (error) {
         throw refusal(error)
       }

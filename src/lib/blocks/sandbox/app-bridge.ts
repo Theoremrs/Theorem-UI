@@ -277,6 +277,13 @@ const theorem = {
      */
     open: async (id: string) =>
       call<PageMethods, 'artifacts.open'>((await context_()).rpc, 'artifacts.open', { id }),
+    /**
+     * A kept run by its id, from this or any other conversation or App: the
+     * RunRef, every moment it holds in order from index 0 (each with its state
+     * when one was kept, checked against its digest) and its checkpoints.
+     */
+    run: async (id: string) =>
+      call<PageMethods, 'artifacts.run'>((await context_()).rpc, 'artifacts.run', { id }),
   },
   /** Resolves once the page has connected this app. */
   ready: context.then(() => undefined),

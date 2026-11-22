@@ -1,4 +1,5 @@
 // SOURCING: dockview-react (docking layout: tabs, splits, floating and edge groups, maximize, serialization, always-rendered panels), the shell's ModeView (assistant-ui Thread in chat mode), FilePanel, NotePanel (Milkdown Crepe), WorkspaceFilePanel, the inspector's panels (the graph via React.lazy, so cosmos.gl loads only when it opens), the arrangements, the IDE frame (browser-only Theia), Base UI Menu (the one layout menu: Follow the agent and the Gallery, arrangements, the inspector, the terminal drawers), zustand stores for artifact view, note view, workspace file view, the inspected file, saved layouts and the drawers
+import { useThreadDisplayTitle } from '@/lib/theorem/thread-title'
 import { useAuiState } from '@assistant-ui/react'
 import { Menu } from '@base-ui/react/menu'
 import { DockviewDefaultTab, DockviewReact } from 'dockview-react'
@@ -119,7 +120,7 @@ function subscribe(event: (listener: () => void) => { dispose: () => void }) {
 
 /** The main panel: the conversation, or the mode's view in the Index, Pages, Spaces and the canvas. Theia covers the dock in IDE mode. */
 function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
-  const threadTitle = useAuiState((s) => s.threadListItem.title)
+  const threadTitle = useThreadDisplayTitle()
   const title = useProjectHomeTitle() ?? threadTitle
   const mode = useShellMode()
   useEffect(

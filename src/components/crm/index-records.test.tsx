@@ -157,6 +157,31 @@ test('a workspace set up before Relationships existed keeps its records and is o
   expect(server.state.missing.size).toBe(0)
 })
 
+test('a Commitment installed before its task and draft fields is offered them', async () => {
+  serve({ missingFields: { Commitment: ['task', 'draft'] } })
+  const { container } = await mountAt(tableAt('commitment'), () => (
+    <>
+      <IndexRecords panel />
+      <IndexRecords />
+    </>
+  ))
+  const add = await waitFor(() =>
+    buttonNamed(container, 'Add new fields to Commitment'),
+  )
+  await waitFor(() => columns(container).includes('Commitment'))
+  expect(columns(container)).not.toContain('Task')
+  expect(columns(container)).not.toContain('Draft')
+  expect(add.getAttribute('title')).toBe('Commitment: task, draft')
+  // Every type is declared, so no type is offered.
+  expect(buttonNamed(container, 'Add the Relationship type')).toBeUndefined()
+  await click(add)
+  await waitFor(() => !buttonNamed(container, 'Add new fields to Commitment'))
+  expect(server.state.missingFields).toEqual({})
+  // The table is drawn again from the refreshed type, now with both fields.
+  await waitFor(() => columns(container).includes('Task'))
+  expect(columns(container)).toContain('Draft')
+})
+
 test('the records home opens the first listed type', async () => {
   const { container, search } = await view(homeAt())
   await waitFor(() => container.querySelector('[role="grid"]'))

@@ -67,11 +67,10 @@ export function turns({ context, page }) {
    * Send a message, wait for its run to be recorded, and say which model it ran on.
    * `box` is the composer to type in and `keys` what sends from it.
    */
-  async function send(text, { box = page.getByRole('textbox').first(), keys = 'Control+Enter' } = {}) {
+  async function send(text, { box = page.getByRole('textbox').first(), keys = 'Enter' } = {}) {
     const before = (await lastRunOf())?.runId
     await box.click()
     await box.fill(text)
-    // Enter edits the message; the composer sends on Control+Enter.
     await page.keyboard.press(keys)
     for (let look = 0; look < LOOKS; look++) {
       const run = await lastRunOf().catch(() => undefined)

@@ -67,7 +67,7 @@ let runEvents: string[] = []
 function titleSnapshot(threadId: string) {
   const saved = titleThreads.get(threadId)!
   return {
-    thread: { threadId, title: saved.title, revision: saved.revision, status: 'regular', selectedBranchId: 'branch-1' },
+    thread: { threadId, projectId: 'project', title: saved.title, revision: saved.revision, status: 'regular', selectedBranchId: 'branch-1', lastMessageAtMs: saved.text ? 1000 : undefined },
     messages: saved.text ? [{ messageId: 'first-user', role: 'user', parts: [{ partId: 'text-1', type: 'text', payload: { text: saved.text } }] }] : [],
   }
 }
@@ -658,13 +658,14 @@ test('existing New Chat rows get meaningful projected titles without revision wr
   const adapter = createThreadListAdapter(() => 'project')
   const page = await adapter.list()
   expect(page.threads.map((thread) => thread.title)).toEqual([
-    'Compare SQLite and PostgreSQL',
+    'New Chat',
     'My database notes',
     'New Chat',
   ])
   expect((await adapter.fetch('title-old')).title).toBe(
     'Compare SQLite and PostgreSQL',
   )
+  expect((await adapter.list()).threads[0]?.title).toBe('Compare SQLite and PostgreSQL')
   expect(titleEvents).toEqual([])
   expect(titleReads).not.toContain('title-custom')
 })
@@ -706,7 +707,7 @@ test('a concurrent custom rename wins over automatic naming', async () => {
   expect(titleEvents).toEqual(['title:1', 'send:2'])
 })
 
-test('old title recovery bounds concurrent history reads', async () => {
+test('metadata returns before the bounded background title reads finish', async () => {
   for (let index = 0; index < 9; index += 1) {
     titleThreads.set(`title-bound-${index}`, {
       title: 'New Chat',
@@ -723,7 +724,11 @@ test('old title recovery bounds concurrent history reads', async () => {
     await new Promise<void>((resolve) => releases.push(resolve))
     active -= 1
   }
-  const pending = createThreadListAdapter(() => 'project').list()
+  const adapter = createThreadListAdapter(() => 'project')
+  const firstPage = await adapter.list()
+  expect(firstPage.threads).toHaveLength(9)
+  expect(firstPage.threads.every((thread) => thread.title === 'New Chat')).toBe(true)
+  expect(titleReads).toEqual([])
   await waitFor(() => titleReads.length === 4)
   expect(active).toBe(4)
   releases.splice(0).forEach((release) => release())
@@ -731,7 +736,11 @@ test('old title recovery bounds concurrent history reads', async () => {
   releases.splice(0).forEach((release) => release())
   await waitFor(() => titleReads.length === 9)
   releases.splice(0).forEach((release) => release())
-  expect((await pending).threads).toHaveLength(9)
+  await waitFor(() => active === 0)
+  const reloaded = await adapter.list()
+  expect(reloaded.threads.map((thread) => thread.title)).toEqual(
+    Array.from({ length: 9 }, (_, index) => `Question ${index}`),
+  )
   expect(peak).toBe(4)
   expect(titleEvents).toEqual([])
 })

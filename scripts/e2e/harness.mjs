@@ -33,8 +33,11 @@ export async function servePage(name) {
   const path = `scripts/e2e/${name}/index.html`
   const built = process.argv.includes('--built')
   if (!built) {
+    const cacheDir = mkdtempSync(join(tmpdir(), `theorem-e2e-${name}-cache-`))
     const server = await createServer({
       ...config,
+      cacheDir,
+      optimizeDeps: { entries: [path] },
       server: { host: '127.0.0.1', port: 0 },
     })
     await server.listen()
@@ -42,7 +45,10 @@ export async function servePage(name) {
     return {
       built,
       url: `http://127.0.0.1:${port}/${path}`,
-      close: () => server.close(),
+      close: async () => {
+        await server.close()
+        rmSync(cacheDir, { recursive: true, force: true })
+      },
     }
   }
   const outDir = mkdtempSync(join(tmpdir(), `theorem-e2e-${name}-`))

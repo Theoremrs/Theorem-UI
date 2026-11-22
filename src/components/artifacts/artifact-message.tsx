@@ -24,7 +24,7 @@ import { recordLaunch } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import { kindLabel, useThreadArtifacts } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
-import { isLive, representationOf } from './artifact-registry'
+import { isBare, isLive, representationOf } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
 import { ArtifactActions } from './artifact-actions'
 import { focusInlineArtifact, InlineArtifact } from './inline-artifact'
@@ -47,12 +47,30 @@ export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
   const selected = useArtifactView(
     (s) => s.openId !== undefined && s.openId === artifact.artifactId,
   )
-  const { cardRef, launch } = useArtifactLaunch(artifact, !inline && !liveInline)
+  // A bare artifact is already whole in the reply: the working turn's does
+  // not also open in the panel.
+  const bare = isBare(artifact, 'preview')
+  const { cardRef, launch } = useArtifactLaunch(
+    artifact,
+    !inline && !liveInline && !bare,
+  )
 
   const versions = artifacts.get(artifact.artifactId) ?? [artifact]
   const position = versions.findIndex((v) => v.revision === artifact.revision)
   const newest = versions.at(-1) ?? artifact
   const latest = position === versions.length - 1 && newest.partId === artifact.partId
+  if (bare)
+    return (
+      <div
+        data-slot="theorem-artifact-bare"
+        data-artifact-id={artifact.artifactId}
+        {...thingProps('artifact', artifact.artifactId, {
+          label: artifact.title,
+        })}
+      >
+        <ArtifactView artifact={artifact} distance="preview" latest={latest} />
+      </div>
+    )
   const show = () => {
     launch()
     open(artifact.artifactId, latest ? undefined : artifact.revision)

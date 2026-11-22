@@ -366,7 +366,12 @@ export type LifeContext = {
   started: boolean
   /** The built-in types this workspace does not have yet, by name. */
   missing: string[]
-  types: { nameSingular: string; declared: boolean }[]
+  /**
+   * Built-in types this workspace installed before fields were added to
+   * them, with the fields each lacks. Installing again adds them.
+   */
+  outdated: { nameSingular: string; missingFields: string[] }[]
+  types: { nameSingular: string; declared: boolean; missingFields: string[] }[]
   self: SelfBinding
   access: TypeAccess[]
   /** The name this sign-in's own writes carry in a record's history. */
@@ -399,8 +404,12 @@ export function decodeLifeContext(raw: unknown): LifeContext {
     (type) => {
       if (!isObject(type)) return []
       const nameSingular = text(either(type, 'nameSingular', 'name_singular'))
+      const fields = either(type, 'missingFields', 'missing_fields')
+      const missingFields = Array.isArray(fields)
+        ? fields.filter((key): key is string => typeof key === 'string')
+        : []
       return nameSingular
-        ? [{ nameSingular, declared: type.declared === true }]
+        ? [{ nameSingular, declared: type.declared === true, missingFields }]
         : []
     },
   )
@@ -410,6 +419,12 @@ export function decodeLifeContext(raw: unknown): LifeContext {
     missing: types
       .filter((type) => !type.declared)
       .map((type) => type.nameSingular),
+    outdated: types
+      .filter((type) => type.declared && type.missingFields.length > 0)
+      .map(({ nameSingular, missingFields }) => ({
+        nameSingular,
+        missingFields,
+      })),
     types,
     self: decodeSelf(value.self),
     actor: text(value.actor) ?? null,
