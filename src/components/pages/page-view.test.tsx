@@ -342,3 +342,127 @@ test('the page history says when it did not open or keeps no version yet, and pa
     happyDom.setURL('about:blank')
   }
 })
+
+test('a previewed version that does not open says so, a refused restore says why, and one over a changed page offers the vault’s first', async () => {
+  happyDom.setURL('http://localhost:3000/')
+  const fake = fakeWorkspace({})
+  const owner = stubPageOwner(fake)
+  const path = 'Pages/Desk.page.json'
+  // The routes named here are refused in turn; every other call is the stub's.
+  const refused = new Set<string>()
+  const served = window.fetch
+  window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input))
+    const route = [...refused].find((one) => url.pathname.endsWith(one))
+    if (!route) return served(input, init)
+    return new Response(
+      JSON.stringify({
+        title: 'Unavailable',
+        status: 503,
+        detail: `The ${route} route is down.`,
+      }),
+      { status: 503, headers: { 'content-type': 'application/problem+json' } },
+    )
+  }) as typeof fetch
+  try {
+    const first = await savePage({ path, page: newPage('Desk') })
+    await patchPage({
+      path,
+      expectedRevision: first.revision,
+      ops: [{ op: 'set_title', title: 'Study' }],
+    })
+    const entry = (await fake.client.tree()).find((e) => e.path === path)!
+    const { container } = await render(
+      <VaultPage client={owner.client} entryId={entry.id} />,
+    )
+    const title = () => container.querySelector('h1')?.textContent
+    await waitFor(() => title() === 'Study')
+    const body = document.body
+    const bar = () =>
+      container.querySelector('[aria-label="Previewing an earlier version"]')
+    const alerts = () =>
+      [...container.querySelectorAll('[role="alert"]')].map(
+        (one) => one.textContent,
+      )
+    const preview = async (seq: number) => {
+      act(() => button(container, 'History')!.click())
+      await waitFor(() => body.textContent.includes(`Version ${seq}`))
+      const row = [...body.querySelectorAll('li')].find((li) =>
+        li.textContent.includes(`Version ${seq}`),
+      )!
+      act(() => button(row, 'Preview')!.click())
+      await waitFor(() => bar())
+    }
+
+    // A version that does not open says so, with the way back beside it.
+    refused.add('/revision')
+    await preview(1)
+    await waitFor(() =>
+      container.textContent.includes('This version did not open'),
+    )
+    expect(container.textContent).toContain('The /revision route is down.')
+    // The heading falls back to the page's own title while no version is read.
+    expect(title()).toBe('Study')
+    act(() => button(container, 'Back to the current version')!.click())
+    await waitFor(() => title() === 'Study' && !bar())
+    refused.delete('/revision')
+
+    // A restore the owner refuses says why, and nothing is written.
+    refused.add('/restore')
+    await preview(1)
+    await waitFor(() => title() === 'Desk')
+    act(() => button(container, 'Restore this version')!.click())
+    await waitFor(() =>
+      alerts().some((one) => one.startsWith('It was not restored')),
+    )
+    expect(alerts()).toHaveLength(1)
+    expect(alerts()[0]).toStartWith('It was not restored: Theorem answered 503')
+    expect(alerts()[0]).toContain('The /restore route is down.')
+    expect(parsePage(path, fake.text(path)!).title).toBe('Study')
+    refused.delete('/restore')
+
+    // The page changed in the vault since it was opened: the restore is a
+    // conflict, never an overwrite. The vault's is taken, then it goes through.
+    await act(() =>
+      fake.external(path, pageText({ ...newPage('Desk'), title: 'Hall' })),
+    )
+    act(() => button(container, 'Restore this version')!.click())
+    await waitFor(() => button(container, 'Use the vault’s'))
+    // The conflict is said instead of the refusal the last restore met.
+    expect(alerts()).toEqual([
+      'This page changed in the vault since you opened it. Use the vault’s version, then restore again.',
+    ])
+    expect(button(container, 'Restore this version')).toBeUndefined()
+    expect(parsePage(path, fake.text(path)!).title).toBe('Hall')
+    act(() => button(container, 'Use the vault’s')!.click())
+    await waitFor(() => button(container, 'Restore this version'))
+    // As it stands, the conflict's own error is then shown as the refusal
+    // until the next restore is asked for.
+    expect(alerts()).toEqual([
+      'It was not restored: Pages/Desk.page.json changed on disk',
+    ])
+    act(() => button(container, 'Restore this version')!.click())
+    await waitFor(() => !bar())
+    expect(parsePage(path, fake.text(path)!)).toEqual(newPage('Desk'))
+    expect(title()).toBe('Desk')
+
+    // While the page has unsaved changes a version can be looked at, not restored.
+    act(() => button(container, 'Arrange')!.click())
+    const input = await waitFor(() =>
+      container.querySelector<HTMLInputElement>(
+        'input[aria-label="Page title"]',
+      ),
+    )
+    type(input, 'Reading desk')
+    act(() => button(container, 'Done')!.click())
+    await waitFor(() => container.textContent.includes('Unsaved changes'))
+    await preview(2)
+    expect(container.textContent).toContain(
+      'Save or discard your changes to this page first.',
+    )
+    expect(button(container, 'Restore this version')!.disabled).toBe(true)
+  } finally {
+    owner.restore()
+    happyDom.setURL('about:blank')
+  }
+})
