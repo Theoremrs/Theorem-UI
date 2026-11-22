@@ -539,7 +539,11 @@ function CapabilityTableBody({
   const quick =
     declaredQuick && offered(declaredQuick) ? declaredQuick : undefined
   const actions = updateActions(definition, spec.collectionKey).filter(offered)
-  const bulkActions = actions.filter((action) => canInvoke(grant, action.key))
+  // A module-backed action runs on one record at a time: the server refuses it
+  // over several targets, which commit as one shared patch.
+  const bulkActions = actions.filter(
+    (action) => canInvoke(grant, action.key) && !action.implementation,
+  )
 
   /**
    * The envelope the composer carries: what is on screen, and no record bodies.

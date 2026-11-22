@@ -925,6 +925,36 @@ test('two selected records run one update action over both, at the revisions sho
   )
 })
 
+test('the bar leaves out a module-backed action, which runs on one record at a time', async () => {
+  // Its module answers for one record and the targets commit one shared
+  // patch, so the server refuses it over several targets.
+  const base = describeResult()
+  described = {
+    ...base,
+    definition: {
+      ...base.definition,
+      actions: base.definition.actions.map((action) =>
+        action.key === 'complete'
+          ? {
+              ...action,
+              implementation: {
+                moduleId: 'capmod:done',
+                export: 'effects',
+                writes: ['status'],
+              },
+            }
+          : action,
+      ),
+    },
+  }
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await tick(container, 0, 1)
+  const bar = await waitFor(() => bulkBar(container))
+  expect(byLabel(bar, 'Complete the 2 selected')).toBeNull()
+  expect(byLabel(bar, 'Edit the 2 selected')).toBeTruthy()
+})
+
 test('the bar offers only the actions the grant reaches', async () => {
   const { container } = await showTable(undefined, {
     principal: 'user:sam',
