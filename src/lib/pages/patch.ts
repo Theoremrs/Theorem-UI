@@ -32,34 +32,56 @@ function pairList(
   return before.every((one, i) => pairComponent(one, after[i]!, ops))
 }
 
+/** Same type, id and keys outside its props, with no prop removed: what a shallow merge keeps. */
+function sameShape(before: ComponentData, after: ComponentData): boolean {
+  if (before.type !== after.type || before.props.id !== after.props.id)
+    return false
+  const { props: _beforeProps, ...beforeRest } = before
+  const { props: _afterProps, ...afterRest } = after
+  return (
+    isEqual(beforeRest, afterRest) &&
+    Object.keys(before.props).every((key) => key in after.props)
+  )
+}
+
+/** A slot on both sides whose children kept their places. */
+const pairSlots = (was: unknown, value: unknown, ops: PageOp[]): boolean =>
+  isSlot(was) && isSlot(value) && pairList(was, value, ops)
+
 function pairComponent(
   before: ComponentData,
   after: ComponentData,
   ops: PageOp[],
 ): boolean {
-  if (before.type !== after.type || before.props.id !== after.props.id)
-    return false
-  const { props: _beforeProps, ...beforeRest } = before
-  const { props: _afterProps, ...afterRest } = after
-  if (!isEqual(beforeRest, afterRest)) return false
+  if (!sameShape(before, after)) return false
   const changed: Record<string, unknown> = {}
-  for (const key of Object.keys(before.props))
-    if (!(key in after.props)) return false
   for (const [key, value] of Object.entries(after.props)) {
     const was = before.props[key]
     if (isEqual(was, value)) continue
     // A slot whose children kept their places is paired child by child, so a
     // change inside it is that child's own op, never its parent's.
-    if (isSlot(was) && isSlot(value)) {
-      if (!pairList(was, value, ops)) return false
-      continue
-    }
-    if (isSlot(was) || isSlot(value)) return false
-    changed[key] = value
+    if (isSlot(was) || isSlot(value)) {
+      if (!pairSlots(was, value, ops)) return false
+    } else changed[key] = value
   }
   if (Object.keys(changed).length)
     ops.push({ op: 'set_props', componentId: before.props.id, props: changed })
   return true
+}
+
+/** The legacy zones: the same names, each one's list paired in place. */
+function pairZones(
+  before: PageDocument,
+  after: PageDocument,
+  ops: PageOp[],
+): boolean {
+  const zonesBefore = before.layout.zones ?? {}
+  const zonesAfter = after.layout.zones ?? {}
+  const names = Object.keys(zonesBefore)
+  if (!isEqual(names.sort(), Object.keys(zonesAfter).sort())) return false
+  return names.every((name) =>
+    pairList(zonesBefore[name]!, zonesAfter[name]!, ops),
+  )
 }
 
 /**
@@ -83,12 +105,8 @@ export function patchOps(
     ops.push({ op: 'set_title', title: after.title })
   if (before.pinned !== after.pinned)
     ops.push({ op: 'set_pinned', pinned: after.pinned })
-  if (!pairList(before.layout.content, after.layout.content, ops)) return null
-  const zonesBefore = before.layout.zones ?? {}
-  const zonesAfter = after.layout.zones ?? {}
-  const names = Object.keys(zonesBefore)
-  if (!isEqual(names.sort(), Object.keys(zonesAfter).sort())) return null
-  for (const name of names)
-    if (!pairList(zonesBefore[name]!, zonesAfter[name]!, ops)) return null
-  return ops
+  return pairList(before.layout.content, after.layout.content, ops) &&
+    pairZones(before, after, ops)
+    ? ops
+    : null
 }
