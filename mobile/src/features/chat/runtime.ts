@@ -20,7 +20,7 @@ import { onDraftChanged, readDraft, setCurrentThread, writeDraft } from '@/lib/d
 import { clearAccountData, db } from '@/lib/local-db'
 import { SignInError } from '@/lib/oauth'
 import { createJournalStore } from '@/lib/journal-store'
-import { theorem } from '@/lib/theorem'
+import { describeError, principalOf, theorem } from '@/lib/theorem'
 import { phoneTurnOptions } from '../phone-actions/calendar'
 // intake/queue imports conversations() from this module; the two touch each other
 // only inside functions, so the cycle resolves at call time rather than at load.
@@ -143,7 +143,9 @@ export function useConversation(threadId: string): ConversationView {
   }, [threadId, gen])
 
   const queue: QueueState = useSyncExternalStore(
-    useCallback((listener) => outbox().subscribe(threadId, listener), [threadId]),
+    // gen, too: a reset discards the entries that hold this view's listeners, so
+    // the view must subscribe again against the fresh ones.
+    useCallback((listener) => outbox().subscribe(threadId, listener), [threadId, gen]),
     () => outbox().snapshot(threadId),
   )
 
@@ -236,25 +238,27 @@ export function useConversation(threadId: string): ConversationView {
       try {
         if (recovery === 'sign-in') {
           // Signing in again replaces the tokens in place, without a signed-out
-          // transition, so the account-change cleanup in _layout does not run.
-          // Nothing the old account queued, drafted or journaled may carry over
-          // or go out under the new credentials: clear it exactly as a sign-out
-          // does, unless both bearers are proved to be the same person. When an
-          // identity cannot be established — the old token already refused, or a
-          // transient failure on either lookup — the clear is the safe answer:
-          // it costs the person's own leftovers at worst, while skipping it could
-          // send one account's queue under another. No reconnect follows an
-          // unproven identity: reconnecting without a verified account is what
-          // would dispatch the queue under it.
+          // transition, so the account-change cleanup in _layout does not run,
+          // and a still-live session could dispatch while the swap happens.
+          // The decision is therefore made inside signIn's beforeReplace hook:
+          // the candidate tokens are probed while the OLD bearer is still the
+          // installed one, and unless the candidate is proved to be the same
+          // person, the prior account's queued messages, drafts and journals
+          // are cleared — exactly as a sign-out does — before anything can
+          // serve a request under them. A failed lookup clears too: unknown
+          // identity is never assumed safe. If the hook throws, signIn leaves
+          // the old session installed.
           const before = await currentPrincipal()
-          await signIn()
-          const after = await currentPrincipal()
-          if (!before || !after || before !== after) {
+          let cleared = false
+          await signIn(async (tokens) => {
+            const after = await principalOf(tokens)
+            if (before && after && before === after) return
             resetConversations()
             clearAccountData()
             intake.reset()
-            return
-          }
+            cleared = true
+          })
+          if (cleared) return
         }
         conversations().reconnect(threadId)
       } catch (error) {

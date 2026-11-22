@@ -222,10 +222,15 @@ export class Outbox {
     try {
       // The queued id is the command id: asking again would be the same command.
       await lease.send(message.text, { id: message.id, ...this.options.extras?.() })
+      // A reset (sign-out, or an account change cleared during sign-in) discarded
+      // this entry while the send was in flight: its outcome belongs to the old
+      // account and updates nothing, not even a fresh entry for the same thread.
+      if (this.entries.get(threadId) !== entry) return
       this.apply(threadId, { type: 'sent', id: message.id })
       // A fast run may already be settled; free the queue at once then.
       if (settled(lease.conversation.state)) this.apply(threadId, { type: 'run-settled' })
     } catch (error) {
+      if (this.entries.get(threadId) !== entry) return
       // The SDK's rule for its own journal: a definite no is dropped and its
       // words go back; anything else leaves the outcome unknown, so the message
       // keeps its id and waits rather than being sent again under a fresh one.

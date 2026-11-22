@@ -77,11 +77,21 @@ export default function ChatScreen() {
     ) : (
       <>
         {wide ? null : <Stack.Screen options={{ title: 'New conversation' }} />}
-        {/* The project this screen shows, plus whether the URL specifically
-            requested one: the composer defaults to what is in view, and waits
-            for a named project rather than defaulting to a recipient the
-            opening would replace. */}
-        <NewConversation onOpen={open} project={project} requested={!!params.project} />
+        {/* The composer's recipient: the project the URL specifically names, once
+            it resolves — or nothing when it cannot, which blocks Send with a
+            warning instead of silently falling back to a project the person did
+            not ask for — and otherwise the project this screen shows. `requested`
+            is known from the first render, so a named project is waited for
+            rather than defaulted past. */}
+        <NewConversation
+          onOpen={open}
+          project={
+            params.project
+              ? projects.data?.find((item) => item.projectId === params.project)
+              : project
+          }
+          requested={!!params.project}
+        />
       </>
     )
   ) : failure ? (
