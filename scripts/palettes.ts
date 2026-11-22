@@ -307,7 +307,10 @@ const modes: Array<Mode & { hue: number }> = [
       'sheet-to': 0.698,
       'ink-faint-top': 0.367,
       'ink-faint-bottom': 0.246,
-      ink: 0.21,
+      // A clear step (1.5:1) above ink-muted, which is already as light as
+      // 4.5:1 on surface-selected allows; at 0.21 the two read as one colour
+      // (1.08:1). Owner, 2026-11-21.
+      ink: 0.1,
       'ink-muted': 0.274,
       'ink-faint': 0.384,
       'line-control': 0.338,

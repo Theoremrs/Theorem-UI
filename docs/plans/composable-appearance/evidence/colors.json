@@ -24600,8 +24600,8 @@
           },
           {
             "name": "ink",
-            "raw": "#32302e",
-            "value": "#32302e",
+            "raw": "#171615",
+            "value": "#171615",
             "valid": true
           },
           {
@@ -24859,61 +24859,61 @@
           {
             "name": "graph-label",
             "raw": "var(--ink)",
-            "value": "#32302e",
+            "value": "#171615",
             "valid": true
           },
           {
             "name": "term-bg",
-            "raw": "#292623",
-            "value": "#292623",
+            "raw": "#171412",
+            "value": "#171412",
             "valid": true
           },
           {
             "name": "term-raised",
-            "raw": "#332f2b",
-            "value": "#332f2b",
+            "raw": "#211c19",
+            "value": "#211c19",
             "valid": true
           },
           {
             "name": "term-line",
-            "raw": "#48433e",
-            "value": "#48433e",
+            "raw": "#342f2b",
+            "value": "#342f2b",
             "valid": true
           },
           {
             "name": "term-ink",
-            "raw": "#d1cfcd",
-            "value": "#d1cfcd",
+            "raw": "#bebcba",
+            "value": "#bebcba",
             "valid": true
           },
           {
             "name": "term-bright",
-            "raw": "#ebe9e8",
-            "value": "#ebe9e8",
+            "raw": "#d5d4d3",
+            "value": "#d5d4d3",
             "valid": true
           },
           {
             "name": "term-muted",
-            "raw": "#999695",
-            "value": "#999695",
+            "raw": "#8a8785",
+            "value": "#8a8785",
             "valid": true
           },
           {
             "name": "term-sage",
-            "raw": "#8aa8a0",
-            "value": "#8aa8a0",
+            "raw": "#7a9890",
+            "value": "#7a9890",
             "valid": true
           },
           {
             "name": "term-gold",
-            "raw": "#d6bc8a",
-            "value": "#d6bc8a",
+            "raw": "#c3aa79",
+            "value": "#c3aa79",
             "valid": true
           },
           {
             "name": "term-error",
-            "raw": "#e08a8f",
-            "value": "#e08a8f",
+            "raw": "#ce7a7f",
+            "value": "#ce7a7f",
             "valid": true
           }
         ]
@@ -24927,10 +24927,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-neutral",
         "background": "#b4b0ac",
-        "ratio": 6.099746
+        "ratio": 8.387524
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -24951,10 +24951,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-neutral",
         "background": "#b4b0ac",
-        "ratio": 6.099746
+        "ratio": 8.387524
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25119,10 +25119,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-sidebar",
         "background": "#b0aca8",
-        "ratio": 5.828104
+        "ratio": 8.014001
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25143,10 +25143,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-sidebar",
         "background": "#b0aca8",
-        "ratio": 5.828104
+        "ratio": 8.014001
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25311,10 +25311,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-composer",
         "background": "#c2bebb",
-        "ratio": 7.120061
+        "ratio": 9.790521
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25335,10 +25335,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-composer",
         "background": "#c2bebb",
-        "ratio": 7.120061
+        "ratio": 9.790521
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25503,10 +25503,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-user-message",
         "background": "#c2bebb",
-        "ratio": 7.120061
+        "ratio": 9.790521
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25527,10 +25527,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-user-message",
         "background": "#c2bebb",
-        "ratio": 7.120061
+        "ratio": 9.790521
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25695,10 +25695,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-neutral",
         "background": "#b4b0ac",
-        "ratio": 6.099746
+        "ratio": 8.387524
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25719,10 +25719,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-neutral",
         "background": "#b4b0ac",
-        "ratio": 6.099746
+        "ratio": 8.387524
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25887,10 +25887,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "popover",
         "background": "#c2bebb",
-        "ratio": 7.120061
+        "ratio": 9.790521
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25911,10 +25911,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "popover",
         "background": "#c2bebb",
-        "ratio": 7.120061
+        "ratio": 9.790521
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26079,10 +26079,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-artifact",
         "background": "#bab6b2",
-        "ratio": 6.522416
+        "ratio": 8.968722
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26103,10 +26103,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-artifact",
         "background": "#bab6b2",
-        "ratio": 6.522416
+        "ratio": 8.968722
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26271,10 +26271,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-hover",
         "background": "#bbb7b3",
-        "ratio": 6.594649
+        "ratio": 9.068047
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26295,10 +26295,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-hover",
         "background": "#bbb7b3",
-        "ratio": 6.594649
+        "ratio": 9.068047
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26463,10 +26463,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-selected",
         "background": "#a39f9a",
-        "ratio": 4.996188
+        "ratio": 6.870064
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26487,10 +26487,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#171615",
         "backgroundRole": "surface-selected",
         "background": "#a39f9a",
-        "ratio": 4.996188
+        "ratio": 6.870064
       },
       "evidence": {
         "mode": "[data-palette='stone']",

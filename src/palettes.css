@@ -294,7 +294,7 @@
   --sheet-to: #aeaaa6;
   --ink-faint-top: #595552;
   --ink-faint-bottom: #3b3836;
-  --ink: #32302e;
+  --ink: #171615;
   --ink-muted: #383532;
   --ink-faint: #5d5956;
   --line-control: #514e4b;
@@ -339,15 +339,15 @@
   --link: var(--teal-ink);
   --graph-label: var(--ink);
   --popover: var(--surface-raised);
-  --term-bg: #292623;
-  --term-raised: #332f2b;
-  --term-line: #48433e;
-  --term-ink: #d1cfcd;
-  --term-bright: #ebe9e8;
-  --term-muted: #999695;
-  --term-sage: #8aa8a0;
-  --term-gold: #d6bc8a;
-  --term-error: #e08a8f;
+  --term-bg: #171412;
+  --term-raised: #211c19;
+  --term-line: #342f2b;
+  --term-ink: #bebcba;
+  --term-bright: #d5d4d3;
+  --term-muted: #8a8785;
+  --term-sage: #7a9890;
+  --term-gold: #c3aa79;
+  --term-error: #ce7a7f;
 }
 
 .dark[data-palette='stone'] {

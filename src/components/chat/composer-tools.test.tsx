@@ -207,7 +207,8 @@ test('a slash lists the native tools, with their first sentence and what they ch
   const { container } = await mount(<Harness text="" sent={[]} />)
   await type(inputOf(container), '/')
   await waitFor(() => options().length === 12)
-  expect(container.textContent).toContain('Theorem tools')
+  // The rows say what the list holds; no heading explains it.
+  expect(container.textContent).not.toContain('Theorem tools')
   const rows = options().map((option) => option.textContent)
   expect(rows).toEqual([
     'newStart a new chat.',
@@ -235,15 +236,17 @@ test('a slash lists the native tools, with their first sentence and what they ch
   expect(requests.some(({ pathname }) => pathname.startsWith('/mcp'))).toBe(false)
 })
 
-test('the tools heading shows only while the slash list is open', async () => {
+test('why the tools are missing shows only while the slash list is open', async () => {
+  toolsStatus = 404
+  const missing = 'This Theorem does not list its tools yet.'
   const { container } = await mount(<Harness text="" sent={[]} />)
-  expect(container.textContent).not.toContain('Theorem tools')
+  expect(container.textContent).not.toContain(missing)
   await type(inputOf(container), '/')
-  await waitFor(() => options().length === 12)
-  expect(container.textContent).toContain('Theorem tools')
+  await waitFor(() => options().length === 8)
+  expect(container.textContent).toContain(missing)
   await type(inputOf(container), 'Hello')
   await waitFor(() => !options().length)
-  expect(container.textContent).not.toContain('Theorem tools')
+  expect(container.textContent).not.toContain(missing)
 })
 
 test('typing after the slash narrows the list, best name match first', async () => {
