@@ -3,7 +3,6 @@
 // lib/capabilities/api. Nothing here calls a model; a click runs one declared action through the
 // same route the agent uses.
 import {
-  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -16,9 +15,10 @@ import {
   invoke,
   queryCollection,
   queryView,
+  readReceipt,
   readRecordAnywhere,
 } from '@/lib/capabilities/api'
-import type { InvokeInput } from '@/lib/capabilities/api'
+import type { InvokeInput, RecordScanResume } from '@/lib/capabilities/api'
 import {
   QUERY_LIMIT_DEFAULT,
   QUERY_LIMIT_MAX,
@@ -46,8 +46,20 @@ export const capabilityKeys = {
     [...capabilityKeys.instance(instanceId), 'describe'] as const,
   rows: (instanceId: string, viewKey: string) =>
     [...capabilityKeys.instance(instanceId), 'rows', viewKey] as const,
-  record: (instanceId: string, recordId: string) =>
-    [...capabilityKeys.instance(instanceId), 'record', recordId] as const,
+  /** A record, by how it was asked for: a collection hint or a resumed scan is its own answer. */
+  record: (
+    instanceId: string,
+    recordId: string,
+    collectionKey = '',
+    resume: RecordScanResume | undefined = undefined,
+  ) =>
+    [
+      ...capabilityKeys.instance(instanceId),
+      'record',
+      recordId,
+      collectionKey,
+      resume ?? null,
+    ] as const,
 }
 
 /** What this caller may see, listed once for a picker or a page's settings help. */
@@ -75,7 +87,20 @@ export function useCapabilityDescribe(instanceId: string | undefined) {
   })
 }
 
-/** One view's rows, page by page. */
+/** A view that answers with the cursor it was asked for would page in a loop. */
+export class EchoedCursorError extends Error {
+  constructor(readonly cursor: string) {
+    super(
+      'The view answered with the same page cursor it was asked for, so its next page cannot be read.',
+    )
+  }
+}
+
+/**
+ * One view's rows, page by page. A switched view starts from no rows rather
+ * than keeping the last view's: what a module selects and puts in context has
+ * to be the rows of the view it names.
+ */
 export function useCapabilityRows(
   instanceId: string | undefined,
   viewKey: string | undefined,
@@ -83,14 +108,18 @@ export function useCapabilityRows(
 ) {
   return useInfiniteQuery({
     queryKey: capabilityKeys.rows(instanceId ?? '', viewKey ?? ''),
-    queryFn: ({ pageParam }) =>
-      queryView(instanceId!, viewKey!, {
+    queryFn: async ({ pageParam }) => {
+      const page = await queryView(instanceId!, viewKey!, {
         cursor: pageParam,
         limit: QUERY_LIMIT_DEFAULT,
-      }),
+      })
+      if (pageParam !== undefined && page.nextCursor === pageParam)
+        throw new EchoedCursorError(pageParam)
+      return page
+    },
     initialPageParam: undefined as string | undefined,
+    // An absent cursor is the last page.
     getNextPageParam: (last: QueryResult) => last.nextCursor,
-    placeholderData: keepPreviousData,
     enabled: enabled && !!instanceId && !!viewKey,
     staleTime: 10_000,
     retry,
@@ -151,9 +180,15 @@ export function useCapabilityRecord(
   definition: CapabilityDefinition | undefined,
   recordId: string | undefined,
   collectionKey?: string | undefined,
+  resume?: RecordScanResume,
 ) {
   return useQuery({
-    queryKey: capabilityKeys.record(instanceId ?? '', recordId ?? ''),
+    queryKey: capabilityKeys.record(
+      instanceId ?? '',
+      recordId ?? '',
+      collectionKey,
+      resume,
+    ),
     // A record that is not there answers null: React Query treats an undefined
     // result as a failed query, and "not there" is an answer, not a failure.
     queryFn: async () =>
@@ -162,6 +197,7 @@ export function useCapabilityRecord(
         definition!,
         recordId!,
         collectionKey,
+        resume,
       )) ?? null,
     enabled: !!instanceId && !!definition && !!recordId,
     staleTime: 10_000,
@@ -179,6 +215,24 @@ export function useCapabilityInvoke() {
       // at the revisions the journal reports.
       if (receipt.status === 'finished' && receipt.instanceId)
         void client.invalidateQueries({
+          queryKey: capabilityKeys.instance(receipt.instanceId),
+        })
+    },
+  })
+}
+
+/**
+ * Read a journaled call's receipt back. One that has finished has moved the
+ * records it named, so the instance is read again exactly as after `invoke`.
+ */
+export function useCapabilityReceipt() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (at: { instanceId: string; recordId: string }) =>
+      readReceipt(at.instanceId, at.recordId),
+    onSuccess: (receipt: InvocationReceipt) => {
+      if (receipt.status === 'finished' && receipt.instanceId)
+        return client.invalidateQueries({
           queryKey: capabilityKeys.instance(receipt.instanceId),
         })
     },

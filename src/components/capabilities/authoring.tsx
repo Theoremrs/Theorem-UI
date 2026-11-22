@@ -134,28 +134,34 @@ function Choice({
   )
 }
 
+type Status = {
+  kind: 'pending' | 'saved' | 'failed'
+  message: string
+  /** A read that failed and can be asked again. */
+  retry?: () => void
+}
+
 /** One control's line: what it is doing, and the refusal that stopped it. */
-function StatusLine({
-  status,
-}: {
-  status: { kind: 'pending' | 'saved' | 'failed'; message: string } | undefined
-}) {
+function StatusLine({ status }: { status: Status | undefined }) {
   if (!status) return null
   return (
-    <p
+    <div
       role={status.kind === 'failed' ? 'alert' : 'status'}
       className={
         status.kind === 'failed'
-          ? 'rounded-md bg-error-container px-2 py-1.5 text-xs text-error-ink'
-          : 'rounded-md bg-raised px-2 py-1.5 text-xs text-ink-muted'
+          ? 'flex items-center gap-2 rounded-md bg-error-container px-2 py-1.5 text-xs text-error-ink'
+          : 'flex items-center gap-2 rounded-md bg-raised px-2 py-1.5 text-xs text-ink-muted'
       }
     >
-      {status.message}
-    </p>
+      <span className="min-w-0 flex-1">{status.message}</span>
+      {status.retry && (
+        <Button size="xs" variant="outline" onClick={status.retry}>
+          Read it again
+        </Button>
+      )}
+    </div>
   )
 }
-
-type Status = { kind: 'pending' | 'saved' | 'failed'; message: string }
 
 /**
  * The authoring controls for one instance, opened from the table module that
@@ -181,8 +187,12 @@ export function AuthoringDialog({
 }) {
   const [tab, setTab] = useState<Tab>('add')
   const [status, setStatus] = useState<Status | undefined>()
+  // Reading the current definition back after a conflict: nothing is sent
+  // until it has answered, so a retry is authored against what is really there.
+  const [refreshing, setRefreshing] = useState(false)
   const authoring = useCapabilityAuthor(instanceId)
   const client = useQueryClient()
+  const busy = authoring.isPending || refreshing
 
   const collections = definition.collections.map((collection) => ({
     value: collection.key,
@@ -193,39 +203,72 @@ export function AuthoringDialog({
     label: view.label,
   }))
 
-  const submit = async (op: PatchOp, what: string) => {
-    if (!expectedDefinitionId) {
+  /** Read the instance again, and say so only once its definition is back. */
+  const reread = async (conflict: string) => {
+    setRefreshing(true)
+    setStatus({
+      kind: 'pending',
+      message: `${conflict} Reading the current definition…`,
+    })
+    try {
+      await client.invalidateQueries(
+        { queryKey: capabilityKeys.instance(instanceId) },
+        { throwOnError: true },
+      )
+      setStatus({
+        kind: 'failed',
+        message: `${conflict} The current definition has been read again: check your change against the fields now shown and submit it once more.`,
+      })
+    } catch (error) {
+      setStatus({
+        kind: 'failed',
+        message: `${conflict} Reading the current definition failed too: ${refusalMessage(error, 'The definition')}`,
+        retry: () => void reread(conflict),
+      })
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  /**
+   * Send one op. `base` is the definition id the change was drafted against,
+   * when the control holds a draft; otherwise the one on screen now. Answers
+   * whether the definition took it.
+   */
+  const submit = async (
+    op: PatchOp,
+    what: string,
+    base?: string,
+  ): Promise<boolean> => {
+    const expected = base ?? expectedDefinitionId
+    if (!expected) {
       setStatus({
         kind: 'failed',
         message:
           'Nothing is loaded to author against. Reload the view, then try again.',
       })
-      return
+      return false
     }
     setStatus({ kind: 'pending', message: `${what}…` })
     try {
       const result = await authoring.mutateAsync({
-        expectedDefinitionId,
+        expectedDefinitionId: expected,
         ops: [op],
       })
       setStatus({
         kind: 'saved',
         message: `${what} · the definition is now ${result.definitionId}.`,
       })
+      return true
     } catch (error) {
-      if (refusalCode(error) === codes.DEFINITION_CONFLICT) {
-        // Read the current definition back before asking again, so the retry is
-        // authored against what is really there.
-        void client.invalidateQueries({
-          queryKey: capabilityKeys.instance(instanceId),
-        })
+      if (refusalCode(error) === codes.DEFINITION_CONFLICT)
+        await reread(refusalMessage(error, 'Authoring'))
+      else
         setStatus({
           kind: 'failed',
-          message: `${refusalMessage(error, 'Authoring')} The current definition has been read again: check your change against the fields now shown and submit it once more.`,
+          message: refusalMessage(error, 'Authoring'),
         })
-        return
-      }
-      setStatus({ kind: 'failed', message: refusalMessage(error, 'Authoring') })
+      return false
     }
   }
 
@@ -252,7 +295,7 @@ export function AuthoringDialog({
           <AddField
             collections={collections}
             schemas={schemas}
-            busy={authoring.isPending}
+            busy={busy}
             onSubmit={(op) => submit(op, 'Field added')}
           />
         )}
@@ -260,7 +303,7 @@ export function AuthoringDialog({
           <RenameField
             collections={collections}
             schemas={schemas}
-            busy={authoring.isPending}
+            busy={busy}
             onSubmit={(op) => submit(op, 'Field renamed')}
           />
         )}
@@ -270,8 +313,9 @@ export function AuthoringDialog({
             schemas={schemas}
             views={views}
             startViewKey={viewKey}
-            busy={authoring.isPending}
-            onSubmit={(op) => submit(op, 'View filter set')}
+            definitionId={expectedDefinitionId}
+            busy={busy}
+            onSubmit={(op, base) => submit(op, 'View filter set', base)}
           />
         )}
 
@@ -315,7 +359,16 @@ function AddField({
   if (kind === 'reference' && !referenced) problems.push('what it refers to')
 
   return (
-    <div className="flex flex-col gap-2">
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (problems.length || busy) return
+        onSubmit(
+          addFieldOp(collectionKey, { key, label: label.trim(), fieldType }),
+        )
+      }}
+    >
       <Row label="Collection">
         <Choice
           label="Collection"
@@ -389,18 +442,14 @@ function AddField({
       )}
       <Button
         size="sm"
+        type="submit"
         disabled={problems.length > 0 || busy}
         aria-busy={busy}
         aria-label="Add optional field"
-        onClick={() =>
-          onSubmit(
-            addFieldOp(collectionKey, { key, label: label.trim(), fieldType }),
-          )
-        }
       >
         Add field
       </Button>
-    </div>
+    </form>
   )
 }
 
@@ -424,7 +473,14 @@ function RenameField({
   const [label, setLabel] = useState('')
 
   return (
-    <div className="flex flex-col gap-2">
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (!chosen || !label.trim() || busy) return
+        onSubmit(renameFieldOp(collectionKey, chosen.key, label.trim()))
+      }}
+    >
       <Row label="Collection">
         <Choice
           label="Collection"
@@ -461,16 +517,13 @@ function RenameField({
       </Row>
       <Button
         size="sm"
+        type="submit"
         disabled={!chosen || !label.trim() || busy}
         aria-busy={busy}
-        onClick={() =>
-          chosen &&
-          onSubmit(renameFieldOp(collectionKey, chosen.key, label.trim()))
-        }
       >
         Rename field
       </Button>
-    </div>
+    </form>
   )
 }
 
@@ -479,12 +532,18 @@ function RenameField({
  * an or or not group is what this editor cannot show yet, and the dialog says so
  * rather than dropping one quietly. Editing another view's rows does not keep
  * these.
+ *
+ * Saving replaces the whole filter, so edited rows keep the definition id they
+ * were drafted against. When another author moves the definition on meanwhile,
+ * the editor shows the filter now stored and asks the person to keep their rows
+ * or take the stored ones before anything is sent; nothing rebases quietly.
  */
 function ViewFilter({
   definition,
   schemas,
   views,
   startViewKey,
+  definitionId,
   busy,
   onSubmit,
 }: {
@@ -492,8 +551,10 @@ function ViewFilter({
   schemas: CollectionSchema[]
   views: Array<{ value: string; label: string }>
   startViewKey: string
+  /** The definition id on screen now. */
+  definitionId: string
   busy: boolean
-  onSubmit: (op: PatchOp) => void
+  onSubmit: (op: PatchOp, base: string) => Promise<boolean>
 }) {
   const [viewKey, setViewKey] = useState(startViewKey)
   const view =
@@ -505,6 +566,8 @@ function ViewFilter({
   const [editing, setEditing] = useState<{
     viewKey: string
     rows: FilterRow[]
+    /** The definition id the rows were drafted against. */
+    definitionId: string
   }>()
   const fields = useMemo(
     () => fieldsByKey(schemaFor(schemas, view?.collectionKey ?? '')),
@@ -516,9 +579,18 @@ function ViewFilter({
         This definition declares no view yet.
       </p>
     )
-  const held = editing?.viewKey === view.key ? editing.rows : declared.rows
+  const drafting = editing?.viewKey === view.key ? editing : undefined
+  const held = drafting ? drafting.rows : declared.rows
+  const base = drafting?.definitionId ?? definitionId
+  const stale = !!drafting && drafting.definitionId !== definitionId
   const setRows = (updater: (rows: FilterRow[]) => FilterRow[]) =>
-    setEditing({ viewKey: view.key, rows: updater(held) })
+    setEditing({ viewKey: view.key, rows: updater(held), definitionId: base })
+  /** A row the person changed: it is written from its text, not as it was read. */
+  const edited = (row: FilterRow, change: Partial<FilterRow>): FilterRow => {
+    const next = { ...row, ...change }
+    delete next.original
+    return next
+  }
 
   const fieldFor = (key: string) => fields.get(key)
   const producing: QueryFilter = rowsFilter(held, fieldFor)
@@ -528,7 +600,23 @@ function ViewFilter({
   }))
 
   return (
-    <div className="flex flex-col gap-2">
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (busy || stale || held.some((row) => !row.fieldKey)) return
+        // Once saved, the stored filter is these rows: the draft is done,
+        // unless it was changed again while the save was running.
+        const submitted = held
+        void onSubmit(setViewFilterOp(view.key, producing), base).then(
+          (taken) =>
+            taken &&
+            setEditing((current) =>
+              current?.rows === submitted ? undefined : current,
+            ),
+        )
+      }}
+    >
       <Row label="View">
         <Choice
           label="View"
@@ -542,6 +630,35 @@ function ViewFilter({
         group is a follow-up, so this editor shows none and saving replaces the
         whole filter with the rows below.
       </p>
+      {stale && (
+        <div
+          role="alert"
+          className="flex flex-col gap-1.5 rounded-md bg-error-container px-2 py-1.5 text-xs text-error-ink"
+        >
+          <span>
+            The definition changed while you were editing this filter. It now
+            reads: {describeFilter(view.filter)}.
+          </span>
+          <span className="flex gap-1.5">
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() =>
+                setEditing({ ...drafting, definitionId: definitionId })
+              }
+            >
+              Keep my conditions
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => setEditing(undefined)}
+            >
+              Use the current filter
+            </Button>
+          </span>
+        </div>
+      )}
       {declared.groups > 0 && (
         <p
           role="alert"
@@ -571,12 +688,11 @@ function ViewFilter({
                 setRows((rows) =>
                   rows.map((one, i) =>
                     i === at
-                      ? {
-                          ...one,
+                      ? edited(one, {
                           fieldKey: next,
                           op: opsForField(fieldFor(next))[0] ?? 'eq',
                           value: '',
-                        }
+                        })
                       : one,
                   ),
                 )
@@ -589,7 +705,9 @@ function ViewFilter({
               onChange={(next) =>
                 setRows((rows) =>
                   rows.map((one, i) =>
-                    i === at ? { ...one, op: next as FilterRow['op'] } : one,
+                    i === at
+                      ? edited(one, { op: next as FilterRow['op'] })
+                      : one,
                   ),
                 )
               }
@@ -602,13 +720,16 @@ function ViewFilter({
                 onChange={(event) =>
                   setRows((rows) =>
                     rows.map((one, i) =>
-                      i === at ? { ...one, value: event.target.value } : one,
+                      i === at
+                        ? edited(one, { value: event.target.value })
+                        : one,
                     ),
                   )
                 }
               />
             )}
             <Button
+              type="button"
               size="xs"
               variant="ghost"
               aria-label={`Remove condition ${at + 1}`}
@@ -620,6 +741,7 @@ function ViewFilter({
         )
       })}
       <Button
+        type="button"
         size="xs"
         variant="outline"
         className="self-start"
@@ -646,12 +768,12 @@ function ViewFilter({
       </p>
       <Button
         size="sm"
-        disabled={busy || held.some((row) => !row.fieldKey)}
+        type="submit"
+        disabled={busy || stale || held.some((row) => !row.fieldKey)}
         aria-busy={busy}
-        onClick={() => onSubmit(setViewFilterOp(view.key, producing))}
       >
         Save filter
       </Button>
-    </div>
+    </form>
   )
 }

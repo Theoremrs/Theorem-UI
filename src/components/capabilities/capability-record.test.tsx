@@ -266,7 +266,9 @@ test('a change no declared action writes is refused here, and says what the acti
   await waitFor(() => container.textContent.includes('unsaved'))
   await act(async () => button(container, 'Save Due')?.click())
   await waitFor(() => container.querySelector('[role="alert"]'))
-  expect(container.textContent).toContain('No declared action covers due_at')
+  expect(container.textContent).toContain(
+    'No declared action your grant reaches covers due_at',
+  )
   expect(container.textContent).toContain('Complete (status, completed_at)')
   expect(invoked().length).toBe(0)
 })
@@ -357,4 +359,59 @@ test('a grant without read is a permission state, and nothing is walked', async 
     container.textContent.includes('does not include reading'),
   )
   expect(calls.filter((call) => call.path.endsWith('/query')).length).toBe(0)
+})
+
+test('an action that would write something other than was entered asks before it runs', async () => {
+  // The only action over `title` writes a literal, not what is typed.
+  described = {
+    ...describeResult(),
+    definition: {
+      ...describeResult().definition,
+      actions: [
+        {
+          key: 'reset_title',
+          label: 'Reset title',
+          collectionKey: 'tasks',
+          creates: false,
+          input: [],
+          preconditions: [],
+          effects: [
+            { fieldKey: 'title', source: 'literal', value: 'Untitled' },
+          ],
+        },
+      ],
+    },
+  }
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => editMark(container, 'Title')?.click())
+  const field = await waitFor(() => input(container, 'Title'))
+  type(field, 'Ship it')
+  pressEnter(field)
+  await waitFor(() => container.textContent.includes('unsaved'))
+  await act(async () => button(container, 'Save Title')?.click())
+  await waitFor(() => container.textContent.includes('not what you entered'))
+  expect(container.textContent).toContain(
+    'Reset title writes title as Untitled',
+  )
+  expect(invoked().length).toBe(0)
+  // Keeping on editing runs nothing; going ahead runs the named action once.
+  await act(async () => button(container, 'Keep editing')?.click())
+  expect(container.textContent).not.toContain('not what you entered')
+  await act(async () => button(container, 'Save Title')?.click())
+  await act(async () => button(container, 'Reset title anyway')?.click())
+  const call = await waitFor(() => invoked()[0])
+  expect(call.body!.actionKey).toBe('reset_title')
+  expect(call.body!.expectedRevision).toBe(6)
+  expect(invoked().length).toBe(1)
+})
+
+test('what the module published is withdrawn once it no longer shows the record', async () => {
+  const { container, outputs } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await waitFor(() => outputs.context?.at(-1))
+  expect(outputs.selected?.at(-1)).toBeDefined()
+  cleanup()
+  expect(outputs.context?.at(-1)).toBeUndefined()
+  expect(outputs.selected?.at(-1)).toBeUndefined()
 })

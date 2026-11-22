@@ -1,18 +1,42 @@
 // SOURCING: the native input and select styling pages/resource-field.tsx uses for a settings field
-// (its `fieldControl` classes), over an action's declared inputs from lib/capabilities/contract. The
-// form holds text and parses it through lib/capabilities/model's `actionValues`, so what reaches the
+// (its `fieldControl` classes), over an action's declared inputs from lib/capabilities/contract;
+// date-fns formats a stored instant as the local wall time a datetime-local control holds. The form
+// holds text and parses it through lib/capabilities/model's `actionValues`, so what reaches the
 // route is one of the types the executor's vocabulary accepts, and a value that does not parse is
 // refused at the field that holds it rather than sent and guessed at.
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { format, isValid, parseISO } from 'date-fns'
 import { Button } from '@/components/ui/button'
-import type { ActionSpec, InputField } from '@/lib/capabilities/contract'
-import { actionValues, valueText } from '@/lib/capabilities/model'
+import type {
+  ActionSpec,
+  CapabilityRecordRow,
+  CollectionSchema,
+  InputField,
+} from '@/lib/capabilities/contract'
+import {
+  actionValues,
+  inputsFor,
+  referencedCollections,
+  rowTitle,
+  schemaFor,
+  valueText,
+} from '@/lib/capabilities/model'
 import { fieldControl } from '@/components/pages/resource-field'
+import { useCapabilityPickers } from './queries'
 
 /** What a reference input picks from, by collection key. */
 export type PickerOptions = (
   collectionKey: string,
 ) => Array<{ id: string; label: string }>
+
+/**
+ * A stored instant as the local wall time a datetime-local control shows:
+ * `2026-11-20T10:30:00Z` reads as 05:30 in New York, not as 10:30 everywhere.
+ */
+export function localTimestampText(value: string): string {
+  const at = parseISO(value)
+  return isValid(at) ? format(at, "yyyy-MM-dd'T'HH:mm") : value
+}
 
 /** The text an input starts from: the value it stands for, in its wire form. */
 function initialTexts(
@@ -24,7 +48,7 @@ function initialTexts(
     const value = defaults?.[field.key]
     texts[field.key] =
       field.fieldType.kind === 'timestamp' && typeof value === 'string'
-        ? value.slice(0, 16)
+        ? localTimestampText(value)
         : valueText(value)
   }
   return texts
@@ -181,12 +205,38 @@ export function ActionForm({
 }) {
   const [texts, setTexts] = useState(() => initialTexts(action, defaults))
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // The inputs the person changed. An untouched timestamp goes back as the
+  // instant it was, not as the minute-precision local text its control shows.
+  const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set())
 
   const submit = () => {
     const parsed = actionValues(action, texts)
     if (!parsed.ok) return setErrors(parsed.errors)
     setErrors({})
-    onSubmit(parsed.values)
+    const values = { ...parsed.values }
+    for (const field of action.input) {
+      const held = defaults?.[field.key]
+      if (
+        field.fieldType.kind === 'timestamp' &&
+        !touched.has(field.key) &&
+        typeof held === 'string'
+      )
+        values[field.key] = held
+    }
+    onSubmit(values)
+  }
+
+  const change = (key: string, text: string) => {
+    setTexts((held) => ({ ...held, [key]: text }))
+    setTouched((held) => (held.has(key) ? held : new Set(held).add(key)))
+    // The field's own refusal goes as it is edited; the others stay until the
+    // next submit answers them.
+    setErrors((held) => {
+      if (!(key in held)) return held
+      const rest = { ...held }
+      delete rest[key]
+      return rest
+    })
   }
 
   if (!action.input.length)
@@ -223,9 +273,7 @@ export function ActionForm({
             options={options}
             invalid={errors[field.key] !== undefined}
             autoFocus={field === action.input[0]}
-            onChange={(text) =>
-              setTexts((held) => ({ ...held, [field.key]: text }))
-            }
+            onChange={(text) => change(field.key, text)}
           />
           {errors[field.key] && (
             <span role="alert" className="text-error-ink">
@@ -256,5 +304,54 @@ export function ActionForm({
         )}
       </div>
     </form>
+  )
+}
+
+/**
+ * One action's form over a record, with a picker over each collection its
+ * inputs reference. A picker is one page of that collection, labelled the way
+ * a row is labelled everywhere else. The form starts from the record's values,
+ * read under the input names the action's effects give them.
+ */
+export function ActionCall({
+  instanceId,
+  action,
+  row,
+  schemas,
+  submitLabel,
+  busy,
+  onSubmit,
+  onCancel,
+}: {
+  instanceId: string
+  action: ActionSpec
+  row?: CapabilityRecordRow
+  schemas: CollectionSchema[]
+  submitLabel: string
+  busy: boolean
+  onSubmit: (values: Record<string, unknown>) => void
+  onCancel?: () => void
+}) {
+  const keys = useMemo(() => referencedCollections(action), [action])
+  const pickers = useCapabilityPickers(instanceId, keys)
+  const options: PickerOptions = (collectionKey) =>
+    (pickers.data?.[collectionKey] ?? []).map((target) => ({
+      id: target.id,
+      label: rowTitle(schemaFor(schemas, collectionKey)?.fields ?? [], target),
+    }))
+  const defaults = useMemo(
+    () => (row ? inputsFor(action, row.fields) : undefined),
+    [action, row],
+  )
+  return (
+    <ActionForm
+      action={action}
+      defaults={defaults}
+      options={options}
+      submitLabel={submitLabel}
+      busy={busy}
+      onSubmit={onSubmit}
+      onCancel={onCancel}
+    />
   )
 }

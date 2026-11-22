@@ -13,8 +13,12 @@ export type Status = {
   message: string
   /** A conflict the person answers by reading the current state again. */
   reload?: boolean
-  /** A call the journal holds but has not finished: its receipt can be read back. */
-  receipt?: { instanceId: string; recordId: string }
+  /**
+   * A call the journal holds but has not finished: its receipt can be read
+   * back. `form` names the form the call came from, so the answer closes that
+   * one and no other.
+   */
+  receipt?: { instanceId: string; recordId: string; form?: number }
 }
 
 export function StatusLine({

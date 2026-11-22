@@ -115,21 +115,26 @@ const nextOf = (page: QueryResult, asked: string | undefined) => {
 
 /**
  * Every page of a query, in order, following `nextCursor` until the answer
- * names none. `limit` bounds how many pages are walked, so a module that asks
- * for a collection reads a bounded amount of it rather than all of it.
+ * names none. `maxPages` bounds how many pages are walked, so a module that
+ * asks for a collection reads a bounded amount of it rather than all of it;
+ * `from` starts the walk at a cursor an earlier walk stopped at. The walk
+ * returns the cursor it did not follow when the bound cut it short, and
+ * nothing when the answer ran out, so a caller can tell "not there" from "not
+ * looked at yet".
  */
 export async function* queryPages(
   request: Omit<QueryRequest, 'cursor'>,
-  { maxPages = 20 }: { maxPages?: number } = {},
-): AsyncGenerator<QueryResult> {
-  let cursor: string | undefined
+  { maxPages = 20, from }: { maxPages?: number; from?: string } = {},
+): AsyncGenerator<QueryResult, string | undefined> {
+  let cursor = from
   for (let page = 0; page < maxPages; page++) {
-    const result = await query({ ...request, cursor })
+    const result = await query({ ...request, ...(cursor ? { cursor } : {}) })
     yield result
     const next = nextOf(result, cursor)
-    if (!next) return
+    if (!next) return undefined
     cursor = next
   }
+  return cursor
 }
 
 // ── Invocation ──────────────────────────────────────────────────────────────
@@ -185,50 +190,80 @@ export const readRecord = (
   read(`${CAPABILITIES}/instances/${id(instanceId)}/records/${id(recordId)}`)
 
 /**
+ * Where a bounded collection scan stopped, by collection key: the cursor of the
+ * first page it did not read. A lookup resumed from it reads on from there.
+ */
+export type RecordScanResume = Record<string, string>
+
+/**
+ * What looking a record up answers: the row and the collection that holds it,
+ * or the row with the collections the bounded scan has not finished, so the
+ * module can say so and read on. A record that is not there answers undefined.
+ */
+export type RecordLookup =
+  | { kind: 'found'; row: CapabilityRecordRow; collectionKey: string }
+  | {
+      kind: 'incomplete'
+      row: CapabilityRecordRow
+      resume: RecordScanResume
+    }
+
+/**
  * The record a detail module shows, with the collection that holds it.
  *
  * The record route names no collection in its answer, and a module needs one:
- * the resolved field schemas and the update actions are per collection. So a
- * caller that names a collection reads the record straight away; one that names
- * only a record id first finds which collection holds it by walking the
- * definition's collections, bounded, then reads the row from the record route —
- * which stays the one source of a row on both paths. A record that is absent, or
- * that its context policy withholds from this caller, answers undefined: "not
- * there" is an answer, not a failure. Locating a record's collection without a
- * scan is a recorded backend follow-up.
+ * the resolved field schemas and the update actions are per collection. So the
+ * row is read by id first, which settles whether it is there at all; a caller
+ * that names a collection (or a definition with only one) is answered at once,
+ * and one that names only a record id then finds which collection holds it by
+ * walking the definition's collections, each bounded. A walk the bound cut
+ * short is an incomplete lookup with where to resume, never "not there". A
+ * record that is absent, or that its context policy withholds from this
+ * caller, answers undefined: "not there" is an answer, not a failure. Locating
+ * a record's collection without a scan is a recorded backend follow-up.
  */
 export async function readRecordAnywhere(
   instanceId: string,
   definition: CapabilityDefinition,
   recordId: string,
   collectionKey?: string,
-): Promise<{ row: CapabilityRecordRow; collectionKey: string } | undefined> {
-  /** The row by id, or undefined when the instance says it is not there. */
-  const byId = async () => {
-    try {
-      return await readRecord(instanceId, recordId)
-    } catch (error) {
-      if (isRecordMissing(error)) return undefined
-      throw error
-    }
+  resume?: RecordScanResume,
+): Promise<RecordLookup | undefined> {
+  let row: CapabilityRecordRow
+  try {
+    row = await readRecord(instanceId, recordId)
+  } catch (error) {
+    if (isRecordMissing(error)) return undefined
+    throw error
   }
+  if (collectionKey) return { kind: 'found', row, collectionKey }
+  const only = definition.collections.length === 1
+  if (only && !resume)
+    return { kind: 'found', row, collectionKey: definition.collections[0]!.key }
 
-  if (collectionKey) {
-    const row = await byId()
-    return row ? { row, collectionKey } : undefined
-  }
-
-  for (const collection of definition.collections) {
-    for await (const page of queryPages({
-      instanceId,
-      query: { collectionKey: collection.key, filter: matchAll() },
-    })) {
-      if (!page.records.some((record) => record.id === recordId)) continue
-      const row = await byId()
-      return row ? { row, collectionKey: collection.key } : undefined
+  const cut: RecordScanResume = {}
+  const scanned = resume
+    ? definition.collections.filter((one) => Object.hasOwn(resume, one.key))
+    : definition.collections
+  for (const collection of scanned) {
+    const pages = queryPages(
+      {
+        instanceId,
+        query: { collectionKey: collection.key, filter: matchAll() },
+      },
+      { from: resume?.[collection.key] },
+    )
+    let step = await pages.next()
+    while (!step.done) {
+      if (step.value.records.some((record) => record.id === recordId))
+        return { kind: 'found', row, collectionKey: collection.key }
+      step = await pages.next()
     }
+    if (step.value) cut[collection.key] = step.value
   }
-  return undefined
+  return Object.keys(cut).length
+    ? { kind: 'incomplete', row, resume: cut }
+    : undefined
 }
 
 // ── Refusals ────────────────────────────────────────────────────────────────

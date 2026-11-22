@@ -156,6 +156,14 @@ describe('the context envelope', () => {
       'filtered',
       'truncated',
     ])
-    expect(referenceKey(bare)).toBe('capability:tracker/main/tasks')
+    // Only a record opens outside a view, so its key names the record: two
+    // records of one collection ride side by side.
+    expect(referenceKey(bare)).toBe('capability:tracker/main/tasks#rec-1,rec-2')
+    const other = capabilityContextReference({
+      ...envelope,
+      viewKey: undefined,
+      selected: [{ id: 'rec-3', revision: 1 }],
+    })
+    expect(referenceKey(other)).not.toBe(referenceKey(bare))
   })
 })

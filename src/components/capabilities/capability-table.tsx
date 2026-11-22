@@ -2,7 +2,7 @@
 // capability row reads as the CRM's do; coss ui Empty and Checkbox, the app's Button, Skeleton and
 // Table; the page module boundary (lib/modules/registry) and its composer reference path. Data is
 // only ever lib/capabilities/api: one view's rows, one declared action per click, no model call.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { askAbout } from '@/components/chat/composer-references'
 import {
   Empty,
@@ -30,11 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  isReloadConflict,
-  readReceipt,
-  refusalMessage,
-} from '@/lib/capabilities/api'
+import { isReloadConflict, refusalMessage } from '@/lib/capabilities/api'
 import {
   canInvoke,
   columnsFor,
@@ -44,7 +40,6 @@ import {
   parseCapabilityRecordItem,
   quickAction,
   registerRowOf,
-  referencedCollections,
   rowTitle,
   schemaFor,
   siblingViews,
@@ -55,7 +50,6 @@ import { codes } from '@/lib/capabilities/contract'
 import type {
   ActionSpec,
   CapabilityRecordRow,
-  CollectionSchema,
   DescribeResult,
   Grant,
   InvocationReceipt,
@@ -66,17 +60,17 @@ import { capabilityContextReference } from '@/lib/capabilities/reference'
 import type { ModuleViewProps } from '@/lib/modules/registry'
 import { useModuleAction } from '../pages/page-runtime'
 import { usePageId } from '../pages/page-route'
-import { ActionForm } from './action-form'
-import type { PickerOptions } from './action-form'
+import { ActionCall } from './action-form'
 import { AuthoringDialog } from './authoring'
 import { DescribeState, Loading, PermissionState, StatusLine } from './states'
 import type { Status } from './states'
 import {
+  EchoedCursorError,
   flattenRows,
   useCapabilityDescribe,
   useCapabilityDiscover,
   useCapabilityInvoke,
-  useCapabilityPickers,
+  useCapabilityReceipt,
   useCapabilityRows,
 } from './queries'
 
@@ -93,9 +87,9 @@ function RowMark({
   revision: number
   moved: number | undefined
 }) {
-  // The mark goes when the rows come back at that revision: the new state is
-  // then the row's own, not a note beside it.
-  if (moved === undefined || moved === revision) return null
+  // The mark goes when the rows come back at that revision or a later one: the
+  // new state is then the row's own, not a note beside it.
+  if (moved === undefined || revision >= moved) return null
   return (
     <span className="shrink-0 rounded-md bg-raised px-1.5 py-0.5 text-xs text-ink-muted">
       saved · r{moved}
@@ -172,7 +166,10 @@ interface RowProps {
   actions: ActionSpec[]
   grant: Grant
   moved: Moved
+  /** The row a call is running on, for its busy mark. */
   busy: string | undefined
+  /** Whether any call is running: one call at a time, so one click is one invocation. */
+  pending: boolean
   onCall: (call: { action: ActionSpec; row: CapabilityRecordRow }) => void
 }
 
@@ -198,6 +195,7 @@ function RowTable({
   grant,
   moved,
   busy,
+  pending,
   onCall,
 }: RowProps) {
   return (
@@ -207,6 +205,7 @@ function RowTable({
           <TableHead className="w-8">
             <span className="sr-only">Select</span>
           </TableHead>
+          {columns.length === 0 && <TableHead>Record</TableHead>}
           {columns.map((field) => (
             <TableHead key={field.key}>{field.label}</TableHead>
           ))}
@@ -230,6 +229,19 @@ function RowTable({
                 onCheckedChange={(checked) => onToggle(row, checked === true)}
               />
             </TableCell>
+            {columns.length === 0 && (
+              // A view with no columns to show still opens its records, by id
+              // as the list draws one with no title column.
+              <TableCell>
+                <button
+                  type="button"
+                  onClick={() => onOpen(row)}
+                  className="max-w-full rounded-md text-left font-mono text-xs outline-none focus-visible:outline-2 focus-visible:outline-focus"
+                >
+                  {row.id}
+                </button>
+              </TableCell>
+            )}
             {columns.map((field, at) => (
               <TableCell key={field.key}>
                 {at === 0 ? (
@@ -253,9 +265,7 @@ function RowTable({
                     key={action.key}
                     size="xs"
                     variant="outline"
-                    disabled={
-                      !canInvoke(grant, action.key) || busy !== undefined
-                    }
+                    disabled={!canInvoke(grant, action.key) || pending}
                     title={
                       canInvoke(grant, action.key)
                         ? `At revision ${row.revision}`
@@ -290,6 +300,7 @@ function RowList({
   grant,
   moved,
   busy,
+  pending,
   onCall,
 }: RowProps) {
   const title = columns[0]
@@ -333,7 +344,7 @@ function RowList({
               key={action.key}
               size="xs"
               variant="outline"
-              disabled={!canInvoke(grant, action.key) || busy !== undefined}
+              disabled={!canInvoke(grant, action.key) || pending}
               title={
                 canInvoke(grant, action.key)
                   ? `At revision ${row.revision}`
@@ -351,50 +362,6 @@ function RowList({
 }
 
 /**
- * One action's form, with a picker over each collection its inputs reference.
- * A picker is one page of that collection, labelled the way a row is labelled
- * everywhere else.
- */
-function ActionCall({
-  instanceId,
-  action,
-  row,
-  schemas,
-  submitLabel,
-  busy,
-  onSubmit,
-  onCancel,
-}: {
-  instanceId: string
-  action: ActionSpec
-  row?: CapabilityRecordRow
-  schemas: CollectionSchema[]
-  submitLabel: string
-  busy: boolean
-  onSubmit: (values: Record<string, unknown>) => void
-  onCancel?: () => void
-}) {
-  const keys = useMemo(() => referencedCollections(action), [action])
-  const pickers = useCapabilityPickers(instanceId, keys)
-  const options: PickerOptions = (collectionKey) =>
-    (pickers.data?.[collectionKey] ?? []).map((target) => ({
-      id: target.id,
-      label: rowTitle(schemaFor(schemas, collectionKey)?.fields ?? [], target),
-    }))
-  return (
-    <ActionForm
-      action={action}
-      defaults={row?.fields}
-      options={options}
-      submitLabel={submitLabel}
-      busy={busy}
-      onSubmit={onSubmit}
-      onCancel={onCancel}
-    />
-  )
-}
-
-/**
  * One view's rows, its quick-add, its selection and its actions. Everything
  * here is read through the instance's own contract: the view's rows, the
  * definition's actions, this caller's grant. No call here reaches a model.
@@ -402,10 +369,13 @@ function ActionCall({
 function CapabilityTableBody({
   view,
   described,
+  describedAt,
   start,
 }: {
   view: ModuleViewProps
   described: DescribeResult
+  /** When the describe answer was last read, so an authoring base can be paired with it. */
+  describedAt: number
   start: ViewSpec
 }) {
   const { output, emit } = view
@@ -429,18 +399,48 @@ function CapabilityTableBody({
     rowsQuery.data,
   )
   const invoking = useCapabilityInvoke()
+  // The authoring dialog edits describe's definition, but describe names no
+  // definition id: the rows do. Their id as it stood when describe last
+  // answered is the version that definition can be no older than, so a patch
+  // names it. Rows that moved on later leave it older, and the server refuses
+  // the patch as stale and the dialog reads both again, rather than a newer id
+  // carrying conditions read from an older definition.
+  const [authoringBase, setAuthoringBase] = useState({
+    at: describedAt,
+    definitionId,
+  })
+  if (
+    authoringBase.at !== describedAt ||
+    (!authoringBase.definitionId && definitionId)
+  )
+    setAuthoringBase({ at: describedAt, definitionId })
 
   const [selection, setSelection] = useState<Record<string, true>>({})
   const [lastMarked, setLastMarked] = useState<string>()
   const [status, setStatus] = useState<Status>()
   const [moved, setMoved] = useState<Moved>({})
-  const [adding, setAdding] = useState(false)
+  // Each open form has its own number, so the answer to a call made from one
+  // closes that form and never a newer one opened since.
+  const forms = useRef(0)
+  const [adding, setAdding] = useState<number>()
   const [calling, setCalling] = useState<{
     action: ActionSpec
     row: CapabilityRecordRow
+    form: number
   }>()
   const [authoring, setAuthoring] = useState(false)
   const [busy, setBusy] = useState<string>()
+  // Whether a call is running, held apart from the row it runs on: a create
+  // has no row, and its form must not send a second invocation meanwhile. The
+  // ref answers a second click before React has drawn the first one's state.
+  const [pending, setPending] = useState(false)
+  const running = useRef(false)
+  const receipts = useCapabilityReceipt()
+  // The status on screen when a receipt read answers, which may have moved on.
+  const shownStatus = useRef(status)
+  useEffect(() => {
+    shownStatus.current = status
+  }, [status])
 
   // A selection only holds rows still on screen: a refreshed page that dropped
   // one drops it from the envelope and the outputs too.
@@ -448,7 +448,7 @@ function CapabilityTableBody({
     () => rows.filter((row) => selection[row.id]),
     [rows, selection],
   )
-  const quick = quickAction(definition, spec.collectionKey)
+  const quick = quickAction(definition, spec.collectionKey, grant)
   const actions = updateActions(definition, spec.collectionKey)
 
   /** The envelope the composer carries: what is on screen, and no record bodies. */
@@ -522,6 +522,15 @@ function CapabilityTableBody({
   useModuleAction('select', (payload) => {
     const named = parseCapabilityRecordItem(payload)
     if (!named) return
+    // An item scoped to another instance or collection is not one of these
+    // rows, whatever its id; a bare id is read as one of them.
+    const scoped = named.instanceId !== '' || named.collectionKey !== ''
+    if (
+      scoped &&
+      (named.instanceId !== instanceId ||
+        named.collectionKey !== spec.collectionKey)
+    )
+      return
     setSelection((held) => ({ ...held, [named.recordId]: true }))
     setLastMarked(named.recordId)
   })
@@ -531,12 +540,16 @@ function CapabilityTableBody({
   })
 
   /** What a receipt means, as the one line the person reads. */
-  const report = (receipt: InvocationReceipt): boolean => {
+  const report = (receipt: InvocationReceipt, form?: number): boolean => {
     if (receipt.status === 'dispatched') {
       setStatus({
         kind: 'pending',
         message: `${receipt.actionKey} is journaled and has not finished, so whether it took effect is not yet known.`,
-        receipt: { instanceId: receipt.instanceId, recordId: receipt.recordId },
+        receipt: {
+          instanceId: receipt.instanceId,
+          recordId: receipt.recordId,
+          form,
+        },
       })
       return false
     }
@@ -565,10 +578,21 @@ function CapabilityTableBody({
     return false
   }
 
+  /** Close the form a finished call came from, if it is still the one open. */
+  const closeForm = (form: number | undefined) => {
+    if (form === undefined) return
+    setAdding((open) => (open === form ? undefined : open))
+    setCalling((open) => (open?.form === form ? undefined : open))
+  }
+
   const run = async (
     call: { action: ActionSpec; row?: CapabilityRecordRow },
     values: Record<string, unknown>,
+    form?: number,
   ) => {
+    if (running.current) return
+    running.current = true
+    setPending(true)
     setBusy(call.row?.id)
     setStatus({ kind: 'pending', message: `${call.action.label}…` })
     try {
@@ -580,10 +604,7 @@ function CapabilityTableBody({
           ? { recordId: call.row.id, expectedRevision: call.row.revision }
           : {}),
       })
-      if (report(receipt)) {
-        setCalling(undefined)
-        setAdding(false)
-      }
+      if (report(receipt, form)) closeForm(form)
     } catch (error) {
       setStatus({
         kind: 'failed',
@@ -591,26 +612,49 @@ function CapabilityTableBody({
         reload: isReloadConflict(error),
       })
     } finally {
+      running.current = false
+      setPending(false)
       setBusy(undefined)
     }
   }
 
+  /**
+   * Read a journaled call's receipt back. A finished one takes the same path as
+   * a call that finished at once: the rows are read again and its form closes.
+   * An answer that comes after the status moved on to another call is dropped.
+   */
   const check = async () => {
     const at = status?.receipt
     if (!at) return
+    const current = () => {
+      const shown = shownStatus.current?.receipt
+      return (
+        shown?.instanceId === at.instanceId && shown.recordId === at.recordId
+      )
+    }
     try {
-      report(await readReceipt(at.instanceId, at.recordId))
+      const receipt = await receipts.mutateAsync(at)
+      if (!current()) return
+      if (report(receipt, at.form)) closeForm(at.form)
     } catch (error) {
+      if (!current()) return
       setStatus({
         kind: 'failed',
         message: refusalMessage(error, 'The receipt'),
         reload: isReloadConflict(error),
+        // Still the same call: its receipt can be read again.
+        receipt: at,
       })
     }
   }
 
+  /**
+   * Read the rows again. An open action form was filled against the row as it
+   * was, so it closes: the person reopens it over the row as it now is.
+   */
   const reload = () => {
     setStatus(undefined)
+    setCalling(undefined)
     void rowsQuery.refetch()
   }
 
@@ -631,7 +675,8 @@ function CapabilityTableBody({
    * opens its form first.
    */
   const call = (target: { action: ActionSpec; row: CapabilityRecordRow }) => {
-    if (target.action.input.length) return setCalling(target)
+    if (target.action.input.length)
+      return setCalling({ ...target, form: ++forms.current })
     void run(target, {})
   }
 
@@ -645,6 +690,7 @@ function CapabilityTableBody({
     grant,
     moved,
     busy,
+    pending,
     onCall: call,
   }
 
@@ -673,15 +719,15 @@ function CapabilityTableBody({
       )}
       {quick && (
         <div className="flex shrink-0 flex-col gap-2 border-b border-separator px-3 py-2">
-          {adding ? (
+          {adding !== undefined ? (
             <ActionCall
               instanceId={instanceId}
               action={quick}
               schemas={described.collectionSchemas}
               submitLabel={quick.label}
-              busy={busy !== undefined}
-              onSubmit={(values) => void run({ action: quick }, values)}
-              onCancel={() => setAdding(false)}
+              busy={pending}
+              onSubmit={(values) => void run({ action: quick }, values, adding)}
+              onCancel={() => setAdding(undefined)}
             />
           ) : (
             <Button
@@ -694,7 +740,7 @@ function CapabilityTableBody({
                   ? undefined
                   : 'Your grant does not reach this action'
               }
-              onClick={() => setAdding(true)}
+              onClick={() => setAdding(++forms.current)}
             >
               <Icon.Add className="size-3.5" />
               {quick.label}
@@ -735,20 +781,33 @@ function CapabilityTableBody({
         ) : (
           <RowList {...rowProps} />
         )}
-        {rowsQuery.hasNextPage && (
-          <div className="flex justify-center p-2">
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={rowsQuery.isFetchingNextPage}
-              onClick={() => void rowsQuery.fetchNextPage()}
-            >
-              {rowsQuery.isFetchingNextPage
-                ? 'Loading…'
-                : `Load more (${total} in all)`}
-            </Button>
-          </div>
+        {rowsQuery.isFetchNextPageError && (
+          <p role="alert" className="p-2 text-xs text-error-ink">
+            {rowsQuery.error instanceof EchoedCursorError
+              ? rowsQuery.error.message
+              : refusalMessage(rowsQuery.error, 'The next page')}
+          </p>
         )}
+        {/* A server that echoed its cursor cannot move on from it; any other
+            failed page can be asked for again. */}
+        {rowsQuery.hasNextPage &&
+          !(
+            rowsQuery.isFetchNextPageError &&
+            rowsQuery.error instanceof EchoedCursorError
+          ) && (
+            <div className="flex justify-center p-2">
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={rowsQuery.isFetchingNextPage}
+                onClick={() => void rowsQuery.fetchNextPage()}
+              >
+                {rowsQuery.isFetchingNextPage
+                  ? 'Loading…'
+                  : `Load more (${total} in all)`}
+              </Button>
+            </div>
+          )}
         {truncated && (
           <p className="p-2 text-xs text-ink-faint">
             The page cut the answer short: {rows.length} of {total} rows are
@@ -772,8 +831,8 @@ function CapabilityTableBody({
               row={calling.row}
               schemas={described.collectionSchemas}
               submitLabel={calling.action.label}
-              busy={busy !== undefined}
-              onSubmit={(values) => void run(calling, values)}
+              busy={pending}
+              onSubmit={(values) => void run(calling, values, calling.form)}
               onCancel={() => setCalling(undefined)}
             />
           </DialogContent>
@@ -785,7 +844,7 @@ function CapabilityTableBody({
           definition={definition}
           schemas={described.collectionSchemas}
           viewKey={spec.key}
-          expectedDefinitionId={definitionId}
+          expectedDefinitionId={authoringBase.definitionId}
           onClose={() => setAuthoring(false)}
         />
       )}
@@ -858,6 +917,7 @@ export function CapabilityTableModule(view: ModuleViewProps) {
       key={`${instanceId}:${start.key}`}
       view={view}
       described={described.data}
+      describedAt={described.dataUpdatedAt}
       start={start}
     />
   )

@@ -37,11 +37,15 @@ export function referenceKey(reference: ComposerReference): string {
     case 'record':
       return `record:${resource.objectType}/${resource.objectId}`
     // A capability selection: the turn re-reads it through the instance's query,
-    // so one envelope per instance and view, refreshed in place as it moves.
+    // so one envelope per instance and view, refreshed in place as it moves. A
+    // record opened outside any view is its own reference, so two records of
+    // one collection ride side by side rather than replacing each other.
     case 'capability':
-      return `capability:${resource.instanceId}/${resource.collectionKey}${
-        resource.viewKey ? `/${resource.viewKey}` : ''
-      }`
+      return resource.viewKey
+        ? `capability:${resource.instanceId}/${resource.collectionKey}/${resource.viewKey}`
+        : `capability:${resource.instanceId}/${resource.collectionKey}#${resource.selected
+            .map((one) => one.id)
+            .join(',')}`
     default:
       return `${resourceKey(resource)}${at}`
   }

@@ -135,15 +135,22 @@ export const fieldsByKey = (schema: CollectionSchema | undefined) =>
 
 /**
  * The action a quick-add form runs: the first create action over this
- * collection. None means the definition declares no way to add a record here,
- * so the module offers no quick-add rather than inventing a write.
+ * collection that this caller's grant reaches, else the first one at all, so a
+ * caller who may not add still sees the declared way to and why it is shut.
+ * None means the definition declares no way to add a record here, so the
+ * module offers no quick-add rather than inventing a write.
  */
 export function quickAction(
   definition: CapabilityDefinition,
   collectionKey: string,
+  grant?: { invoke: string[] },
 ): ActionSpec | undefined {
-  return definition.actions.find(
+  const creates = definition.actions.filter(
     (action) => action.creates && action.collectionKey === collectionKey,
+  )
+  return (
+    (grant && creates.find((action) => canInvoke(grant, action.key))) ??
+    creates[0]
   )
 }
 
@@ -168,47 +175,118 @@ const covers = (action: ActionSpec, edited: string[]) =>
     action.effects.some((effect) => effect.fieldKey === key),
   )
 
+/** The input an action reads one field's new value from, when an effect writes it from one. */
+const inputKeyOf = (action: ActionSpec, fieldKey: string) => {
+  for (const effect of action.effects)
+    if (effect.fieldKey === fieldKey && effect.source === 'input')
+      return effect.key
+  return undefined
+}
+
+/** Two wire values as equal as their JSON says: what an effect writes is JSON. */
+const sameValue = (a: unknown, b: unknown) =>
+  JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+
 /**
- * The action a save runs, for the fields a person edited:
+ * A field the action writes with something other than what the person entered:
+ * a literal that differs from the edit, or the moment the action runs.
+ */
+export type SaveOverride =
+  | { fieldKey: string; writes: 'literal'; value: unknown }
+  | { fieldKey: string; writes: 'now' }
+
+function overridesOf(
+  action: ActionSpec,
+  edited: Record<string, unknown>,
+): SaveOverride[] {
+  const overrides: SaveOverride[] = []
+  for (const effect of action.effects) {
+    if (!Object.hasOwn(edited, effect.fieldKey)) continue
+    if (effect.source === 'now')
+      overrides.push({ fieldKey: effect.fieldKey, writes: 'now' })
+    else if (
+      effect.source === 'literal' &&
+      !sameValue(effect.value, edited[effect.fieldKey])
+    )
+      overrides.push({
+        fieldKey: effect.fieldKey,
+        writes: 'literal',
+        value: effect.value,
+      })
+  }
+  return overrides
+}
+
+/**
+ * The action a save runs, for the fields a person edited and the values they
+ * edited them to:
  *
- * 1. a declared action whose effects are exactly the edited fields — the
- *    deliberate change ("Complete" writing status and completed_at) is what the
- *    definition means by it, and running it keeps its preconditions and lifecycle;
- * 2. otherwise a generic update action, which in this contract declares itself
- *    by taking an input for every edited field;
- * 3. otherwise nothing. The module then says no declared action covers the
+ * 1. a declared action whose effects are exactly the edited fields and write
+ *    the values entered — the deliberate change ("Complete" writing status and
+ *    completed_at) is what the definition means by it, and running it keeps its
+ *    preconditions and lifecycle;
+ * 2. otherwise a generic update action: one that writes every edited field from
+ *    an input and writes nothing but inputs, so what the person entered is what
+ *    is written and nothing else changes;
+ * 3. otherwise the exact action whose literal or `now` effects would write
+ *    something else, with those fields named in `overrides`, so the module
+ *    shows what it will write and asks before running it;
+ * 4. otherwise nothing. The module then says no declared action covers the
  *    change rather than writing through a second path the executor does not know.
+ *
+ * `allowed` narrows the candidates to the actions this caller may run, so a
+ * save never picks one the grant refuses while another would have done.
  */
 export function saveAction(
   definition: CapabilityDefinition,
   collectionKey: string,
-  editedKeys: string[],
-): ActionSpec | undefined {
+  edited: Record<string, unknown>,
+  allowed: (action: ActionSpec) => boolean = () => true,
+): { action: ActionSpec; overrides: SaveOverride[] } | undefined {
+  const editedKeys = Object.keys(edited)
   if (!editedKeys.length) return undefined
-  const candidates = updateActions(definition, collectionKey)
-  const exact = candidates.find(
+  const candidates = updateActions(definition, collectionKey).filter(allowed)
+  const exact = candidates.filter(
     (action) =>
       covers(action, editedKeys) &&
       effectKeys(action).length === editedKeys.length,
   )
-  if (exact) return exact
-  return candidates.find((action) =>
-    editedKeys.every((key) => action.input.some((field) => field.key === key)),
+  const faithful = exact.find((action) => !overridesOf(action, edited).length)
+  if (faithful) return { action: faithful, overrides: [] }
+  // A generic update writes only what it is given: an action that also writes
+  // a literal or the time it runs would change a field nobody edited unasked.
+  const generic = candidates.find(
+    (action) =>
+      action.effects.every((effect) => effect.source === 'input') &&
+      editedKeys.every((key) => inputKeyOf(action, key) !== undefined),
   )
+  if (generic) return { action: generic, overrides: [] }
+  const declared = exact[0]
+  return declared
+    ? { action: declared, overrides: overridesOf(declared, edited) }
+    : undefined
 }
 
 /**
- * The inputs one action call carries: each edited field's new value, by the
- * action's input key. A literal or `now` effect takes no input, and an input the
+ * The inputs one action call carries for a record's field values: each input
+ * an effect writes a field from takes that field's value, under the input's own
+ * key (`{ fieldKey: 'title', source: 'input', key: 'new_title' }` sends the
+ * title as `new_title`). An input no effect reads falls back to the field of
+ * its own name. A literal or `now` effect takes no input, and an input the
  * action does not declare is not sent (a strict server refuses it).
  */
 export function inputsFor(
   action: ActionSpec,
-  values: Record<string, unknown>,
+  fields: Record<string, unknown>,
 ): Record<string, unknown> {
   const inputs: Record<string, unknown> = {}
-  for (const field of action.input)
-    if (Object.hasOwn(values, field.key)) inputs[field.key] = values[field.key]
+  for (const input of action.input) {
+    const effect = action.effects.find(
+      (one) => one.source === 'input' && one.key === input.key,
+    )
+    const fieldKey = effect?.fieldKey ?? input.key
+    if (Object.hasOwn(fields, fieldKey)) inputs[input.key] = fields[fieldKey]
+  }
   return inputs
 }
 
@@ -250,11 +328,14 @@ export function parseValue(type: CapabilityFieldType, text: string): Parsed {
       if (!trimmed) return absent
       const n = Number(trimmed)
       if (!Number.isFinite(n)) return { ok: false, message: 'not a number' }
-      return type.kind === 'integer'
-        ? Number.isInteger(n)
-          ? { ok: true, value: n }
-          : { ok: false, message: 'not a whole number' }
-        : { ok: true, value: n }
+      if (type.kind !== 'integer') return { ok: true, value: n }
+      if (!Number.isInteger(n))
+        return { ok: false, message: 'not a whole number' }
+      // Past 2^53 a number no longer holds every whole value: 9007199254740993
+      // would be stored as ...992, so it is refused rather than rounded.
+      return Number.isSafeInteger(n)
+        ? { ok: true, value: n }
+        : { ok: false, message: 'too large to hold exactly' }
     }
     case 'boolean':
       if (trimmed === '') return absent
@@ -364,7 +445,7 @@ export type LeafOp =
   | 'is_not_empty'
 
 /** A filter's leaf members: everything but the and/or/not groups. */
-type LeafFilter = Extract<QueryFilter, { op: LeafOp }>
+export type LeafFilter = Extract<QueryFilter, { op: LeafOp }>
 
 /**
  * The leaf comparisons the filter editor offers for a field, in reading order.
@@ -398,8 +479,20 @@ export function opsForField(field: ResolvedField | undefined): LeafOp[] {
   }
 }
 
-/** One editable row: a comparison over one field. `in` holds comma-separated values. */
-export type FilterRow = { fieldKey: string; op: LeafOp; value: string }
+/**
+ * One editable row: a comparison over one field. `in` holds its values as a
+ * comma-separated list, where a value holding a comma or a quote is written in
+ * double quotes (`next, "Smith, Jane"`). `original` is the stored comparison a
+ * row was read from: while the row is unedited it is written back as it was,
+ * so a value the text cannot hold (an object, a null, a typed number in a text
+ * field) survives a save that changed another row.
+ */
+export type FilterRow = {
+  fieldKey: string
+  op: LeafOp
+  value: string
+  original?: LeafFilter
+}
 
 /** Whether a leaf row needs no value. */
 export const valueless = (op: LeafOp) =>
@@ -461,23 +554,80 @@ export const rowsFilter = (
   conditions: rows.map((row) => filterOfRow(row, fieldFor)),
 })
 
+// SOURCING: a one-line list tokenizer rather than papaparse, which the app
+// depends on: papaparse reads `next, "Smith, Jane"` as three fields, because a
+// quote after the space a person types following a comma is not a quoted field
+// to it, and that is exactly how a person types a list.
+/** A list of values as the one line an `in` row shows: quoted where a value needs it. */
+export function listText(values: unknown[]): string {
+  return values
+    .map((value) => {
+      const text = valueText(value)
+      return /[",]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
+    })
+    .join(', ')
+}
+
+/** The values an `in` row's line holds: split at commas outside double quotes. */
+export function listValues(text: string): string[] {
+  const values: string[] = []
+  let current = ''
+  let quoted = false
+  let wasQuoted = false
+  const finish = () => {
+    const value = wasQuoted ? current : current.trim()
+    if (value || wasQuoted) values.push(value)
+    current = ''
+    wasQuoted = false
+  }
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at]!
+    if (quoted) {
+      if (char === '"' && text[at + 1] === '"') {
+        current += '"'
+        at++
+      } else if (char === '"') quoted = false
+      else current += char
+    } else if (char === '"' && !current.trim()) {
+      current = ''
+      quoted = true
+      wasQuoted = true
+    } else if (char === ',') finish()
+    else if (!(wasQuoted && /\s/.test(char))) current += char
+  }
+  finish()
+  return values
+}
+
 const rowOfFilter = (filter: LeafFilter): FilterRow => {
   switch (filter.op) {
     case 'in':
       return {
         fieldKey: filter.fieldKey,
         op: 'in',
-        value: filter.values.map(valueText).join(', '),
+        value: listText(filter.values),
+        original: filter,
       }
     case 'is_empty':
-      return { fieldKey: filter.fieldKey, op: 'is_empty', value: '' }
+      return {
+        fieldKey: filter.fieldKey,
+        op: 'is_empty',
+        value: '',
+        original: filter,
+      }
     case 'is_not_empty':
-      return { fieldKey: filter.fieldKey, op: 'is_not_empty', value: '' }
+      return {
+        fieldKey: filter.fieldKey,
+        op: 'is_not_empty',
+        value: '',
+        original: filter,
+      }
     default:
       return {
         fieldKey: filter.fieldKey,
         op: filter.op,
         value: valueText(filter.value),
+        original: filter,
       }
   }
 }
@@ -486,14 +636,13 @@ const filterOfRow = (
   row: FilterRow,
   fieldFor: (fieldKey: string) => ResolvedField | undefined,
 ): QueryFilter => {
+  // An unedited row is the comparison it was read from, value for value.
+  if (row.original) return row.original
   const field = fieldFor(row.fieldKey)
   const single = field ? typedValue(field, row.value) : row.value
   switch (row.op) {
     case 'in': {
-      const parts = row.value
-        .split(',')
-        .map((part) => part.trim())
-        .filter(Boolean)
+      const parts = listValues(row.value)
       return {
         op: 'in',
         fieldKey: row.fieldKey,
@@ -540,7 +689,7 @@ export function describeFilter(filter: QueryFilter): string {
     case 'not':
       return `not (${describeFilter(filter.condition)})`
     case 'in':
-      return `${filter.fieldKey} ${OP_LABEL.in} ${filter.values.map(valueText).join(', ')}`
+      return `${filter.fieldKey} ${OP_LABEL.in} ${listText(filter.values)}`
     case 'is_empty':
     case 'is_not_empty':
       return `${filter.fieldKey} ${OP_LABEL[filter.op]}`

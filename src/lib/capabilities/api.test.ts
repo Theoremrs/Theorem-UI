@@ -52,6 +52,8 @@ let bootstraps: number
 let served: string[]
 /** The next invoke attempt answers a stale CSRF token, once. */
 let staleCsrf: boolean
+/** When set, `people` answers in pages of one filler row, and holds person-1 on the page at this cursor number. */
+let longPeopleAt: number | undefined
 const realFetch = window.fetch
 
 const json = (body: unknown, status = 200) =>
@@ -103,6 +105,7 @@ beforeEach(() => {
   bootstraps = 0
   served = []
   staleCsrf = false
+  longPeopleAt = undefined
   window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : undefined
     const url = new URL(request ? request.url : String(input))
@@ -153,6 +156,21 @@ beforeEach(() => {
         // named by its rows, not by a walk of many pages.
         const collection = bodyOf(sent).query as
           { collectionKey?: string } | undefined
+        if (
+          collection?.collectionKey === 'people' &&
+          longPeopleAt !== undefined
+        ) {
+          const at = asked ? Number(String(asked).slice(1)) : 0
+          const held =
+            at === longPeopleAt
+              ? collectionRows.people!
+              : [row(`filler-${at}`, { name: 'Someone' }, 1)]
+          return json(
+            queryResult(held, {
+              nextCursor: at === longPeopleAt ? undefined : `p${at + 1}`,
+            }),
+          )
+        }
         if (collection) {
           const held = collectionRows[collection.collectionKey ?? ''] ?? []
           return json(queryResult(held, { total: held.length }))
@@ -421,8 +439,10 @@ test('with no collection named, the record’s own collection is located first',
   )
   // The walk stops at the collection that holds it, and the row comes from the
   // record route on both paths.
-  expect(found?.collectionKey).toBe('people')
-  expect(found?.row.fields).toEqual({ name: 'Travis' })
+  expect(found?.kind).toBe('found')
+  if (found?.kind !== 'found') throw new Error('not found')
+  expect(found.collectionKey).toBe('people')
+  expect(found.row.fields).toEqual({ name: 'Travis' })
   const walked = calls
     .filter((one) => one.path.endsWith('/query'))
     .map(
@@ -432,6 +452,40 @@ test('with no collection named, the record’s own collection is located first',
     )
   expect(walked.map((one) => one?.collectionKey)).toEqual(['tasks', 'people'])
   expect(calls.some((one) => one.path.endsWith('/records/person-1'))).toBe(true)
+})
+
+test('a walk the page bound cuts short is incomplete, and resumes where it stopped', async () => {
+  longPeopleAt = 25
+  const first = await readRecordAnywhere(
+    'tracker/main',
+    trackerDefinition,
+    'person-1',
+  )
+  // Twenty pages of people did not reach it: that is "not looked at yet",
+  // never "not there".
+  expect(first).toEqual({
+    kind: 'incomplete',
+    row: collectionRows.people![0]!,
+    resume: { people: 'p20' },
+  })
+  calls = []
+  const resumed = await readRecordAnywhere(
+    'tracker/main',
+    trackerDefinition,
+    'person-1',
+    undefined,
+    first?.kind === 'incomplete' ? first.resume : undefined,
+  )
+  expect(resumed).toMatchObject({ kind: 'found', collectionKey: 'people' })
+  // The resumed walk reads only the collection that was cut, from its cursor.
+  const walked = calls
+    .filter((one) => one.path.endsWith('/query'))
+    .map((one) => bodyOf(one))
+  expect(walked[0]).toMatchObject({
+    query: { collectionKey: 'people' },
+    cursor: 'p20',
+  })
+  expect(walked.length).toBe(6)
 })
 
 test('a stale definition base is a reload-and-retry state, not a permission state', async () => {

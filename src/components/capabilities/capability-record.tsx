@@ -2,7 +2,7 @@
 // capability record is edited with the same keys the CRM uses; the page module boundary
 // (lib/modules/registry) and the composer reference path. Every read and write is the instance's own
 // contract: the resolved fields from describe, one declared action per save.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { askAbout } from '@/components/chat/composer-references'
 import {
   Empty,
@@ -18,11 +18,8 @@ import {
 } from '@/components/records/fields'
 import { Button } from '@/components/ui/button'
 import { fieldControl } from '@/components/pages/resource-field'
-import {
-  isReloadConflict,
-  readReceipt,
-  refusalMessage,
-} from '@/lib/capabilities/api'
+import { isReloadConflict, refusalMessage } from '@/lib/capabilities/api'
+import type { RecordScanResume } from '@/lib/capabilities/api'
 import {
   canInvoke,
   capabilityRecordItem,
@@ -34,11 +31,14 @@ import {
   saveAction,
   schemaFor,
   updateActions,
+  valueText,
 } from '@/lib/capabilities/model'
+import type { SaveOverride } from '@/lib/capabilities/model'
 import { codes } from '@/lib/capabilities/contract'
 import type {
   ActionSpec,
   CapabilityDefinition,
+  CapabilityRecordRow,
   CollectionSchema,
   DescribeResult,
   InvocationReceipt,
@@ -47,13 +47,14 @@ import type {
 import { capabilityContextReference } from '@/lib/capabilities/reference'
 import type { ModuleViewProps } from '@/lib/modules/registry'
 import { usePageId } from '../pages/page-route'
-import { ActionForm } from './action-form'
+import { ActionCall } from './action-form'
 import { DescribeState, Loading, PermissionState, StatusLine } from './states'
 import type { Status } from './states'
 import {
   useCapabilityDescribe,
   useCapabilityInvoke,
   useCapabilityPickers,
+  useCapabilityReceipt,
   useCapabilityRecord,
 } from './queries'
 
@@ -134,6 +135,26 @@ function RelationPick({
 }
 
 /**
+ * What the person has edited and not saved, with the revision of the record
+ * they started editing. A save names that revision, so a record another module
+ * moved on meanwhile is refused as a conflict rather than overwritten; the base
+ * changes only when the person reloads, discards, or their own save moves it.
+ */
+type Draft = { values: Record<string, unknown>; base?: number }
+
+const NO_DRAFT: Draft = { values: {} }
+
+/** One line naming what an action writes over the values the person entered. */
+const overrideText = (overrides: SaveOverride[]) =>
+  overrides
+    .map((one) =>
+      one.writes === 'now'
+        ? `${one.fieldKey} as the time it runs`
+        : `${one.fieldKey} as ${valueText(one.value) || 'empty'}`,
+    )
+    .join(', ')
+
+/**
  * `theorem.capability.record`: one record's fields, edited and saved through a
  * declared action, with the definition's other actions beside it.
  */
@@ -153,22 +174,51 @@ function CapabilityRecordBody({
   const instanceId = text(view.settings.instanceId)
   const definition = described.definition
   const grant = described.callerGrant
+  const [resume, setResume] = useState<RecordScanResume>()
   const found = useCapabilityRecord(
     instanceId,
     definition,
     recordId,
     collectionKey,
+    resume,
   )
   const invoking = useCapabilityInvoke()
+  const receipts = useCapabilityReceipt()
 
-  const [draft, setDraft] = useState<Record<string, unknown>>({})
-  const [editing, setEditing] = useState<string>()
+  const [draft, setDraft] = useState<Draft>(NO_DRAFT)
+  // The field being edited, and the revision its value was read at when the
+  // editor opened: a refresh while it is open does not move that base.
+  const [editing, setEditing] = useState<{
+    fieldKey: string
+    revision: number
+  }>()
   const [status, setStatus] = useState<Status>()
-  const [calling, setCalling] = useState<ActionSpec>()
+  // Each open action form has its own number and the row it was opened over,
+  // so a late answer closes only that form and its call names that revision.
+  const forms = useRef(0)
+  const [calling, setCalling] = useState<{
+    action: ActionSpec
+    row: CapabilityRecordRow
+    form: number
+  }>()
+  const [confirming, setConfirming] = useState<{
+    action: ActionSpec
+    overrides: SaveOverride[]
+  }>()
   const [busy, setBusy] = useState(false)
+  const running = useRef(false)
+  // A journaled save that has not finished, by its journal id: what it saved,
+  // so the receipt that finishes it clears those edits and no later ones.
+  const pendingSaves = useRef(new Map<string, Record<string, unknown>>())
+  const shownStatus = useRef(status)
+  useEffect(() => {
+    shownStatus.current = status
+  }, [status])
 
-  const row = found.data?.row
-  const key = found.data?.collectionKey ?? collectionKey ?? ''
+  const lookup = found.data
+  const row = lookup?.kind === 'found' ? lookup.row : undefined
+  const key =
+    lookup?.kind === 'found' ? lookup.collectionKey : (collectionKey ?? '')
   const schema = schemaFor(described.collectionSchemas, key)
   // Stable while the schema is, so what hangs on it does not re-run each render.
   const fields = useMemo(() => schema?.fields ?? [], [schema])
@@ -176,11 +226,14 @@ function CapabilityRecordBody({
     () => updateActions(definition, key),
     [definition, key],
   )
-  const dirty = Object.keys(draft)
+  const dirty = Object.keys(draft.values)
   const shown = useMemo(
     () =>
       row
-        ? { ...registerRowOf(row), values: { ...row.fields, ...draft } }
+        ? {
+            ...registerRowOf(row),
+            values: { ...row.fields, ...draft.values },
+          }
         : undefined,
     [row, draft],
   )
@@ -205,37 +258,97 @@ function CapabilityRecordBody({
   )
 
   // What this module shows is also what the page can wire onward: its Selected
-  // item and the context envelope, both at the revision on screen.
+  // item and the context envelope, both at the revision on screen, and nothing
+  // once no record is shown.
   useEffect(() => output('context', context), [output, context])
   useEffect(() => {
     if (context) emit('context', context)
   }, [emit, context])
   useEffect(() => {
-    if (!row) return
     output(
       'selected',
-      capabilityRecordItem(instanceId, key, row.id, rowTitle(fields, row)),
+      row
+        ? capabilityRecordItem(instanceId, key, row.id, rowTitle(fields, row))
+        : undefined,
     )
   }, [output, row, instanceId, key, fields])
+  // A body that goes (another record, a cleared input) takes its values with it.
+  useEffect(
+    () => () => {
+      output('selected', undefined)
+      output('context', undefined)
+    },
+    [output],
+  )
 
-  const report = (receipt: InvocationReceipt): boolean => {
+  /**
+   * One field's new value, held until a save. The first one fixes the draft's
+   * base at the revision its editor opened on, not the one on screen now.
+   */
+  const write = (fieldKey: string, value: unknown) => {
+    if (!row) return
+    const opened = editing?.revision ?? row.revision
+    setDraft((held) => ({
+      values: { ...held.values, [fieldKey]: value },
+      base: held.base ?? opened,
+    }))
+    setEditing(undefined)
+    setConfirming(undefined)
+  }
+
+  /** Close the form a finished call came from, if it is still the one open. */
+  const closeForm = (form: number | undefined) => {
+    if (form === undefined) return
+    setCalling((open) => (open?.form === form ? undefined : open))
+  }
+
+  const report = (
+    receipt: InvocationReceipt,
+    at: { saved?: Record<string, unknown>; form?: number } = {},
+  ): boolean => {
     if (receipt.status === 'dispatched') {
+      if (at.saved) pendingSaves.current.set(receipt.recordId, at.saved)
       setStatus({
         kind: 'pending',
         message: `${receipt.actionKey} is journaled and has not finished, so whether it took effect is not yet known.`,
-        receipt: { instanceId: receipt.instanceId, recordId: receipt.recordId },
+        receipt: {
+          instanceId: receipt.instanceId,
+          recordId: receipt.recordId,
+          form: at.form,
+        },
       })
       return false
     }
+    pendingSaves.current.delete(receipt.recordId)
     const { outcome } = receipt
     if (outcome.outcome === 'completed') {
-      setDraft({})
-      const at = outcome.affected
+      const saved = at.saved
+      if (saved) {
+        const revision = outcome.affected.find(
+          (affected) => affected.id === recordId,
+        )?.revision
+        // Clear what this save wrote, and only while it still holds what was
+        // saved: an edit made while the call ran stays, now over the revision
+        // this save left the record at.
+        setDraft((held) => {
+          const values = { ...held.values }
+          for (const [fieldKey, value] of Object.entries(saved))
+            if (
+              Object.hasOwn(values, fieldKey) &&
+              Object.is(values[fieldKey], value)
+            )
+              delete values[fieldKey]
+          return Object.keys(values).length
+            ? { values, base: revision ?? held.base }
+            : NO_DRAFT
+        })
+      }
+      const moved = outcome.affected
         .map((affected) => `r${affected.revision}`)
         .join(', ')
       setStatus({
         kind: 'saved',
-        message: `${receipt.actionKey} saved${at ? ` · ${at}` : ''}.`,
+        message: `${receipt.actionKey} saved${moved ? ` · ${moved}` : ''}.`,
       })
       return true
     }
@@ -247,8 +360,13 @@ function CapabilityRecordBody({
     return false
   }
 
-  const run = async (action: ActionSpec, values: Record<string, unknown>) => {
-    if (!row) return
+  const run = async (
+    action: ActionSpec,
+    values: Record<string, unknown>,
+    at: { revision: number; saved?: Record<string, unknown>; form?: number },
+  ) => {
+    if (!row || running.current) return
+    running.current = true
     setBusy(true)
     setStatus({ kind: 'pending', message: `${action.label}…` })
     try {
@@ -256,12 +374,12 @@ function CapabilityRecordBody({
         instanceId,
         actionKey: action.key,
         recordId: row.id,
-        // The revision the person is looking at: a record that moved on is
+        // The revision the person started from: a record that moved on is
         // refused rather than overwritten.
-        expectedRevision: row.revision,
+        expectedRevision: at.revision,
         inputs: values,
       })
-      if (report(receipt)) setCalling(undefined)
+      if (report(receipt, at)) closeForm(at.form)
     } catch (error) {
       setStatus({
         kind: 'failed',
@@ -269,22 +387,40 @@ function CapabilityRecordBody({
         reload: isReloadConflict(error),
       })
     } finally {
+      running.current = false
       setBusy(false)
     }
   }
 
+  /** Run the save action over everything edited, at the revision the edits started from. */
+  const commit = (action: ActionSpec) => {
+    if (!row) return
+    const saved = draft.values
+    setConfirming(undefined)
+    // The action's inputs are the record's current values with the edits over
+    // them, so an input the person never touched is not sent as a blank.
+    void run(action, inputsFor(action, { ...row.fields, ...saved }), {
+      revision: draft.base ?? row.revision,
+      saved,
+    })
+  }
+
   /**
-   * Save what was edited: a declared action whose effects are exactly those
-   * fields, else a generic one that takes an input for each, else nothing. What
-   * the action does not declare is left unsaid rather than written sideways.
+   * Save what was edited: a declared action this caller may run whose effects
+   * are exactly those fields, else a generic one that writes each from an
+   * input, else nothing. An action that would write something other than what
+   * was entered is shown first and runs only when the person says so. What no
+   * action declares is left unsaid rather than written sideways.
    */
   const save = () => {
     if (!row || !dirty.length) return
-    const action = saveAction(definition, key, dirty)
-    if (!action) {
+    const plan = saveAction(definition, key, draft.values, (action) =>
+      canInvoke(grant, action.key),
+    )
+    if (!plan) {
       setStatus({
         kind: 'failed',
-        message: `No declared action covers ${dirty.join(', ')}${
+        message: `No declared action your grant reaches covers ${dirty.join(', ')}${
           actions.length
             ? `. This definition's actions write: ${actions
                 .map(
@@ -297,9 +433,61 @@ function CapabilityRecordBody({
       })
       return
     }
-    // The action's inputs are the record's current values with the edits over
-    // them, so an input the person never touched is not sent as a blank.
-    void run(action, inputsFor(action, { ...row.fields, ...draft }))
+    if (plan.overrides.length) return setConfirming(plan)
+    commit(plan.action)
+  }
+
+  /**
+   * Read a journaled call's receipt back. A finished one takes the same path as
+   * a call that finished at once: the record is read again and its form closes.
+   * An answer that comes after the status moved on to another call is dropped.
+   */
+  const check = async () => {
+    const at = status?.receipt
+    if (!at) return
+    const current = () => {
+      const held = shownStatus.current?.receipt
+      return held?.instanceId === at.instanceId && held.recordId === at.recordId
+    }
+    try {
+      const receipt = await receipts.mutateAsync(at)
+      if (!current()) return
+      if (
+        report(receipt, {
+          saved: pendingSaves.current.get(at.recordId),
+          form: at.form,
+        })
+      )
+        closeForm(at.form)
+    } catch (error) {
+      if (!current()) return
+      setStatus({
+        kind: 'failed',
+        message: refusalMessage(error, 'The receipt'),
+        reload: isReloadConflict(error),
+        receipt: at,
+      })
+    }
+  }
+
+  /**
+   * Read the record again. The person has now seen where it is, so unsaved
+   * edits start over from that revision; an open action form was filled against
+   * the record as it was, so it closes.
+   */
+  const reload = async () => {
+    setStatus(undefined)
+    setCalling(undefined)
+    setConfirming(undefined)
+    const fresh = await found.refetch()
+    const revision =
+      fresh.data?.kind === 'found' ? fresh.data.row.revision : undefined
+    if (revision !== undefined) {
+      setDraft((held) =>
+        Object.keys(held.values).length ? { ...held, base: revision } : held,
+      )
+      setEditing((open) => open && { ...open, revision })
+    }
   }
 
   if (found.isPending) return <Loading rows={4} />
@@ -310,6 +498,27 @@ function CapabilityRecordBody({
         what="This record"
         onRetry={() => void found.refetch()}
       />
+    )
+  if (lookup?.kind === 'incomplete')
+    return (
+      <Empty>
+        <EmptyHeader>
+          <EmptyTitle>Still looking</EmptyTitle>
+          <EmptyDescription>
+            <code className="font-mono text-xs">{recordId}</code> is in this
+            instance, but the pages read so far of{' '}
+            {Object.keys(lookup.resume).join(', ')} do not hold it, so which
+            collection it belongs to is not known yet.
+          </EmptyDescription>
+        </EmptyHeader>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setResume(lookup.resume)}
+        >
+          Keep looking
+        </Button>
+      </Empty>
     )
   if (!row || !shown)
     return (
@@ -347,25 +556,13 @@ function CapabilityRecordBody({
       <StatusLine
         status={status}
         onClear={() => setStatus(undefined)}
-        onReload={() => void found.refetch()}
-        onCheck={async () => {
-          const at = status?.receipt
-          if (!at) return
-          try {
-            report(await readReceipt(at.instanceId, at.recordId))
-          } catch (error) {
-            setStatus({
-              kind: 'failed',
-              message: refusalMessage(error, 'The receipt'),
-              reload: isReloadConflict(error),
-            })
-          }
-        }}
+        onReload={() => void reload()}
+        onCheck={() => void check()}
       />
       <div className="min-h-0 flex-1 overflow-auto">
         {fields.map((field) => {
           const spec = fieldSpecOf(field)
-          const dirtyField = Object.hasOwn(draft, field.key)
+          const dirtyField = Object.hasOwn(draft.values, field.key)
           const editable = inlineEditable(field)
           const relation = field.fieldType.kind === 'relation'
           return (
@@ -378,40 +575,40 @@ function CapabilityRecordBody({
                 {field.required && <span className="text-error-ink"> *</span>}
               </span>
               <div className="min-w-0 flex-1">
-                {editing === field.key &&
+                {editing?.fieldKey === field.key &&
                   (relation ? (
                     <RelationPick
                       instanceId={instanceId}
                       definition={definition}
                       schemas={described.collectionSchemas}
                       field={field}
-                      value={draft[field.key] ?? row.fields[field.key]}
-                      onCommit={(value) => {
-                        setDraft((held) => ({ ...held, [field.key]: value }))
-                        setEditing(undefined)
-                      }}
+                      value={shown.values[field.key]}
+                      onCommit={(value) => write(field.key, value)}
                       onCancel={() => setEditing(undefined)}
                     />
                   ) : (
                     <FieldEditor
                       field={spec}
-                      value={draft[field.key] ?? row.fields[field.key]}
+                      // A cleared draft value is null and stays cleared on reopening.
+                      value={shown.values[field.key]}
                       row={shown}
-                      onCommit={(value) => {
-                        setDraft((held) => ({ ...held, [field.key]: value }))
-                        setEditing(undefined)
-                      }}
+                      onCommit={(value) => write(field.key, value)}
                       onDiscard={() => setEditing(undefined)}
                     />
                   ))}
-                {editing !== field.key && (
+                {editing?.fieldKey !== field.key && (
                   <span className="flex items-center gap-2">
                     <FieldDisplay row={shown} field={spec} />
                     {(editable || relation) && grant.read && (
                       <button
                         type="button"
                         aria-label={`Edit ${field.label}`}
-                        onClick={() => setEditing(field.key)}
+                        onClick={() =>
+                          setEditing({
+                            fieldKey: field.key,
+                            revision: row.revision,
+                          })
+                        }
                         className="rounded p-0.5 text-ink-faint hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
                       >
                         <Icon.Edit className="size-3.5" />
@@ -430,7 +627,32 @@ function CapabilityRecordBody({
         })}
       </div>
       <footer className="flex shrink-0 flex-col gap-2 border-t border-separator px-3 py-2">
-        {dirty.length > 0 && (
+        {confirming && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center gap-2 text-xs"
+          >
+            <span className="min-w-0 flex-1 text-ink">
+              {confirming.action.label} writes{' '}
+              {overrideText(confirming.overrides)}, not what you entered.
+            </span>
+            <Button
+              size="xs"
+              disabled={busy}
+              onClick={() => commit(confirming.action)}
+            >
+              {confirming.action.label} anyway
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => setConfirming(undefined)}
+            >
+              Keep editing
+            </Button>
+          </div>
+        )}
+        {dirty.length > 0 && !confirming && (
           <div className="flex items-center gap-2">
             <Button
               size="xs"
@@ -446,21 +668,33 @@ function CapabilityRecordBody({
               size="xs"
               variant="ghost"
               onClick={() => {
-                setDraft({})
+                setDraft(NO_DRAFT)
                 setStatus(undefined)
               }}
             >
               Discard
             </Button>
+            {draft.base !== undefined && draft.base !== row.revision && (
+              <span className="text-xs text-ink-faint">
+                edited from r{draft.base}
+              </span>
+            )}
           </div>
         )}
         {calling && (
-          <ActionForm
-            action={calling}
-            defaults={row.fields}
-            submitLabel={calling.label}
+          <ActionCall
+            instanceId={instanceId}
+            action={calling.action}
+            row={calling.row}
+            schemas={described.collectionSchemas}
+            submitLabel={calling.action.label}
             busy={busy}
-            onSubmit={(values) => void run(calling, inputsFor(calling, values))}
+            onSubmit={(values) =>
+              void run(calling.action, values, {
+                revision: calling.row.revision,
+                form: calling.form,
+              })
+            }
             onCancel={() => setCalling(undefined)}
           />
         )}
@@ -479,8 +713,8 @@ function CapabilityRecordBody({
                 }
                 onClick={() =>
                   action.input.length
-                    ? setCalling(action)
-                    : void run(action, inputsFor(action, row.fields))
+                    ? setCalling({ action, row, form: ++forms.current })
+                    : void run(action, {}, { revision: row.revision })
                 }
               >
                 {action.label}
@@ -504,12 +738,25 @@ function CapabilityRecordBody({
  * selection wired from another page cannot reach across instances.
  */
 export function CapabilityRecordModule(view: ModuleViewProps) {
+  const { output } = view
   const instanceId = text(view.settings.instanceId)
   const described = useCapabilityDescribe(instanceId || undefined)
   const named = parseCapabilityRecordItem(
     view.inputs.record ?? view.settings.recordId,
   )
   const recordId = named?.recordId ?? ''
+  const showing =
+    !!instanceId &&
+    !!recordId &&
+    described.isSuccess &&
+    described.data.callerGrant.read
+  // With no body on screen there is no record to wire onward: a page that
+  // connects this module's outputs reads nothing rather than the last record.
+  useEffect(() => {
+    if (showing) return
+    output('selected', undefined)
+    output('context', undefined)
+  }, [showing, output])
   if (!instanceId)
     return (
       <p className="p-3 text-sm text-ink-muted">

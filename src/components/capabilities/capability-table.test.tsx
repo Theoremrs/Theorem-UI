@@ -16,7 +16,13 @@ import type {
   QueryRequest,
   Grant,
 } from '@/lib/capabilities/contract'
-import { describeResult, queryResult, readerGrant, taskRows } from './fixture'
+import {
+  describeResult,
+  discoverResult,
+  queryResult,
+  readerGrant,
+  taskRows,
+} from './fixture'
 import type { ModuleViewProps } from '@/lib/modules/registry'
 import type { CapabilityContextReference } from '@/lib/capabilities/reference'
 
@@ -99,7 +105,7 @@ beforeEach(() => {
       return json({ schema: 'theorem.chat.bootstrap.v1', csrfToken: 'csrf' })
     const rest = url.pathname.slice(CAPABILITIES.length + 1).split('/')
     const tail = rest[2]
-    if (rest.length === 1) return json({ instances: [] })
+    if (rest.length === 1) return json(discoverResult())
     if (rest.length === 2) return json(described)
     if (tail === 'query') {
       const asked = body as unknown as QueryRequest
@@ -149,7 +155,10 @@ beforeEach(() => {
       })
     }
     if (tail === 'author') {
-      if (body?.expectedDefinitionId !== 'capdef:abc')
+      if (body?.expectedDefinitionId !== 'capdef:abc') {
+        // The refusal names the version that is pinned now; reading the rows
+        // again returns it.
+        pinned = 'capdef:abc'
         return new Response(
           JSON.stringify({
             type: 'about:blank',
@@ -163,6 +172,7 @@ beforeEach(() => {
             headers: { 'content-type': 'application/problem+json' },
           },
         )
+      }
       return json({
         definitionId: 'capdef:def',
         instance: { instanceId: 'tracker/main', definitionId: 'capdef:def' },
@@ -280,8 +290,33 @@ test('a row action names the record and the revision on screen', async () => {
     inputs: {},
   })
   await waitFor(() => container.textContent.includes('complete saved · r7'))
-  // The row is marked at the revision the journal reports until the rows read back the same.
-  expect(container.textContent).toContain('saved · r7')
+  // The row is marked at the revision the journal reports until the rows read
+  // back the same: rec-1's own row carries it, not just the status line.
+  const records = [...container.querySelectorAll('li, tr')]
+  const marked = records.find((one) =>
+    one.textContent.includes('Write the plan'),
+  )
+  expect(marked?.textContent ?? '').toContain('saved · r7')
+  expect(
+    records.filter((one) => one.textContent.includes('saved · r7')).length,
+  ).toBe(1)
+})
+
+test('a second click while a create is running is not a second create', async () => {
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Add task')?.click())
+  const title = await waitFor(() =>
+    container.querySelector<HTMLInputElement>('input[aria-label="title"]'),
+  )
+  type(title, 'Ship the slice')
+  await act(async () => {
+    const submit = button(container, 'Add task')!
+    submit.click()
+    submit.click()
+  })
+  await waitFor(() => container.textContent.includes('add saved'))
+  expect(sentTo('/invoke').length).toBe(1)
 })
 
 test('a refusal the executor answers with is a failed state, not a silent one', async () => {
@@ -369,6 +404,9 @@ test('a module that names no instance lists what this caller may see', async () 
   await waitFor(() =>
     container.textContent.includes('Name the capability instance'),
   )
+  // The instances the caller may see are listed by id and name.
+  await waitFor(() => container.textContent.includes('Project tracker'))
+  expect(container.querySelector('code')?.textContent).toBe('tracker/main')
   expect(sentTo('/query').length).toBe(0)
 })
 
@@ -592,4 +630,12 @@ test('a stale definition base is refused, the current one is read back, and the 
   // current definition back and asks, so the person checks the change against it.
   expect(sentTo('/author').length).toBe(1)
   expect(reads().length).toBeGreaterThan(before)
+  // Submitting once more patches the version that was read back, and lands.
+  await waitFor(() => sentTo('/query').length > 1)
+  await act(async () => byLabel(screen(), 'Add optional field')?.click())
+  await waitFor(() => sentTo('/author').length === 2)
+  expect(sentTo('/author')[1]!.body?.expectedDefinitionId).toBe('capdef:abc')
+  await waitFor(() =>
+    screen().textContent.includes('the definition is now capdef:def'),
+  )
 })
