@@ -109,95 +109,161 @@ export type RuleCheck = {
   mode: 'add' | 'replace'
 }
 
-function triggerProblems(
-  trigger: RuleTrigger,
+type EventTrigger = Exclude<RuleTrigger, { kind: 'schedule' }>
+type TransitionTrigger = Extract<RuleTrigger, { kind: 'transition' }>
+type Collection = CapabilityDefinition['collections'][number]
+
+function scheduleProblems(
+  trigger: Extract<RuleTrigger, { kind: 'schedule' }>,
+): string[] {
+  const problems: string[] = []
+  if (!Number.isInteger(trigger.intervalMinutes))
+    problems.push('A schedule interval is a whole number of minutes.')
+  else if (trigger.intervalMinutes < SCHEDULE_MINUTES_MIN)
+    problems.push(
+      `A schedule runs at most every ${SCHEDULE_MINUTES_MIN} minutes.`,
+    )
+  if (trigger.startAtMs !== undefined && !Number.isFinite(trigger.startAtMs))
+    problems.push('The start time is not a time.')
+  return problems
+}
+
+/** Whether resolved fields lack this key; unresolved fields lack nothing, the server decides. */
+const lacksField = (schema: CollectionSchema | undefined, fieldKey: string) =>
+  schema !== undefined && !schema.fields.some((field) => field.key === fieldKey)
+
+/**
+ * The states a transition names that its lifecycle field does not offer. Only a
+ * lifecycle field resolved as a choice is read; otherwise the server decides.
+ */
+function transitionProblems(
+  trigger: TransitionTrigger,
+  collection: Collection,
+  schema: CollectionSchema | undefined,
+): string[] {
+  const lifecycle = collection.lifecycle
+  if (!lifecycle)
+    return [
+      `${collection.label} declares no lifecycle, so it has no transitions.`,
+    ]
+  if (!trigger.to.trim()) return ['Name the state the record moves to.']
+  const field = schema?.fields.find((one) => one.key === lifecycle.fieldKey)
+  if (field?.fieldType.kind !== 'enum') return []
+  const { variants } = field.fieldType
+  return [trigger.to, ...(trigger.from ?? [])]
+    .filter((state) => !variants.includes(state))
+    .map(
+      (state) => `"${state}" is not a ${field.label} of ${collection.label}.`,
+    )
+}
+
+function eventProblems(
+  trigger: EventTrigger,
   { definition, schemas }: RuleCheck,
 ): string[] {
-  if (trigger.kind === 'schedule') {
-    const problems: string[] = []
-    if (!Number.isInteger(trigger.intervalMinutes))
-      problems.push('A schedule interval is a whole number of minutes.')
-    else if (trigger.intervalMinutes < SCHEDULE_MINUTES_MIN)
-      problems.push(
-        `A schedule runs at most every ${SCHEDULE_MINUTES_MIN} minutes.`,
-      )
-    if (trigger.startAtMs !== undefined && !Number.isFinite(trigger.startAtMs))
-      problems.push('The start time is not a time.')
-    return problems
-  }
   const collection = collectionOf(definition, trigger.collectionKey)
   if (!collection) return [`There is no collection "${trigger.collectionKey}".`]
   const schema = schemaOf(schemas, trigger.collectionKey)
-  const fieldMissing = (fieldKey: string) =>
-    schema && !schema.fields.some((field) => field.key === fieldKey)
-      ? [`${collection.label} has no field "${fieldKey}".`]
-      : []
   switch (trigger.kind) {
     case 'record_created':
       return []
     case 'record_updated':
-      return (trigger.fieldKeys ?? []).flatMap(fieldMissing)
-    case 'transition': {
-      const lifecycle = collection.lifecycle
-      if (!lifecycle)
-        return [
-          `${collection.label} declares no lifecycle, so it has no transitions.`,
-        ]
-      if (!trigger.to.trim()) return ['Name the state the record moves to.']
-      const field = schema?.fields.find((one) => one.key === lifecycle.fieldKey)
-      const variants =
-        field?.fieldType.kind === 'enum' ? field.fieldType.variants : undefined
-      if (!field || !variants) return []
-      return [trigger.to, ...(trigger.from ?? [])]
-        .filter((state) => !variants.includes(state))
-        .map(
-          (state) =>
-            `"${state}" is not a ${field.label} of ${collection.label}.`,
-        )
-    }
+      return (trigger.fieldKeys ?? [])
+        .filter((fieldKey) => lacksField(schema, fieldKey))
+        .map((fieldKey) => `${collection.label} has no field "${fieldKey}".`)
+    case 'transition':
+      return transitionProblems(trigger, collection, schema)
   }
 }
+
+const triggerProblems = (trigger: RuleTrigger, check: RuleCheck): string[] =>
+  trigger.kind === 'schedule'
+    ? scheduleProblems(trigger)
+    : eventProblems(trigger, check)
+
+type InputSource = RuleSpec['inputs'][string]
+
+/** What is wrong with one input's source, read against the field the action declares. */
+function sourceProblems(
+  key: string,
+  source: InputSource,
+  field: ActionSpec['input'][number],
+  trigger: RuleTrigger,
+  { definition, schemas }: RuleCheck,
+): string[] {
+  if (source.source === 'literal') {
+    const parsed = parseValue(field.fieldType, valueText(source.value))
+    return parsed.ok ? [] : [`"${key}": ${parsed.message}`]
+  }
+  if (source.source !== 'trigger_field') return []
+  if (trigger.kind === 'schedule')
+    return [
+      `A schedule has no triggering record to read "${source.fieldKey}" from.`,
+    ]
+  return lacksField(schemaOf(schemas, trigger.collectionKey), source.fieldKey)
+    ? [
+        `${labelOf(definition, trigger.collectionKey)} has no field "${source.fieldKey}".`,
+      ]
+    : []
+}
+
+/** A required input left without a source, or with a blank literal. */
+const unsourced = (source: InputSource | undefined): boolean =>
+  !source ||
+  (source.source === 'literal' && valueText(source.value).trim() === '')
 
 function inputProblems(
   rule: RuleSpec,
   action: ActionSpec,
-  { definition, schemas }: RuleCheck,
+  check: RuleCheck,
 ): string[] {
-  const problems: string[] = []
-  const trigger = rule.trigger
-  for (const [key, source] of Object.entries(rule.inputs)) {
+  const given = Object.entries(rule.inputs).flatMap(([key, source]) => {
     const field = action.input.find((one) => one.key === key)
-    if (!field) {
-      problems.push(`"${action.label}" takes no input "${key}".`)
-      continue
-    }
-    if (source.source === 'literal') {
-      const parsed = parseValue(field.fieldType, valueText(source.value))
-      if (!parsed.ok) problems.push(`"${key}": ${parsed.message}`)
-    }
-    if (source.source === 'trigger_field') {
-      if (trigger.kind === 'schedule') {
-        problems.push(
-          `A schedule has no triggering record to read "${source.fieldKey}" from.`,
-        )
-        continue
-      }
-      const schema = schemaOf(schemas, trigger.collectionKey)
-      if (schema && !schema.fields.some((one) => one.key === source.fieldKey))
-        problems.push(
-          `${labelOf(definition, trigger.collectionKey)} has no field "${source.fieldKey}".`,
-        )
-    }
-  }
-  for (const field of action.input) {
-    if (!field.required) continue
-    const source = rule.inputs[field.key]
-    const blank =
-      !source ||
-      (source.source === 'literal' && valueText(source.value).trim() === '')
-    if (blank) problems.push(`"${action.label}" needs "${field.key}".`)
-  }
-  return problems
+    return field
+      ? sourceProblems(key, source, field, rule.trigger, check)
+      : [`"${action.label}" takes no input "${key}".`]
+  })
+  const missing = action.input
+    .filter((field) => field.required && unsourced(rule.inputs[field.key]))
+    .map((field) => `"${action.label}" needs "${field.key}".`)
+  return [...given, ...missing]
+}
+
+function keyProblems(
+  rule: RuleSpec,
+  { definition, mode }: RuleCheck,
+): string[] {
+  if (!isValidFieldKey(rule.key))
+    return [
+      'The rule key must start with a lowercase letter and use only a-z, 0-9 and _.',
+    ]
+  const exists = rulesOf(definition).some((one) => one.key === rule.key)
+  if (mode === 'add' && exists)
+    return [`A rule with the key "${rule.key}" already exists.`]
+  if (mode === 'replace' && !exists)
+    return [`There is no rule "${rule.key}" to replace.`]
+  return []
+}
+
+/** Whether the trigger may invoke this action: a schedule creates; an update changes its own record. */
+function reachProblems(
+  trigger: RuleTrigger,
+  action: ActionSpec,
+  definition: CapabilityDefinition,
+): string[] {
+  if (action.creates) return []
+  if (trigger.kind === 'schedule')
+    return [
+      `A schedule has no record to change, so its action must create one: "${action.label}" updates a record.`,
+    ]
+  if (
+    action.collectionKey === trigger.collectionKey ||
+    !collectionOf(definition, trigger.collectionKey)
+  )
+    return []
+  return [
+    `"${action.label}" updates ${labelOf(definition, action.collectionKey)}, but this rule starts from ${labelOf(definition, trigger.collectionKey)}: an updating action changes the record that triggered it.`,
+  ]
 }
 
 /**
@@ -207,42 +273,20 @@ function inputProblems(
  * its declared type, and is sourced when required.
  */
 export function ruleProblems(rule: RuleSpec, check: RuleCheck): string[] {
-  const { definition, mode } = check
-  const problems: string[] = []
-  const exists = rulesOf(definition).some((one) => one.key === rule.key)
-  if (!isValidFieldKey(rule.key))
-    problems.push(
-      'The rule key must start with a lowercase letter and use only a-z, 0-9 and _.',
-    )
-  else if (mode === 'add' && exists)
-    problems.push(`A rule with the key "${rule.key}" already exists.`)
-  else if (mode === 'replace' && !exists)
-    problems.push(`There is no rule "${rule.key}" to replace.`)
-  if (!rule.label.trim()) problems.push('Give the rule a name.')
-
-  problems.push(...triggerProblems(rule.trigger, check))
-
-  const action = definition.actions.find((one) => one.key === rule.actionKey)
-  if (!action) {
-    problems.push(`There is no action "${rule.actionKey}".`)
-    return problems
-  }
-  const trigger = rule.trigger
-  if (trigger.kind === 'schedule' && !action.creates)
-    problems.push(
-      `A schedule has no record to change, so its action must create one: "${action.label}" updates a record.`,
-    )
-  if (
-    trigger.kind !== 'schedule' &&
-    !action.creates &&
-    action.collectionKey !== trigger.collectionKey &&
-    collectionOf(definition, trigger.collectionKey)
+  const named = [
+    ...keyProblems(rule, check),
+    ...(rule.label.trim() ? [] : ['Give the rule a name.']),
+    ...triggerProblems(rule.trigger, check),
+  ]
+  const action = check.definition.actions.find(
+    (one) => one.key === rule.actionKey,
   )
-    problems.push(
-      `"${action.label}" updates ${labelOf(definition, action.collectionKey)}, but this rule starts from ${labelOf(definition, trigger.collectionKey)}: an updating action changes the record that triggered it.`,
-    )
-  problems.push(...inputProblems(rule, action, check))
-  return problems
+  if (!action) return [...named, `There is no action "${rule.actionKey}".`]
+  return [
+    ...named,
+    ...reachProblems(rule.trigger, action, check.definition),
+    ...inputProblems(rule, action, check),
+  ]
 }
 
 // ── Describing ──────────────────────────────────────────────────────────────
@@ -254,30 +298,41 @@ const either = (words: string[]) =>
 
 const iso = (ms: number) => new Date(ms).toISOString()
 
+/** The fields an update trigger watches, by label where the resolved schema names them. */
+function describeUpdated(
+  trigger: Extract<RuleTrigger, { kind: 'record_updated' }>,
+  label: string,
+  schemas: ReadonlyArray<CollectionSchema>,
+): string {
+  const fields = trigger.fieldKeys ?? []
+  if (!fields.length) return `When a ${label} record changes`
+  const resolved = schemaOf(schemas, trigger.collectionKey)?.fields ?? []
+  const names = fields.map(
+    (key) => resolved.find((field) => field.key === key)?.label ?? key,
+  )
+  return `When ${either(names)} changes on a ${label} record`
+}
+
+const describeSchedule = (
+  trigger: Extract<RuleTrigger, { kind: 'schedule' }>,
+) =>
+  `Every ${trigger.intervalMinutes} minutes${
+    trigger.startAtMs === undefined ? '' : ` from ${iso(trigger.startAtMs)}`
+  }`
+
 /** A trigger in one sentence, naming collections and fields by their labels. */
 export function describeTrigger(
   trigger: RuleTrigger,
   definition: CapabilityDefinition,
   schemas: ReadonlyArray<CollectionSchema>,
 ): string {
-  if (trigger.kind === 'schedule')
-    return `Every ${trigger.intervalMinutes} minutes${
-      trigger.startAtMs === undefined ? '' : ` from ${iso(trigger.startAtMs)}`
-    }`
+  if (trigger.kind === 'schedule') return describeSchedule(trigger)
   const label = labelOf(definition, trigger.collectionKey)
   switch (trigger.kind) {
     case 'record_created':
       return `When a ${label} record is created`
-    case 'record_updated': {
-      const fields = trigger.fieldKeys ?? []
-      if (!fields.length) return `When a ${label} record changes`
-      const schema = schemaOf(schemas, trigger.collectionKey)
-      const names = fields.map(
-        (key) =>
-          schema?.fields.find((field) => field.key === key)?.label ?? key,
-      )
-      return `When ${either(names)} changes on a ${label} record`
-    }
+    case 'record_updated':
+      return describeUpdated(trigger, label, schemas)
     case 'transition':
       return trigger.from?.length
         ? `When a ${label} record moves from ${either(trigger.from)} to ${trigger.to}`
