@@ -413,6 +413,9 @@ function CapabilityRecordBody({
                       field={spec}
                       value={draft[field.key] ?? row.fields[field.key]}
                       row={shown}
+                      // The contract cannot clear a field: an absent input
+                      // changes nothing and a null one is refused.
+                      clearable={false}
                       onCommit={(value) => {
                         setDraft((held) => ({ ...held, [field.key]: value }))
                         setEditing(undefined)

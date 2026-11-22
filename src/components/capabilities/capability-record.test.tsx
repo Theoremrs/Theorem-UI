@@ -266,6 +266,54 @@ test('a relation that holds a value offers no clearing choice, and never sends n
   expect(sentValues()).not.toContain(null)
 })
 
+/** A key pressed in a field, as the records' editors listen for it. */
+function press(field: HTMLElement, key: string) {
+  act(() => {
+    field.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+  })
+}
+
+const clearControl = (root: ParentNode) =>
+  [...root.querySelectorAll('button')].find(
+    (one) => one.textContent.trim() === 'Clear',
+  )
+
+test('the record’s own editors offer no clear control, and an emptied field is never sent as null', async () => {
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+
+  // A date: no Clear, and emptying it is refused where it is typed.
+  await act(async () => editMark(container, 'Due')?.click())
+  const day = await waitFor(() => input(container, 'Due'))
+  expect(clearControl(container)).toBeUndefined()
+  type(day, '')
+  pressEnter(day)
+  expect(day.getAttribute('aria-invalid')).toBe('true')
+  expect(container.textContent).toContain('Cannot be emptied')
+  press(day, 'Escape')
+  await waitFor(() => !input(container, 'Due'))
+
+  // A number: emptied, it is refused in place too.
+  await act(async () => editMark(container, 'Effort (minutes)')?.click())
+  const effort = await waitFor(() => input(container, 'Effort (minutes)'))
+  type(effort, '')
+  pressEnter(effort)
+  expect(effort.getAttribute('aria-invalid')).toBe('true')
+  expect(effort.placeholder).toBe('Cannot be emptied')
+  press(effort, 'Escape')
+  await waitFor(() => !input(container, 'Effort (minutes)'))
+
+  // A select offers its variants and no Clear.
+  await act(async () => editMark(container, 'Status')?.click())
+  await waitFor(() => container.querySelector('[role="option"]'))
+  expect(clearControl(container)).toBeUndefined()
+
+  // Nothing was left to save, and nothing was sent.
+  expect(container.textContent).not.toContain('unsaved')
+  expect(invoked()).toHaveLength(0)
+  expect(sentValues()).not.toContain(null)
+})
+
 test('an empty relation shows a placeholder that cannot be chosen', async () => {
   const { container } = await showRecord()
   await waitFor(() => container.textContent.includes('Write the plan'))
