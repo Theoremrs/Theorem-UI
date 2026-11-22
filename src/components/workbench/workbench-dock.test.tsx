@@ -97,9 +97,9 @@ describe('the Workspace is a drawer unless the person makes it part of the scree
     expect(useShell.getState().workbench).toBe('closed')
   })
 
-  test('a drawer covers the conversation, so the core is not told it stands beside it', async () => {
+  test('drawers accompany the conversation without a second Theo composer', async () => {
     const drawer = await open('bottom')
-    expect(drawer.view()).toEqual({ shown: true, companion: false })
+    expect(drawer.view()).toEqual({ shown: true, companion: true })
     await cleanup()
     useShell.getState().setWorkbenchAttachment('docked')
     const docked = await open('side')
@@ -117,21 +117,82 @@ describe('the Workspace is a drawer unless the person makes it part of the scree
     useShell.getState().setWorkbenchAttachment('docked')
     const side = await open('side')
     const region = side.frame.querySelector('[data-workbench-placement]')!
-    const choose = (label: string) =>
-      click(
-        [...region.querySelectorAll('button')].find(
-          (button) => button.textContent === label,
-        )!,
-      )
-
-    await choose('Bottom')
+    // Placement remains controlled by the shell's existing layout menu.
+    await act(async () => useShell.getState().setWorkbench('bottom'))
     expect(region.getAttribute('data-workbench-attachment')).toBe('drawer')
     expect(region.classList.contains('absolute')).toBe(true)
-    expect(side.view()).toEqual({ shown: true, companion: false })
+    expect(side.view()).toEqual({ shown: true, companion: true })
     expect(useShell.getState().workbenchAttachment).toBe('docked')
 
-    await choose('Right')
+    await act(async () => useShell.getState().setWorkbench('side'))
     expect(region.getAttribute('data-workbench-attachment')).toBe('docked')
     expect(side.view()).toEqual({ shown: true, companion: true })
+  })
+})
+
+describe('the drawer keeps only its edge handle around the terminal', () => {
+  for (const placement of ['side', 'bottom'] as const) {
+    test(`${placement} has no extra workspace navigation bar`, async () => {
+      const { frame } = await open(placement)
+      expect(
+        frame.querySelector('nav[aria-label="Workspace controls"]') === null,
+      ).toBe(true)
+    })
+
+    test(`${placement} closes from its handle`, async () => {
+      const { frame } = await open(placement)
+      await click(frame.querySelector('[role="separator"]')!)
+      expect(useShell.getState().workbench).toBe('closed')
+    })
+
+    for (const key of ['Enter', ' ']) {
+      test(`${placement} handle closes with ${key === ' ' ? 'Space' : key}`, async () => {
+        const { frame } = await open(placement)
+        await act(async () => {
+          frame.querySelector('[role="separator"]')!.dispatchEvent(
+            new KeyboardEvent('keydown', {
+              key,
+              bubbles: true,
+              cancelable: true,
+            }),
+          )
+        })
+        expect(useShell.getState().workbench).toBe('closed')
+      })
+    }
+  }
+
+  test('the handle still resizes with arrow keys', async () => {
+    const { frame } = await open('side')
+    const width = useShell.getState().sideWidth
+    await act(async () => {
+      frame.querySelector('[role="separator"]')!.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'ArrowRight',
+          bubbles: true,
+          cancelable: true,
+        }),
+      )
+    })
+    expect(useShell.getState().sideWidth).toBe(width - 16)
+    expect(useShell.getState().workbench).toBe('side')
+  })
+
+  test('placement changes and closing keep the workspace mounted', async () => {
+    const { workspace } = await open('side')
+    for (const next of ['bottom', 'full', 'closed', 'side'] as const) {
+      await act(async () => useShell.getState().setWorkbench(next))
+      expect(
+        document.querySelector('[data-testid="workspace"]') === workspace,
+      ).toBe(true)
+    }
+  })
+
+  test('the full workspace retains its conversation view', async () => {
+    const { view, frame } = await open('full')
+    expect(view()).toEqual({ shown: true, companion: false })
+    expect(
+      frame.querySelector('nav[aria-label="Workspace controls"]') === null,
+    ).toBe(true)
   })
 })

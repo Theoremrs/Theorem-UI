@@ -345,6 +345,7 @@ export function Rail({
   const mode = useShellMode()
   const openMode = useOpenMode()
   const panelOpen = useShell((s) => !s.panelCollapsed[mode])
+  const filesShown = useShell((s) => s.filesShown)
   const togglePanel = useShell((s) => s.togglePanel)
   const railOrder = useShell((s) => s.railOrder)
   const setRailOrder = useShell((s) => s.setRailOrder)
@@ -464,8 +465,9 @@ export function Rail({
               {modes.map(({ mode: value, label, Mark }) => {
                 const active = value === mode
                 const toggles = active && collapsible
+                const modePanelOpen = panelOpen && !filesShown && !workspaceFull
                 const tooltip = toggles
-                  ? `${panelOpen ? 'Hide' : 'Show'} ${label} panel`
+                  ? `${modePanelOpen ? 'Hide' : 'Show'} ${label} panel`
                   : label
                 return (
                   <Tooltip key={value}>
@@ -478,11 +480,22 @@ export function Rail({
                           onMove={move}
                           aria-label={label}
                           aria-current={active ? 'page' : undefined}
-                          aria-expanded={toggles ? panelOpen : undefined}
+                          aria-expanded={toggles ? modePanelOpen : undefined}
                           onClick={() => {
                             if (dragged.current) return
+                            const shell = useShell.getState()
+                            const returning = shell.filesShown || workspaceFull
+                            // A destination reveals its own list when Files or
+                            // the full workspace covers it; a later press can
+                            // collapse that list.
+                            if (workspaceFull) shell.setWorkbench('closed')
+                            if (returning) {
+                              shell.setFilesShown(false)
+                              shell.setPanelOpen(navigatorMode(value), true)
+                            }
                             if (!active) void openMode(value)
-                            else if (collapsible) togglePanel(value)
+                            else if (collapsible && !returning)
+                              togglePanel(value)
                           }}
                           className={`${railButton} h-12 aria-[current=page]:text-ink aria-[current=page]:hover:bg-transparent`}
                         >

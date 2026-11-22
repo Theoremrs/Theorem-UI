@@ -9,17 +9,12 @@ export function WorkspaceLayoutStatus({
   recover: (operation: 'load' | 'retrySave') => void
 }) {
   let label: string
-  let action: { label: string; operation: 'load' | 'retrySave' } | undefined
+  let action: { label: string; operation: 'load' | 'retrySave' }
   switch (status.kind) {
     case 'pending':
-      label =
-        status.operation === 'restore' ? 'Restoring layout…' : 'Saving layout…'
-      break
     case 'account':
-      label = status.revision
-        ? 'Layout saved to account'
-        : 'Using the default layout'
-      break
+      // Routine persistence stays silent; only recovery needs space in the UI.
+      return null
     case 'device':
       label = 'Using this device’s layout copy'
       action = { label: 'Retry restore', operation: 'load' }
@@ -42,18 +37,17 @@ export function WorkspaceLayoutStatus({
       break
   }
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-x-2 border-b border-line px-2 py-0.5 text-xs text-ink-muted">
+    <div className="flex shrink-0 flex-wrap items-center gap-x-2 border-b border-term-line bg-term px-2 py-0.5 font-mono text-xs text-term-muted">
       <span role="status">{label}</span>
-      {action && (
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          onClick={() => recover(action.operation)}
-        >
-          {action.label}
-        </Button>
-      )}
+      <Button
+        type="button"
+        size="xs"
+        variant="ghost"
+        className="text-term-ink hover:bg-term-raised hover:text-term-bright"
+        onClick={() => recover(action.operation)}
+      >
+        {action.label}
+      </Button>
       {'diagnostic' in status && (
         <details>
           <summary className="cursor-pointer">Details</summary>
