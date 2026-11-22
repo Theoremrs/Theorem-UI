@@ -915,8 +915,8 @@ function CapabilityTableBody({
               </DialogTitle>
               <DialogDescription>
                 The same values go to every selected record, each at the
-                revision shown; a field left blank is written blank. If any
-                record refuses, none is changed.
+                revision shown; a field left blank is left as it is on every
+                record. If any record refuses, none is changed.
               </DialogDescription>
             </DialogHeader>
             <ActionCall

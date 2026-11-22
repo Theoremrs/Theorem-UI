@@ -284,8 +284,10 @@ test('quick-add runs the create action, then reads the rows back', async () => {
     instanceId: 'tracker/main',
     actionKey: 'add',
     invocationKey: expect.any(String),
-    inputs: { title: 'Ship the slice', due_at: null },
+    inputs: { title: 'Ship the slice' },
   })
+  // A blank optional input is absent, not null: null is refused by the executor.
+  expect(Object.hasOwn(invoked.body!.inputs as object, 'due_at')).toBe(false)
   expect(invoked.body!.recordId).toBeUndefined()
   expect(invoked.headers.get('Idempotency-Key')).toBe(
     invoked.body!.invocationKey as string,
@@ -940,7 +942,9 @@ test('an action with inputs asks once, and the same values go to every selected 
       'The same values go to every selected record',
     ),
   )
-  expect(screen().textContent).toContain('a field left blank is written blank')
+  expect(screen().textContent).toContain(
+    'a field left blank is left as it is on every record',
+  )
   const status = screen().querySelector<HTMLInputElement>(
     'input[aria-label="status (optional)"]',
   )!
@@ -951,10 +955,12 @@ test('an action with inputs asks once, and the same values go to every selected 
     { recordId: 'rec-1', expectedRevision: 6 },
     { recordId: 'rec-2', expectedRevision: 3 },
   ])
-  expect(invoked.body?.inputs).toEqual({
-    title: null,
-    status: 'waiting',
-    effort_minutes: null,
-  })
+  // Only the filled input goes; the blank ones are absent, so no target's
+  // title or effort changes and nothing null reaches the executor.
+  expect(invoked.body?.inputs).toEqual({ status: 'waiting' })
+  expect(Object.hasOwn(invoked.body!.inputs as object, 'title')).toBe(false)
+  expect(Object.hasOwn(invoked.body!.inputs as object, 'effort_minutes')).toBe(
+    false,
+  )
   expect(invoked.body?.recordId).toBeUndefined()
 })

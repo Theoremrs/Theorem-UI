@@ -399,7 +399,7 @@ test('quick-add runs the reading list’s create action with its declared inputs
     instanceId: INSTANCE,
     actionKey: 'add_book',
     invocationKey: expect.any(String),
-    inputs: { title: 'Kindred', author: null, url: null },
+    inputs: { title: 'Kindred' },
   })
 })
 
@@ -448,6 +448,33 @@ test('the record module shows one book and runs the module-backed action on it',
     inputs: {},
   })
   await waitFor(() => container.textContent.includes('pause_book saved · r5'))
+})
+
+test('finishing with no rating sends no rating, rather than a null the executor refuses', async () => {
+  const { container } = await render(
+    <PageRuntimeProvider>
+      <CapabilityRecordModule
+        {...moduleView({ instanceId: INSTANCE, recordId: 'book-1' })}
+      />
+    </PageRuntimeProvider>,
+  )
+  await waitFor(() => container.textContent.includes('Piranesi'))
+  await click(button(container, 'Finish'))
+  await waitFor(() =>
+    container.querySelector('input[aria-label="rating (optional)"]'),
+  )
+  // The rating is left blank: the form's own submit, labelled as the action.
+  const submit = container.querySelector('form button[type="submit"]')
+  expect(submit?.textContent.trim()).toBe('Finish')
+  await click(submit)
+  const finished = await waitFor(() => sentTo('/invoke')[0])
+  expect(finished.body).toMatchObject({
+    actionKey: 'finish_book',
+    recordId: 'book-1',
+    expectedRevision: 4,
+    inputs: {},
+  })
+  expect(Object.hasOwn(finished.body!.inputs as object, 'rating')).toBe(false)
 })
 
 // ── Authoring: the extra variant and its lifecycle, through the same dialog ──
