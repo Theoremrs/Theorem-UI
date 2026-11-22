@@ -364,7 +364,7 @@ export type LeafOp =
   | 'is_not_empty'
 
 /** A filter's leaf members: everything but the and/or/not groups. */
-type LeafFilter = Extract<QueryFilter, { op: LeafOp }>
+export type LeafFilter = Extract<QueryFilter, { op: LeafOp }>
 
 /**
  * The leaf comparisons the filter editor offers for a field, in reading order.
@@ -405,7 +405,7 @@ export type FilterRow = { fieldKey: string; op: LeafOp; value: string }
 export const valueless = (op: LeafOp) =>
   op === 'is_empty' || op === 'is_not_empty'
 
-const isLeaf = (filter: QueryFilter): filter is LeafFilter =>
+export const isLeaf = (filter: QueryFilter): filter is LeafFilter =>
   filter.op !== 'and' && filter.op !== 'or' && filter.op !== 'not'
 
 /**
@@ -461,7 +461,8 @@ export const rowsFilter = (
   conditions: rows.map((row) => filterOfRow(row, fieldFor)),
 })
 
-const rowOfFilter = (filter: LeafFilter): FilterRow => {
+/** One leaf as the row the editor shows: field, op, and its value as text. */
+export const rowOfFilter = (filter: LeafFilter): FilterRow => {
   switch (filter.op) {
     case 'in':
       return {
@@ -482,7 +483,8 @@ const rowOfFilter = (filter: LeafFilter): FilterRow => {
   }
 }
 
-const filterOfRow = (
+/** One edited row as the leaf it means, its value typed by the field. */
+export const filterOfRow = (
   row: FilterRow,
   fieldFor: (fieldKey: string) => ResolvedField | undefined,
 ): QueryFilter => {

@@ -155,7 +155,7 @@ function ViewBar({
       {authoring && (
         <Button size="xs" variant="ghost" onClick={onAuthor}>
           <Icon.Settings className="size-3.5" />
-          Fields
+          Customize
         </Button>
       )}
     </div>
@@ -425,9 +425,7 @@ function CapabilityTableBody({
   const schema = schemaFor(described.collectionSchemas, spec.collectionKey)
   const columns = useMemo(() => columnsFor(spec, schema), [spec, schema])
   const rowsQuery = useCapabilityRows(instanceId, spec.key)
-  const { rows, total, filtered, truncated, definitionId } = flattenRows(
-    rowsQuery.data,
-  )
+  const { rows, total, filtered, truncated } = flattenRows(rowsQuery.data)
   const invoking = useCapabilityInvoke()
 
   const [selection, setSelection] = useState<Record<string, true>>({})
@@ -782,10 +780,8 @@ function CapabilityTableBody({
       {authoring && (
         <AuthoringDialog
           instanceId={instanceId}
-          definition={definition}
-          schemas={described.collectionSchemas}
+          described={described}
           viewKey={spec.key}
-          expectedDefinitionId={definitionId}
           onClose={() => setAuthoring(false)}
         />
       )}

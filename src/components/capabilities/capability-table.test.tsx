@@ -13,6 +13,7 @@ import { codes } from '@/lib/capabilities/contract'
 import type {
   CapabilityRecordRow,
   DescribeResult,
+  QueryFilter,
   QueryRequest,
   Grant,
 } from '@/lib/capabilities/contract'
@@ -382,8 +383,21 @@ const screen = () => document.body
 
 /** The dialog, opened from the view bar that shows the rows it would change. */
 async function authoring() {
-  await act(async () => button(screen(), 'Fields')?.click())
+  await act(async () => button(screen(), 'Customize')?.click())
   await waitFor(() => screen().textContent.includes('Author Project tracker'))
+}
+
+/** One of the dialog's sections, by the words its switch shows. */
+async function section(name: string) {
+  await act(async () => button(screen(), name)?.click())
+}
+
+/** A dialog control by its accessible name, of any element kind. */
+const named = <T extends Element = HTMLElement>(label: string) =>
+  document.querySelector<T>(`[aria-label="${label}"]`)
+
+async function press(label: string) {
+  await act(async () => named<HTMLElement>(label)?.click())
 }
 
 const dialogInput = (label: string) =>
@@ -414,17 +428,20 @@ test('the authoring controls are offered to a caller who can author, and hidden 
   await authoring()
   expect(screen().textContent).toContain('Add field')
   expect(screen().textContent).toContain('Rename')
-  expect(screen().textContent).toContain('View filter')
+  expect(button(screen(), 'Views')).toBeTruthy()
 
   const readonly = await showTable(
     { instanceId: 'tracker/main', viewKey: '' },
     readerGrant,
   )
   await waitFor(() => readonly.container.textContent.includes('Write the plan'))
-  expect(button(readonly.container, 'Fields')).toBeUndefined()
+  expect(button(readonly.container, 'Customize')).toBeUndefined()
 })
 
-test('adding an optional field patches the version the rows were read under', async () => {
+test('adding an optional field patches the version describe answered with', async () => {
+  // A query page names another version: the patch still names describe's,
+  // the one the definition on screen came from.
+  pinned = 'capdef:rows-elsewhere'
   const { container } = await showTable()
   await waitFor(() => container.textContent.includes('Write the plan'))
   await authoring()
@@ -510,72 +527,210 @@ test('renaming a field keeps its key and changes only its label', async () => {
   )
 })
 
-test('the filter editor writes a flat and, and says what it cannot show', async () => {
+// ── Views: add, edit and remove, with the whole filter tree ──────────────────
+
+const authored = () => sentTo('/author').map((call) => call.body)
+
+test('a view saved untouched is sent back exactly as it was read', async () => {
   const { container } = await showTable()
   await waitFor(() => container.textContent.includes('Write the plan'))
   await authoring()
-  await act(async () => button(screen(), 'View filter')?.click())
-  // The view's own filter reads back as one row, with the ops its type can answer.
-  await waitFor(() => dialogSelect('Filter field')?.value === 'status')
-  expect(dialogSelect('Filter operator')?.value).toBe('eq')
-  expect(dialogInput('Filter value')?.value).toBe('next')
-  expect(screen().textContent).toContain('Conditions combine with AND')
-  await act(async () => button(screen(), 'Save filter')?.click())
-  const patched = await waitFor(() => sentTo('/author')[0])
-  expect(patched.body).toEqual({
+  await section('Views')
+  // The editor opens on the view the module shows.
+  await waitFor(() => dialogSelect('View to edit')?.value === 'next')
+  expect(dialogInput('View label')?.value).toBe('Next')
+  expect(dialogSelect('Field of condition 1')?.value).toBe('status')
+  expect(dialogInput('Value of condition 1')?.value).toBe('next')
+  await act(async () => button(screen(), 'Save view')?.click())
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [{ op: 'replace_view', view: described.definition.views[0] }],
+  })
+  await waitFor(() =>
+    screen().textContent.includes('View saved · the definition is now capdef:def'),
+  )
+})
+
+test('a view’s label, layout, sort, display fields and filter are edited together', async () => {
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await authoring()
+  await section('Views')
+  await waitFor(() => dialogInput('View label'))
+  fill(dialogInput('View label')!, 'Up next')
+  await act(async () => button(screen(), 'Table')?.click())
+  await act(async () => button(screen(), 'Descending')?.click())
+  // Choose the columns: start from every field, then leave Due out.
+  await press('Show every field')
+  await waitFor(() => named('Show Due'))
+  await press('Show Due')
+  // Beside the lone condition: an any-of group of it and a new one.
+  await press('Add condition')
+  fill(dialogSelect('Field of condition 2')!, 'title')
+  fill(dialogSelect('Operator of condition 2')!, 'contains')
+  fill(dialogInput('Value of condition 2')!, 'plan')
+  fill(dialogSelect('Match for group 1')!, 'or')
+  await press('Negate condition 1')
+  await act(async () => button(screen(), 'Save view')?.click())
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toEqual({
     expectedDefinitionId: 'capdef:abc',
     ops: [
       {
-        op: 'set_view_filter',
-        viewKey: 'next',
-        filter: {
-          op: 'and',
-          conditions: [{ op: 'eq', fieldKey: 'status', value: 'next' }],
+        op: 'replace_view',
+        view: {
+          key: 'next',
+          label: 'Up next',
+          collectionKey: 'tasks',
+          layout: 'table',
+          orderBy: { fieldKey: 'due_at', direction: 'desc' },
+          displayFields: [
+            'title',
+            'status',
+            'effort_minutes',
+            'assignee',
+            'completed_at',
+          ],
+          filter: {
+            op: 'or',
+            conditions: [
+              {
+                op: 'not',
+                condition: { op: 'eq', fieldKey: 'status', value: 'next' },
+              },
+              { op: 'contains', fieldKey: 'title', value: 'plan' },
+            ],
+          },
         },
       },
     ],
   })
 })
 
-test('a filter group the editor cannot show is named, not dropped quietly', async () => {
+test('an or and not filter is shown whole, and an edit changes only the condition it names', async () => {
   const nested = describeResult()
-  nested.definition = {
-    ...nested.definition,
-    views: [
+  const status: QueryFilter = { op: 'eq', fieldKey: 'status', value: 'next' }
+  const quick: QueryFilter = { op: 'contains', fieldKey: 'title', value: 'quick' }
+  const dated: QueryFilter = {
+    op: 'not',
+    condition: { op: 'is_empty', fieldKey: 'due_at' },
+  }
+  const tree: QueryFilter = {
+    op: 'and',
+    conditions: [
+      status,
       {
-        ...nested.definition.views[0]!,
-        filter: {
-          op: 'and',
-          conditions: [
-            { op: 'eq', fieldKey: 'status', value: 'next' },
-            {
-              op: 'or',
-              conditions: [
-                { op: 'contains', fieldKey: 'title', value: 'quick' },
-                { op: 'is_empty', fieldKey: 'due_at' },
-              ],
-            },
-          ],
-        },
+        op: 'or',
+        conditions: [
+          quick,
+          dated,
+          { op: 'gte', fieldKey: 'effort_minutes', value: 30 },
+        ],
       },
     ],
+  }
+  nested.definition = {
+    ...nested.definition,
+    views: [{ ...nested.definition.views[0]!, filter: tree }],
   }
   described = nested
   const { container } = await showTable()
   await waitFor(() => container.textContent.includes('Write the plan'))
   await authoring()
-  await act(async () => button(screen(), 'View filter')?.click())
-  await waitFor(() => screen().textContent.includes('this editor cannot show'))
-  expect(screen().textContent).toContain('holds 1 group')
-  // The one leaf the editor does show is the one row it offers.
-  expect(
-    document.querySelectorAll('select[aria-label="Filter field"]').length,
-  ).toBe(1)
+  await section('Views')
+  await waitFor(() => dialogSelect('Match for group 2'))
+  // Every condition is on screen, the negated one inside its negation.
+  expect(dialogSelect('Match for group 1')?.value).toBe('and')
+  expect(dialogSelect('Match for group 2')?.value).toBe('or')
+  expect(named('Remove negation 1')).toBeTruthy()
+  expect(dialogSelect('Operator of condition 3')?.value).toBe('is_empty')
+  expect(dialogInput('Value of condition 4')?.value).toBe('30')
+  // An integer comparison goes back as a number.
+  fill(dialogInput('Value of condition 4')!, '45')
+  await act(async () => button(screen(), 'Save view')?.click())
+  await waitFor(() => authored().length === 1)
+  const sent = authored()[0] as { ops: [{ view: { filter: unknown } }] }
+  expect(sent.ops[0].view.filter).toEqual({
+    op: 'and',
+    conditions: [
+      status,
+      {
+        op: 'or',
+        conditions: [
+          quick,
+          dated,
+          { op: 'gte', fieldKey: 'effort_minutes', value: 45 },
+        ],
+      },
+    ],
+  })
+})
+
+test('a new view names its key and collection, and a key already taken is refused before sending', async () => {
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await authoring()
+  await section('Views')
+  await waitFor(() => dialogSelect('View to edit'))
+  fill(dialogSelect('View to edit')!, '')
+  await waitFor(() => dialogInput('View key'))
+  fill(dialogInput('View key')!, 'next')
+  fill(dialogInput('View label')!, 'This week')
+  expect(screen().textContent).toContain('a key no other view has')
+  expect(button(screen(), 'Add view')?.disabled).toBe(true)
+  fill(dialogInput('View key')!, 'this_week')
+  await act(async () => button(screen(), 'Board')?.click())
+  await press('Add condition to group 1')
+  fill(dialogSelect('Field of condition 1')!, 'due_at')
+  fill(dialogSelect('Operator of condition 1')!, 'lte')
+  fill(dialogInput('Value of condition 1')!, '2026-11-30')
+  await act(async () => button(screen(), 'Add view')?.click())
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [
+      {
+        op: 'add_view',
+        view: {
+          key: 'this_week',
+          label: 'This week',
+          collectionKey: 'tasks',
+          layout: 'board',
+          filter: {
+            op: 'and',
+            conditions: [
+              { op: 'lte', fieldKey: 'due_at', value: '2026-11-30' },
+            ],
+          },
+        },
+      },
+    ],
+  })
+  await waitFor(() => screen().textContent.includes('View added'))
+})
+
+test('removing a view asks first and says records are not changed', async () => {
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await authoring()
+  await section('Views')
+  await waitFor(() => dialogSelect('View to edit'))
+  fill(dialogSelect('View to edit')!, 'all')
+  await act(async () => button(screen(), 'Remove view')?.click())
+  expect(screen().textContent).toContain('Records are not changed')
+  expect(authored().length).toBe(0)
+  await press('Confirm remove view')
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [{ op: 'remove_view', viewKey: 'all' }],
+  })
 })
 
 test('a stale definition base is refused, the current one is read back, and the retry is the person’s', async () => {
-  // The rows were read under one version; the instance is pinned to another.
-  pinned = 'capdef:newer'
+  // Describe answered under one version; the instance is pinned to another.
+  described = { ...describeResult(), definitionId: 'capdef:older' }
   const { container } = await showTable()
   await waitFor(() => container.textContent.includes('Write the plan'))
   await authoring()
