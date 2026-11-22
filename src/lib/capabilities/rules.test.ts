@@ -237,6 +237,28 @@ describe('the actions a trigger may invoke', () => {
 })
 
 describe('describing a rule', () => {
+  test('a blank label reads as its key, never as an empty name', () => {
+    const unlabelled = {
+      ...withRules,
+      collections: withRules.collections.map((one) => ({ ...one, label: '' })),
+    }
+    const unnamed = schemas.map((schema) => ({
+      ...schema,
+      fields: schema.fields.map((field) => ({ ...field, label: '' })),
+    }))
+    expect(
+      describeTrigger(
+        {
+          kind: 'record_updated',
+          collectionKey: 'tasks',
+          fieldKeys: ['status'],
+        },
+        unlabelled,
+        unnamed,
+      ),
+    ).toBe('When status changes on a tasks record')
+  })
+
   test('in a sentence, naming collections and fields by label', () => {
     expect(describeTrigger(onDone.trigger, withRules, schemas)).toBe(
       'When a Tasks record moves to done',

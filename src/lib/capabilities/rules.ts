@@ -87,8 +87,9 @@ const collectionOf = (definition: CapabilityDefinition, key: string) =>
 const schemaOf = (schemas: ReadonlyArray<CollectionSchema>, key: string) =>
   schemas.find((schema) => schema.collectionKey === key)
 
+/** A collection by its label, or by its key when the label is blank. */
 const labelOf = (definition: CapabilityDefinition, key: string) =>
-  collectionOf(definition, key)?.label ?? key
+  collectionOf(definition, key)?.label || key
 
 /** The actions a trigger may invoke: a schedule creates; an event creates, or updates its record. */
 export function ruleActions(
@@ -308,7 +309,7 @@ function describeUpdated(
   if (!fields.length) return `When a ${label} record changes`
   const resolved = schemaOf(schemas, trigger.collectionKey)?.fields ?? []
   const names = fields.map(
-    (key) => resolved.find((field) => field.key === key)?.label ?? key,
+    (key) => resolved.find((field) => field.key === key)?.label || key,
   )
   return `When ${either(names)} changes on a ${label} record`
 }
