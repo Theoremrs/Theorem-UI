@@ -126,6 +126,43 @@ test('state kept in the App document comes along, and an earlier revision says i
   expect(body.textContent).toContain('This is an earlier revision')
 })
 
+test('signed out, the dialog says a page is a file in the vault and why it cannot open, with no form', async () => {
+  happyDom.setURL('http://localhost:3000/')
+  const realFetch = window.fetch
+  const asked: string[] = []
+  window.fetch = (async (input: RequestInfo | URL) => {
+    asked.push(input instanceof Request ? input.url : String(input))
+    return new Response(JSON.stringify({}), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    })
+  }) as typeof fetch
+  stops.push(() => {
+    window.fetch = realFetch
+    happyDom.setURL('about:blank')
+  })
+  const { container } = await render(
+    <SaveAsPage artifact={app('doc-1')} latest />,
+  )
+  // The vault is asked for when the dialog opens, not for the artifact shown.
+  expect(asked.some((url) => url.includes('/api/files/v1'))).toBe(false)
+  act(() =>
+    container
+      .querySelector<HTMLButtonElement>('button[aria-label="Save as page"]')!
+      .click(),
+  )
+  const body = document.body
+  await waitFor(() => body.textContent.includes('Sign in to open it.'))
+  const status = [...body.querySelectorAll('[role="status"]')].map(
+    (node) => node.textContent,
+  )
+  expect(status).toContain(
+    'A page is a file in the Theorem vault. Sign in to open it.',
+  )
+  expect(asked.some((url) => url.includes('/api/files/v1'))).toBe(true)
+  expect(body.querySelector('input[aria-label="Page title"]')).toBeNull()
+})
+
 test('an App with no saved document offers no binding, and other artifacts no button', async () => {
   const { container } = await render(
     <>
