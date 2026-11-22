@@ -593,7 +593,8 @@ export type RulePatchOp =
 export type RunTrigger =
   | { kind: 'event'; journalId: string; recordId: string }
   | { kind: 'schedule'; slot: number; slotStartMs: number }
-  | { kind: 'manual'; invocationKey: string }
+  /** `recordId` names the record a manual run of an update rule acts on; absent for a create rule. */
+  | { kind: 'manual'; invocationKey: string; recordId?: string }
 
 /** The rule chain a run descends from; a repeat or a depth past the limit is a loop. */
 export type RunCause = { depth: number; chain: string[] }
@@ -638,8 +639,12 @@ export type RuleRunListQuery = {
 
 export type RuleRunList = { runs: RuleRun[]; nextCursor?: string }
 
-/** A manual run; a blank or absent key adopts the `Idempotency-Key` header, as invoke does. */
-export type RunRuleRequest = { invocationKey?: string }
+/**
+ * A manual run; a blank or absent key adopts the `Idempotency-Key` header, as
+ * invoke does. `recordId` is required when the rule's action updates a record
+ * and refused when it creates one.
+ */
+export type RunRuleRequest = { invocationKey?: string; recordId?: string }
 
 export type InvocationCause = { ruleKey: string; runId: string; depth: number }
 

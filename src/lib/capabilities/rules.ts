@@ -293,7 +293,9 @@ export function describeRunTrigger(trigger: RunTrigger): string {
     case 'schedule':
       return `Scheduled slot ${trigger.slot}, ${iso(trigger.slotStartMs)}`
     case 'manual':
-      return 'Run by hand'
+      return trigger.recordId
+        ? `Run by hand on record ${trigger.recordId}`
+        : 'Run by hand'
   }
 }
 

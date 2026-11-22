@@ -403,6 +403,14 @@ describe('reading a run', () => {
     expect(describeRunTrigger({ kind: 'manual', invocationKey: 'k' })).toBe(
       'Run by hand',
     )
+    // An agent's manual run of an update rule names the record it acted on.
+    expect(
+      describeRunTrigger({
+        kind: 'manual',
+        invocationKey: 'k',
+        recordId: 'rec-9',
+      }),
+    ).toBe('Run by hand on record rec-9')
   })
 })
 
