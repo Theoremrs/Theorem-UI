@@ -320,14 +320,20 @@ export function invokeTargets({
 
 // ── Refusals ────────────────────────────────────────────────────────────────
 
-/** The problem code a refusal carries, when it carries one at all. */
-export function refusalCode(error: unknown): string | undefined {
+/** A refusal's problem body, when it carries one: the error's `body`, if that is an object. */
+function problemBody(error: unknown): Record<string, unknown> | undefined {
   const body =
     error !== null && typeof error === 'object' && 'body' in error
       ? (error as { body?: unknown }).body
       : undefined
-  if (body === null || typeof body !== 'object') return undefined
-  const code = (body as Record<string, unknown>).code
+  return body !== null && typeof body === 'object'
+    ? (body as Record<string, unknown>)
+    : undefined
+}
+
+/** The problem code a refusal carries, when it carries one at all. */
+export function refusalCode(error: unknown): string | undefined {
+  const code = problemBody(error)?.code
   return typeof code === 'string' ? code : undefined
 }
 
@@ -396,17 +402,19 @@ export function refusalMessage(error: unknown, action: string): string {
     case codes.TEMPLATE_NOT_FOUND:
       return `That template is not there: it was never saved, or it is not yours to read.`
   }
-  const detail =
-    error !== null && typeof error === 'object' && 'body' in error
-      ? (error as { body?: unknown }).body
-      : undefined
-  const message =
-    detail && typeof detail === 'object'
-      ? ((detail as Record<string, unknown>).detail ??
-        (detail as Record<string, unknown>).title)
-      : undefined
-  if (typeof message === 'string' && message.trim()) return message.trim()
-  return `${action} could not be completed.`
+  return serverLine(error, action)
+}
+
+/**
+ * What the server said, for a code with no line of its own: the problem's
+ * detail, else its title; when neither is text, that the action failed.
+ */
+function serverLine(error: unknown, action: string): string {
+  const body = problemBody(error)
+  const said = body?.detail ?? body?.title
+  return typeof said === 'string' && said.trim()
+    ? said.trim()
+    : `${action} could not be completed.`
 }
 
 // ── slice 2: rules, runs, modules ───────────────────────────────────────────
