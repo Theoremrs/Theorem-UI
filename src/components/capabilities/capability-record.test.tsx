@@ -37,6 +37,12 @@ let calls: Call[]
 let rows: QueryResult['records']
 let described: DescribeResult
 let invokeRefusal: { status: number; code: string } | undefined
+/** Invokes answer a journaled call that has not finished. */
+let invokeDispatched = false
+/** The next finished call failed with this code and message. */
+let invokeFailure: { code: string; message: string } | undefined
+/** A receipt read back is refused. */
+let receiptRefused = false
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), {
     status,
@@ -94,6 +100,9 @@ beforeEach(() => {
   rows = taskRows
   described = describeResult()
   invokeRefusal = undefined
+  invokeDispatched = false
+  invokeFailure = undefined
+  receiptRefused = false
   window.fetch = (async (info: RequestInfo | URL, init?: RequestInit) => {
     const request = info instanceof Request ? info : undefined
     const url = new URL(request ? request.url : String(info))
@@ -136,9 +145,45 @@ beforeEach(() => {
       if (!found) return refusal(404, codes.RECORD_NOT_FOUND)
       return json(found)
     }
+    if (rest[2] === 'invocations') {
+      if (receiptRefused) return refusal(404, 'invocation_unknown')
+      return json({
+        recordId: 'capop:abc',
+        invocationKey: 'k',
+        instanceId: 'tracker/main',
+        actionKey: 'complete',
+        definitionId: 'capdef:abc',
+        requestDigest: 'sha256:abc',
+        startedAtMs: 1,
+        status: 'finished',
+        outcome: {
+          outcome: 'completed',
+          affected: [{ id: 'rec-1', revision: 8 }],
+          fields: {},
+        },
+        finishedAtMs: 2,
+      })
+    }
     if (rest[2] === 'invoke') {
       if (invokeRefusal)
         return refusal(invokeRefusal.status, invokeRefusal.code)
+      const receipt = {
+        recordId: 'capop:abc',
+        invocationKey: body?.invocationKey,
+        instanceId: 'tracker/main',
+        actionKey: body?.actionKey,
+        definitionId: 'capdef:abc',
+        requestDigest: 'sha256:abc',
+        startedAtMs: 1,
+      }
+      if (invokeDispatched) return json({ ...receipt, status: 'dispatched' })
+      if (invokeFailure)
+        return json({
+          ...receipt,
+          status: 'finished',
+          outcome: { outcome: 'failed', ...invokeFailure },
+          finishedAtMs: 2,
+        })
       return json({
         recordId: 'capop:abc',
         invocationKey: body?.invocationKey,
@@ -541,4 +586,45 @@ test('a grant without read is a permission state, and nothing is walked', async 
     container.textContent.includes('does not include reading'),
   )
   expect(calls.filter((call) => call.path.endsWith('/query')).length).toBe(0)
+})
+
+test('a call the journal holds unfinished says so, and its receipt is read back on asking', async () => {
+  invokeDispatched = true
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Complete')?.click())
+  await waitFor(() =>
+    container.textContent.includes(
+      'complete is journaled and has not finished, so whether it took effect is not yet known.',
+    ),
+  )
+  await act(async () => button(container, 'Check its receipt')?.click())
+  await waitFor(() => container.textContent.includes('complete saved · r8.'))
+})
+
+test('a receipt that cannot be read back says why', async () => {
+  invokeDispatched = true
+  receiptRefused = true
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Complete')?.click())
+  await waitFor(() => button(container, 'Check its receipt'))
+  await act(async () => button(container, 'Check its receipt')?.click())
+  const alert = await waitFor(() => container.querySelector('[role="alert"]'))
+  expect(alert.textContent).toContain('The record moved on since it was read.')
+})
+
+test('a call the executor finished as failed says its code and why, with no reload unless it is stale', async () => {
+  invokeFailure = {
+    code: codes.PRECONDITION_FAILED,
+    message: 'status is not one of next, in_progress, waiting',
+  }
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Complete')?.click())
+  const alert = await waitFor(() => container.querySelector('[role="alert"]'))
+  expect(alert.textContent).toContain(
+    'capability_precondition_failed: status is not one of next, in_progress, waiting',
+  )
+  expect(button(container, 'Reload')).toBeUndefined()
 })

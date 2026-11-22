@@ -45,8 +45,21 @@ let invokeRefusal: { status: number; code: string } | undefined
 /** What each view answers: rows, and whether a filter or the page cut them down. */
 let answers: Record<
   string,
-  { rows: CapabilityRecordRow[]; filtered: boolean; total: number }
+  {
+    rows: CapabilityRecordRow[]
+    filtered: boolean
+    total: number
+    truncated?: boolean
+    /** A second page, read by the cursor the first one names. */
+    next?: CapabilityRecordRow[]
+  }
 >
+/** The next query answers this problem instead of rows. */
+let queryRefusal: string | undefined
+/** Invokes answer a journaled call that has not finished. */
+let invokeDispatched = false
+/** A receipt read back answers this problem instead of the finished call. */
+let receiptRefusal: string | undefined
 /** The definition version the rows were read under; a patch has to name it. */
 let pinned = 'capdef:abc'
 /** The caller's saved templates. */
@@ -81,6 +94,9 @@ beforeEach(() => {
   pinned = 'capdef:abc'
   library = []
   invokeOutcome = undefined
+  queryRefusal = undefined
+  invokeDispatched = false
+  receiptRefusal = undefined
   answers = {
     next: { rows: taskRows, filtered: true, total: 4 },
     all: { rows: [], filtered: false, total: 0 },
@@ -106,6 +122,17 @@ beforeEach(() => {
         status,
         headers: { 'content-type': 'application/json' },
       })
+    const problem = (status: number, detail: string) =>
+      new Response(
+        JSON.stringify({
+          type: 'about:blank',
+          title: 'Refused',
+          status,
+          code: 'store_unavailable',
+          detail,
+        }),
+        { status, headers: { 'content-type': 'application/problem+json' } },
+      )
     if (url.pathname === '/api/chat/v1/bootstrap')
       return json({ schema: 'theorem.chat.bootstrap.v1', csrfToken: 'csrf' })
     const rest = url.pathname.slice(CAPABILITIES.length + 1).split('/')
@@ -127,19 +154,42 @@ beforeEach(() => {
     if (rest.length === 1) return json({ instances: [] })
     if (rest.length === 2) return json(described)
     if (tail === 'query') {
+      if (queryRefusal) return problem(503, queryRefusal)
       const asked = body as unknown as QueryRequest
       const answer = answers[asked.viewKey ?? ''] ?? {
         rows: [],
         filtered: false,
         total: 0,
       }
+      const later = asked.cursor !== undefined
       return json(
-        queryResult(answer.rows, {
+        queryResult(later ? (answer.next ?? []) : answer.rows, {
           filtered: answer.filtered,
           total: answer.total,
+          truncated: answer.truncated ?? false,
           definitionId: pinned,
+          ...(answer.next && !later ? { nextCursor: 'page-2' } : {}),
         }),
       )
+    }
+    if (tail === 'invocations') {
+      if (receiptRefusal) return problem(404, receiptRefusal)
+      return json({
+        recordId: 'capop:abc',
+        invocationKey: 'k',
+        instanceId: 'tracker/main',
+        actionKey: 'complete',
+        definitionId: 'capdef:abc',
+        requestDigest: 'sha256:abc',
+        startedAtMs: 1,
+        status: 'finished',
+        outcome: {
+          outcome: 'completed',
+          affected: [{ id: 'rec-1', revision: 7 }],
+          fields: { status: 'done' },
+        },
+        finishedAtMs: 2,
+      })
     }
     if (tail === 'invoke') {
       if (invokeRefusal)
@@ -156,6 +206,17 @@ beforeEach(() => {
             headers: { 'content-type': 'application/problem+json' },
           },
         )
+      if (invokeDispatched)
+        return json({
+          recordId: 'capop:abc',
+          invocationKey: body?.invocationKey,
+          instanceId: 'tracker/main',
+          actionKey: body?.actionKey,
+          definitionId: 'capdef:abc',
+          requestDigest: 'sha256:abc',
+          startedAtMs: 1,
+          status: 'dispatched',
+        })
       return json({
         recordId: 'capop:abc',
         invocationKey: body?.invocationKey,
@@ -786,7 +847,9 @@ test('a new view’s collection takes the filter, sort and columns that named th
   // A sort starts ascending; the direction is offered only once there is one.
   expect(button(screen(), 'Descending')).toBeUndefined()
   fill(dialogSelect('Sort by')!, 'due_at')
-  expect(button(screen(), 'Ascending')?.getAttribute('aria-pressed')).toBe('true')
+  expect(button(screen(), 'Ascending')?.getAttribute('aria-pressed')).toBe(
+    'true',
+  )
   await act(async () => button(screen(), 'Descending')?.click())
   await press('Show every field')
   await press('Add condition to group 1')
@@ -798,7 +861,9 @@ test('a new view’s collection takes the filter, sort and columns that named th
   expect(dialogSelect('Field of condition 1')).toBeNull()
   // The new collection's own field, ascending again; then no sort at all.
   fill(dialogSelect('Sort by')!, 'name')
-  expect(button(screen(), 'Ascending')?.getAttribute('aria-pressed')).toBe('true')
+  expect(button(screen(), 'Ascending')?.getAttribute('aria-pressed')).toBe(
+    'true',
+  )
   fill(dialogSelect('Sort by')!, '')
   expect(button(screen(), 'Ascending')).toBeUndefined()
   fill(dialogSelect('Sort by')!, 'name')
@@ -1091,4 +1156,110 @@ test('an action with inputs asks once, and the same values go to every selected 
     false,
   )
   expect(invoked.body?.recordId).toBeUndefined()
+})
+
+test('a call the journal holds unfinished says so, and its receipt is read back on asking', async () => {
+  invokeDispatched = true
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Complete')?.click())
+  await waitFor(() =>
+    container.textContent.includes(
+      'complete is journaled and has not finished, so whether it took effect is not yet known.',
+    ),
+  )
+  await act(async () => button(container, 'Check its receipt')?.click())
+  await waitFor(() => container.textContent.includes('complete saved · r7.'))
+  expect(sentTo('/invocations/capop%3Aabc').length).toBe(1)
+})
+
+test('a receipt that cannot be read back says why', async () => {
+  invokeDispatched = true
+  receiptRefusal = 'No such invocation.'
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Complete')?.click())
+  await waitFor(() => button(container, 'Check its receipt'))
+  await act(async () => button(container, 'Check its receipt')?.click())
+  const alert = await waitFor(() => container.querySelector('[role="alert"]'))
+  expect(alert.textContent).toContain('No such invocation.')
+  expect(button(container, 'Check its receipt')).toBeUndefined()
+})
+
+test('a selection call the server refuses outright says why, and a reload reads the rows again', async () => {
+  invokeRefusal = { status: 409, code: codes.REVISION_CONFLICT }
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await tick(container, 0, 1)
+  const bar = await waitFor(() => bulkBar(container))
+  await act(async () => byLabel(bar, 'Complete the 2 selected')?.click())
+  const alert = await waitFor(() => container.querySelector('[role="alert"]'))
+  expect(alert.textContent).toContain(
+    'Complete changed this record while you were looking at it. Nothing was lost: reload it and try again.',
+  )
+  const before = sentTo('/query').length
+  await act(async () => button(container, 'Reload')?.click())
+  await waitFor(() => sentTo('/query').length > before)
+  expect(container.querySelector('[role="alert"]')).toBeNull()
+})
+
+test('a view that cannot be read says why, and trying again reads it', async () => {
+  queryRefusal = 'The store is not answering.'
+  const { container } = await showTable()
+  const alert = await waitFor(() => container.querySelector('[role="alert"]'))
+  expect(alert.textContent).toContain('The store is not answering.')
+  queryRefusal = undefined
+  await act(async () => button(container, 'Try again')?.click())
+  await waitFor(() => container.textContent.includes('Write the plan'))
+})
+
+test('a second page loads on asking, and an answer the page cut short says how much is shown', async () => {
+  answers.next = {
+    rows: taskRows.slice(0, 1),
+    next: taskRows.slice(1),
+    filtered: true,
+    total: taskRows.length,
+  }
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  expect(container.textContent).not.toContain('Sketch the page')
+  const more = `Load more (${taskRows.length} in all)`
+  await act(async () => button(container, more)?.click())
+  await waitFor(() => container.textContent.includes('Sketch the page'))
+  expect(sentTo('/query').at(-1)!.body).toMatchObject({ cursor: 'page-2' })
+  expect(button(container, more)).toBeUndefined()
+  cleanup()
+
+  answers.next = { rows: taskRows, filtered: true, total: 9, truncated: true }
+  const cut = await showTable()
+  await waitFor(() => cut.container.textContent.includes('Write the plan'))
+  expect(cut.container.textContent).toContain(
+    `The page cut the answer short: ${taskRows.length} of 9 rows are shown.`,
+  )
+})
+
+test('a row action with inputs asks for them first, naming the record at the revision on screen', async () => {
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Edit')?.click())
+  const dialog = await waitFor(() =>
+    screen().querySelector<HTMLElement>('[role="dialog"]'),
+  )
+  expect(dialog.textContent).toContain('Write the plan · at revision 6')
+  type(
+    dialog.querySelector<HTMLInputElement>(
+      'input[aria-label="status (optional)"]',
+    )!,
+    'waiting',
+  )
+  await act(async () => button(dialog, 'Edit')?.click())
+  const invoked = await waitFor(() => sentTo('/invoke')[0])
+  expect(invoked.body).toMatchObject({
+    actionKey: 'update',
+    recordId: 'rec-1',
+    expectedRevision: 6,
+    inputs: { status: 'waiting' },
+  })
+  await waitFor(() => !screen().querySelector('[role="dialog"]'))
+  expect(container.textContent).toContain('update saved · r7.')
 })
