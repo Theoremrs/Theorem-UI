@@ -213,7 +213,10 @@ export function FilterTreeEditor({
               options={
                 field || !row.fieldKey
                   ? fieldOptions
-                  : [{ value: row.fieldKey, label: row.fieldKey }, ...fieldOptions]
+                  : [
+                      { value: row.fieldKey, label: row.fieldKey },
+                      ...fieldOptions,
+                    ]
               }
               onChange={(fieldKey) =>
                 set({

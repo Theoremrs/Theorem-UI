@@ -108,13 +108,18 @@ test('an op this client does not know is kept as it came', () => {
 
 test('editing one leaf changes that leaf alone, typed by its field', () => {
   const tree = editTree(deep)
-  const effort = leaves(tree).find((leaf) => leaf.row.fieldKey === 'effort_minutes')!
+  const effort = leaves(tree).find(
+    (leaf) => leaf.row.fieldKey === 'effort_minutes',
+  )!
   const edited = setLeaf(tree, effort.id, {
     fieldKey: 'effort_minutes',
     op: 'lte',
     value: ' 45 ',
   })
-  const out = treeFilter(edited, fieldFor) as Extract<QueryFilter, { op: 'and' }>
+  const out = treeFilter(edited, fieldFor) as Extract<
+    QueryFilter,
+    { op: 'and' }
+  >
   // The integer comparison reaches the executor as a number.
   const or = out.conditions[1] as Extract<QueryFilter, { op: 'or' }>
   const not = or.conditions[2] as Extract<QueryFilter, { op: 'not' }>

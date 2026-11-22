@@ -131,7 +131,9 @@ test('a new enum variant is added to the field it names, and one it already has 
     'Its variants now: next, in_progress, waiting, done.',
   )
   fill('New variant', 'done')
-  expect(screen().textContent).toContain('a variant the field does not have yet')
+  expect(screen().textContent).toContain(
+    'a variant the field does not have yet',
+  )
   expect(named<HTMLButtonElement>('Add enum variant')?.disabled).toBe(true)
   fill('New variant', ' blocked ')
   await click(named('Add enum variant'))
@@ -148,7 +150,9 @@ test('a new enum variant is added to the field it names, and one it already has 
     ],
   })
   await waitFor(() =>
-    screen().textContent.includes('Variant added · the definition is now capdef:def'),
+    screen().textContent.includes(
+      'Variant added · the definition is now capdef:def',
+    ),
   )
 })
 
@@ -164,9 +168,9 @@ test('the lifecycle editor reads the declared lifecycle and sends it back edited
   expect(named('Initial next')?.getAttribute('aria-checked')).toBe('true')
   expect(named('Initial waiting')?.getAttribute('aria-checked')).toBe('false')
   expect(named<HTMLSelectElement>('Transition 1 to')?.value).toBe('done')
-  expect(
-    named('Transition 1 from waiting')?.getAttribute('aria-checked'),
-  ).toBe('true')
+  expect(named('Transition 1 from waiting')?.getAttribute('aria-checked')).toBe(
+    'true',
+  )
 
   // Let a new record also start as waiting; add waiting -> in_progress.
   await click(named('Initial waiting'))
@@ -483,7 +487,10 @@ test('a refused re-pin says why and moves nothing', async () => {
     body: {
       instanceId: 'tracker/main',
       currentDefinitionId: 'capdef:abc',
-      entries: [pin(2, 'capdef:abc', 'authored'), pin(1, 'capdef:old', 'created')],
+      entries: [
+        pin(2, 'capdef:abc', 'authored'),
+        pin(1, 'capdef:old', 'created'),
+      ],
     },
   }
   answers.repin = {
@@ -529,7 +536,9 @@ test('save as template names the instance, a name and a description, and says wh
   await click(button('Templates'))
   await waitFor(() => named('Template name'))
   // It starts from the definition's own name and purpose.
-  expect(named<HTMLInputElement>('Template name')?.value).toBe('Project tracker')
+  expect(named<HTMLInputElement>('Template name')?.value).toBe(
+    'Project tracker',
+  )
   expect(named<HTMLInputElement>('Template description')?.value).toBe(
     'Track personal projects and tasks',
   )

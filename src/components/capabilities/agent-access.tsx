@@ -7,10 +7,7 @@ import { useState } from 'react'
 import { Checkbox } from '@/components/coss/checkbox'
 import { Button } from '@/components/ui/button'
 import { fieldControl } from '@/components/pages/resource-field'
-import type {
-  CapabilityDefinition,
-  Grant,
-} from '@/lib/capabilities/contract'
+import type { CapabilityDefinition, Grant } from '@/lib/capabilities/contract'
 import { Note, Row } from './authoring-parts'
 import type { Submit } from './authoring-parts'
 
@@ -63,8 +60,8 @@ export function AgentAccess({
       <section className="flex flex-col gap-1.5">
         <Heading>Use in this conversation</Heading>
         <Note>
-          Puts this capability in the composer as context for this
-          conversation only. It lists nothing and grants nothing.
+          Puts this capability in the composer as context for this conversation
+          only. It lists nothing and grants nothing.
         </Note>
         <Button
           size="sm"
@@ -81,11 +78,7 @@ export function AgentAccess({
           Use in this conversation
         </Button>
       </section>
-      <Discoverable
-        definition={definition}
-        busy={busy}
-        onSubmit={onSubmit}
-      />
+      <Discoverable definition={definition} busy={busy} onSubmit={onSubmit} />
       <section className="flex flex-col gap-1.5">
         <Heading>Permitted actions</Heading>
         {grants ? (
@@ -98,8 +91,8 @@ export function AgentAccess({
         ) : (
           <Note>
             The grant list is disclosed only to a caller who may author this
-            instance, and this answer did not include it, so it cannot be
-            edited here.
+            instance, and this answer did not include it, so it cannot be edited
+            here.
           </Note>
         )}
       </section>
@@ -119,9 +112,7 @@ function Discoverable({
   const [discoverable, setDiscoverable] = useState(
     definition.agent.discoverable,
   )
-  const [description, setDescription] = useState(
-    definition.agent.description,
-  )
+  const [description, setDescription] = useState(definition.agent.description)
   return (
     <section className="flex flex-col gap-1.5">
       <Heading>Discoverable to agents</Heading>
@@ -211,7 +202,9 @@ function GrantsEditor({
         // A key the definition no longer declares is still this grant's.
         const keys = [
           ...declared,
-          ...grant.invoke.filter((key) => key !== ALL && !declared.includes(key)),
+          ...grant.invoke.filter(
+            (key) => key !== ALL && !declared.includes(key),
+          ),
         ]
         return (
           <fieldset
@@ -257,9 +250,7 @@ function GrantsEditor({
               checked={all}
               onChange={(on) =>
                 set(at, {
-                  invoke: on
-                    ? [ALL]
-                    : [],
+                  invoke: on ? [ALL] : [],
                 })
               }
             />
@@ -278,7 +269,10 @@ function GrantsEditor({
                       onChange={(on) =>
                         set(at, {
                           invoke: on
-                            ? [...grant.invoke.filter((one) => one !== key), key]
+                            ? [
+                                ...grant.invoke.filter((one) => one !== key),
+                                key,
+                              ]
                             : grant.invoke.filter((one) => one !== key),
                         })
                       }

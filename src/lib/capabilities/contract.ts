@@ -435,10 +435,7 @@ export type InvokeTarget = { recordId: string; expectedRevision?: number }
 export type RecordFields = { id: string; fields: Record<string, unknown> }
 
 export type DefinitionHistoryReason =
-  | 'created'
-  | 'authored'
-  | 'repinned'
-  | 'instantiated'
+  'created' | 'authored' | 'repinned' | 'instantiated'
 
 /**
  * One pin of an instance's definition. Definition history only: records,

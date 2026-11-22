@@ -64,7 +64,12 @@ export function editTree(filter: QueryFilter): EditNode {
       child: editTree(node.condition as QueryFilter),
     }
   if (editableLeaf(node))
-    return { id: freshId(), kind: 'leaf', row: rowOfFilter(node), original: node }
+    return {
+      id: freshId(),
+      kind: 'leaf',
+      row: rowOfFilter(node),
+      original: node,
+    }
   return { id: freshId(), kind: 'opaque', original: node }
 }
 

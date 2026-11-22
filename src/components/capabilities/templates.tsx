@@ -101,8 +101,7 @@ export function NewFromTemplate({
   const [chosen, setChosen] = useState('')
   const [instanceId, setInstanceId] = useState('')
   const [status, setStatus] = useState<Status>()
-  const template =
-    listed.find((one) => one.templateId === chosen) ?? listed[0]
+  const template = listed.find((one) => one.templateId === chosen) ?? listed[0]
 
   const id = instanceId.trim()
   const problems: string[] = []

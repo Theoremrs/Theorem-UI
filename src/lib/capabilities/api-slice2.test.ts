@@ -196,9 +196,9 @@ test('templates are library objects: save, list, read and instantiate', async ()
   })
   expect(save.headers.get('Idempotency-Key')).toBeTruthy()
 
-  expect((await listTemplates()).templates.map((one) => one.templateId)).toEqual(
-    ['captpl:abc'],
-  )
+  expect(
+    (await listTemplates()).templates.map((one) => one.templateId),
+  ).toEqual(['captpl:abc'])
   expect((await readTemplate('captpl:abc')).name).toBe('Tracker')
 
   const made = await instantiateTemplate('captpl:abc', {

@@ -179,7 +179,11 @@ function ViewForm({
 
   const save = async () => {
     const taken = await onSubmit(
-      [view ? { op: 'replace_view', view: next } : { op: 'add_view', view: next }],
+      [
+        view
+          ? { op: 'replace_view', view: next }
+          : { op: 'add_view', view: next },
+      ],
       view ? 'View saved' : 'View added',
     )
     if (taken && !view) onAdded()
@@ -312,9 +316,7 @@ function ViewForm({
               <span>{fields.get(fieldKey)?.label ?? fieldKey}</span>
             </div>
           ))}
-        {shown && (
-          <Note>Columns show in the order they were chosen.</Note>
-        )}
+        {shown && <Note>Columns show in the order they were chosen.</Note>}
       </fieldset>
       <div className="flex flex-col gap-1">
         <span className="text-xs font-medium text-ink-muted">Filter</span>
@@ -363,7 +365,11 @@ function ViewForm({
             >
               Remove
             </Button>
-            <Button size="xs" variant="ghost" onClick={() => setRemoving(false)}>
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => setRemoving(false)}
+            >
               Keep it
             </Button>
           </div>

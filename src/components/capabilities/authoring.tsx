@@ -188,7 +188,10 @@ export function AuthoringDialog({
         message: `Re-pinned · the instance now uses ${result.definitionId}. Records are not changed.`,
       })
     } catch (error) {
-      setStatus({ kind: 'failed', message: refusalMessage(error, 'Re-pinning') })
+      setStatus({
+        kind: 'failed',
+        message: refusalMessage(error, 'Re-pinning'),
+      })
     }
   }
   const busy = authoring.isPending || repinning.isPending

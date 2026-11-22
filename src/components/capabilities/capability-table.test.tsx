@@ -114,7 +114,10 @@ beforeEach(() => {
         return json(
           {
             definitionId: 'capdef:fresh',
-            instance: { instanceId: body?.instanceId, definitionId: 'capdef:fresh' },
+            instance: {
+              instanceId: body?.instanceId,
+              definitionId: 'capdef:fresh',
+            },
           },
           201,
         )
@@ -574,7 +577,9 @@ test('a view saved untouched is sent back exactly as it was read', async () => {
     ops: [{ op: 'replace_view', view: described.definition.views[0] }],
   })
   await waitFor(() =>
-    screen().textContent.includes('View saved · the definition is now capdef:def'),
+    screen().textContent.includes(
+      'View saved · the definition is now capdef:def',
+    ),
   )
 })
 
@@ -637,7 +642,11 @@ test('a view’s label, layout, sort, display fields and filter are edited toget
 test('an or and not filter is shown whole, and an edit changes only the condition it names', async () => {
   const nested = describeResult()
   const status: QueryFilter = { op: 'eq', fieldKey: 'status', value: 'next' }
-  const quick: QueryFilter = { op: 'contains', fieldKey: 'title', value: 'quick' }
+  const quick: QueryFilter = {
+    op: 'contains',
+    fieldKey: 'title',
+    value: 'quick',
+  }
   const dated: QueryFilter = {
     op: 'not',
     condition: { op: 'is_empty', fieldKey: 'due_at' },
@@ -783,17 +792,13 @@ test('use in this conversation puts the view in the composer, with or without a 
   await waitFor(() => container.textContent.includes('Write the plan'))
   await authoring()
   await section('Agent access')
-  await act(async () =>
-    button(screen(), 'Use in this conversation')?.click(),
-  )
+  await act(async () => button(screen(), 'Use in this conversation')?.click())
   const [reference] = await waitFor(() => {
     const held = useComposerReferences.getState().references
     return held.length ? held : undefined
   })
   expect(reference?.label).toBe('Project tracker · Next')
-  expect(
-    (reference as CapabilityContextReference).location.resource,
-  ).toEqual({
+  expect((reference as CapabilityContextReference).location.resource).toEqual({
     kind: 'capability',
     instanceId: 'tracker/main',
     collectionKey: 'tasks',
@@ -931,7 +936,9 @@ test('an action with inputs asks once, and the same values go to every selected 
   const bar = await waitFor(() => bulkBar(container))
   await act(async () => byLabel(bar, 'Edit the 2 selected')?.click())
   await waitFor(() =>
-    screen().textContent.includes('The same values go to every selected record'),
+    screen().textContent.includes(
+      'The same values go to every selected record',
+    ),
   )
   expect(screen().textContent).toContain('a field left blank is written blank')
   const status = screen().querySelector<HTMLInputElement>(

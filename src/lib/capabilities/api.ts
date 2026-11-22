@@ -270,7 +270,9 @@ export const listTemplates = () =>
 
 /** One template, by id. */
 export const readTemplate = (templateId: string) =>
-  read<CapabilityTemplate>(`${CAPABILITIES}/library/templates/${id(templateId)}`)
+  read<CapabilityTemplate>(
+    `${CAPABILITIES}/library/templates/${id(templateId)}`,
+  )
 
 /** Bind a fresh instance from a template, under the id the caller chose. */
 export const instantiateTemplate = (

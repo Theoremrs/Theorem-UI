@@ -107,12 +107,17 @@ export function AddVariant({
           <Choice
             label="Variant field"
             value={field?.key ?? ''}
-            options={fields.map((one) => ({ value: one.key, label: one.label }))}
+            options={fields.map((one) => ({
+              value: one.key,
+              label: one.label,
+            }))}
             onChange={setFieldKey}
           />
         </Row>
       ) : (
-        <Note>This collection declares no select field to add a variant to.</Note>
+        <Note>
+          This collection declares no select field to add a variant to.
+        </Note>
       )}
       {field && <Note>Its variants now: {variants.join(', ') || 'none'}.</Note>}
       <Row
@@ -275,7 +280,9 @@ function LifecycleForm({
   const [clearing, setClearing] = useState(false)
 
   const toggle = (list: string[], value: string, on: boolean) =>
-    on ? [...list.filter((one) => one !== value), value] : list.filter((one) => one !== value)
+    on
+      ? [...list.filter((one) => one !== value), value]
+      : list.filter((one) => one !== value)
   const setTransition = (at: number, change: Partial<LifecycleTransition>) =>
     setTransitions((held) =>
       held.map((one, i) => (i === at ? { ...one, ...change } : one)),
@@ -286,7 +293,9 @@ function LifecycleForm({
     if (!transition.from.length)
       problems.push(`transition ${at + 1} moves from no value`)
     if (!variants.includes(transition.to))
-      problems.push(`transition ${at + 1} moves to a value the field does not hold`)
+      problems.push(
+        `transition ${at + 1} moves to a value the field does not hold`,
+      )
   })
   for (const value of initial ?? [])
     if (!variants.includes(value))
@@ -347,7 +356,9 @@ function LifecycleForm({
           Transitions
         </legend>
         {transitions.length === 0 ? (
-          <Note>No transition is allowed yet: once saved, the field cannot change.</Note>
+          <Note>
+            No transition is allowed yet: once saved, the field cannot change.
+          </Note>
         ) : (
           <Table>
             <TableHeader>
@@ -396,7 +407,9 @@ function LifecycleForm({
                       variant="ghost"
                       aria-label={`Remove transition ${at + 1}`}
                       onClick={() =>
-                        setTransitions((held) => held.filter((_, i) => i !== at))
+                        setTransitions((held) =>
+                          held.filter((_, i) => i !== at),
+                        )
                       }
                     >
                       ×
@@ -413,7 +426,10 @@ function LifecycleForm({
           className="self-start"
           disabled={variants.length === 0}
           onClick={() =>
-            setTransitions((held) => [...held, { from: [], to: variants[0] ?? '' }])
+            setTransitions((held) => [
+              ...held,
+              { from: [], to: variants[0] ?? '' },
+            ])
           }
         >
           Add transition
@@ -466,7 +482,11 @@ function LifecycleForm({
             >
               Clear
             </Button>
-            <Button size="xs" variant="ghost" onClick={() => setClearing(false)}>
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => setClearing(false)}
+            >
               Keep it
             </Button>
           </div>

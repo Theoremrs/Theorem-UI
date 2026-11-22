@@ -487,7 +487,10 @@ function PageEditor({
                   config={config}
                   data={prepared}
                   metadata={
-                    { arranging: false, page: loaded.path } satisfies PageMetadata
+                    {
+                      arranging: false,
+                      page: loaded.path,
+                    } satisfies PageMetadata
                   }
                 />
               </PageSettingsProvider>
