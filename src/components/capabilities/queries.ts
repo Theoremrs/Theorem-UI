@@ -13,10 +13,16 @@ import {
   author,
   describe,
   discover,
+  history,
+  instantiateTemplate,
   invoke,
+  invokeTargets,
+  listTemplates,
   queryCollection,
   queryView,
   readRecordAnywhere,
+  repin,
+  saveTemplate,
 } from '@/lib/capabilities/api'
 import type { InvokeInput } from '@/lib/capabilities/api'
 import {
@@ -27,8 +33,10 @@ import type {
   AuthorResult,
   CapabilityDefinition,
   DefinitionPatch,
+  InstantiateTemplateRequest,
   InvocationReceipt,
   QueryResult,
+  SaveTemplateRequest,
 } from '@/lib/capabilities/contract'
 import { isSignedOut } from '@/lib/theorem/client'
 import { isNotServed } from '@/lib/theorem/passthrough'
@@ -48,12 +56,18 @@ export const capabilityKeys = {
     [...capabilityKeys.instance(instanceId), 'rows', viewKey] as const,
   record: (instanceId: string, recordId: string) =>
     [...capabilityKeys.instance(instanceId), 'record', recordId] as const,
+  discover: () => [...capabilityKeys.all, 'discover'] as const,
+  /** Slice 2: under the instance, so an authoring write refreshes the history too. */
+  history: (instanceId: string) =>
+    [...capabilityKeys.instance(instanceId), 'history'] as const,
+  /** Slice 2: the library's templates belong to no one instance. */
+  templates: () => [...capabilityKeys.all, 'library', 'templates'] as const,
 }
 
 /** What this caller may see, listed once for a picker or a page's settings help. */
 export function useCapabilityDiscover() {
   return useQuery({
-    queryKey: [...capabilityKeys.all, 'discover'],
+    queryKey: capabilityKeys.discover(),
     queryFn: discover,
     staleTime: 60_000,
     retry,
@@ -197,5 +211,89 @@ export function useCapabilityAuthor(instanceId: string | undefined) {
       client.invalidateQueries({
         queryKey: capabilityKeys.instance(result.instance.instanceId),
       }),
+  })
+}
+
+// ── Slice 2: history, re-pin, templates, multi-target invocation ────────────
+
+/** The instance's definition history, newest first, one page. */
+export function useCapabilityHistory(
+  instanceId: string | undefined,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: capabilityKeys.history(instanceId ?? ''),
+    queryFn: () => history(instanceId!),
+    enabled: enabled && !!instanceId,
+    staleTime: 10_000,
+    retry,
+  })
+}
+
+/**
+ * Re-pin the instance to an earlier definition. Views and actions change with
+ * the pin; records never do, so the rows are read again only because a view
+ * may now filter them differently.
+ */
+export function useCapabilityRepin(instanceId: string | undefined) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (definitionId: string) => repin(instanceId!, { definitionId }),
+    onSuccess: (result: AuthorResult) =>
+      client.invalidateQueries({
+        queryKey: capabilityKeys.instance(result.instance.instanceId),
+      }),
+  })
+}
+
+/** The templates this caller may read. */
+export function useCapabilityTemplates({
+  enabled = true,
+}: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: capabilityKeys.templates(),
+    queryFn: listTemplates,
+    enabled,
+    staleTime: 30_000,
+    retry,
+  })
+}
+
+/** Save an instance's pinned definition as a template. */
+export function useSaveCapabilityTemplate() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (request: SaveTemplateRequest) => saveTemplate(request),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: capabilityKeys.templates() }),
+  })
+}
+
+/** Bind a fresh instance from a template; the picker lists it afterwards. */
+export function useInstantiateCapabilityTemplate() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      templateId,
+      ...request
+    }: InstantiateTemplateRequest & { templateId: string }) =>
+      instantiateTemplate(templateId, request),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: capabilityKeys.discover() }),
+  })
+}
+
+/** One update action over several records, all or nothing; then the rows are read again. */
+export function useCapabilityInvokeTargets() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof invokeTargets>[0]) =>
+      invokeTargets(input),
+    onSuccess: (receipt: InvocationReceipt) => {
+      if (receipt.status === 'finished' && receipt.instanceId)
+        void client.invalidateQueries({
+          queryKey: capabilityKeys.instance(receipt.instanceId),
+        })
+    },
   })
 }

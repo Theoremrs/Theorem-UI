@@ -244,9 +244,12 @@ export const taskRows: CapabilityRecordRow[] = [
 ]
 
 export const describeResult = (grant: Grant = ownerGrant): DescribeResult => ({
+  definitionId: 'capdef:abc',
   definition: trackerDefinition,
   callerGrant: grant,
   collectionSchemas: [tasksSchema, peopleSchema],
+  // The full grant list is disclosed only to a caller who may author.
+  ...(grant.author ? { grants: [ownerGrant] } : {}),
 })
 
 export const queryResult = (
