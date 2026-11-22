@@ -2,6 +2,7 @@
 import { TheoremClient, type Theorem } from '@theoremharness/sdk'
 import { bearer, signOut } from './auth'
 import { config } from './config'
+import type { Tokens } from './oauth'
 
 export type { Theorem }
 
@@ -26,6 +27,25 @@ export function theorem(): TheoremClient {
     timeoutInSeconds: 600,
   })
   return client
+}
+
+/** Who a candidate bearer is, per Theorem's own session, without touching the shared
+ * client: a throwaway probe answers with exactly this token and none of the shared
+ * client's side effects, so probing a candidate that the authority refuses does not
+ * sign the current account out (or, mid-replacement, whoever is on the device).
+ * undefined when the token names no session the app can read. */
+export async function principalOf(tokens: Tokens): Promise<string | undefined> {
+  const probe = new TheoremClient({
+    baseUrl: config.authority,
+    token: async () => tokens.accessToken,
+    // A probe is not a conversation: it must not hold the sign-in for minutes.
+    timeoutInSeconds: 30,
+  })
+  try {
+    return (await probe.session.bootstrap()).principalId
+  } catch {
+    return undefined
+  }
 }
 
 export type MutationHeaders = { 'X-CSRF-Token': string; 'Idempotency-Key': string }

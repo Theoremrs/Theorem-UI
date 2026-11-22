@@ -29,8 +29,9 @@ import {
 } from '@theoremharness/sdk/assistant-ui'
 import type { TheoremChatAdapterOptions } from '@theoremharness/sdk/assistant-ui'
 import type { TheoremContextReference } from '@theoremharness/sdk'
+import { QueryClientContext } from '@tanstack/react-query'
 import { createAssistantStream } from 'assistant-stream'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef } from 'react'
 import { create } from 'zustand'
 import { refreshConversation } from './conversation-refresh'
 import type { RefreshCursor } from './conversation-refresh'
@@ -41,6 +42,12 @@ import { codingTurnOptions, planningTurnOptions, useCodeMode, usePlanning, webTu
 import { skillTurnOptions } from './skill-selection'
 import { connectionTurnOptions } from './tool-selection'
 import { DRAFT_PLAN } from './plans'
+import {
+  consumePendingStyle,
+  conversationStyleSettled,
+  holdPendingStyle,
+  styleTurnOptions,
+} from './response-styles'
 import { TheoremPartRenderers } from '@/components/chat/theorem-parts'
 import { useShell } from '@/components/shell/shell-state'
 import { documentThreadIds } from '@/lib/documents/ask-store'
@@ -647,6 +654,7 @@ export function draftedPlan(step: ChatModelRunResult): boolean {
 }
 function useTheoremThreadRuntime() {
   const aui = useAui()
+  const queryClient = useContext(QueryClientContext)
   const adapter = useMemo<ChatModelAdapter>(
     () => ({
       async *run(options) {
@@ -663,13 +671,15 @@ function useTheoremThreadRuntime() {
           if (isNew) useGenerationOverrides.getState().adopt(remoteId)
           // The override belongs on the thread; what is not there yet goes with the turn below.
           await saveThreadGeneration(remoteId)
+          await conversationStyleSettled(remoteId)
+          const style = styleTurnOptions(remoteId)
           // The composer's model pick; read at each send, so switching mid-thread takes effect.
           const custom = options.runConfig.custom ?? {}
           const configured = custom.theoremTurnOptions as Record<string,unknown> | undefined
           // The composer's context, Web, Plan and Code mode toggles, client surface and connection choice, read at each send like the model pick.
           // The skills picked in the draft ride as structured ids, so the harness loads them.
           const draftText = options.messages.at(-1)?.content.map((part) => part.type === 'text' ? part.text : '').join('\n') ?? ''
-          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(localId,remoteId),...codingTurnOptions(localId,remoteId),...clientSurfaceTurnOptions(),...connectionTurnOptions(localId,remoteId),...skillTurnOptions(draftText),...generationTurnOptions(remoteId)}
+          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(localId,remoteId),...codingTurnOptions(localId,remoteId),...clientSurfaceTurnOptions(),...connectionTurnOptions(localId,remoteId),...skillTurnOptions(draftText),...generationTurnOptions(remoteId),...style}
           const composed = Object.keys(added).length ? {
             ...options,
             runConfig:{...options.runConfig,custom:{...custom,theoremTurnOptions:{...configured,...added}}},
@@ -677,6 +687,7 @@ function useTheoremThreadRuntime() {
           const turn = runTurn(remoteId,composed,modelTurnOptions,()=>{
             // Recovery replays its saved request; only a newly accepted send consumes these references.
             if (!given) useComposerReferences.setState(state=>({references:state.references.filter(reference=>!references.includes(reference))}))
+            consumePendingStyle(remoteId, style.responseStyle, queryClient)
           })
           for await (const step of timed(turn)) {
             // Plan stays on until a plan is written; the turn that writes one turns it off for this conversation.
@@ -691,7 +702,7 @@ function useTheoremThreadRuntime() {
         }
       },
     }),
-    [aui],
+    [aui, queryClient],
   )
   // Replies are read aloud by the page's own voice, when the person asks.
   const speech = useMemo(() => speechAdapter(), [])
@@ -807,11 +818,13 @@ export function createThreadListAdapter(
         nextCursor: page.nextCursor,
       }
     },
-    async initialize() {
+    async initialize(localId) {
       try {
         const created = await mutate((headers) =>
           client.chat.threads.create({ projectId: activeProject(), ...headers }),
         )
+        // An attachment upload can create the thread before its first turn.
+        holdPendingStyle(localId, created.record.threadId)
         return { remoteId: created.record.threadId }
       } catch (error) {
         toastManager.add({

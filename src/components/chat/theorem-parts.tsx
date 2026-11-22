@@ -1081,6 +1081,9 @@ const RENDERERS = (
     // A TypeScript program the agent wrote is shown as one, closed, with its
     // source inside. What it did shows up as its calls and their artifacts.
     ['theorem-program', ProgramPart],
+    // Response style, frameworks, and suggestions are available in the
+    // reply's More menu rather than the transcript.
+    ['theorem-response_style', Inert],
   ])
 
 function DataRenderer({

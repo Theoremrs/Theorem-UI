@@ -129,6 +129,11 @@ import type { ActivityState } from './fixtures/activity'
 import { ARTIFACT_STORIES } from './fixtures/artifacts'
 import { SCENE_STORY_RENDERS } from './scene-stories'
 import type { ArtifactStory } from './fixtures/artifacts'
+import {
+  ResponseDetailsStory,
+  ResponseStylePickerStory,
+  ResponseStylesSettingsStory,
+} from './response-styles-stories'
 import { documentFixtures } from './fixtures/notes'
 import { PROGRAM_PART } from './fixtures/program'
 import { pointingMessages } from './fixtures/pointing'
@@ -1383,6 +1388,9 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'note-kinds': NoteKindsStory,
   'canvas-note-types': CanvasNoteTypesStory,
   'program-note': ProgramNoteStory,
+  'response-style-picker': ResponseStylePickerStory,
+  'response-details': ResponseDetailsStory,
+  'response-styles-settings': ResponseStylesSettingsStory,
   'cpu-gpu-tradeoff': () => <NotebookStory id="cpu-gpu-tradeoff" />,
   'cpu-gpu-measured': () => <NotebookStory id="cpu-gpu-measured" />,
   'cpu-gpu-awaiting-gpu': () => <NotebookStory id="cpu-gpu-awaiting-gpu" />,
