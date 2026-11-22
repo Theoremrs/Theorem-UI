@@ -111,6 +111,52 @@ function ArrangingSummary({ definition }: { definition: ModuleDefinition }) {
   )
 }
 
+/** A running module's bar: what it is doing, its Ask, Run or Stop, and Revoke. */
+function ModuleBar({
+  stopped,
+  failure,
+  ask,
+  onRun,
+  onStop,
+  onRevoke,
+}: {
+  stopped: boolean
+  /** What the frame reported when it failed, if it did. */
+  failure?: string
+  ask: ReactNode
+  onRun: () => void
+  onStop: () => void
+  onRevoke: () => void
+}) {
+  return (
+    <div className="flex h-7 shrink-0 items-center gap-1 border-b border-separator px-2 text-xs text-ink-faint">
+      <span className="me-auto truncate">
+        {stopped
+          ? 'Stopped'
+          : failure
+            ? 'Stopped by an error'
+            : 'Running in a sandbox'}
+      </span>
+      {ask}
+      {stopped || failure ? (
+        <Button variant="ghost" size="xs" onClick={onRun}>
+          <Play />
+          Run
+        </Button>
+      ) : (
+        <Button variant="ghost" size="xs" onClick={onStop}>
+          <Square />
+          Stop
+        </Button>
+      )}
+      <Button variant="ghost" size="xs" onClick={onRevoke}>
+        <Undo2 />
+        Revoke
+      </Button>
+    </div>
+  )
+}
+
 export function VaultModule({
   client,
   definition,
@@ -158,38 +204,17 @@ export function VaultModule({
   const revoke = () => useModuleGrants.getState().revoke(key)
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-7 shrink-0 items-center gap-1 border-b border-separator px-2 text-xs text-ink-faint">
-        <span className="me-auto truncate">
-          {stopped
-            ? 'Stopped'
-            : failure
-              ? 'Stopped by an error'
-              : 'Running in a sandbox'}
-        </span>
-        {ask}
-        {stopped || failure ? (
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => {
-              setStopped(false)
-              setFailure(undefined)
-            }}
-          >
-            <Play />
-            Run
-          </Button>
-        ) : (
-          <Button variant="ghost" size="xs" onClick={() => setStopped(true)}>
-            <Square />
-            Stop
-          </Button>
-        )}
-        <Button variant="ghost" size="xs" onClick={revoke}>
-          <Undo2 />
-          Revoke
-        </Button>
-      </div>
+      <ModuleBar
+        stopped={stopped}
+        failure={failure}
+        ask={ask}
+        onRun={() => {
+          setStopped(false)
+          setFailure(undefined)
+        }}
+        onStop={() => setStopped(true)}
+        onRevoke={revoke}
+      />
       {stopped ? (
         <WithFallback definition={definition} view={view}>
           {null}
