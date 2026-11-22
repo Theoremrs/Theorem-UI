@@ -31,6 +31,7 @@ import {
   ComposerToolTrigger,
 } from '@/components/chat/composer-tools'
 import { ModelPicker } from '@/components/chat/model-picker'
+import { StylePicker } from '@/components/chat/style-picker'
 import {
   RunInputStatus,
   useBusyComposerInput,
@@ -258,6 +259,7 @@ export const ComposerTools: FC = () => (
 export const ComposerSettings: FC = () => (
   <>
     <ModelPicker />
+    <StylePicker />
     <AuiIf condition={(s) => s.thread.capabilities.dictation}>
       <AuiIf condition={(s) => s.composer.dictation == null}>
         <ComposerPrimitive.Dictate

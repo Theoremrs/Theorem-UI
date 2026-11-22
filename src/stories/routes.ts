@@ -18,6 +18,7 @@ import {
 import { CABINET_ARTIFACTS, CABINET_DESCRIPTIONS, cabinetMessages, cabinetRevision } from './fixtures/cabinet'
 import { organizationFixture } from './fixtures/organization'
 import { projectContextRoutes, uploadedItem } from './fixtures/project-context'
+import { responseStylesRoutes } from './fixtures/response-styles'
 import { reviewFixture, reviewShots } from './fixtures/review'
 import { sessionGraphRoutes } from './fixtures/session-graph'
 import { threadMessages } from './fixtures/thread'
@@ -44,12 +45,6 @@ export type StoryRouteOptions = {
 export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeRoutes {
   const organization = organizationFixture(now)
   let review: Review = reviewFixture(now)
-  let outputStyle: string | null = null
-  const conversationStyles = new Map<string, string | null>()
-  const styleSelection = (threadId?: string | null) => ({
-    account: outputStyle, conversation: threadId ? conversationStyles.get(threadId) ?? null : null,
-    effective: { style: (threadId && conversationStyles.get(threadId)) || outputStyle || 'normal', name: 'Normal', source: 'account' },
-  })
   const projects = organization.projects.map((project) => ({
     schema: 'theorem.chat.project.v1',
     projectId: project.projectId,
@@ -113,6 +108,15 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
     return review
   }
   return {
+    ...responseStylesRoutes({
+      now: () => now,
+      threadProjects: Object.fromEntries(
+        organization.threads.map((thread) => [thread.threadId, thread.homeProjectId]),
+      ),
+      selection: { account: 'theorem.style.concise' },
+      // Formal's shipped text moved after the settings story's edit of it.
+      updatesAvailable: ['theorem.style.formal'],
+    }),
     ...sessionGraphRoutes(now),
     // Link-preview metadata for the response stories' fixture sources: the
     // first resolves (a full preview), the second fails (the Sources row).
@@ -142,19 +146,6 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
       [`GET ${BASE}/skills`]: () => POPULATED_SKILLS,
     }),
     ...projectContextRoutes(now, { added }),
-    [`GET ${BASE}/response-styles`]: (_params, request) => ({
-      styles: [
-        { id: 'normal', name: 'Normal', description: 'Direct, conversational replies.' },
-        { id: 'explanatory', name: 'Explanatory', description: 'Explain concepts and the reasoning behind them.' },
-      ],
-      selection: styleSelection(new URL(request.url).searchParams.get('threadId')),
-    }),
-    [`PUT ${BASE}/response-styles/selection`]: async (_params, request) => {
-      const body = await request.json() as { scope: string; threadId?: string; style: string | null }
-      if (body.scope === 'conversation' && body.threadId) conversationStyles.set(body.threadId, body.style)
-      else outputStyle = body.style
-      return styleSelection(body.threadId)
-    },
     [`GET ${BASE}/models`]: () => ({
       defaultRef: 'example/research',
       models: ['Research', 'Writing', 'Code', 'Vision', 'Fast', 'Reasoning', 'Local', 'Compact'].map((name) => ({

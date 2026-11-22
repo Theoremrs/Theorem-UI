@@ -12,6 +12,7 @@ export const SETTINGS_GROUPS = [
       { path: '/settings/appearance', label: 'Appearance', Mark: Icon.Sun },
       { path: '/settings/companions', label: 'Theo and Kit', Mark: Icon.Sparkle },
       { path: '/settings/responses', label: 'Responses', Mark: Icon.ReadAloud },
+      { path: '/settings/styles', label: 'Response styles', Mark: Icon.Draft },
     ],
   },
   {

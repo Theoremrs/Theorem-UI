@@ -28,6 +28,10 @@ import { ComposerEditor } from '@/components/chat/composer-editor'
 import { Composer, composerSurface } from '@/components/chat/composer'
 import type { ComposerLayout, ComposerSlots } from '@/components/chat/composer'
 import { ReadAloud } from '@/components/chat/read-aloud'
+import {
+  ResponseDetailsDialog,
+  ResponseDetailsItem,
+} from '@/components/chat/response-style-details'
 import { FaceSlot } from '@/components/face/face-mark'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
@@ -829,6 +833,7 @@ const AssistantMessage: FC = () => {
           <BranchPicker />
           <MessageActions />
         </div>
+        <ResponseDetailsDialog />
       </div>
     </MessagePrimitive.Root>
   )
@@ -905,6 +910,7 @@ const AssistantActionBar: FC = () => {
           className="aui-action-bar-more-content bg-popover text-popover-foreground shadow-popover data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-xl border p-1.5"
         >
           <ForkFromMessage />
+          <ResponseDetailsItem />
           <ActionBarPrimitive.ExportMarkdown
             render={
               <ActionBarMorePrimitive.Item className="aui-action-bar-more-item hover:bg-hover focus:bg-hover flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm outline-none select-none" />
