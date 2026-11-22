@@ -295,3 +295,51 @@ test('clearable={false} offers no clear control and never commits null', async (
   expect(onCommit.mock.calls.map(([value]) => value)).not.toContain(null)
   expect(onCommit.mock.calls).toHaveLength(1)
 })
+
+test('a date that cannot be emptied takes its refusal back once a day is typed, and leaves an empty one unsaved', async () => {
+  const onCommit = mock((_value: unknown, _move?: string) => {})
+  const onDiscard = mock(() => {})
+  const alert = (root: ParentNode) =>
+    root.querySelector('[role="alert"]')?.textContent ?? null
+
+  const date = await render(
+    <FieldEditor
+      field={due}
+      value="2026-11-22"
+      clearable={false}
+      onCommit={onCommit}
+      onDiscard={onDiscard}
+    />,
+  )
+  const day = date.container.querySelector('input')!
+  expect(day.getAttribute('aria-invalid')).toBeNull()
+  expect(alert(date.container)).toBeNull()
+  await act(async () => setText(day, ''))
+  await act(async () => enter(day))
+  expect(day.getAttribute('aria-invalid')).toBe('true')
+  expect(alert(date.container)).toBe('Cannot be emptied')
+  expect(onDiscard).not.toHaveBeenCalled()
+
+  // Typing a day takes the refusal back before anything is saved.
+  await act(async () => setText(day, '2026-12-01'))
+  expect(day.getAttribute('aria-invalid')).toBeNull()
+  expect(alert(date.container)).toBeNull()
+  await act(async () => enter(day))
+  expect(onCommit.mock.calls).toEqual([['2026-12-01', 'down']])
+  await cleanup()
+
+  // Nothing was there and nothing was typed: it leaves without saving.
+  const blank = await render(
+    <FieldEditor
+      field={due}
+      value={undefined}
+      clearable={false}
+      onCommit={onCommit}
+      onDiscard={onDiscard}
+    />,
+  )
+  await act(async () => enter(blank.container.querySelector('input')!))
+  expect(onDiscard.mock.calls).toHaveLength(1)
+  expect(alert(blank.container)).toBeNull()
+  expect(onCommit.mock.calls).toHaveLength(1)
+})
