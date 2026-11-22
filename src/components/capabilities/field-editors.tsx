@@ -1,9 +1,8 @@
-// SOURCING: the authoring dialog's parts (authoring-parts), coss ui Checkbox, the app's Table and
-// Button, and pages/resource-field's fieldControl. Two slice-2 field controls: add_enum_variant (an
-// additive schema change) and set_lifecycle (initial values and a transitions table), each sent over
-// what was read so nothing the form does not show is dropped.
+// SOURCING: the authoring dialog's parts (authoring-parts, its Tick over coss ui Checkbox), the app's
+// Table and Button, and pages/resource-field's fieldControl. Two slice-2 field controls:
+// add_enum_variant (an additive schema change) and set_lifecycle (initial values and a transitions
+// table), each sent over what was read so nothing the form does not show is dropped.
 import { useState } from 'react'
-import { Checkbox } from '@/components/coss/checkbox'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -22,7 +21,7 @@ import type {
   ResolvedField,
 } from '@/lib/capabilities/contract'
 import { schemaFor } from '@/lib/capabilities/model'
-import { Choice, Note, Row } from './authoring-parts'
+import { Choice, Note, Row, Tick } from './authoring-parts'
 import type { Submit } from './authoring-parts'
 
 /** A field whose values are a declared list: what a variant or a lifecycle governs. */
@@ -33,30 +32,6 @@ const variantsOf = (field: ResolvedField | undefined): string[] | undefined =>
 
 const enumFields = (schema: CollectionSchema | undefined) =>
   (schema?.fields ?? []).filter((field) => variantsOf(field) !== undefined)
-
-/** A checkbox named for assistive tech, with its words beside it rather than around it. */
-function Tick({
-  label,
-  text,
-  checked,
-  onChange,
-}: {
-  label: string
-  text: string
-  checked: boolean
-  onChange: (checked: boolean) => void
-}) {
-  return (
-    <span className="flex items-center gap-1.5 text-xs text-ink">
-      <Checkbox
-        aria-label={label}
-        checked={checked}
-        onCheckedChange={(next) => onChange(next === true)}
-      />
-      <span>{text}</span>
-    </span>
-  )
-}
 
 export function AddVariant({
   definition,

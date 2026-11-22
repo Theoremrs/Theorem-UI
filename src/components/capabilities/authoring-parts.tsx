@@ -1,8 +1,9 @@
 // SOURCING: the labelled row, native select and status line the authoring dialog already drew (moved
-// here from authoring.tsx so each authoring tab shares one copy), styled with pages/resource-field's
-// fieldControl and the DESIGN.md state grammar tokens (bg-raised for pending and saved,
-// bg-error-container for failed).
+// here from authoring.tsx so each authoring tab shares one copy) and the coss ui Checkbox tick the
+// agent-access and field tabs share, styled with pages/resource-field's fieldControl and the
+// DESIGN.md state grammar tokens (bg-raised for pending and saved, bg-error-container for failed).
 import type { ReactNode } from 'react'
+import { Checkbox } from '@/components/coss/checkbox'
 import { fieldControl } from '@/components/pages/resource-field'
 import type { PatchOp } from '@/lib/capabilities/contract'
 
@@ -51,6 +52,30 @@ export function Choice({
         </option>
       ))}
     </select>
+  )
+}
+
+/** A checkbox named for assistive tech, with its words beside it rather than around it. */
+export function Tick({
+  label,
+  text,
+  checked,
+  onChange,
+}: {
+  label: string
+  text: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-ink">
+      <Checkbox
+        aria-label={label}
+        checked={checked}
+        onCheckedChange={(next) => onChange(next === true)}
+      />
+      <span>{text}</span>
+    </span>
   )
 }
 

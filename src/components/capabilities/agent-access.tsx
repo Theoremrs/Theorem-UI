@@ -1,40 +1,16 @@
-// SOURCING: the authoring dialog's parts (authoring-parts), coss ui Checkbox and the app's Button. The
-// three separate agent-access controls of the spec's section 7: use this capability in the current
-// conversation (the composer reference path the table's Ask already uses), make it discoverable
-// (set_agent), and permit actions (set_grants over the grant list describe discloses to an author).
-// Each is its own control, so using one never implies another.
+// SOURCING: the authoring dialog's parts (authoring-parts, its Tick over coss ui Checkbox) and the
+// app's Button. The three separate agent-access controls of the spec's section 7: use this capability
+// in the current conversation (the composer reference path the table's Ask already uses), make it
+// discoverable (set_agent), and permit actions (set_grants over the grant list describe discloses to
+// an author). Each is its own control, so using one never implies another.
 import { useState } from 'react'
-import { Checkbox } from '@/components/coss/checkbox'
 import { Button } from '@/components/ui/button'
 import { fieldControl } from '@/components/pages/resource-field'
 import type { CapabilityDefinition, Grant } from '@/lib/capabilities/contract'
-import { Note, Row } from './authoring-parts'
+import { Note, Row, Tick } from './authoring-parts'
 import type { Submit } from './authoring-parts'
 
 const ALL = '*'
-
-function Tick({
-  label,
-  text,
-  checked,
-  onChange,
-}: {
-  label: string
-  text: string
-  checked: boolean
-  onChange: (checked: boolean) => void
-}) {
-  return (
-    <span className="flex items-center gap-1.5 text-xs text-ink">
-      <Checkbox
-        aria-label={label}
-        checked={checked}
-        onCheckedChange={(next) => onChange(next === true)}
-      />
-      <span>{text}</span>
-    </span>
-  )
-}
 
 function Heading({ children }: { children: string }) {
   return <h3 className="text-xs font-medium text-ink">{children}</h3>
