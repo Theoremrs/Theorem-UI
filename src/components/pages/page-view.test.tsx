@@ -401,6 +401,11 @@ test('a previewed version that does not open says so, a refused restore says why
       container.textContent.includes('This version did not open'),
     )
     expect(container.textContent).toContain('The /revision route is down.')
+    // A version nobody could look at is not restored blind.
+    expect(button(container, 'Restore this version')!.disabled).toBe(true)
+    expect(container.textContent).toContain(
+      'This version did not open, so it cannot be restored.',
+    )
     // The heading falls back to the page's own title while no version is read.
     expect(title()).toBe('Study')
     act(() => button(container, 'Back to the current version')!.click())
@@ -436,11 +441,9 @@ test('a previewed version that does not open says so, a refused restore says why
     expect(parsePage(path, fake.text(path)!).title).toBe('Hall')
     act(() => button(container, 'Use the vault’s')!.click())
     await waitFor(() => button(container, 'Restore this version'))
-    // As it stands, the conflict's own error is then shown as the refusal
-    // until the next restore is asked for.
-    expect(alerts()).toEqual([
-      'It was not restored: Pages/Desk.page.json changed on disk',
-    ])
+    // Taking the vault's settles the conflict: nothing is left saying the
+    // restore failed, because nothing has been asked of it since.
+    expect(alerts()).toEqual([])
     act(() => button(container, 'Restore this version')!.click())
     await waitFor(() => !bar())
     expect(parsePage(path, fake.text(path)!)).toEqual(newPage('Desk'))

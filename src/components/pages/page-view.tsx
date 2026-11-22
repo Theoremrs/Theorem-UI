@@ -328,7 +328,11 @@ function VersionPreview({
       <RevisionPreviewBar
         revision={revision}
         blocked={
-          dirty ? 'Save or discard your changes to this page first.' : undefined
+          previewed.error
+            ? 'This version did not open, so it cannot be restored.'
+            : dirty
+              ? 'Save or discard your changes to this page first.'
+              : undefined
         }
         restoring={restore.isPending}
         failed={restore.error && !conflict ? restore.error.message : undefined}
@@ -603,7 +607,12 @@ function PageEditor({
           onRestore={() => void restoreVersion(preview)}
           onBack={() => setPreview(null)}
           onTakeTheirs={() =>
-            void takeTheirs().then(() => setRestoreConflict(false))
+            // The conflict was the restore's last answer; taking the vault's
+            // settles it, so its error is not left behind as a refusal.
+            void takeTheirs().then(() => {
+              setRestoreConflict(false)
+              restore.reset()
+            })
           }
         />
       </ContentRendererContext.Provider>
