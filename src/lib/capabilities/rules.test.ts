@@ -467,3 +467,188 @@ describe('the rule states a dialog draws', () => {
     expect(currentRuleStates(described, undefined)).toEqual(described)
   })
 })
+
+describe('the edges each reading turns on', () => {
+  const check = (rule: RuleSpec, definition = trackerDefinition, s = schemas) =>
+    ruleProblems(rule, { definition, schemas: s, mode: 'add' })
+
+  test('a patch answer as recent as describe is the one drawn', () => {
+    expect(
+      currentRuleStates(
+        { a: { enabled: false, changedAtMs: 5 } },
+        { a: { enabled: true, changedAtMs: 5, runAs: 'user:y' } },
+      ),
+    ).toEqual({ a: { enabled: true, changedAtMs: 5, runAs: 'user:y' } })
+  })
+
+  test('a schedule at the floor, or from a real start time, is well formed', () => {
+    expect(
+      check({ ...nightly, trigger: { kind: 'schedule', intervalMinutes: 5 } }),
+    ).toEqual([])
+    expect(
+      check({
+        ...nightly,
+        trigger: {
+          kind: 'schedule',
+          intervalMinutes: 60,
+          startAtMs: Date.UTC(2026, 10, 1),
+        },
+      }),
+    ).toEqual([])
+    expect(
+      check({
+        ...nightly,
+        trigger: {
+          kind: 'schedule',
+          intervalMinutes: 60,
+          startAtMs: Number.POSITIVE_INFINITY,
+        },
+      }),
+    ).toEqual(['The start time is not a time.'])
+  })
+
+  test('fields and sources the triggering collection has raise nothing', () => {
+    expect(
+      check({
+        ...onDone,
+        trigger: {
+          kind: 'record_updated',
+          collectionKey: 'tasks',
+          fieldKeys: ['status'],
+        },
+      }),
+    ).toEqual([])
+    expect(
+      check({
+        ...onDone,
+        inputs: { assignee: { source: 'trigger_field', fieldKey: 'assignee' } },
+      }),
+    ).toEqual([])
+  })
+
+  test('states are checked only against a lifecycle field resolved as a choice', () => {
+    const archived: RuleSpec = {
+      ...onDone,
+      trigger: { kind: 'transition', collectionKey: 'tasks', to: 'archived' },
+    }
+    // Unresolved schemas, a schema without the lifecycle field, or one that
+    // resolved it as text: the server is the one to say whether the state exists.
+    expect(check(archived, trackerDefinition, [])).toEqual([])
+    const without = {
+      ...tasksSchema,
+      fields: tasksSchema.fields.filter((field) => field.key !== 'status'),
+    }
+    expect(check(archived, trackerDefinition, [without, peopleSchema])).toEqual(
+      [],
+    )
+    const asText = {
+      ...tasksSchema,
+      fields: tasksSchema.fields.map((field) =>
+        field.key === 'status'
+          ? { ...field, fieldType: { kind: 'text' as const } }
+          : field,
+      ),
+    }
+    expect(check(archived, trackerDefinition, [asText, peopleSchema])).toEqual(
+      [],
+    )
+  })
+
+  test('a new key beside other rules is new', () => {
+    expect(check({ ...nightly, key: 'weekly_review' }, withRules)).toEqual([])
+  })
+
+  test('three names read as a list, and a missing collection or field by its key', () => {
+    expect(
+      describeTrigger(
+        {
+          kind: 'record_updated',
+          collectionKey: 'tasks',
+          fieldKeys: ['status', 'due_at', 'title'],
+        },
+        withRules,
+        schemas,
+      ),
+    ).toBe('When Status, Due or Title changes on a Tasks record')
+    expect(
+      describeTrigger(
+        {
+          kind: 'transition',
+          collectionKey: 'tasks',
+          to: 'done',
+          from: ['next', 'in_progress', 'waiting'],
+        },
+        withRules,
+        schemas,
+      ),
+    ).toBe(
+      'When a Tasks record moves from next, in_progress or waiting to done',
+    )
+    expect(
+      describeTrigger(
+        { kind: 'record_created', collectionKey: 'projects' },
+        withRules,
+        schemas,
+      ),
+    ).toBe('When a projects record is created')
+    expect(
+      describeTrigger(
+        {
+          kind: 'record_updated',
+          collectionKey: 'tasks',
+          fieldKeys: ['status', 'colour'],
+        },
+        withRules,
+        [],
+      ),
+    ).toBe('When status or colour changes on a Tasks record')
+    expect(
+      describeTrigger(
+        {
+          kind: 'record_updated',
+          collectionKey: 'tasks',
+          fieldKeys: ['status', 'colour'],
+        },
+        withRules,
+        schemas,
+      ),
+    ).toBe('When Status or colour changes on a Tasks record')
+  })
+
+  test('a skip for another reason is no loop, and a retry reads the last attempt', () => {
+    const skipped = runOf({
+      status: 'skipped',
+      code: 'capability_grant_denied',
+      message: 'revoked',
+    })
+    expect(isLoopSkip(skipped)).toBe(false)
+    expect(describeRunStatus(skipped)).toBe(
+      'Skipped: revoked (capability_grant_denied)',
+    )
+    const unfinished = {
+      ...finishedAttempt,
+      attempt: 2,
+      finishedAtMs: undefined,
+      outcomeCode: undefined,
+    }
+    const failed = {
+      status: 'failed' as const,
+      code: 'capability_precondition_failed',
+      message: 'not open',
+    }
+    expect(
+      canRetry(runOf({ ...failed, attempts: [finishedAttempt, unfinished] })),
+    ).toBe(false)
+    expect(
+      canRetry(
+        runOf({
+          ...failed,
+          attempts: [
+            { ...unfinished, attempt: 1 },
+            { ...finishedAttempt, attempt: 2 },
+          ],
+        }),
+      ),
+    ).toBe(true)
+  })
+})
