@@ -152,7 +152,12 @@ test('a run reads with its status flattened beside its attempts', () => {
 test('describe tells a caller which rules are on, and whom they run as only when it may know', () => {
   const described: DescribeResult = {
     definition: trackerDefinition,
-    callerGrant: { principal: 'user:reader', read: true, invoke: [], author: false },
+    callerGrant: {
+      principal: 'user:reader',
+      read: true,
+      invoke: [],
+      author: false,
+    },
     collectionSchemas: [],
     ruleStates: { follow_up: { enabled: true, changedAtMs: 5 } },
   }

@@ -510,7 +510,11 @@ export type RuleRun = {
   finishedAtMs?: number
 } & RunStatus
 
-export type RuleRunListQuery = { ruleKey?: string; cursor?: string; limit?: number }
+export type RuleRunListQuery = {
+  ruleKey?: string
+  cursor?: string
+  limit?: number
+}
 
 export type RuleRunList = { runs: RuleRun[]; nextCursor?: string }
 
@@ -520,8 +524,7 @@ export type RunRuleRequest = { invocationKey?: string }
 export type InvocationCause = { ruleKey: string; runId: string; depth: number }
 
 export type ModuleSource =
-  | { kind: 'wat'; text: string }
-  | { kind: 'wasm_base64'; bytes: string }
+  { kind: 'wat'; text: string } | { kind: 'wasm_base64'; bytes: string }
 
 /** A content-addressed WASM module in the library (`capmod:`). */
 export type CapabilityModule = {
