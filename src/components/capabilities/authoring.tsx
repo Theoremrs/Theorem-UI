@@ -471,8 +471,8 @@ function AddField({
       )}
       <p className="text-xs text-ink-faint">
         {schemaFor(schemas, collectionKey)?.fields.length ?? 0} fields are
-        already declared here. Slice 1 adds optional fields only: a required
-        field, a removal or a type change is refused as unsupported.
+        already declared here. A new field is optional: a required field, a
+        removal or a type change is refused as unsupported.
       </p>
       {problems.length > 0 && (
         <p className="text-xs text-ink-faint">

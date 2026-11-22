@@ -201,6 +201,34 @@ test('a definition refused as invalid says what the server named, and only that 
   expect(authored().length).toBe(2)
 })
 
+test('a schema change the register refuses says what it supports, with no slice number', async () => {
+  answers.author = {
+    status: 422,
+    body: {
+      type: 'about:blank',
+      title: 'Unprocessable',
+      status: 422,
+      code: codes.SCHEMA_CHANGE_UNSUPPORTED,
+      detail: 'a variant is not renamed',
+    },
+  }
+  await openDialog()
+  // The field form says what a new field may be before anything is sent.
+  expect(screen().textContent).toContain(
+    'A new field is optional: a required field, a removal or a type change is refused as unsupported.',
+  )
+  await click(button('Add variant'))
+  await waitFor(() => named('Variant field'))
+  fill('New variant', 'blocked')
+  await click(named('Add enum variant'))
+  await waitFor(() => screen().textContent.includes('is not supported'))
+  expect(screen().textContent).toContain(
+    'That change to the schema is not supported: new fields are optional, variants are only added, and no field is removed or changes type.',
+  )
+  expect(screen().textContent).not.toMatch(/slice/i)
+  expect(authored().length).toBe(1)
+})
+
 test('the lifecycle editor reads the declared lifecycle and sends it back edited', async () => {
   await openDialog()
   await click(button('Lifecycle'))

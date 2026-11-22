@@ -596,11 +596,11 @@ test('adding an optional field patches the version describe answered with', asyn
   )
 })
 
-test('a required field is not offered: slice 1 adds optional fields only', async () => {
+test('a required field is not offered: a new field is optional', async () => {
   const { container } = await showTable()
   await waitFor(() => container.textContent.includes('Write the plan'))
   await authoring()
-  expect(screen().textContent).toContain('adds optional fields only')
+  expect(screen().textContent).toContain('A new field is optional')
   // Nothing asks the person whether the field is required: the op always says no.
   expect(document.querySelector('input[aria-label="Required"]')).toBeNull()
   fill(dialogInput('Field key')!, 'notes')

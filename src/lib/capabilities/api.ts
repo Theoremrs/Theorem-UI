@@ -394,7 +394,7 @@ export function refusalMessage(error: unknown, action: string): string {
     case codes.EFFECT_UNKNOWN:
       return `Whether the last attempt took effect is unknown. Read the record before trying again.`
     case codes.SCHEMA_CHANGE_UNSUPPORTED:
-      return `That change to the schema is not supported: fields are added optional only in this slice.`
+      return `That change to the schema is not supported: new fields are optional, variants are only added, and no field is removed or changes type.`
     case codes.DEFINITION_INVALID:
       return invalidDefinitionLine(error)
     case codes.INSTANCE_EXISTS:
