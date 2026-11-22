@@ -17,11 +17,14 @@ import { projectThreadView } from '@theoremharness/sdk/assistant-ui'
 import { signIn } from '@/lib/auth'
 import { config } from '@/lib/config'
 import { onDraftChanged, readDraft, setCurrentThread, writeDraft } from '@/lib/drafts'
-import { db } from '@/lib/local-db'
+import { clearAccountData, db } from '@/lib/local-db'
 import { SignInError } from '@/lib/oauth'
 import { createJournalStore } from '@/lib/journal-store'
 import { theorem } from '@/lib/theorem'
 import { phoneTurnOptions } from '../phone-actions/calendar'
+// intake/queue imports conversations() from this module; the two touch each other
+// only inside functions, so the cycle resolves at call time rather than at load.
+import { intake } from '../intake/queue'
 import { ConversationBinding, type Lease } from './binding'
 import { Outbox } from './outbox'
 import { createOutboxStore } from './outbox-store'
@@ -66,6 +69,16 @@ export function resetConversations() {
   shared?.reset()
 }
 
+/** Who the current bearer is, per Theorem's own session; undefined when it cannot be
+ * established (a token the authority has already refused). */
+async function currentPrincipal(): Promise<string | undefined> {
+  try {
+    return (await theorem().session.bootstrap()).principalId
+  } catch {
+    return undefined
+  }
+}
+
 const textOf = (message: AppendMessage) =>
   message.content
     .flatMap((part) => (part.type === 'text' ? [part.text] : []))
@@ -78,6 +91,8 @@ export type ConversationView = {
   runId: string | undefined
   /** A send the authority refused; its text is back in the composer. */
   sendError: unknown
+  /** A Stop whose pause this device could not keep. */
+  stopError: unknown
   /** Messages sent during a run, waiting to go. Each can be taken back until it goes. */
   queued: QueuedMessage[]
   /** Stop was pressed: queued messages wait until the person sends again. */
@@ -95,6 +110,7 @@ export function useConversation(threadId: string): ConversationView {
   const [lease, setLease] = useState<Lease>()
   const [state, setState] = useState<ConversationState>({ phase: 'detached' })
   const [sendError, setSendError] = useState<unknown>()
+  const [stopError, setStopError] = useState<unknown>()
   const [recoveryError, setRecoveryError] = useState<unknown>()
 
   useEffect(() => {
@@ -136,7 +152,15 @@ export function useConversation(threadId: string): ConversationView {
     },
     // The only path to cancellation: the person pressed Stop.
     onCancel: async () => {
-      await outbox().stop(threadId)
+      // The run is stopped and the queue paused whatever its save says; a pause
+      // this device could not keep is reported rather than swallowed, because only
+      // then could a restart send what the person stopped.
+      setStopError(undefined)
+      try {
+        await outbox().stop(threadId)
+      } catch (error) {
+        setStopError(error)
+      }
     },
   })
   runtimeRef.current = runtime
@@ -192,8 +216,23 @@ export function useConversation(threadId: string): ConversationView {
     async (recovery: Recovery) => {
       setRecoveryError(undefined)
       try {
-        // Signing in again replaces the tokens only: drafts and journals stay.
-        if (recovery === 'sign-in') await signIn()
+        if (recovery === 'sign-in') {
+          // Signing in again replaces the tokens in place, without a signed-out
+          // transition, so the account-change cleanup in _layout does not run. If
+          // the new bearer is another person, nothing the old account queued, drafted
+          // or journaled may carry over or go out under the new credentials: clear
+          // it exactly as a sign-out does. When the current principal cannot be
+          // established (the token is already refused), the 401 path signs out and
+          // that cleanup covers it instead.
+          const before = await currentPrincipal()
+          await signIn()
+          const after = await currentPrincipal()
+          if (before && after && before !== after) {
+            resetConversations()
+            clearAccountData()
+            intake.reset()
+          }
+        }
         conversations().reconnect(threadId)
       } catch (error) {
         if (error instanceof SignInError && error.code === 'cancelled') return
@@ -208,6 +247,7 @@ export function useConversation(threadId: string): ConversationView {
     state,
     runId: view.runId,
     sendError,
+    stopError,
     queued: queue.items,
     paused: queue.paused,
     removeQueued,

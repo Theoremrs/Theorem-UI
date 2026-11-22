@@ -77,7 +77,10 @@ export default function ChatScreen() {
     ) : (
       <>
         {wide ? null : <Stack.Screen options={{ title: 'New conversation' }} />}
-        <NewConversation onOpen={open} project={project} />
+        {/* The URL param, not the resolved project: the composer knows from the first
+            render whether it was opened from a project, and waits for it rather than
+            defaulting to a recipient the opening would replace. */}
+        <NewConversation onOpen={open} projectId={params.project} />
       </>
     )
   ) : failure ? (

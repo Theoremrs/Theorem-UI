@@ -53,6 +53,11 @@ export function AppChecks({ children }: { children: ReactNode }) {
   const queue = useRef<Promise<unknown>>(Promise.resolve())
   const answered = useRef(new Map<string, Promise<void>>())
   const disposed = useRef(false)
+  // Why the host failed terminally, if it has. A readiness promise that resolved
+  // before the failure stays resolved, so without this a queued check would pass
+  // the lifecycle guards, send to a host that will never answer, and hold the
+  // queue for another deadline. Reset only when a new host lifecycle starts.
+  const hostFailure = useRef<string>(undefined)
   // Bumped on each lifecycle so completions from a previous one send no receipt.
   const lifecycle = useRef(0)
 
@@ -62,7 +67,10 @@ export function AppChecks({ children }: { children: ReactNode }) {
       // A queued check whose screen has gone (or refreshed) settles at once,
       // without leaving a timer or waiter behind for a host that will not answer.
       if (disposed.current || gen !== lifecycle.current)
-        return { outcome: 'failed', reason: 'The App host closed before the check finished.' }
+        return { outcome: 'failed' as const, reason: 'The App host closed before the check finished.' }
+      // A host that already failed terminally settles the next checks at once,
+      // without each queued check delaying the run for another deadline.
+      if (hostFailure.current) return { outcome: 'failed' as const, reason: hostFailure.current }
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
       return new Promise<AppAnswer>((resolve) => {
         // The deadline starts here, before the wait for readiness, so a host that
@@ -78,7 +86,10 @@ export function AppChecks({ children }: { children: ReactNode }) {
         })
         ready.current!.promise.then(
           () => {
-            if (!disposed.current && gen === lifecycle.current)
+            // Only a check still under its deadline may dispatch: the timer has already
+            // reported this one as failed, and a send now would put two checks in
+            // flight. A terminal host failure takes the same door.
+            if (!disposed.current && gen === lifecycle.current && waiting.current.has(id) && !hostFailure.current)
               host.current?.send({ type: 'check', id, operation, args })
           },
           (error: Error) => waiting.current.get(id)?.({ outcome: 'failed', reason: error.message }),
@@ -91,6 +102,7 @@ export function AppChecks({ children }: { children: ReactNode }) {
 
   /** A terminal host failure settles readiness and every check waiting on an answer. */
   const failHost = useCallback((reason: string) => {
+    hostFailure.current = reason
     ready.current?.reject(new Error(reason))
     for (const settle of waiting.current.values()) settle({ outcome: 'failed', reason })
     waiting.current.clear()
@@ -135,6 +147,7 @@ export function AppChecks({ children }: { children: ReactNode }) {
     if (disposed.current) {
       lifecycle.current += 1
       ready.current = makeReady()
+      hostFailure.current = undefined
     }
     disposed.current = false
     return () => {

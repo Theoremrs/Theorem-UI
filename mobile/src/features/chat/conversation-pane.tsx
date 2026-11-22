@@ -32,16 +32,13 @@ export function ConversationPane({
   onLeave: () => void
 }) {
   const { palette } = useTheme()
-  const { runtime, state, sendError, queued, paused, removeQueued, editQueued, recover, recoveryError } =
+  const { runtime, state, sendError, stopError, queued, paused, removeQueued, editQueued, recover, recoveryError } =
     useConversation(threadId)
   useTaskPresence(threadId, state)
   // The newest delivery the person made to this conversation: Theo says what became of it.
   const delivery = useDeliveries()
     .filter((entry) => entry.receiver.threadId === threadId)
     .sort((a, b) => b.updatedAtMs - a.updatedAtMs)[0]
-  // When a message last arrived, so presence can order a turn against a delivery.
-  const lastActivityMs =
-    state.snapshot?.messages.reduce((latest, message) => Math.max(latest, message.createdAtMs), 0) || undefined
   // "Continue the conversation" from a Shortcut or the Action button opens this one.
   useEffect(() => rememberLastThread(threadId), [threadId])
   const title = state.snapshot ? threadTitle(state.snapshot.thread) : 'Conversation'
@@ -77,6 +74,9 @@ export function ConversationPane({
     })
   }
   if (sendError) notes.push({ tone: 'error', text: "That message wasn't sent. Your words are back in the box.", details: describeError(sendError) })
+  // A Stop the device could not keep: the pause holds for this session, and only
+  // a restart before the retry could send what the person stopped.
+  if (stopError) notes.push({ tone: 'error', text: describeError(stopError), details: 'Sending again re-arms the queue and saves the pause.' })
 
   return (
     <>
@@ -92,7 +92,7 @@ export function ConversationPane({
         placeholder="Reply to Theo"
         notes={notes}
         theo={{
-          conversation: { phase: state.phase, projection: state.projection, runId: state.journal?.runId, lastActivityMs },
+          conversation: { phase: state.phase, projection: state.projection, runId: state.journal?.runId },
           delivery,
         }}
         queue={{ items: queued, paused, onRemove: removeQueued, onEdit: editQueued }}

@@ -255,4 +255,69 @@ describe('Outbox', () => {
     outbox.reset()
     expect(store.load()).toEqual([])
   })
+
+  test('a Stop whose pause cannot be saved still stops and pauses, reports, and retries the save', async () => {
+    const store = memoryStore()
+    const { calls, outbox, phase } = harness({ store })
+    phase('running')
+    const id = outbox.submit('th', 'stopped')
+    // SQLite refuses the pause write; every other save still succeeds.
+    const base = store.save
+    let fail = true
+    store.save = (threadId, items, paused) => {
+      if (fail && paused) throw new Error('disk full')
+      base(threadId, items, paused)
+    }
+
+    let reported: unknown
+    try {
+      await outbox.stop('th')
+    } catch (error) {
+      reported = error
+    }
+    // The run was stopped anyway, and the pause holds for this session.
+    expect(calls.filter((call) => call.startsWith('stop:'))).toHaveLength(1)
+    expect(outbox.snapshot('th').paused).toBe(true)
+    // The failure is reported rather than discarded.
+    expect(String((reported as Error)?.message)).toContain('could not save the pause')
+
+    // The thread's next change retries the write, and it lands this time.
+    fail = false
+    phase('cancelled')
+    await settle()
+    expect(store.load()).toEqual([{ threadId: 'th', items: [{ id, text: 'stopped' }], paused: true }])
+    // Nothing dispatched: an idle conversation does not send what the person stopped.
+    expect(calls.filter((call) => call.startsWith('send:'))).toEqual([])
+
+    // A relaunch restores the pause rather than sending the waiting message.
+    const relaunched = harness({ store })
+    await settle()
+    expect(relaunched.calls.filter((call) => call.startsWith('send:'))).toEqual([])
+    expect(relaunched.outbox.snapshot('th').paused).toBe(true)
+  })
+
+  test('a removal whose save fails leaves the message queued, not silently taken out', async () => {
+    const store = memoryStore()
+    const { calls, outbox, phase } = harness({ store })
+    phase('running')
+    const id = outbox.submit('th', 'oops')
+    const base = store.save
+    store.save = () => {
+      throw new Error('disk full')
+    }
+
+    // The device could not keep the removal, so the queue says what it holds: the
+    // message stays in, on screen and in the store alike, and an edit that would
+    // have taken its words back into the composer is refused instead.
+    expect(outbox.remove('th', id)).toBe(false)
+    expect(outbox.snapshot('th').items.map((item) => item.id)).toEqual([id])
+    expect(store.load()[0]?.items.map((item) => item.id)).toEqual([id])
+
+    // Once the store recovers, the next change persists; the message still goes
+    // under its original id when the conversation frees up.
+    store.save = base
+    phase('completed')
+    await settle()
+    expect(calls.filter((call) => call.startsWith('send:'))).toEqual([`send:${id}:oops`])
+  })
 })

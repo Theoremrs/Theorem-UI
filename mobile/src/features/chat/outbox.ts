@@ -54,6 +54,8 @@ const durableItems = (state: QueueState): QueuedMessage[] =>
 
 export class Outbox {
   private readonly entries = new Map<string, Entry>()
+  /** Threads whose last save failed: the next change to the thread retries the write. */
+  private readonly unsaved = new Set<string>()
 
   constructor(private readonly options: OutboxOptions) {
     // Carry on with what was waiting when the app last stopped, under the same
@@ -94,7 +96,9 @@ export class Outbox {
     return message.id
   }
 
-  /** The person pressed Stop: the run is cancelled and nothing queued goes until they send again. */
+  /** The person pressed Stop: the run is cancelled and nothing queued goes until they send again.
+   * Rejects when the pause could not be kept on the device — the run is stopped and the pause
+   * holds for this session, but a restart before the retry lands could send what was stopped. */
   async stop(threadId: string): Promise<void> {
     const entry = this.entry(threadId)
     this.apply(threadId, { type: 'stopped' })
@@ -104,13 +108,20 @@ export class Outbox {
     } finally {
       if (lease !== entry.lease) lease.release()
     }
+    // Reported only if it is still unpersisted: a lifecycle change while the run
+    // was being cancelled may have retried the save successfully.
+    if (this.unsaved.has(threadId))
+      throw new Error(
+        'Stop paused the queue, but this device could not save the pause. If the app restarts, the waiting messages may send.',
+      )
   }
 
-  /** Takes a message out of the queue. `false` when it had already gone. */
+  /** Takes a message out of the queue. `false` when it had already gone, or when the removal
+   * could not be saved: an unsaved removal is not published, so the message stays queued —
+   * where a restart would send it — rather than vanish from a queue the device still holds. */
   remove(threadId: string, id: string): boolean {
     const had = this.snapshot(threadId).items.some((item) => item.id === id)
-    this.apply(threadId, { type: 'remove', id })
-    return had
+    return had && this.apply(threadId, { type: 'remove', id })
   }
 
   acknowledge(threadId: string, id: string): void {
@@ -125,6 +136,7 @@ export class Outbox {
       for (const listener of entry.listeners) listener()
     }
     this.entries.clear()
+    this.unsaved.clear()
     this.options.store?.clear()
   }
 
@@ -160,7 +172,7 @@ export class Outbox {
     entry.lease = undefined
   }
 
-  private apply(threadId: string, event: QueueEvent) {
+  private apply(threadId: string, event: QueueEvent): boolean {
     const entry = this.entry(threadId)
     const previous = entry.state
     const { state, dispatch } = reduce(previous, event)
@@ -170,21 +182,38 @@ export class Outbox {
     // Admitting new words must be durable before they are published or dispatched.
     // If storage fails, submit throws and the caller keeps the draft; nothing is
     // left inflight that no completion can clear.
-    if (event.type === 'submit' && durableChanged)
-      this.options.store?.save(threadId, durableItems(state), state.paused)
-    entry.state = state
-    // Later lifecycle changes are best-effort: the words are already durable, and
-    // a stale row only re-dispatches under the same command id, which deduplicates.
-    if (event.type !== 'submit' && durableChanged) {
-      try {
-        this.options.store?.save(threadId, durableItems(state), state.paused)
-      } catch {
-        // Keep the prior durable queue; a recovered write retries the same id.
-      }
+    if (event.type === 'submit' && durableChanged) {
+      const failure = this.persist(threadId, state)
+      if (failure) throw failure
     }
+    // Taking a message out is published only once durable, for the same reason:
+    // a removal the device refused leaves the message exactly where it was.
+    if (event.type === 'remove' && durableChanged && this.persist(threadId, state)) return false
+    entry.state = state
+    // Other lifecycle changes (a send admitted, a run settled, an uncertain retry,
+    // a Stop's pause) keep words that are already durable; a stale row only
+    // re-dispatches under the same command id, which deduplicates. Their failures
+    // are recorded and retried on this thread's next change, so the kept queue
+    // converges on the one the person sees. A Stop is published in memory whatever
+    // its save says: cancelling the run leaves the conversation idle, and an idle
+    // queue would otherwise send the very messages the person stopped.
+    if ((event.type !== 'submit' && event.type !== 'remove' && durableChanged) || this.unsaved.has(threadId))
+      this.persist(threadId, state)
     if (dispatch) void this.dispatch(threadId, entry, dispatch)
     if (changed) for (const listener of entry.listeners) listener()
     this.settle(threadId, entry)
+    return !this.unsaved.has(threadId)
+  }
+
+  /** Keeps the queue's durable shape; on a failed save returns the error, having recorded it for a retry. */
+  private persist(threadId: string, state: QueueState): Error | undefined {
+    try {
+      this.options.store?.save(threadId, durableItems(state), state.paused)
+      this.unsaved.delete(threadId)
+    } catch (error) {
+      this.unsaved.add(threadId)
+      return error instanceof Error ? error : new Error(String(error))
+    }
   }
 
   private async dispatch(threadId: string, entry: Entry, message: QueuedMessage) {

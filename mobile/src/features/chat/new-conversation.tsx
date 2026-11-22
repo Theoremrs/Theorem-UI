@@ -73,47 +73,44 @@ function whenReady(threadId: string, lease: ReturnType<ReturnType<typeof convers
 
 export function NewConversation({
   onOpen,
-  project,
+  projectId,
 }: {
   onOpen: (opened: Opened) => void
-  /** The project this composer was opened from, so the first message goes there. */
-  project?: { projectId: string; title: string }
+  /** The id of the project this composer was opened from, known from the first
+   * render. The first message goes there; until that project resolves the
+   * composer has no recipient, so Send waits for the opening project instead of
+   * offering a fallback a later load would replace. */
+  projectId?: string
 }) {
   const projects = useRequest(loadProjects, [])
   const showTerminal = useShowTerminal()
-  // Opened from a project's New conversation action, the recipient starts there;
-  // otherwise the last choice is remembered. The person can still change it.
-  const [destination, setDestination] = useState<Destination | undefined>(() =>
-    project ? { kind: 'theorem', projectId: project.projectId, projectTitle: project.title } : lastDestination(),
-  )
+  // Only an explicit choice lives in state. Before the person chooses, the
+  // recipient is derived below, so it can never change under a send in flight.
+  const [destination, setDestination] = useState<Destination | undefined>(() => lastDestination())
   const [picking, setPicking] = useState(false)
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<unknown>()
   const [waiting, setWaiting] = useState<Waiting>()
   // One key per intended thread, so a press after a lost response repeats the same create.
   const createKey = useRef<string>(undefined)
-  // Whether the person explicitly chose a recipient (vs. a default), and whether
-  // the opening project has been applied once it resolves.
+  // Whether the person explicitly chose a recipient (vs. a derived default).
   const touched = useRef(false)
-  const appliedProject = useRef(false)
   const destinationRef = useRef<Destination | undefined>(undefined)
 
-  // Until the person chooses, a new conversation goes to Theorem in the first project.
+  // The recipient: an explicit choice always wins; a composer opened from a
+  // project is that project once it resolves and nothing before that; otherwise
+  // the remembered destination, or the first project when none is remembered.
+  // Derived rather than stored, so a recipient is fixed from the moment a start
+  // begins: it changes only when the person changes it, which keeps an identity
+  // check on the send honest.
   const first = projects.data?.[0]
-  const chosen: Destination | undefined =
-    destination ?? (first ? { kind: 'theorem', projectId: first.projectId, projectTitle: first.title } : undefined)
+  const opening = projectId ? projects.data?.find((item) => item.projectId === projectId) : undefined
+  const chosen: Destination | undefined = touched.current
+    ? destination
+    : projectId
+      ? opening && { kind: 'theorem', projectId: opening.projectId, projectTitle: opening.title }
+      : destination ?? (first ? { kind: 'theorem', projectId: first.projectId, projectTitle: first.title } : undefined)
   destinationRef.current = destination
-
-  // The opening project can resolve after the first render (projects still
-  // loading). Apply the first resolved project as the recipient unless the
-  // person has explicitly chosen one; a useState initializer alone would keep
-  // the lastDestination() fallback forever.
-  useEffect(() => {
-    if (project && !touched.current && !appliedProject.current) {
-      appliedProject.current = true
-      setDestination({ kind: 'theorem', projectId: project.projectId, projectTitle: project.title })
-    }
-  }, [project?.projectId, project?.title])
 
   /**
    * Looks for the session's log until it turns up or this look's time runs out.
@@ -287,6 +284,10 @@ export function NewConversation({
   }
   if (error) notes.push({ tone: 'error', text: describeError(error) })
   if (projects.status === 'failed' && !chosen) notes.push({ tone: 'error', text: describeError(projects.error) })
+  // Opened from a project that no longer loads: the composer has no recipient to
+  // wait for, so say so instead of showing "Loading…" while Send stays blocked.
+  if (projectId && !opening && !touched.current && projects.status === 'ready')
+    notes.push({ tone: 'error', text: 'That project is no longer available. Choose a recipient to send somewhere else.' })
 
   return (
     <>
@@ -294,13 +295,16 @@ export function NewConversation({
         runtime={runtime}
         recipient={{
           name: chosen ? destinationName(chosen) : 'Theorem',
-          detail: chosen ? destinationDetail(chosen) : 'Loading…',
+          detail: chosen ? destinationDetail(chosen) : projects.status === 'ready' ? 'Choose a recipient' : 'Loading…',
           onPress: waiting || busy ? undefined : () => setPicking(true),
         }}
         placeholder={chosen ? `Message ${destinationName(chosen)}` : 'Message'}
         notes={notes}
         sendBlocked={!chosen || !!busy || !!waiting}
-        controls={chosen?.kind === 'theorem' ? <AttachButton onAcquire={attachToThread} /> : null}
+        // Hidden while any start is busy: `start` clears the create key while `busy` runs
+        // on through readiness and send, and a file chosen in that window would create a
+        // second thread, splitting the typed words and the file across two conversations.
+        controls={chosen?.kind === 'theorem' && !busy ? <AttachButton onAcquire={attachToThread} /> : null}
         empty={
           <EmptyConversation
             title={chosen ? destinationName(chosen) : 'New conversation'}
