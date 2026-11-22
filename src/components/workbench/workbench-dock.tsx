@@ -57,9 +57,8 @@ function EdgeHandle({
   onClose?: () => void
 }) {
   const handle = useRef<HTMLDivElement>(null)
-  // Anime clears its own dragged flag before onRelease; remember the gesture.
+  // Track movement independently of Anime's drag threshold on either axis.
   const dragged = useRef(false)
-  const closeOnRelease = useRef(false)
   const press = useRef<{
     id: number
     x: number
@@ -86,11 +85,20 @@ function EdgeHandle({
         Math.abs(event.clientY - start.y) > start.threshold
       )
         dragged.current = true
-      if (event.type === 'pointercancel') {
-        dragged.current = true
-        closeOnRelease.current = false
+      if (event.type === 'pointercancel') dragged.current = true
+      if (event.type !== 'pointermove') {
+        press.current = null
+        // Anime calls onRelease for *every* mouseup, including a middle
+        // release while left is still held. Only a matching primary pointerup
+        // is a click-to-close; cancelled/moved gestures must keep resizing.
+        if (
+          event.type === 'pointerup' &&
+          event.isPrimary &&
+          event.button === 0 &&
+          !dragged.current
+        )
+          onClose?.()
       }
-      if (event.type !== 'pointermove') press.current = null
     }
     for (const type of ['pointermove', 'pointerup', 'pointercancel'])
       document.addEventListener(type, track as EventListener, true)
@@ -109,10 +117,6 @@ function EdgeHandle({
       },
       onDrag: () => {
         dragged.current = true
-      },
-      onRelease: () => {
-        if (closeOnRelease.current && !dragged.current) onClose?.()
-        closeOnRelease.current = false
       },
       cursor:
         axis === 'x'
@@ -209,8 +213,8 @@ function EdgeHandle({
       onKeyDown={onKeyDown}
       onPointerDownCapture={(event) => {
         dragged.current = false
-        closeOnRelease.current = event.isPrimary && event.button === 0
-        press.current = closeOnRelease.current
+        const primaryPress = event.isPrimary && event.button === 0
+        press.current = primaryPress
           ? {
               id: event.pointerId,
               x: event.clientX,
@@ -219,17 +223,18 @@ function EdgeHandle({
             }
           : null
       }}
+      // Keyboard/assistive clicks have no pointer sequence (detail=0).
+      // Actual mouse/touch clicks are handled by their matching pointerup.
       onClick={(event) => {
-        if (event.button === 0 && (event.detail === 0 || !dragged.current))
-          onClose?.()
+        if (event.button === 0 && event.detail === 0) onClose?.()
       }}
       onPointerCancelCapture={() => {
         dragged.current = true
-        closeOnRelease.current = false
+        press.current = null
       }}
       onTouchCancelCapture={() => {
         dragged.current = true
-        closeOnRelease.current = false
+        press.current = null
       }}
       className={cn(
         'group z-10 flex shrink-0 touch-none items-center justify-center outline-none focus-visible:outline-1 focus-visible:outline-term-sage',

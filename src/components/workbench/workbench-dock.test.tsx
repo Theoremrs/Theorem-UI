@@ -60,6 +60,41 @@ const doubleClick = (element: Element) =>
     element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
   })
 
+const pointer = (
+  target: EventTarget,
+  type: string,
+  options: PointerEventInit = {},
+) =>
+  target.dispatchEvent(
+    new PointerEvent(type, {
+      bubbles: true,
+      pointerId: 11,
+      pointerType: 'mouse',
+      isPrimary: true,
+      button: 0,
+      buttons: type === 'pointerup' ? 0 : 1,
+      clientX: 100,
+      clientY: 100,
+      ...options,
+    }),
+  )
+
+const mouse = (
+  target: EventTarget,
+  type: string,
+  options: MouseEventInit = {},
+) =>
+  target.dispatchEvent(
+    new MouseEvent(type, {
+      bubbles: true,
+      button: 0,
+      buttons: type === 'mouseup' ? 0 : 1,
+      clientX: 100,
+      clientY: 100,
+      ...options,
+    }),
+  )
+
 async function open(placement: Placement) {
   let view: View | undefined
   useShell.getState().setWorkbench(placement)
@@ -144,6 +179,106 @@ describe('the drawer keeps only its edge handle around the terminal', () => {
       await click(frame.querySelector('[role="separator"]')!)
       expect(useShell.getState().workbench).toBe('closed')
     })
+
+    test(
+      placement + ' ignores a middle-button release while the primary is held',
+      async () => {
+        const { frame } = await open(placement)
+        const handle = frame.querySelector('[role="separator"]')!
+
+        await act(async () => {
+          pointer(handle, 'pointerdown')
+          mouse(handle, 'mousedown')
+          // Anime's onRelease runs on this mouseup even though the primary is held.
+          mouse(document, 'mouseup', { button: 1, buttons: 1 })
+        })
+        expect(useShell.getState().workbench).toBe(placement)
+
+        await act(async () => {
+          pointer(document, 'pointerup')
+          mouse(document, 'mouseup')
+        })
+        expect(useShell.getState().workbench).toBe('closed')
+      },
+    )
+
+    test(
+      placement +
+        ' closes on a stationary primary release, without a click event',
+      async () => {
+        const { frame } = await open(placement)
+        const handle = frame.querySelector('[role="separator"]')!
+        await act(async () => {
+          pointer(handle, 'pointerdown')
+          mouse(handle, 'mousedown')
+          pointer(document, 'pointerup')
+          mouse(document, 'mouseup')
+        })
+        expect(useShell.getState().workbench).toBe('closed')
+      },
+    )
+
+    for (const move of [
+      { name: 'horizontal', x: 112, y: 100 },
+      { name: 'vertical', x: 100, y: 112 },
+    ]) {
+      test(
+        placement +
+          ' remains open after a ' +
+          move.name +
+          ' drag away and back',
+        async () => {
+          const { frame } = await open(placement)
+          const handle = frame.querySelector('[role="separator"]')!
+          await act(async () => {
+            pointer(handle, 'pointerdown')
+            mouse(handle, 'mousedown')
+            pointer(document, 'pointermove', {
+              button: -1,
+              clientX: move.x,
+              clientY: move.y,
+            })
+            mouse(document, 'mousemove', {
+              button: -1,
+              clientX: move.x,
+              clientY: move.y,
+            })
+            pointer(document, 'pointermove', { button: -1 })
+            mouse(document, 'mousemove', { button: -1 })
+            pointer(document, 'pointerup')
+            mouse(document, 'mouseup')
+          })
+          expect(useShell.getState().workbench).toBe(placement)
+        },
+      )
+    }
+
+    test(placement + ' ignores cancelled primary gestures', async () => {
+      const { frame } = await open(placement)
+      const handle = frame.querySelector('[role="separator"]')!
+      await act(async () => {
+        pointer(handle, 'pointerdown')
+        mouse(handle, 'mousedown')
+        pointer(document, 'pointercancel')
+        mouse(document, 'mouseup')
+      })
+      expect(useShell.getState().workbench).toBe(placement)
+    })
+
+    test(
+      placement + ' ignores a standalone nonprimary-button release',
+      async () => {
+        const { frame } = await open(placement)
+        const handle = frame.querySelector('[role="separator"]')!
+        await act(async () => {
+          pointer(handle, 'pointerdown', { button: 1, buttons: 4 })
+          mouse(handle, 'mousedown', { button: 1, buttons: 4 })
+          pointer(document, 'pointerup', { button: 1, buttons: 0 })
+          mouse(document, 'mouseup', { button: 1, buttons: 0 })
+        })
+        expect(useShell.getState().workbench).toBe(placement)
+      },
+    )
 
     for (const key of ['Enter', ' ']) {
       test(`${placement} handle closes with ${key === ' ' ? 'Space' : key}`, async () => {
