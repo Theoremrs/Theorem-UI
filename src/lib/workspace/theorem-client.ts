@@ -32,7 +32,7 @@ export const isTheoremWorkspace = (summary: WorkspaceSummary) =>
 
 let clientId: string | undefined
 /** This page's id, echoed on the events its own changes cause. */
-const ownClientId = () => (clientId ??= crypto.randomUUID())
+export const ownClientId = () => (clientId ??= crypto.randomUUID())
 
 /** A Files API refusal as the workspace errors views already handle. */
 function failure(error: unknown, path = ''): unknown {

@@ -1,17 +1,26 @@
 // SOURCING: the Theorem vault's WorkspaceClient over the SDK Files API
 // (theorem-files/1, src/lib/workspace/theorem-client.ts): pages and modules
 // are files there, written with If-Match so a change made elsewhere is never
-// overwritten. @tanstack/react-query holds what was read, the workspace
-// tree's event-fed cache (useWorkspaceTree) says when to read it again.
+// overwritten. In the Theorem vault a page is written through Theorem's page
+// owner (/api/pages/v1, src/lib/pages/api.ts), which keeps its history over
+// the same files; any other vault writes the file itself. @tanstack/react-query
+// holds what was read, the workspace tree's event-fed cache (useWorkspaceTree)
+// says when to read it again.
 import {
+  useInfiniteQuery,
   useMutation,
   useQueries,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { conflictRevision, pageOwner } from '@/lib/pages/api'
+import type { PageOwner } from '@/lib/pages/api'
+import type { RestorePageRequest } from '@/lib/pages/contract'
+import { patchOps } from '@/lib/pages/patch'
 import { isTheoremWorkspace } from '@/lib/workspace/theorem-client'
 import type { VaultAbsence } from '@/lib/workspace/theorem-client'
+import { WorkspaceConflictError } from '@/lib/workspace/types'
 import type { WorkspaceClient, WorkspaceEntry } from '@/lib/workspace/types'
 import {
   useWorkspaceTree,
@@ -120,6 +129,10 @@ const manifestKey = (workspaceId: string, path: string) =>
 
 const modeKey = (workspaceId: string, path: string) =>
   ['modules', 'mode', workspaceId, path] as const
+const historyKey = (workspaceId: string, path: string) =>
+  ['modules', 'history', workspaceId, path] as const
+const revisionKey = (workspaceId: string, path: string, revision?: string) =>
+  ['modules', 'revision', workspaceId, path, revision] as const
 
 /** A mode's file as read: its page, or why it is not one. */
 type ModeRead = { page?: PageDocument; hash: string; problem?: string }
@@ -317,8 +330,62 @@ async function writeNew(
     fileStem(page.title),
     PAGE_SUFFIX,
   )
-  await client.write(path, pageText(page), { expectedHash: null })
+  const owner = pageOwner(client)
+  if (owner) await throughOwner(path, () => owner.save({ path, page }))
+  else await client.write(path, pageText(page), { expectedHash: null })
   return path
+}
+
+/**
+ * A page write through Theorem's page owner, refused as a Files write is when
+ * the page is not at the revision it named: WorkspaceConflictError with the
+ * revision there now (null when there is no page), so the conflict UI is the
+ * same whichever writes the file.
+ */
+async function throughOwner<T>(path: string, write: () => Promise<T>) {
+  try {
+    return await write()
+  } catch (error) {
+    const current = conflictRevision(error)
+    if (current !== undefined) throw new WorkspaceConflictError(path, current)
+    throw error
+  }
+}
+
+/**
+ * Saves through the owner: the ops that make `base` into `page` when the edit
+ * is only changed props, a title or a pin, by stable component id; the whole
+ * document otherwise. `hash` is as useSavePage's: undefined saves over
+ * whatever is there now.
+ */
+async function saveThroughOwner(
+  owner: PageOwner,
+  path: string,
+  page: PageDocument,
+  hash: string | null | undefined,
+  base: PageDocument | undefined,
+) {
+  const expected =
+    hash !== undefined
+      ? hash
+      : await owner.read(path).then(
+          (view) => view.revision,
+          (error: unknown) => {
+            if (conflictRevision(error) === null) return null
+            throw error
+          },
+        )
+  const ops = expected !== null && base ? patchOps(base, page) : null
+  const receipt = await throughOwner(path, () =>
+    expected !== null && ops?.length
+      ? owner.patch({ path, expectedRevision: expected, ops })
+      : owner.save({
+          path,
+          page,
+          ...(expected !== null && { expectedRevision: expected }),
+        }),
+  )
+  return { page: receipt.page, hash: receipt.revision }
 }
 
 /** A new page, blank or from a template, in the Pages folder. */
@@ -374,6 +441,22 @@ const noteWritten = (path: string, hash: string | null) => {
 export const wroteHere = (path: string, hash: string | null) =>
   writtenHere.get(path)?.has(hash ?? '') ?? false
 
+/** A page file written by the vault itself, for a vault with no page owner. */
+async function writeFile(
+  client: WorkspaceClient,
+  path: string,
+  page: PageDocument,
+  hash: string | null | undefined,
+) {
+  const written = await client.write(path, pageText(page), {
+    ...(hash !== undefined && { expectedHash: hash }),
+  })
+  // A merging store keeps something other than what was sent.
+  return written.merged
+    ? await readPage(client, path)
+    : { page, hash: written.hash }
+}
+
 /**
  * Saves a page over the revision it was read at. A change made since comes
  * back as WorkspaceConflictError; nothing is overwritten.
@@ -385,6 +468,7 @@ export function useSavePage(client: WorkspaceClient) {
       path,
       page,
       hash,
+      base,
     }: {
       path: string
       page: PageDocument
@@ -393,14 +477,19 @@ export function useSavePage(client: WorkspaceClient) {
        * (so one written since is a conflict); undefined to overwrite.
        */
       hash?: string | null
+      /**
+       * The page as it is at `hash`. Given, the page owner is sent only the
+       * components that changed, by id, when that is all that changed.
+       */
+      base?: PageDocument
     }) => {
-      const written = await client.write(path, pageText(page), {
-        ...(hash !== undefined && { expectedHash: hash }),
+      const owner = pageOwner(client)
+      const stored = owner
+        ? await saveThroughOwner(owner, path, page, hash, base)
+        : await writeFile(client, path, page, hash)
+      void queryClient.invalidateQueries({
+        queryKey: historyKey(client.workspace.id, path),
       })
-      // A merging store keeps something other than what was sent.
-      const stored = written.merged
-        ? await readPage(client, path)
-        : { page, hash: written.hash }
       noteWritten(path, stored.hash)
       queryClient.setQueryData(pageKey(client.workspace.id, path), stored)
       // A mode reads its page under its own key. Its first save makes the
@@ -410,6 +499,79 @@ export function useSavePage(client: WorkspaceClient) {
           modeKey(client.workspace.id, path),
           stored,
         )
+      return stored
+    },
+  })
+}
+
+/** Whether this vault keeps page history: the Theorem vault, through its page owner. */
+export const hasPageHistory = (client: WorkspaceClient) => !!pageOwner(client)
+
+/**
+ * A page's saved revisions, newest first, a page of them at a time. Empty for
+ * a vault without a page owner, which keeps no history.
+ */
+export function usePageHistory(client: WorkspaceClient, path: string) {
+  const owner = pageOwner(client)
+  const query = useInfiniteQuery({
+    queryKey: historyKey(client.workspace.id, path),
+    queryFn: ({ pageParam }) => owner!.history(path, pageParam),
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (last) => last.nextCursor,
+    enabled: !!owner,
+  })
+  const revisions = useMemo(
+    () => query.data?.pages.flatMap((one) => one.revisions) ?? [],
+    [query.data],
+  )
+  return {
+    revisions,
+    isPending: !!owner && query.isPending,
+    error: query.error,
+    more: query.hasNextPage,
+    showMore: () => void query.fetchNextPage(),
+    loadingMore: query.isFetchingNextPage,
+  }
+}
+
+/** One revision's document, for a preview; revisions never change once kept. */
+export function usePageRevision(
+  client: WorkspaceClient,
+  path: string,
+  revision: string | undefined,
+) {
+  const owner = pageOwner(client)
+  return useQuery({
+    queryKey: revisionKey(client.workspace.id, path, revision),
+    queryFn: () => owner!.revision(path, revision!),
+    enabled: !!owner && revision !== undefined,
+    staleTime: Infinity,
+  })
+}
+
+/**
+ * Brings back an earlier revision's layout, written as a new revision over
+ * `expectedRevision`; the revision it replaces stays in the history. Records
+ * a page's modules show are not part of a page, so nothing else changes.
+ */
+export function useRestorePage(client: WorkspaceClient) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (request: RestorePageRequest) => {
+      const owner = pageOwner(client)
+      if (!owner) throw new Error('This vault keeps no page history.')
+      const receipt = await throughOwner(request.path, () =>
+        owner.restore(request),
+      )
+      const stored = { page: receipt.page, hash: receipt.revision }
+      noteWritten(request.path, stored.hash)
+      queryClient.setQueryData(
+        pageKey(client.workspace.id, request.path),
+        stored,
+      )
+      void queryClient.invalidateQueries({
+        queryKey: historyKey(client.workspace.id, request.path),
+      })
       return stored
     },
   })
