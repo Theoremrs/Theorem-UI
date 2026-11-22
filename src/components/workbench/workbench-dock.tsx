@@ -8,8 +8,6 @@ import type {
   ReactNode,
   RefObject,
 } from 'react'
-import { Button } from '@/components/ui/button'
-import { useOpenMode, useShellMode } from '@/components/shell/modes'
 import { useShell } from '@/components/shell/shell-state'
 import { useTerminalTheme } from '@/components/terminal/live-terminal-theme'
 import { useCloseOnOutsideDoubleClick } from '@/components/terminal/close-on-outside-double-click'
@@ -22,6 +20,7 @@ import { WORKBENCH_LABEL } from './label'
 /** The shortest and tallest it gets under the sheet, as shares of the window. */
 const MIN_SHARE = 0.2
 const MAX_SHARE = 0.8
+const closeWorkbench = () => useShell.getState().setWorkbench('closed')
 const viewportWidth = () =>
   typeof window === 'undefined' ? 1440 : window.innerWidth
 
@@ -49,13 +48,23 @@ function EdgeHandle({
   axis,
   target,
   grip,
+  onClose,
 }: {
   axis: 'x' | 'y'
   target: HTMLElement | null
   /** On the card's own edge, with the grip showing; otherwise the gap beside it. */
   grip: boolean
+  onClose?: () => void
 }) {
   const handle = useRef<HTMLDivElement>(null)
+  // Track movement independently of Anime's drag threshold on either axis.
+  const dragged = useRef(false)
+  const press = useRef<{
+    id: number
+    x: number
+    y: number
+    threshold: number
+  } | null>(null)
   const drag = useRef<ReturnType<typeof createDraggable> | undefined>(undefined)
   const width = useShell((s) => s.sideWidth)
   const share = useShell((s) => s.terminalHeight)
@@ -66,6 +75,33 @@ function EdgeHandle({
   useEffect(() => {
     const element = handle.current
     if (!element) return
+    // Track both axes even outside the grip. Anime only counts movement on
+    // its resize axis, but moving away on either axis cancels a click.
+    const track = (event: PointerEvent) => {
+      const start = press.current
+      if (!start || event.pointerId !== start.id) return
+      if (
+        Math.abs(event.clientX - start.x) > start.threshold ||
+        Math.abs(event.clientY - start.y) > start.threshold
+      )
+        dragged.current = true
+      if (event.type === 'pointercancel') dragged.current = true
+      if (event.type !== 'pointermove') {
+        press.current = null
+        // Anime calls onRelease for *every* mouseup, including a middle
+        // release while left is still held. Only a matching primary pointerup
+        // is a click-to-close; cancelled/moved gestures must keep resizing.
+        if (
+          event.type === 'pointerup' &&
+          event.isPrimary &&
+          event.button === 0 &&
+          !dragged.current
+        )
+          onClose?.()
+      }
+    }
+    for (const type of ['pointermove', 'pointerup', 'pointercancel'])
+      document.addEventListener(type, track as EventListener, true)
     const shell = useShell.getState()
     const pxOf = (fraction: number) => fraction * window.innerHeight
     const draggable = createDraggable(element, {
@@ -76,6 +112,12 @@ function EdgeHandle({
           ? [0, -minimum, 0, -maximum]
           : [-pxOf(MAX_SHARE), 0, -pxOf(MIN_SHARE), 0],
       velocityMultiplier: 0,
+      onGrab: () => {
+        dragged.current = false
+      },
+      onDrag: () => {
+        dragged.current = true
+      },
       cursor:
         axis === 'x'
           ? { onHover: 'ew-resize', onGrab: 'ew-resize' }
@@ -101,12 +143,20 @@ function EdgeHandle({
     return () => {
       drag.current = undefined
       draggable.revert()
+      for (const type of ['pointermove', 'pointerup', 'pointercancel'])
+        document.removeEventListener(type, track as EventListener, true)
     }
-  }, [axis, target, maximum, minimum])
+  }, [axis, target, maximum, minimum, onClose])
 
   // The keyboard equivalent of dragging: arrows step the edge, Shift steps
   // further, Home and End go to the limits.
   const onKeyDown = (event: ReactKeyboardEvent) => {
+    if (onClose && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
+      return
+    }
     const step = event.shiftKey ? 64 : 16
     const grow = axis === 'x' ? 'ArrowLeft' : 'ArrowUp'
     const shrink = axis === 'x' ? 'ArrowRight' : 'ArrowDown'
@@ -155,7 +205,37 @@ function EdgeHandle({
         axis === 'x' ? Math.min(width, maximum) : Math.round(share * 100)
       }
       tabIndex={0}
+      aria-description={
+        onClose
+          ? 'Drag or use arrow keys to resize. Click or press Enter or Space to close.'
+          : undefined
+      }
       onKeyDown={onKeyDown}
+      onPointerDownCapture={(event) => {
+        dragged.current = false
+        const primaryPress = event.isPrimary && event.button === 0
+        press.current = primaryPress
+          ? {
+              id: event.pointerId,
+              x: event.clientX,
+              y: event.clientY,
+              threshold: event.pointerType === 'touch' ? 7 : 3,
+            }
+          : null
+      }}
+      // Keyboard/assistive clicks have no pointer sequence (detail=0).
+      // Actual mouse/touch clicks are handled by their matching pointerup.
+      onClick={(event) => {
+        if (event.button === 0 && event.detail === 0) onClose?.()
+      }}
+      onPointerCancelCapture={() => {
+        dragged.current = true
+        press.current = null
+      }}
+      onTouchCancelCapture={() => {
+        dragged.current = true
+        press.current = null
+      }}
       className={cn(
         'group z-10 flex shrink-0 touch-none items-center justify-center outline-none focus-visible:outline-1 focus-visible:outline-term-sage',
         grip
@@ -320,82 +400,6 @@ function useBottomClearance(
   }, [bottom, frame, region])
 }
 
-const placementLabels = {
-  full: 'Full',
-  side: 'Right',
-  bottom: 'Bottom',
-} as const
-
-function WorkspaceControls({
-  drawn,
-  requested,
-}: {
-  drawn: Placement
-  requested: Placement
-}) {
-  const mode = useShellMode()
-  const openMode = useOpenMode()
-  const attachment = useShell((s) => s.workbenchAttachment)
-  const choose = (next: Placement) => {
-    if (next === 'full' && mode !== 'chat') openMode('chat')
-    useShell.getState().setWorkbench(next)
-  }
-  return (
-    <nav
-      aria-label="Workspace controls"
-      className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line px-2 py-1 text-ink"
-    >
-      {drawn === 'full' && (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => choose(useShell.getState().lastCompanion)}
-        >
-          Back to chat
-        </Button>
-      )}
-      {(Object.keys(placementLabels) as Placement[]).map((next) => (
-        <Button
-          key={next}
-          type="button"
-          size="sm"
-          variant={drawn === next ? 'secondary' : 'ghost'}
-          aria-pressed={drawn === next}
-          onClick={() => choose(next)}
-        >
-          {placementLabels[next]}
-        </Button>
-      ))}
-      {requested === 'side' && drawn === 'side' && (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          aria-pressed={attachment === 'docked'}
-          onClick={() =>
-            useShell
-              .getState()
-              .setWorkbenchAttachment(
-                attachment === 'docked' ? 'drawer' : 'docked',
-              )
-          }
-        >
-          Dock right
-        </Button>
-      )}
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        onClick={() => useShell.getState().setWorkbench('closed')}
-      >
-        Close workspace
-      </Button>
-    </nav>
-  )
-}
-
 /** Keep the same workbench mounted as its placement and visibility change. */
 export function WorkbenchDock({
   placement,
@@ -419,9 +423,7 @@ export function WorkbenchDock({
   const drawer = bottom || sideDrawer
   const dockedSide = drawn === 'side' && !sideDrawer
 
-  useCloseOnOutsideDoubleClick(drawer, () =>
-    useShell.getState().setWorkbench('closed'),
-  )
+  useCloseOnOutsideDoubleClick(drawer, closeWorkbench)
   useColumnEdges(sideDrawer, frame, region)
   useBottomClearance(bottom, frame, region)
 
@@ -487,13 +489,15 @@ export function WorkbenchDock({
             axis={drawn === 'side' ? 'x' : 'y'}
             target={frame}
             grip
+            onClose={closeWorkbench}
           />
         )}
-        {drawn && placement && (
-          <WorkspaceControls drawn={drawn} requested={placement} />
-        )}
         <div className="min-h-0 flex-1">
-          {children({ shown: drawn !== undefined, companion: dockedSide })}
+          {children({
+            shown: drawn !== undefined,
+            // The page's conversation remains available beside either drawer.
+            companion: drawn === 'side' || drawn === 'bottom',
+          })}
         </div>
       </div>
     </>
