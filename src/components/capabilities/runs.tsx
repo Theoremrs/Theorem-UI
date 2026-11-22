@@ -92,6 +92,25 @@ function RunDetail({
   )
 }
 
+/** The line under a run's status: its trigger, its attempts and their outcomes, and when it was queued, finished or tries next. */
+function runSummary(run: RuleRun) {
+  const count = run.attempts.length
+  const outcomes = run.attempts.flatMap((one) =>
+    one.outcomeCode ? [one.outcomeCode] : [],
+  )
+  return [
+    `${describeRunTrigger(run.trigger)} · ${count} ${count === 1 ? 'attempt' : 'attempts'}`,
+    outcomes.length > 0 ? ` (${outcomes.join(', ')})` : '',
+    ` · Queued ${iso(run.createdAtMs)}`,
+    run.finishedAtMs !== undefined
+      ? ` · Finished ${iso(run.finishedAtMs)}`
+      : '',
+    run.status === 'pending' && count > 0
+      ? ` · Next attempt ${iso(run.nextAttemptAtMs)}`
+      : '',
+  ].join('')
+}
+
 function RunItem({
   run,
   label,
@@ -111,10 +130,6 @@ function RunItem({
   onRetry: () => void
   instanceId: string
 }) {
-  const count = run.attempts.length
-  const outcomes = run.attempts.flatMap((one) =>
-    one.outcomeCode ? [one.outcomeCode] : [],
-  )
   return (
     <li aria-label={`Run ${run.runId}`} className="py-2">
       <div className="flex items-start gap-3">
@@ -123,17 +138,7 @@ function RunItem({
             {label} <span className="text-xs text-ink-faint">{run.runId}</span>
           </p>
           <p className="text-xs text-ink-muted">{describeRunStatus(run)}</p>
-          <p className="text-xs text-ink-faint">
-            {describeRunTrigger(run.trigger)} · {count}{' '}
-            {count === 1 ? 'attempt' : 'attempts'}
-            {outcomes.length > 0 && ` (${outcomes.join(', ')})`} · Queued{' '}
-            {iso(run.createdAtMs)}
-            {run.finishedAtMs !== undefined &&
-              ` · Finished ${iso(run.finishedAtMs)}`}
-            {run.status === 'pending' &&
-              count > 0 &&
-              ` · Next attempt ${iso(run.nextAttemptAtMs)}`}
-          </p>
+          <p className="text-xs text-ink-faint">{runSummary(run)}</p>
         </div>
         <Button
           size="xs"
@@ -164,6 +169,92 @@ function RunItem({
 }
 
 /**
+ * One rule's runs, or every rule's, page by page over the server's cursor:
+ * polled while shown and read again on focus.
+ */
+function useRunPages(instanceId: string, ruleKey: string) {
+  const runs = useInfiniteQuery({
+    queryKey: runsKey(instanceId, ruleKey),
+    queryFn: ({ pageParam }) =>
+      listRuns(instanceId, {
+        ...(ruleKey ? { ruleKey } : {}),
+        ...(pageParam ? { cursor: pageParam } : {}),
+      }),
+    initialPageParam: '',
+    getNextPageParam: (last) => last.nextCursor,
+    refetchInterval: RUNS_POLL_MS,
+    refetchOnWindowFocus: true,
+  })
+  return { runs, list: runs.data?.pages.flatMap((page) => page.runs) ?? [] }
+}
+
+/** The runs read so far, or why there are none, and the way to older ones. */
+function RunList({
+  runs,
+  list,
+  rules,
+  inspecting,
+  mayRetry,
+  busy,
+  instanceId,
+  onInspect,
+  onRetry,
+}: {
+  runs: ReturnType<typeof useRunPages>['runs']
+  list: RuleRun[]
+  rules: ReturnType<typeof rulesOf>
+  inspecting: string | undefined
+  mayRetry: boolean
+  busy: boolean
+  instanceId: string
+  onInspect: (runId: string) => void
+  onRetry: (runId: string) => void
+}) {
+  const labelOf = (key: string) =>
+    rules.find((rule) => rule.key === key)?.label ?? key
+  return (
+    <>
+      {runs.isError ? (
+        <p className="text-sm text-error-ink">
+          {ruleRefusalMessage(runs.error, 'Reading the runs')}
+        </p>
+      ) : runs.isPending ? (
+        <p className="text-sm text-ink-faint">Reading the runs…</p>
+      ) : list.length ? (
+        <ul className="flex flex-col divide-y divide-separator">
+          {list.map((run) => (
+            <RunItem
+              key={run.runId}
+              run={run}
+              label={labelOf(run.ruleKey)}
+              inspecting={inspecting === run.runId}
+              mayRetry={mayRetry}
+              busy={busy}
+              instanceId={instanceId}
+              onInspect={() => onInspect(run.runId)}
+              onRetry={() => onRetry(run.runId)}
+            />
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-ink-muted">No rule has run yet.</p>
+      )}
+      {runs.hasNextPage && (
+        <Button
+          size="xs"
+          variant="ghost"
+          className="self-start"
+          disabled={runs.isFetchingNextPage}
+          onClick={() => void runs.fetchNextPage()}
+        >
+          Older runs
+        </Button>
+      )}
+    </>
+  )
+}
+
+/**
  * An instance's rule runs as the server records them, newest first. The worker
  * owns every run, so nothing here holds one: the list is polled while open and
  * read again on focus or reopening, and a closed page changes nothing.
@@ -185,21 +276,7 @@ export function RunHistory({
   const [status, setStatus] = useState<Status>()
   const [busy, setBusy] = useState(false)
 
-  const runs = useInfiniteQuery({
-    queryKey: runsKey(instanceId, ruleKey),
-    queryFn: ({ pageParam }) =>
-      listRuns(instanceId, {
-        ...(ruleKey ? { ruleKey } : {}),
-        ...(pageParam ? { cursor: pageParam } : {}),
-      }),
-    initialPageParam: '',
-    getNextPageParam: (last) => last.nextCursor,
-    refetchInterval: RUNS_POLL_MS,
-    refetchOnWindowFocus: true,
-  })
-  const list = runs.data?.pages.flatMap((page) => page.runs) ?? []
-  const labelOf = (key: string) =>
-    rules.find((rule) => rule.key === key)?.label ?? key
+  const { runs, list } = useRunPages(instanceId, ruleKey)
 
   const refresh = () =>
     client.invalidateQueries({
@@ -271,50 +348,21 @@ export function RunHistory({
           Running a rule by hand needs the background permission on your grant.
         </p>
       )}
-      {runs.isError ? (
-        <p className="text-sm text-error-ink">
-          {ruleRefusalMessage(runs.error, 'Reading the runs')}
-        </p>
-      ) : runs.isPending ? (
-        <p className="text-sm text-ink-faint">Reading the runs…</p>
-      ) : list.length ? (
-        <ul className="flex flex-col divide-y divide-separator">
-          {list.map((run) => (
-            <RunItem
-              key={run.runId}
-              run={run}
-              label={labelOf(run.ruleKey)}
-              inspecting={inspecting === run.runId}
-              mayRetry={mayRetry}
-              busy={busy}
-              instanceId={instanceId}
-              onInspect={() =>
-                setInspecting((open) =>
-                  open === run.runId ? undefined : run.runId,
-                )
-              }
-              onRetry={() =>
-                void perform('Retry queued', () =>
-                  retryRun(instanceId, run.runId),
-                )
-              }
-            />
-          ))}
-        </ul>
-      ) : (
-        <p className="text-sm text-ink-muted">No rule has run yet.</p>
-      )}
-      {runs.hasNextPage && (
-        <Button
-          size="xs"
-          variant="ghost"
-          className="self-start"
-          disabled={runs.isFetchingNextPage}
-          onClick={() => void runs.fetchNextPage()}
-        >
-          Older runs
-        </Button>
-      )}
+      <RunList
+        runs={runs}
+        list={list}
+        rules={rules}
+        inspecting={inspecting}
+        mayRetry={mayRetry}
+        busy={busy}
+        instanceId={instanceId}
+        onInspect={(runId) =>
+          setInspecting((open) => (open === runId ? undefined : runId))
+        }
+        onRetry={(runId) =>
+          void perform('Retry queued', () => retryRun(instanceId, runId))
+        }
+      />
     </div>
   )
 }
