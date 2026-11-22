@@ -4,16 +4,22 @@
 // conversation App gets, from a blob URL, so no local listener is needed,
 // and the page's look, which followTheme keeps current),
 // and the grants store, which keeps what the person allowed in this browser.
-// A module runs only with a grant for its exact files.
+// A module runs only with a grant for its exact files. Its capability calls
+// are answered by lib/modules/capability-host; where it cannot run, its
+// manifest's fallback (./module-fallback) shows its records instead.
+import { useQueryClient } from '@tanstack/react-query'
 import { Play, ShieldAlert, Square, Undo2 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { BlockFrame } from '@/components/blocks/block-frame'
 import { BlockMessage } from '@/components/blocks/block-status'
+import { capabilityKeys } from '@/components/capabilities/queries'
 import { Button } from '@/components/ui/button'
 import type { BridgeHost, StateCollections } from '@/lib/blocks/bridge'
 import { followTheme, hostedAppDocument } from '@/lib/blocks/hosted-app'
 import type { Rpc } from '@/lib/blocks/sandbox/protocol'
 import { workspaceState } from '@/lib/blocks/state'
+import { moduleCapabilities } from '@/lib/modules/capability-host'
 import type { RequestedCapabilities } from '@/lib/modules/contract'
 import {
   grantFor,
@@ -26,13 +32,15 @@ import {
   allowedFrom,
   bridgeCapabilities,
   describeRequest,
+  requestId,
   requestsOf,
   sendAction,
   sendValues,
   serveModule,
 } from '@/lib/modules/sandbox'
-import type { Request } from '@/lib/modules/sandbox'
 import { useModuleFiles, useVaultClient } from '@/lib/modules/store'
+import { AskAboutModule } from './module-agent'
+import { WithFallback } from './module-fallback'
 import { useModuleActions, usePageRuntime } from './page-runtime'
 import type { ModuleFiles } from '@/lib/modules/store'
 import type { WorkspaceClient, WorkspaceId } from '@/lib/workspace/types'
@@ -62,11 +70,13 @@ export function SandboxedModule({
   if (view.arranging) return <ArrangingSummary definition={definition} />
   if (!client)
     return (
-      <BlockMessage>
-        {isPending
-          ? 'Opening the vault…'
-          : `This module lives in the Theorem vault. ${missing}`}
-      </BlockMessage>
+      <WithFallback definition={definition} view={view}>
+        <BlockMessage>
+          {isPending
+            ? 'Opening the vault…'
+            : `This module lives in the Theorem vault. ${missing}`}
+        </BlockMessage>
+      </WithFallback>
     )
   const { folder, entry } = definition.implementation
   return (
@@ -101,7 +111,7 @@ function ArrangingSummary({ definition }: { definition: ModuleDefinition }) {
   )
 }
 
-function VaultModule({
+export function VaultModule({
   client,
   definition,
   folder,
@@ -120,18 +130,29 @@ function VaultModule({
   const grant = useModuleGrants((s) => grantFor(s.grants, key, digest))
   const hadGrant = useModuleGrants((s) => key in s.grants)
   const [stopped, setStopped] = useState(false)
+  // What the frame reported when it failed; only a module with a fallback
+  // gives way on an error, so one without keeps running as before.
+  const [failure, setFailure] = useState<string>()
+  const ask = <AskAboutModule definition={definition} view={view} />
 
   if (files.error)
-    return <BlockMessage tone="error">{files.error.message}</BlockMessage>
+    return (
+      <WithFallback definition={definition} view={view}>
+        <BlockMessage tone="error">{files.error.message}</BlockMessage>
+      </WithFallback>
+    )
   if (!files.data) return <BlockMessage>Reading the module…</BlockMessage>
   if (!grant)
     return (
-      <GrantGate
-        files={files.data}
-        grantKeyValue={key}
-        changed={hadGrant}
-        folder={folder}
-      />
+      <WithFallback definition={definition} view={view}>
+        <GrantGate
+          files={files.data}
+          grantKeyValue={key}
+          changed={hadGrant}
+          folder={folder}
+          ask={ask}
+        />
+      </WithFallback>
     )
   const allowed = granted(files.data.manifest.capabilities, grant.capabilities)
   const revoke = () => useModuleGrants.getState().revoke(key)
@@ -139,10 +160,22 @@ function VaultModule({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-7 shrink-0 items-center gap-1 border-b border-separator px-2 text-xs text-ink-faint">
         <span className="me-auto truncate">
-          {stopped ? 'Stopped' : 'Running in a sandbox'}
+          {stopped
+            ? 'Stopped'
+            : failure
+              ? 'Stopped by an error'
+              : 'Running in a sandbox'}
         </span>
-        {stopped ? (
-          <Button variant="ghost" size="xs" onClick={() => setStopped(false)}>
+        {ask}
+        {stopped || failure ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => {
+              setStopped(false)
+              setFailure(undefined)
+            }}
+          >
             <Play />
             Run
           </Button>
@@ -157,7 +190,17 @@ function VaultModule({
           Revoke
         </Button>
       </div>
-      {!stopped && (
+      {stopped ? (
+        <WithFallback definition={definition} view={view}>
+          {null}
+        </WithFallback>
+      ) : failure ? (
+        <WithFallback definition={definition} view={view}>
+          <BlockMessage tone="error">
+            {definition.label} stopped: {failure}
+          </BlockMessage>
+        </WithFallback>
+      ) : (
         <ModuleFrameBody
           client={client}
           definition={definition}
@@ -165,6 +208,7 @@ function VaultModule({
           source={files.data.source}
           allowed={allowed}
           view={view}
+          {...(definition.fallback ? { onFailure: setFailure } : {})}
         />
       )}
     </div>
@@ -177,24 +221,27 @@ function GrantGate({
   grantKeyValue,
   changed,
   folder,
+  ask,
 }: {
   files: ModuleFiles
   grantKeyValue: string
   changed: boolean
   folder: string
+  ask: ReactNode
 }) {
   const requests = useMemo(
     () => requestsOf(files.manifest.capabilities),
     [files.manifest.capabilities],
   )
-  const id = (request: Request) => `${request.kind}:${request.value}`
   const [ticked, setTicked] = useState<ReadonlySet<string>>(
-    () => new Set(requests.map(id)),
+    () => new Set(requests.map(requestId)),
   )
   const allow = () =>
     useModuleGrants.getState().grant(grantKeyValue, {
       digest: files.digest,
-      capabilities: allowedFrom(requests.filter((r) => ticked.has(id(r)))),
+      capabilities: allowedFrom(
+        requests.filter((r) => ticked.has(requestId(r))),
+      ),
       grantedAt: Date.now(),
     })
   return (
@@ -219,16 +266,16 @@ function GrantGate({
           <legend className="mb-1 text-xs text-ink-muted">It asks to</legend>
           {requests.map((request) => (
             <label
-              key={id(request)}
+              key={requestId(request)}
               className="flex items-center gap-2 text-sm"
             >
               <input
                 type="checkbox"
-                checked={ticked.has(id(request))}
+                checked={ticked.has(requestId(request))}
                 onChange={(event) => {
                   const next = new Set(ticked)
-                  if (event.target.checked) next.add(id(request))
-                  else next.delete(id(request))
+                  if (event.target.checked) next.add(requestId(request))
+                  else next.delete(requestId(request))
                   setTicked(next)
                 }}
               />
@@ -243,13 +290,14 @@ function GrantGate({
           It asks for nothing beyond reading its own folder.
         </p>
       )}
-      <div>
+      <div className="flex items-center gap-1">
         <Button variant="outline" size="xs" onClick={allow}>
           <Play />
           {requests.length && ticked.size < requests.length
             ? 'Run with what is ticked'
             : 'Run it'}
         </Button>
+        {ask}
       </div>
     </div>
   )
@@ -263,6 +311,7 @@ function ModuleFrameBody({
   source,
   allowed,
   view,
+  onFailure,
 }: {
   client: WorkspaceClient
   definition: ModuleDefinition
@@ -270,8 +319,15 @@ function ModuleFrameBody({
   source: string
   allowed: RequestedCapabilities
   view: ModuleViewProps
+  /** Hears the frame's first reported error; absent, an error changes nothing here. */
+  onFailure?: (message: string) => void
 }) {
   const runtime = usePageRuntime()
+  const queryClient = useQueryClient()
+  const failed = useRef(onFailure)
+  useLayoutEffect(() => {
+    failed.current = onFailure
+  })
   const allowedKey = JSON.stringify(allowed)
   const netKey = JSON.stringify(allowed.net)
   const [frameDocument, setFrameDocument] = useState<{
@@ -301,20 +357,25 @@ function ModuleFrameBody({
     }
   }, [source, netKey])
 
-  const host = useMemo<BridgeHost>(
-    () => ({
+  const host = useMemo<BridgeHost>(() => {
+    const lent = JSON.parse(allowedKey) as RequestedCapabilities
+    return {
       client,
-      capabilities: bridgeCapabilities(
-        JSON.parse(allowedKey) as RequestedCapabilities,
-        folder,
-      ),
+      capabilities: bridgeCapabilities(lent, folder),
       state: lazyState(client.workspace.id),
       run: () => {
         throw new Error('A module does not start agents.')
       },
-    }),
-    [client, allowedKey, folder],
-  )
+      // Only the instances and actions granted; the bridge refuses the rest.
+      capability: moduleCapabilities(lent.instances ?? [], {
+        onInvoked: (instanceId) =>
+          void queryClient.invalidateQueries({
+            queryKey: capabilityKeys.instance(instanceId),
+          }),
+      }),
+      onError: (error) => failed.current?.(error.message),
+    }
+  }, [client, allowedKey, folder, queryClient])
 
   // The frame's connection outlives renders; it reads the latest view.
   const latest = useRef(view)
@@ -345,7 +406,11 @@ function ModuleFrameBody({
   })
 
   if (frameDocument.error)
-    return <BlockMessage tone="error">{frameDocument.error}</BlockMessage>
+    return (
+      <WithFallback definition={definition} view={view}>
+        <BlockMessage tone="error">{frameDocument.error}</BlockMessage>
+      </WithFallback>
+    )
   if (!frameDocument.src)
     return <BlockMessage>Starting the module…</BlockMessage>
   return (

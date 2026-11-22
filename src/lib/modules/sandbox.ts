@@ -13,7 +13,11 @@ import type {
   Rpc,
   SandboxMethods,
 } from '@/lib/blocks/sandbox/protocol'
-import type { PortSpec, RequestedCapabilities } from './contract'
+import type {
+  InstanceRequest,
+  PortSpec,
+  RequestedCapabilities,
+} from './contract'
 import { identifier } from './contract'
 import { isValueOf } from './values'
 
@@ -99,17 +103,53 @@ export function bridgeCapabilities(
 }
 
 /** Every item a module asks for, one line each, for the person to allow. */
-export interface Request {
-  kind: keyof RequestedCapabilities
-  value: string
-}
+export type Request =
+  | { kind: 'read' | 'write' | 'state' | 'net'; value: string }
+  | {
+      kind: 'instance'
+      instanceId: string
+      method: 'describe' | 'query'
+    }
+  | { kind: 'instance'; instanceId: string; method: 'invoke'; action: string }
 
-export const requestsOf = (requested: RequestedCapabilities): Request[] =>
-  (['read', 'write', 'state', 'net'] as const).flatMap((kind) =>
-    requested[kind].map((value) => ({ kind, value })),
+/** A request's stable name, for the line that allows it. */
+export const requestId = (request: Request): string =>
+  request.kind !== 'instance'
+    ? `${request.kind}:${request.value}`
+    : request.method === 'invoke'
+      ? `instance:${request.instanceId}:invoke:${request.action}`
+      : `instance:${request.instanceId}:${request.method}`
+
+const instanceRequests = (asked: InstanceRequest): Request[] =>
+  asked.methods.flatMap((method): Request[] =>
+    method === 'invoke'
+      ? asked.actions.map((action) => ({
+          kind: 'instance',
+          instanceId: asked.instanceId,
+          method,
+          action,
+        }))
+      : [{ kind: 'instance', instanceId: asked.instanceId, method }],
   )
 
-export const describeRequest = ({ kind, value }: Request): string => {
+export const requestsOf = (requested: RequestedCapabilities): Request[] => [
+  ...(['read', 'write', 'state', 'net'] as const).flatMap((kind) =>
+    requested[kind].map((value): Request => ({ kind, value })),
+  ),
+  ...(requested.instances ?? []).flatMap(instanceRequests),
+]
+
+export const describeRequest = (request: Request): string => {
+  if (request.kind === 'instance')
+    switch (request.method) {
+      case 'describe':
+        return `Read how ${request.instanceId} is defined`
+      case 'query':
+        return `Read records in ${request.instanceId}`
+      case 'invoke':
+        return `Run “${request.action}” in ${request.instanceId}`
+    }
+  const { kind, value } = request
   switch (kind) {
     case 'read':
       return `Read ${value}`
@@ -131,7 +171,24 @@ export function allowedFrom(
     write: [],
     state: [],
     net: [],
+    instances: [],
   }
-  for (const { kind, value } of requests) allowed[kind].push(value)
+  const instances = new Map<string, InstanceRequest>()
+  for (const request of requests) {
+    if (request.kind !== 'instance') {
+      allowed[request.kind].push(request.value)
+      continue
+    }
+    const entry = instances.get(request.instanceId) ?? {
+      instanceId: request.instanceId,
+      methods: [],
+      actions: [],
+    }
+    if (!entry.methods.includes(request.method))
+      entry.methods.push(request.method)
+    if (request.method === 'invoke') entry.actions.push(request.action)
+    instances.set(request.instanceId, entry)
+  }
+  allowed.instances = [...instances.values()]
   return allowed
 }

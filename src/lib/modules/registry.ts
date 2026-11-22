@@ -4,8 +4,10 @@
 import type { ComponentType } from 'react'
 import { create } from 'zustand'
 import type {
+  AgentRepresentation,
   ComponentData,
   MigrationStep,
+  ModuleFallback,
   ModuleManifest,
   PortSpec,
   RequestedCapabilities,
@@ -69,6 +71,10 @@ export interface ModuleDefinition {
   implementation: ModuleImplementationRuntime
   /** The vault file it was read from. */
   path?: string
+  /** How an agent reads it when it is selected or asked about. */
+  agent?: AgentRepresentation
+  /** What is shown instead when its sandbox is unavailable, not granted, or fails. */
+  fallback?: ModuleFallback
 }
 
 const NONE: RequestedCapabilities = { read: [], write: [], state: [], net: [] }
@@ -125,6 +131,8 @@ export function fromManifest(
         ? implementation
         : { kind: 'sandboxed-html', folder, entry: implementation.entry },
     path,
+    agent: manifest.agent,
+    fallback: manifest.fallback,
   }
 }
 

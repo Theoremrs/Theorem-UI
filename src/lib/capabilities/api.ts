@@ -5,7 +5,7 @@
 // Theorem's capabilities_api pins (docs/plans/user-authored-capabilities/README.md).
 import { mutate } from '@/lib/theorem/client'
 import { theoremJson } from '@/lib/theorem/passthrough'
-import { INVOKE_TARGETS_MAX, codes, matchAll } from './contract'
+import { INVOKE_TARGETS_MAX, codes, matchAll, ruleCodes } from './contract'
 import type {
   AuthorResult,
   CapabilityDefinition,
@@ -23,6 +23,13 @@ import type {
   QueryRequest,
   QueryResult,
   RepinRequest,
+  CapabilityModule,
+  RegisterModuleRequest,
+  RegisterModuleResult,
+  RuleRun,
+  RuleRunList,
+  RuleRunListQuery,
+  RunRuleRequest,
   SaveTemplateRequest,
   TemplateList,
 } from './contract'
@@ -400,4 +407,76 @@ export function refusalMessage(error: unknown, action: string): string {
       : undefined
   if (typeof message === 'string' && message.trim()) return message.trim()
   return `${action} could not be completed.`
+}
+
+// ── slice 2: rules, runs, modules ───────────────────────────────────────────
+
+/** One page of an instance's rule runs, newest first, optionally for one rule. */
+export function listRuns(
+  instanceId: string,
+  { ruleKey, cursor, limit }: RuleRunListQuery = {},
+): Promise<RuleRunList> {
+  const search = new URLSearchParams()
+  if (ruleKey) search.set('ruleKey', ruleKey)
+  if (cursor) search.set('cursor', cursor)
+  if (limit !== undefined) search.set('limit', String(limit))
+  const suffix = search.size ? `?${search}` : ''
+  return read(`${CAPABILITIES}/instances/${id(instanceId)}/runs${suffix}`)
+}
+
+/** One run, with its attempts. */
+export const readRun = (instanceId: string, runId: string): Promise<RuleRun> =>
+  read(`${CAPABILITIES}/instances/${id(instanceId)}/runs/${id(runId)}`)
+
+/**
+ * Queue a schedule rule now. The key rides as the `Idempotency-Key` header and
+ * the body stays empty, so the route adopts the header as the manual run's key:
+ * one click, after a lost session too, is one run.
+ */
+export function runRuleNow(
+  instanceId: string,
+  ruleKey: string,
+  { invocationKey = newInvocationKey() }: { invocationKey?: string } = {},
+): Promise<RuleRun> {
+  const body: RunRuleRequest = {}
+  return write<RuleRun>(
+    `${CAPABILITIES}/instances/${id(instanceId)}/rules/${id(ruleKey)}/run`,
+    body,
+    { 'Idempotency-Key': invocationKey },
+  )
+}
+
+/** Retry a failed or dead run whose last attempt finished failed. */
+export const retryRun = (instanceId: string, runId: string) =>
+  write<RuleRun>(
+    `${CAPABILITIES}/instances/${id(instanceId)}/runs/${id(runId)}/retry`,
+    {},
+  )
+
+/** Put a WASM module in the library; the answer names it by content (`capmod:`). */
+export const registerModule = (request: RegisterModuleRequest) =>
+  write<RegisterModuleResult>(`${CAPABILITIES}/library/modules`, request)
+
+export const readModule = (moduleId: string): Promise<CapabilityModule> =>
+  read(`${CAPABILITIES}/library/modules/${id(moduleId)}`)
+
+/** `refusalMessage`, knowing the slice-2 codes too. */
+export function ruleRefusalMessage(error: unknown, action: string): string {
+  switch (refusalCode(error)) {
+    case ruleCodes.MODULE_NOT_FOUND:
+      return 'That module is not in the library.'
+    case ruleCodes.MODULE_FAILED:
+      return 'The module behind this action failed. Nothing was written.'
+    case ruleCodes.RULE_UNKNOWN:
+      return 'This rule is no longer part of the definition.'
+    case ruleCodes.RULE_LOOP:
+      return 'Skipped: this rule is already part of the chain that started it, or the chain is too deep.'
+    case ruleCodes.BACKGROUND_DENIED:
+      return 'Your grant does not let rules run in the background as you.'
+    case ruleCodes.RUN_NOT_FOUND:
+      return 'That run is not here.'
+    case ruleCodes.RUN_NOT_RETRYABLE:
+      return 'Only a run whose last attempt failed can be retried.'
+  }
+  return refusalMessage(error, action)
 }

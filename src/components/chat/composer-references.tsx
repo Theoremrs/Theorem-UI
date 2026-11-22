@@ -9,6 +9,7 @@ import { create } from 'zustand'
 import type { RecordReference } from '@/components/crm/reference'
 import { Icon } from '@/components/icons'
 import type { CapabilityContextReference } from '@/lib/capabilities/reference'
+import type { ComponentContextReference } from '@/lib/modules/agent-reference'
 import type { DelegationReference } from '@/lib/theorem/delegations'
 import { citationReferenceKey } from '@/lib/theorem/citations'
 
@@ -17,6 +18,7 @@ export type ComposerReference =
   | DelegationReference
   | RecordReference
   | CapabilityContextReference
+  | ComponentContextReference
 
 export function referenceKey(reference: ComposerReference): string {
   const { location } = reference
@@ -42,6 +44,9 @@ export function referenceKey(reference: ComposerReference): string {
       return `capability:${resource.instanceId}/${resource.collectionKey}${
         resource.viewKey ? `/${resource.viewKey}` : ''
       }`
+    // A custom component: one envelope per placed component, refreshed in place.
+    case 'component':
+      return `component:${resource.pageId ?? ''}/${resource.selectedComponentId}`
     default:
       return `${resourceKey(resource)}${at}`
   }
@@ -136,6 +141,8 @@ function referenceLabel({ label, location }: ComposerReference): string {
       return resource.selected.length
         ? `${resource.collectionKey} · ${resource.selected.length} selected`
         : resource.collectionKey
+    case 'component':
+      return resource.moduleId
   }
 }
 
