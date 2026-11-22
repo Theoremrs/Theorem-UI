@@ -26,12 +26,12 @@ import {
   allowedFrom,
   bridgeCapabilities,
   describeRequest,
+  requestId,
   requestsOf,
   sendAction,
   sendValues,
   serveModule,
 } from '@/lib/modules/sandbox'
-import type { Request } from '@/lib/modules/sandbox'
 import { useModuleFiles, useVaultClient } from '@/lib/modules/store'
 import { useModuleActions, usePageRuntime } from './page-runtime'
 import type { ModuleFiles } from '@/lib/modules/store'
@@ -187,14 +187,15 @@ function GrantGate({
     () => requestsOf(files.manifest.capabilities),
     [files.manifest.capabilities],
   )
-  const id = (request: Request) => `${request.kind}:${request.value}`
   const [ticked, setTicked] = useState<ReadonlySet<string>>(
-    () => new Set(requests.map(id)),
+    () => new Set(requests.map(requestId)),
   )
   const allow = () =>
     useModuleGrants.getState().grant(grantKeyValue, {
       digest: files.digest,
-      capabilities: allowedFrom(requests.filter((r) => ticked.has(id(r)))),
+      capabilities: allowedFrom(
+        requests.filter((r) => ticked.has(requestId(r))),
+      ),
       grantedAt: Date.now(),
     })
   return (
@@ -219,16 +220,16 @@ function GrantGate({
           <legend className="mb-1 text-xs text-ink-muted">It asks to</legend>
           {requests.map((request) => (
             <label
-              key={id(request)}
+              key={requestId(request)}
               className="flex items-center gap-2 text-sm"
             >
               <input
                 type="checkbox"
-                checked={ticked.has(id(request))}
+                checked={ticked.has(requestId(request))}
                 onChange={(event) => {
                   const next = new Set(ticked)
-                  if (event.target.checked) next.add(id(request))
-                  else next.delete(id(request))
+                  if (event.target.checked) next.add(requestId(request))
+                  else next.delete(requestId(request))
                   setTicked(next)
                 }}
               />

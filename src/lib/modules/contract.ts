@@ -112,12 +112,31 @@ const migration = z.object({
 })
 export type MigrationStep = z.infer<typeof migration>
 
+/** What a module may do on a capability instance: read its definition, its records, or run actions. */
+export const CAPABILITY_METHODS = ['describe', 'query', 'invoke'] as const
+
+/** One capability instance a module asks to reach through the bridge, and how. */
+const instanceRequest = z
+  .strictObject({
+    instanceId: z.string().min(1).max(200),
+    methods: z.array(z.enum(CAPABILITY_METHODS)).min(1),
+    /** The action keys `invoke` may name; nothing else runs. */
+    actions: z.array(z.string().min(1).max(200)).default([]),
+  })
+  .refine(
+    (one) => one.methods.includes('invoke') === one.actions.length > 0,
+    'invoke names the actions it may run, and actions need invoke',
+  )
+export type InstanceRequest = z.infer<typeof instanceRequest>
+
 /** What a sandboxed module asks to reach. Asking is not being granted. */
 export const requestedCapabilities = z.object({
   read: z.array(z.string()).default([]),
   write: z.array(z.string()).default([]),
   state: z.array(z.string()).default([]),
   net: z.array(z.string().regex(/^[a-z0-9.-]+(:\d+)?$/i)).default([]),
+  /** Capability instances, reached only through the host's scoped bridge methods. */
+  instances: z.array(instanceRequest).optional(),
 })
 export type RequestedCapabilities = z.infer<typeof requestedCapabilities>
 
@@ -200,32 +219,67 @@ const implementation = z.discriminatedUnion('kind', [
   }),
 ])
 
+/**
+ * How an agent reads the module when it is selected or asked about: what it
+ * is for, and the output whose current value says what it shows now.
+ */
+const agentRepresentation = z.strictObject({
+  description: z.string().min(1).max(1000),
+  summaryOutput: identifier.optional(),
+})
+export type AgentRepresentation = z.infer<typeof agentRepresentation>
+
+/**
+ * What the page shows instead when the sandbox is unavailable, not granted, or
+ * fails: an instance's records and action controls through the built-in table.
+ */
+const moduleFallback = z.strictObject({
+  kind: z.literal('capability-records'),
+  instanceId: z.string().min(1).max(200),
+  viewKey: z.string().min(1).max(200).optional(),
+  /** The actions offered; absent, every action the view offers. */
+  actions: z.array(z.string().min(1).max(200)).optional(),
+})
+export type ModuleFallback = z.infer<typeof moduleFallback>
+
 export const MODULE_SCHEMA = 'theorem.module/1'
 
 /** `Modules/<folder>/module.json` in the vault. */
-export const moduleManifest = z.object({
-  schema: z.literal(MODULE_SCHEMA),
-  id: moduleId.refine(
-    (id) => !id.startsWith('theorem.'),
-    'theorem.* ids are built in',
-  ),
-  version: z.number().int().min(1).default(1),
-  label: z.string().min(1).max(80),
-  description: z.string().max(1000).optional(),
-  settings: z.array(setting).default([]),
-  inputs: z.array(port).default([]),
-  outputs: z.array(port).default([]),
-  events: z.array(port).default([]),
-  actions: z.array(port).default([]),
-  capabilities: requestedCapabilities.default({
-    read: [],
-    write: [],
-    state: [],
-    net: [],
-  }),
-  migrations: z.array(migration).default([]),
-  implementation,
-})
+export const moduleManifest = z
+  .object({
+    schema: z.literal(MODULE_SCHEMA),
+    id: moduleId.refine(
+      (id) => !id.startsWith('theorem.'),
+      'theorem.* ids are built in',
+    ),
+    version: z.number().int().min(1).default(1),
+    label: z.string().min(1).max(80),
+    description: z.string().max(1000).optional(),
+    settings: z.array(setting).default([]),
+    inputs: z.array(port).default([]),
+    outputs: z.array(port).default([]),
+    events: z.array(port).default([]),
+    actions: z.array(port).default([]),
+    capabilities: requestedCapabilities.default({
+      read: [],
+      write: [],
+      state: [],
+      net: [],
+    }),
+    migrations: z.array(migration).default([]),
+    implementation,
+    agent: agentRepresentation.optional(),
+    fallback: moduleFallback.optional(),
+  })
+  .superRefine((manifest, context) => {
+    const summary = manifest.agent?.summaryOutput
+    if (summary && !manifest.outputs.some((one) => one.name === summary))
+      context.addIssue({
+        code: 'custom',
+        path: ['agent', 'summaryOutput'],
+        message: `"${summary}" is not one of the outputs`,
+      })
+  })
 export type ModuleManifest = z.infer<typeof moduleManifest>
 export type ModuleImplementation = ModuleManifest['implementation']
 
