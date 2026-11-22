@@ -69,6 +69,7 @@ import { usePageId } from '../pages/page-route'
 import { ActionForm } from './action-form'
 import type { PickerOptions } from './action-form'
 import { AuthoringDialog } from './authoring'
+import { NewFromTemplate } from './templates'
 import { DescribeState, Loading, PermissionState, StatusLine } from './states'
 import type { Status } from './states'
 import {
@@ -798,8 +799,17 @@ function CapabilityTableBody({
   )
 }
 
-/** A module that names no instance: what this caller may see, so the setting is fillable. */
-function NoInstance({ arranging }: { arranging: boolean }) {
+/**
+ * A module that names no instance: what this caller may see, so the setting is
+ * fillable, and a new instance from one of the caller's templates.
+ */
+function NoInstance({
+  arranging,
+  onOpenInstance,
+}: {
+  arranging: boolean
+  onOpenInstance?: (instanceId: string) => void
+}) {
   const found = useCapabilityDiscover()
   return (
     <div className="flex flex-col gap-2 p-3 text-sm">
@@ -822,6 +832,7 @@ function NoInstance({ arranging }: { arranging: boolean }) {
           {entry.name}
         </p>
       ))}
+      <NewFromTemplate onOpen={onOpenInstance} />
     </div>
   )
 }

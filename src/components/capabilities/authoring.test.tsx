@@ -20,7 +20,10 @@ const realFetch = window.fetch
 type Call = { method: string; path: string; search: string; body?: unknown }
 let calls: Call[]
 let described: DescribeResult
-/** What a route answers instead of its default, by the route's last segment. */
+/**
+ * What a route answers instead of its default, by the route's last segment,
+ * or by method and last segment ("GET templates") where one path serves two.
+ */
 let answers: Record<string, { status: number; body: unknown }>
 
 beforeEach(() => {
@@ -47,7 +50,7 @@ beforeEach(() => {
       return json({ schema: 'theorem.chat.bootstrap.v1', csrfToken: 'csrf' })
     const tail = url.pathname.slice(CAPABILITIES.length + 1)
     const last = tail.split('/').at(-1) ?? ''
-    const override = answers[last]
+    const override = answers[`${method} ${last}`] ?? answers[last]
     if (override) return json(override.body, override.status)
     if (last === 'author')
       return json({
@@ -501,4 +504,138 @@ test('a refused re-pin says why and moves nothing', async () => {
     ),
   )
   expect(screen().textContent).not.toContain('Re-pinned ·')
+})
+
+// ── Templates: save this design, or start a new instance from one ──────────
+
+const template = (templateId: string, name: string, description: string) => ({
+  templateId,
+  name,
+  description,
+  definition: describeResult().definition,
+  declareTypes: [],
+  requirements: { modules: ['theorem.capability.table'] },
+  savedBy: 'user:travis',
+  savedAtMs: 1,
+})
+
+test('save as template names the instance, a name and a description, and says what stays behind', async () => {
+  answers['POST templates'] = {
+    status: 201,
+    body: template('captpl:weekly', 'Weekly tracker', 'Tasks by week'),
+  }
+  answers['GET templates'] = { status: 200, body: { templates: [] } }
+  await openDialog()
+  await click(button('Templates'))
+  await waitFor(() => named('Template name'))
+  // It starts from the definition's own name and purpose.
+  expect(named<HTMLInputElement>('Template name')?.value).toBe('Project tracker')
+  expect(named<HTMLInputElement>('Template description')?.value).toBe(
+    'Track personal projects and tasks',
+  )
+  expect(screen().textContent).toContain(
+    'Records, grants, enabled schedules and credentials are not included',
+  )
+  fill('Template name', '  ')
+  expect(button('Save as template')?.disabled).toBe(true)
+  fill('Template name', ' Weekly tracker ')
+  fill('Template description', 'Tasks by week')
+  await click(button('Save as template'))
+  const saved = await waitFor(() =>
+    calls.find(
+      (call) => call.method === 'POST' && call.path.endsWith('/templates'),
+    ),
+  )
+  expect(saved.path).toBe(`${CAPABILITIES}/library/templates`)
+  expect(saved.body).toEqual({
+    instanceId: 'tracker/main',
+    name: 'Weekly tracker',
+    description: 'Tasks by week',
+  })
+  await waitFor(() =>
+    screen().textContent.includes(
+      'Saved as template Weekly tracker · captpl:weekly.',
+    ),
+  )
+  expect(authored()).toEqual([])
+})
+
+test('new from template binds a fresh instance under the id chosen, then opens it', async () => {
+  answers['GET templates'] = {
+    status: 200,
+    body: {
+      templates: [
+        template('captpl:weekly', 'Weekly tracker', 'Tasks by week'),
+        template('captpl:reading', 'Reading list', 'Books to read'),
+      ],
+    },
+  }
+  answers.instantiate = {
+    status: 201,
+    body: {
+      definitionId: 'capdef:fresh',
+      instance: { instanceId: 'reading/home', definitionId: 'capdef:fresh' },
+    },
+  }
+  const opened: string[] = []
+  await openDialog({ onOpenInstance: (id) => opened.push(id) })
+  await click(button('Templates'))
+  await waitFor(() => named('Template to use'))
+  expect(
+    [...named<HTMLSelectElement>('Template to use')!.options].map(
+      (option) => option.textContent,
+    ),
+  ).toEqual(['Weekly tracker', 'Reading list'])
+  fill('Template to use', 'captpl:reading')
+  expect(screen().textContent).toContain('Books to read')
+  expect(screen().textContent).toContain(
+    'Its own empty collections, with you as its only owner',
+  )
+  // An id is chosen first, and one with a space is refused before sending.
+  expect(button('Create instance')?.disabled).toBe(true)
+  fill('New instance id', 'reading home')
+  expect(screen().textContent).toContain('an instance id without spaces')
+  fill('New instance id', ' reading/home ')
+  await click(button('Create instance'))
+  const made = await waitFor(() =>
+    calls.find((call) => call.path.endsWith('/instantiate')),
+  )
+  expect(made.path).toBe(
+    `${CAPABILITIES}/library/templates/${encodeURIComponent('captpl:reading')}/instantiate`,
+  )
+  expect(made.body).toEqual({ instanceId: 'reading/home' })
+  await waitFor(() => opened.length === 1)
+  expect(opened).toEqual(['reading/home'])
+})
+
+test('a new instance with nowhere to open it says where to name it', async () => {
+  answers['GET templates'] = {
+    status: 200,
+    body: { templates: [template('captpl:reading', 'Reading list', 'Books')] },
+  }
+  answers.instantiate = {
+    status: 201,
+    body: {
+      definitionId: 'capdef:fresh',
+      instance: { instanceId: 'reading/home', definitionId: 'capdef:fresh' },
+    },
+  }
+  await openDialog()
+  await click(button('Templates'))
+  await waitFor(() => named('New instance id'))
+  fill('New instance id', 'reading/home')
+  await click(button('Create instance'))
+  await waitFor(() =>
+    screen().textContent.includes(
+      "Created reading/home from Reading list. Name it in a capability module's Instance setting to open it.",
+    ),
+  )
+})
+
+test('with no templates saved, new from template says how to make one', async () => {
+  answers['GET templates'] = { status: 200, body: { templates: [] } }
+  await openDialog()
+  await click(button('Templates'))
+  await waitFor(() => screen().textContent.includes('No templates saved yet'))
+  expect(button('Create instance')).toBeUndefined()
 })

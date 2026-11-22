@@ -46,6 +46,8 @@ let answers: Record<
 >
 /** The definition version the rows were read under; a patch has to name it. */
 let pinned = 'capdef:abc'
+/** The caller's saved templates. */
+let library: unknown[] = []
 
 const button = (container: HTMLElement, name: string) =>
   [...container.querySelectorAll('button')].find(
@@ -72,6 +74,7 @@ beforeEach(() => {
   described = describeResult()
   invokeRefusal = undefined
   pinned = 'capdef:abc'
+  library = []
   answers = {
     next: { rows: taskRows, filtered: true, total: 4 },
     all: { rows: [], filtered: false, total: 0 },
@@ -101,6 +104,17 @@ beforeEach(() => {
       return json({ schema: 'theorem.chat.bootstrap.v1', csrfToken: 'csrf' })
     const rest = url.pathname.slice(CAPABILITIES.length + 1).split('/')
     const tail = rest[2]
+    if (rest[0] === 'library') {
+      if (rest.at(-1) === 'instantiate')
+        return json(
+          {
+            definitionId: 'capdef:fresh',
+            instance: { instanceId: body?.instanceId, definitionId: 'capdef:fresh' },
+          },
+          201,
+        )
+      return json({ templates: library })
+    }
     if (rest.length === 1) return json({ instances: [] })
     if (rest.length === 2) return json(described)
     if (tail === 'query') {
@@ -782,4 +796,36 @@ test('use in this conversation puts the view in the composer, with or without a 
   await waitFor(() => !screen().textContent.includes('Author Project tracker'))
   expect(sentTo('/author').length).toBe(0)
   useComposerReferences.setState({ references: [] })
+})
+
+// ── Templates from a module that names no instance ──────────────────────────
+
+test('a module that names no instance offers a new one from a template', async () => {
+  library = [
+    {
+      templateId: 'captpl:reading',
+      name: 'Reading list',
+      description: 'Books to read',
+      definition: describeResult().definition,
+      declareTypes: [],
+      requirements: { modules: [] },
+      savedBy: 'user:travis',
+      savedAtMs: 1,
+    },
+  ]
+  const { container } = await showTable({ instanceId: '', viewKey: '' })
+  await waitFor(() => container.textContent.includes('New from template'))
+  const id = container.querySelector<HTMLInputElement>(
+    'input[aria-label="New instance id"]',
+  )!
+  type(id, 'reading/home')
+  await act(async () => button(container, 'Create instance')?.click())
+  const made = await waitFor(() => sentTo('/instantiate')[0])
+  expect(made.body).toEqual({ instanceId: 'reading/home' })
+  // Outside a page that can take the setting, it says where to name it.
+  await waitFor(() =>
+    container.textContent.includes(
+      "Name it in a capability module's Instance setting to open it.",
+    ),
+  )
 })

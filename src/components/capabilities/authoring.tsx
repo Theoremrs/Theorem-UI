@@ -40,6 +40,7 @@ import {
   useCapabilityAuthor,
   useCapabilityRepin,
 } from './queries'
+import { NewFromTemplate, SaveTemplate } from './templates'
 import { ViewEditor } from './view-editor'
 
 const SECTIONS = [
@@ -47,6 +48,7 @@ const SECTIONS = [
   { value: 'views', label: 'Views' },
   { value: 'agent', label: 'Agent access' },
   { value: 'history', label: 'History' },
+  { value: 'templates', label: 'Templates' },
 ] as const
 
 type Section = (typeof SECTIONS)[number]['value']
@@ -111,6 +113,7 @@ export function AuthoringDialog({
   viewKey,
   onClose,
   onAsk,
+  onOpenInstance,
 }: {
   instanceId: string
   described: DescribeResult
@@ -119,6 +122,8 @@ export function AuthoringDialog({
   onClose: () => void
   /** Put what the module shows in the current conversation, as its Ask does. */
   onAsk?: () => void
+  /** Switch the module to another instance, such as one just made from a template. */
+  onOpenInstance?: (instanceId: string) => void
 }) {
   const [section, setSection] = useState<Section>('fields')
   const [tab, setTab] = useState<Tab>('add')
@@ -277,6 +282,12 @@ export function AuthoringDialog({
               busy={busy}
               onRepin={(definitionId) => void repin(definitionId)}
             />
+          )}
+          {section === 'templates' && (
+            <div className="flex flex-col gap-4">
+              <SaveTemplate instanceId={instanceId} definition={definition} />
+              <NewFromTemplate onOpen={onOpenInstance} />
+            </div>
           )}
         </div>
 
