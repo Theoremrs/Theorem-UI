@@ -238,7 +238,7 @@ beforeEach(() => {
   useWebSearch.setState({ on: false })
   usePlanning.setState({ byThread: {} })
   useToolSelections.setState({ byThread: {} })
-  usePendingStyle.setState({ styleId: undefined, held: {} })
+  usePendingStyle.setState({ drafts: {}, held: {} })
 })
 afterEach(cleanup)
 
@@ -525,6 +525,7 @@ async function chatWithPlanChip(threadId: string | undefined) {
     container.querySelector<HTMLElement>('[data-open]')?.dataset.open
   await waitFor(() => chip())
   return {
+    localId: () => aui!.threadListItem.getState().id,
     pressed: () => chip().getAttribute('aria-pressed') === 'true',
     async press() {
       await act(async () => chip().click())
@@ -648,7 +649,7 @@ test.each([
   try {
     const chat = await chatWithPlanChip(undefined)
     const style = 'theorem.style.concise'
-    usePendingStyle.getState().choose(style)
+    usePendingStyle.getState().chooseDraft(chat.localId(), style)
     if (attachment) await chat.attach(new File(['notes'], 'notes.txt', { type: 'text/plain' }))
     if (lost) lostReplies = 1
     if (refused) answers = [revisionConflict()]
@@ -656,7 +657,7 @@ test.each([
     const first = await chat.send('Explain B-trees', lost ? 2 : 1)
     expect(first.responseStyle).toBe(style)
     expect(first.uploadIds).toEqual(attachment ? ['upload-1'] : undefined)
-    expect(usePendingStyle.getState().styleId).toBeUndefined()
+    expect(usePendingStyle.getState().drafts).toEqual({})
     if (lost) {
       expect(sends.map(({ key, responseStyle }) => ({ key, responseStyle }))).toEqual([
         { key: first.key, responseStyle: style },
@@ -671,9 +672,35 @@ test.each([
     }
     expect(usePendingStyle.getState().held).toEqual({})
 
-    usePendingStyle.getState().choose('theorem.style.formal')
+    usePendingStyle.getState().chooseDraft('other-draft', 'theorem.style.formal')
     expect((await chat.send('And skip lists?')).responseStyle).toBeUndefined()
-    expect(usePendingStyle.getState().styleId).toBe('theorem.style.formal')
+    expect(usePendingStyle.getState().drafts).toEqual({
+      'other-draft': 'theorem.style.formal',
+    })
+  } finally {
+    createThread.mockRestore()
+  }
+})
+
+test('finishing thread creation does not take a different draft’s style', async () => {
+  type Created = Awaited<
+    ReturnType<ReturnType<typeof theorem>['chat']['threads']['create']>
+  >
+  let finish = (_: Created) => {}
+  const waiting = new Promise<Created>((resolve) => { finish = resolve })
+  const createThread = spyOn(theorem().chat.threads, 'create').mockReturnValueOnce(waiting as ReturnType<ReturnType<typeof theorem>['chat']['threads']['create']>)
+  try {
+    const picks = usePendingStyle.getState()
+    picks.chooseDraft('draft-a', 'theorem.style.concise')
+    const creating = createThreadListAdapter(() => 'project').initialize('draft-a')
+    await waitFor(() => createThread.mock.calls.length === 1)
+    picks.chooseDraft('draft-b', 'theorem.style.formal')
+    finish({ record: { threadId: 'created-a' } } as Created)
+    await creating
+    expect(usePendingStyle.getState()).toMatchObject({
+      drafts: { 'draft-b': 'theorem.style.formal' },
+      held: { 'created-a': 'theorem.style.concise' },
+    })
   } finally {
     createThread.mockRestore()
   }

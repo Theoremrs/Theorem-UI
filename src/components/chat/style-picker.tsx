@@ -33,7 +33,6 @@ import {
 } from '@/lib/theorem/organization'
 import {
   inheritedStyle,
-  pendingStyleFor,
   responseStylesQuery,
   usePendingStyle,
   useSelectionMutation,
@@ -57,6 +56,7 @@ const FOLLOWS: Readonly<Record<SelectionSource, string>> = {
  * takes the project last used; the inbox is no project, so it has no default.
  */
 function useConversation() {
+  const localId = useAuiState((s) => s.threadListItem.id)
   const threadId = useAuiState((s) => s.threadListItem.remoteId)
   const { data: organization } = useOrganization()
   const views = useOrganizedViews()
@@ -70,7 +70,7 @@ function useConversation() {
           (candidate) =>
             candidate.projectId === projectId && !candidate.isInbox,
         )
-  return { threadId: threadId ?? undefined, project }
+  return { localId, threadId: threadId ?? undefined, project }
 }
 
 /**
@@ -80,7 +80,7 @@ function useConversation() {
  * does not serve response styles shows nothing.
  */
 export function StylePicker() {
-  const { threadId, project } = useConversation()
+  const { localId, threadId, project } = useConversation()
   // The last catalog stays up while the next conversation's is read, so the
   // picker does not drop out of the toolbar when a first message creates one.
   const catalog = useQuery({
@@ -89,15 +89,19 @@ export function StylePicker() {
   })
   const select = useSelectionMutation()
   // The pick still waiting on a message: for a conversation not made yet, or for one whose first message was refused.
-  const pending = usePendingStyle((s) => pendingStyleFor(s, threadId))
-  const choosePending = usePendingStyle((s) => s.choose)
+  const pending = usePendingStyle((s) =>
+    threadId ? s.held[threadId] : s.drafts[localId],
+  )
   const styles = catalog.data?.styles
 
   // A pick made before a message was accepted may name a style since deleted.
   useEffect(() => {
-    if (styles && pending && !styles.some((style) => style.id === pending))
-      choosePending(undefined, threadId)
-  }, [styles, pending, choosePending, threadId])
+    if (!styles || !pending || styles.some((style) => style.id === pending))
+      return
+    const picks = usePendingStyle.getState()
+    if (threadId) picks.chooseHeld(threadId, undefined)
+    else picks.chooseDraft(localId, undefined)
+  }, [styles, pending, threadId, localId])
 
   if (!catalog.data) return null
   const { selection } = catalog.data
@@ -123,7 +127,8 @@ export function StylePicker() {
 
   const choose = (value: string) => {
     const style = value === INHERIT ? null : value
-    if (!threadId) return choosePending(style ?? undefined)
+    if (!threadId)
+      return usePendingStyle.getState().chooseDraft(localId, style ?? undefined)
     // A turn on an existing conversation waits for the write.
     select.mutate(
       { scope: 'conversation', threadId, style },

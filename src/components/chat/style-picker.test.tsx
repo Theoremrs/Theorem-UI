@@ -9,6 +9,7 @@ import {
 } from 'bun:test'
 import {
   AssistantRuntimeProvider,
+  useAuiState,
   useExternalStoreRuntime,
 } from '@assistant-ui/react'
 import type { ThreadMessageLike } from '@assistant-ui/react'
@@ -143,7 +144,7 @@ afterEach(async () => {
   await cleanup()
   client.clear()
   restore?.()
-  usePendingStyle.setState({ styleId: undefined, held: {} })
+  usePendingStyle.setState({ drafts: {}, held: {} })
   useShell.setState({ projectId: undefined })
 })
 
@@ -178,6 +179,15 @@ function Runtime({
   )
 }
 
+function PickerWithDraftId() {
+  const id = useAuiState((s) => s.threadListItem.id)
+  return (
+    <div data-draft-id={id}>
+      <StylePicker />
+    </div>
+  )
+}
+
 /**
  * Renders the picker as the composer does, inside the router the app has (its
  * settings link is a router link), then lets the page's queries settle.
@@ -186,7 +196,7 @@ async function mount(threadId?: string) {
   const root = createRootRoute({
     component: () => (
       <Runtime threadId={threadId}>
-        <StylePicker />
+        <PickerWithDraftId />
       </Runtime>
     ),
   })
@@ -202,7 +212,9 @@ async function mount(threadId?: string) {
   const view = await render(<RouterProvider router={router} />)
   await waitFor(() => !client.isFetching())
   await act(() => new Promise((resolve) => setTimeout(resolve)))
-  return { ...view, router }
+  const draftId = view.container.querySelector<HTMLElement>('[data-draft-id]')!
+    .dataset.draftId!
+  return { ...view, router, draftId }
 }
 
 const trigger = (container: HTMLElement) =>
@@ -305,7 +317,7 @@ test("choosing a style on an existing conversation writes that conversation's ch
     { scope: 'conversation', threadId: 't1', style: 'theorem.style.concise' },
   ])
   await waitFor(() => trigger(container)?.textContent === 'Concise')
-  expect(usePendingStyle.getState().styleId).toBeUndefined()
+  expect(usePendingStyle.getState().drafts).toEqual({})
 
   // Use my default clears the conversation's choice rather than naming a style.
   const again = await open(container)
@@ -322,30 +334,30 @@ test("choosing a style on an existing conversation writes that conversation's ch
 test('choosing before the conversation exists sends nothing yet, and rides the first message', async () => {
   backend({ selection: { projects: { p1: 'theorem.style.formal' } } })
   useShell.setState({ projectId: 'p1' })
-  const { container } = await mount()
+  const { container, draftId } = await mount()
   expect(trigger(container)?.textContent).toBe('Formal')
-  expect(usePendingStyle.getState().styleId).toBeUndefined()
+  expect(usePendingStyle.getState().drafts).toEqual({})
 
   const items = await open(container)
   await act(() => itemNamed(items, 'Concise').click())
   expect(selectionWrites()).toEqual([])
-  expect(usePendingStyle.getState().styleId).toBe('theorem.style.concise')
+  expect(usePendingStyle.getState().drafts[draftId]).toBe('theorem.style.concise')
   await waitFor(() => trigger(container)?.textContent === 'Concise')
   // It waits for the conversation a first message makes; none holds it yet.
   expect(usePendingStyle.getState().held).toEqual({})
 
   const again = await open(container)
   await act(() => again[0]!.click())
-  expect(usePendingStyle.getState().styleId).toBeUndefined()
+  expect(usePendingStyle.getState().drafts).toEqual({})
   await waitFor(() => trigger(container)?.textContent === 'Formal')
   expect(selectionWrites()).toEqual([])
 })
 
 test('a pick waiting for a first message that names a style since deleted is dropped', async () => {
   backend({})
-  usePendingStyle.setState({ styleId: 'user.style.gone' })
-  await mount()
-  await waitFor(() => usePendingStyle.getState().styleId === undefined)
+  const { draftId } = await mount()
+  await act(() => usePendingStyle.getState().chooseDraft(draftId, 'user.style.gone'))
+  await waitFor(() => usePendingStyle.getState().drafts[draftId] === undefined)
 })
 
 test('a pick whose first message was refused still shows on its conversation, and choosing again writes it', async () => {
@@ -377,7 +389,7 @@ test('a pick whose first message was refused still shows on its conversation, an
 test('a conversation with no pick waiting shows what Theorem has for it, whatever another holds', async () => {
   backend({ selection: { account: 'theorem.style.educational' } })
   usePendingStyle.setState({
-    styleId: 'theorem.style.formal',
+    drafts: { draft: 'theorem.style.formal' },
     held: { t2: 'theorem.style.concise' },
   })
   const { container } = await mount('t1')

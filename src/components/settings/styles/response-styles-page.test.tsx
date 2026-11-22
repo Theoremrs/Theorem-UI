@@ -1152,6 +1152,22 @@ test('a Theorem that does not serve response styles gets one calm line, and no e
   expect(document.querySelector('[role="alert"]')).toBeNull()
 })
 
+test('a legacy selection-only catalog does not mount the style editors', async () => {
+  backend(null, {
+    'GET /api/chat/v1/response-styles': () => ({
+      styles: [{ id: 'normal', name: 'Normal', description: 'Direct replies.' }],
+      selection: {
+        account: null,
+        conversation: null,
+        effective: { style: 'normal', name: 'Normal', source: 'shipped' },
+      },
+    }),
+  })
+  await mount()
+  await waitText('Response style editing is not available here')
+  expect(document.querySelector('[role="tab"]')).toBeNull()
+})
+
 test('a Theorem that fails to list its styles says why, with the server detail', async () => {
   backend(null, {
     'GET /api/chat/v1/response-styles': () =>

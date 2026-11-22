@@ -6,6 +6,7 @@ import { SettingsPage } from '@/components/settings/settings-frame'
 import { describeError } from '@/lib/theorem/client'
 import {
   isResponseStylesAbsent,
+  supportsResponseStyleEditing,
   useResponseFramework,
   useResponseStyle,
   useResponseStyles,
@@ -208,7 +209,7 @@ export function ResponseStylesPage() {
       title="Response styles"
       description="A style tells Theorem how to write its answers. Edit the ones that ship, make your own, and choose where each applies."
     >
-      {catalog.data ? (
+      {catalog.data && supportsResponseStyleEditing(catalog.data) ? (
         // A list read once stays up when a later read fails: the panels hold
         // editors, and taking them down would drop what is typed in them.
         <>
@@ -217,6 +218,13 @@ export function ResponseStylesPage() {
           )}
           <Panels catalog={catalog.data} />
         </>
+      ) : catalog.data ? (
+        <Empty className="rounded-lg border border-separator">
+          <EmptyTitle>Response style editing is not available here</EmptyTitle>
+          <EmptyDescription>
+            This version of Theorem supports choosing styles but not editing them.
+          </EmptyDescription>
+        </Empty>
       ) : catalog.error ? (
         isResponseStylesAbsent(catalog.error) ? (
           <Empty className="rounded-lg border border-separator">

@@ -442,6 +442,33 @@ export const responseStylesQuery = (scope: StyleScope = {}) =>
 export const useResponseStyles = (scope?: StyleScope) =>
   useQuery(responseStylesQuery(scope))
 
+// Some servers support choosing an output style but not the editing contract.
+// Keep those catalogs usable by the picker, not by the settings editors.
+const editorCatalog = z.object({
+  selection: z.object({ project: z.string().nullable() }),
+  styles: z.array(z.object({
+    origin: z.enum(['shipped', 'user']),
+    frameworks: z.array(z.string()),
+  })),
+  frameworks: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    description: z.string(),
+    references: z.array(z.object({ path: z.string(), title: z.string() })),
+    usedBy: z.array(z.object({ id: z.string(), name: z.string() })),
+  })),
+  suggestions: z.object({
+    enabled: z.boolean(),
+    models: z.array(z.object({ ref: z.string(), name: z.string() })),
+    state: z.enum(['ready', 'no_model', 'credential_missing', 'disabled']),
+    model: z.string().nullable(),
+    choice: z.string().nullable(),
+  }),
+})
+
+export const supportsResponseStyleEditing = (catalog: ResponseStyleCatalog) =>
+  editorCatalog.safeParse(catalog).success
+
 type Collection = 'styles' | 'frameworks'
 
 const detailQuery = <T>(collection: Collection, id: string) =>
@@ -741,7 +768,7 @@ export function useSelectionMutation() {
       // A choice on a durable thread replaces any pick held for its first send,
       // regardless of which UI submitted the change.
       if (change.scope === 'conversation' && change.threadId)
-        usePendingStyle.getState().choose(undefined, change.threadId)
+        usePendingStyle.getState().chooseHeld(change.threadId, undefined)
       const key = choiceKey(change)
       const save = async () => {
         const selection = await mutate((headers) =>
@@ -860,25 +887,25 @@ export const useDraftMutation = () =>
 // ---------------------------------------------------------------------------
 
 type PendingStyle = {
-  /** The style picked for the next new conversation; undefined inherits. */
-  styleId: string | undefined
+  /** The style picked for each new conversation, keyed by its local draft id. */
+  drafts: Readonly<Record<string, string>>
   /**
    * Picks for newly created conversations that have had no message accepted
    * yet, by thread id. A refused first message leaves its pick here, so the
    * next attempt on that conversation still carries it.
    */
   held: Readonly<Record<string, string>>
-  /** Sets or clears a pick: the next new conversation's, or, with a thread id, the one held for that conversation. */
-  choose: (styleId: string | undefined, threadId?: string) => void
+  chooseDraft: (localId: string, styleId: string | undefined) => void
+  chooseHeld: (threadId: string, styleId: string | undefined) => void
 }
 
-const withHeld = (
-  held: PendingStyle['held'],
-  threadId: string,
+const withPick = (
+  picks: Readonly<Record<string, string>>,
+  key: string,
   styleId: string | undefined,
 ) => ({
-  ...Object.fromEntries(Object.entries(held).filter(([id]) => id !== threadId)),
-  ...(styleId ? { [threadId]: styleId } : {}),
+  ...Object.fromEntries(Object.entries(picks).filter(([id]) => id !== key)),
+  ...(styleId ? { [key]: styleId } : {}),
 })
 
 /**
@@ -886,33 +913,28 @@ const withHeld = (
  * a message goes out with it as `responseStyle` and is accepted.
  */
 export const usePendingStyle = create<PendingStyle>()((set) => ({
-  styleId: undefined,
+  drafts: {},
   held: {},
-  choose: (styleId, threadId) =>
-    set((s) =>
-      threadId ? { held: withHeld(s.held, threadId, styleId) } : { styleId },
-    ),
+  chooseDraft: (localId, styleId) =>
+    set((s) => ({ drafts: withPick(s.drafts, localId, styleId) })),
+  chooseHeld: (threadId, styleId) =>
+    set((s) => ({ held: withPick(s.held, threadId, styleId) })),
 }))
 
-/** The pick waiting on this conversation's first message; with no thread id, the next new conversation's. */
-export const pendingStyleFor = (
-  state: Pick<PendingStyle, 'styleId' | 'held'>,
-  threadId: string | undefined,
-) => (threadId ? state.held[threadId] : state.styleId)
-
 /**
- * This conversation was just created: the pick that was waiting for one is
- * its pick from here on, and the next new conversation starts without one.
+ * Thread creation moves only this draft's pick to its durable conversation.
+ * Other drafts can be edited while the request is in flight.
  */
-export function holdPendingStyle(threadId: string) {
-  usePendingStyle.setState((s) =>
-    s.styleId
+export function holdPendingStyle(localId: string, threadId: string) {
+  usePendingStyle.setState((s) => {
+    const styleId = s.drafts[localId]
+    return styleId
       ? {
-          styleId: undefined,
-          held: withHeld(s.held, threadId, s.styleId),
+          drafts: withPick(s.drafts, localId, undefined),
+          held: withPick(s.held, threadId, styleId),
         }
-      : s,
-  )
+      : s
+  })
 }
 
 /**
@@ -939,7 +961,7 @@ export function consumePendingStyle(
   if (!sent) return
   usePendingStyle.setState((s) =>
     s.held[threadId] === sent
-      ? { held: withHeld(s.held, threadId, undefined) }
+      ? { held: withPick(s.held, threadId, undefined) }
       : s,
   )
   if (!queryClient) return

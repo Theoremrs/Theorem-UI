@@ -90,7 +90,7 @@ afterEach(async () => {
   restore?.()
   requests.length = 0
   slow = undefined
-  usePendingStyle.setState({ styleId: undefined, held: {} })
+  usePendingStyle.setState({ drafts: {}, held: {} })
 })
 
 /** Mounts a hook under a QueryClient and hands back its latest result. */
@@ -388,13 +388,13 @@ test('a lost save is a conflict by status or by code', () => {
 test('a pick waits for a new conversation, then rides that conversation until a message is accepted', () => {
   const formal = { responseStyle: 'theorem.style.formal' }
   expect(styleTurnOptions('t1')).toEqual({})
-  usePendingStyle.getState().choose('theorem.style.formal')
+  usePendingStyle.getState().chooseDraft('draft-1', 'theorem.style.formal')
   // No conversation has it yet: a message in one that already exists carries nothing.
   expect(styleTurnOptions('t1')).toEqual({})
 
   // A send made t1 for it. It is t1's pick now, and the next new conversation starts without one.
-  holdPendingStyle('t1')
-  expect(usePendingStyle.getState().styleId).toBeUndefined()
+  holdPendingStyle('draft-1', 't1')
+  expect(usePendingStyle.getState().drafts).toEqual({})
   expect(styleTurnOptions('t1')).toEqual(formal)
   expect(styleTurnOptions('t2')).toEqual({})
 
@@ -402,11 +402,11 @@ test('a pick waits for a new conversation, then rides that conversation until a 
   consumePendingStyle('t1', undefined)
   expect(styleTurnOptions('t1')).toEqual(formal)
   // A conversation made with no pick waiting takes nothing from t1.
-  holdPendingStyle('t2')
+  holdPendingStyle('draft-2', 't2')
   expect(styleTurnOptions('t2')).toEqual({})
 
   // Accepted: the conversation holds it now. A different pick made meanwhile stays.
-  usePendingStyle.getState().choose('theorem.style.concise', 't1')
+  usePendingStyle.getState().chooseHeld('t1', 'theorem.style.concise')
   consumePendingStyle('t1', 'theorem.style.formal')
   expect(styleTurnOptions('t1')).toEqual({
     responseStyle: 'theorem.style.concise',

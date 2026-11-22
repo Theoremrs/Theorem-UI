@@ -818,13 +818,13 @@ export function createThreadListAdapter(
         nextCursor: page.nextCursor,
       }
     },
-    async initialize() {
+    async initialize(localId) {
       try {
         const created = await mutate((headers) =>
           client.chat.threads.create({ projectId: activeProject(), ...headers }),
         )
         // An attachment upload can create the thread before its first turn.
-        holdPendingStyle(created.record.threadId)
+        holdPendingStyle(localId, created.record.threadId)
         return { remoteId: created.record.threadId }
       } catch (error) {
         toastManager.add({
