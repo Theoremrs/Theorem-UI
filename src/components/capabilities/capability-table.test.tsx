@@ -908,6 +908,115 @@ test('a saved view with its sort cleared is sent with no sort, and keeping a vie
   })
 })
 
+/** The view editor, opened on the view the module shows (Next: status is next). */
+async function viewEditor() {
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await authoring()
+  await section('Views')
+  await waitFor(() => dialogInput('View label'))
+}
+
+test('an any-of group with no condition is named and holds Save until it has one', async () => {
+  await viewEditor()
+  // Beside the lone condition: an and of it and a new, empty any-of group.
+  await press('Add group')
+  expect(dialogSelect('Match for group 2')?.value).toBe('or')
+  expect(screen().textContent).toContain(
+    'Still to do: group 2 has no condition to match any of.',
+  )
+  expect(button(screen(), 'Save view')?.disabled).toBe(true)
+  // An empty all-of group is every record, which the server takes.
+  fill(dialogSelect('Match for group 2')!, 'and')
+  expect(screen().textContent).not.toContain('Still to do')
+  expect(button(screen(), 'Save view')?.disabled).toBe(false)
+  fill(dialogSelect('Match for group 2')!, 'or')
+  expect(button(screen(), 'Save view')?.disabled).toBe(true)
+  await press('Add condition to group 2')
+  fill(dialogSelect('Field of condition 2')!, 'title')
+  fill(dialogSelect('Operator of condition 2')!, 'contains')
+  fill(dialogInput('Value of condition 2')!, 'plan')
+  expect(screen().textContent).not.toContain('Still to do')
+  await act(async () => button(screen(), 'Save view')?.click())
+  await waitFor(() => authored().length === 1)
+  const sent = authored()[0] as { ops: [{ view: { filter: unknown } }] }
+  expect(sent.ops[0].view.filter).toEqual({
+    op: 'and',
+    conditions: [
+      { op: 'eq', fieldKey: 'status', value: 'next' },
+      {
+        op: 'or',
+        conditions: [{ op: 'contains', fieldKey: 'title', value: 'plan' }],
+      },
+    ],
+  })
+})
+
+test('an any-of match over no condition at the top does not say the view shows every record', async () => {
+  await viewEditor()
+  fill(dialogSelect('View to edit')!, 'all')
+  await waitFor(() => dialogSelect('Match for group 1')?.value === 'and')
+  expect(screen().textContent).toContain(
+    'No conditions: the view shows every record.',
+  )
+  expect(button(screen(), 'Save view')?.disabled).toBe(false)
+  fill(dialogSelect('Match for group 1')!, 'or')
+  expect(screen().textContent).not.toContain('the view shows every record')
+  expect(screen().textContent).toContain(
+    'Still to do: group 1 has no condition to match any of.',
+  )
+  expect(button(screen(), 'Save view')?.disabled).toBe(true)
+  expect(authored().length).toBe(0)
+})
+
+test('an is-one-of condition with no value is named, and one with a value is sent', async () => {
+  await viewEditor()
+  fill(dialogSelect('Operator of condition 1')!, 'in')
+  fill(dialogInput('Value of condition 1')!, ' , ,')
+  expect(screen().textContent).toContain(
+    'Still to do: condition 1 names no value to be one of.',
+  )
+  expect(button(screen(), 'Save view')?.disabled).toBe(true)
+  fill(dialogInput('Value of condition 1')!, '')
+  expect(button(screen(), 'Save view')?.disabled).toBe(true)
+  fill(dialogInput('Value of condition 1')!, 'next, waiting,')
+  expect(screen().textContent).not.toContain('Still to do')
+  await act(async () => button(screen(), 'Save view')?.click())
+  await waitFor(() => authored().length === 1)
+  const sent = authored()[0] as { ops: [{ view: { filter: unknown } }] }
+  expect(sent.ops[0].view.filter).toEqual({
+    op: 'in',
+    fieldKey: 'status',
+    values: ['next', 'waiting'],
+  })
+})
+
+test('a view with every column unticked is named and never sent with an empty column list', async () => {
+  await viewEditor()
+  await press('Show every field')
+  for (const label of [
+    'Title',
+    'Status',
+    'Due',
+    'Effort (minutes)',
+    'Assignee',
+    'Completed',
+  ])
+    await press(`Show ${label}`)
+  expect(screen().textContent).toContain('Still to do: a column to show.')
+  expect(button(screen(), 'Save view')?.disabled).toBe(true)
+  await act(async () => button(screen(), 'Save view')?.click())
+  expect(authored().length).toBe(0)
+  await press('Show Due')
+  expect(screen().textContent).not.toContain('Still to do')
+  await act(async () => button(screen(), 'Save view')?.click())
+  await waitFor(() => authored().length === 1)
+  const sent = authored()[0] as {
+    ops: [{ view: { displayFields?: string[] } }]
+  }
+  expect(sent.ops[0].view.displayFields).toEqual(['due_at'])
+})
+
 test('removing a view asks first and says records are not changed', async () => {
   const { container } = await showTable()
   await waitFor(() => container.textContent.includes('Write the plan'))

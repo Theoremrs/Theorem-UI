@@ -131,7 +131,9 @@ function GroupNode({
       </div>
       {node.children.length === 0 && (
         <p className="text-xs text-ink-faint">
-          {root
+          {/* Only an empty all-of is every record: the server refuses an
+              any-of over nothing, and the form says so before Save. */}
+          {root && node.op === 'and'
             ? 'No conditions: the view shows every record.'
             : 'No conditions in this group yet.'}
         </p>

@@ -137,6 +137,7 @@ function viewProblems({
   key,
   collectionKey,
   label,
+  displayFields,
   views,
 }: {
   tree: EditNode
@@ -144,6 +145,7 @@ function viewProblems({
   key: string
   collectionKey: string
   label: string
+  displayFields: string[] | undefined
   views: ReadonlyArray<ViewSpec>
 }): string[] {
   const problems = [
@@ -151,13 +153,17 @@ function viewProblems({
     ...(view ? [] : newViewProblems(key, collectionKey, views)),
   ]
   if (!label.trim()) problems.push('a label')
+  // The server refuses a view that displays no field; every field is the
+  // column list left out, which the "Show every field" box says.
+  if (displayFields?.length === 0) problems.push('a column to show')
   return problems
 }
 
 /**
  * The view as it will be sent: the one read, with what this form edits laid
- * over it, so nothing it does not show is dropped. A sort or a column list the
- * form cleared is left out rather than sent empty.
+ * over it, so nothing it does not show is dropped. A sort the form cleared, or
+ * a column list set back to every field, is left out; a list with every column
+ * unticked is held back by `viewProblems`, never sent empty.
  */
 function viewToSend(
   base: ViewSpec | Pick<ViewSpec, 'key' | 'collectionKey'>,
@@ -225,6 +231,7 @@ function ViewForm({
     key,
     collectionKey,
     label,
+    displayFields,
     views: definition.views,
   })
 

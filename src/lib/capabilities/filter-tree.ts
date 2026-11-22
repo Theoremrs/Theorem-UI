@@ -184,22 +184,38 @@ export const addCondition = (tree: EditNode, groupId: string, row: FilterRow) =>
 export const addGroup = (tree: EditNode, groupId: string, op: 'and' | 'or') =>
   addChild(tree, groupId, { id: freshId(), kind: 'group', op, children: [] })
 
-/** What stops a tree from being saved, in the words the editor numbers its conditions with. */
+/** A leaf's value read with no field to type it: enough to count what an `in` lists. */
+const untyped = () => undefined
+
+/**
+ * What stops a tree from being saved, in the words the editor numbers its
+ * conditions and groups with. These are the server's filter rules (an `or`
+ * lists a condition, an `in` lists a value), said before Save rather than
+ * refused after it. An empty `and` is every record, which it takes.
+ */
 export function treeProblems(tree: EditNode): string[] {
   const problems: string[] = []
   let at = 0
+  let group = 0
   const walk = (node: EditNode) => {
     switch (node.kind) {
       case 'group':
+        group += 1
+        if (node.op === 'or' && node.children.length === 0)
+          problems.push(`group ${group} has no condition to match any of`)
         node.children.forEach(walk)
         return
       case 'not':
         walk(node.child)
         return
-      case 'leaf':
+      case 'leaf': {
         at += 1
+        const sent = node.original ?? filterOfRow(node.row, untyped)
         if (!node.row.fieldKey) problems.push(`condition ${at} names no field`)
+        else if (sent.op === 'in' && sent.values.length === 0)
+          problems.push(`condition ${at} names no value to be one of`)
         return
+      }
       case 'opaque':
         at += 1
         return

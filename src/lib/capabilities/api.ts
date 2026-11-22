@@ -396,13 +396,27 @@ export function refusalMessage(error: unknown, action: string): string {
     case codes.SCHEMA_CHANGE_UNSUPPORTED:
       return `That change to the schema is not supported: fields are added optional only in this slice.`
     case codes.DEFINITION_INVALID:
-      return `The definition was refused as invalid.`
+      return invalidDefinitionLine(error)
     case codes.INSTANCE_EXISTS:
       return `An instance with that id is already bound.`
     case codes.TEMPLATE_NOT_FOUND:
       return `That template is not there: it was never saved, or it is not yours to read.`
   }
   return serverLine(error, action)
+}
+
+/**
+ * An invalid definition is the author's own, and the server's detail names
+ * what in it was refused (a filter, a lifecycle, a display list), so it is
+ * said; with no detail, only that it was refused.
+ */
+function invalidDefinitionLine(error: unknown): string {
+  const detail = problemBody(error)?.detail
+  const said =
+    typeof detail === 'string' ? detail.trim().replace(/\.$/, '') : ''
+  return said
+    ? `The definition was refused as invalid: ${said}.`
+    : `The definition was refused as invalid.`
 }
 
 /**

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { act } from 'react'
 import { cleanup, render, waitFor } from '../../../test/workspace'
 import { CAPABILITIES } from '@/lib/capabilities/api'
+import { codes } from '@/lib/capabilities/contract'
 import type { DescribeResult } from '@/lib/capabilities/contract'
 import { AuthoringDialog } from './authoring'
 import {
@@ -160,6 +161,44 @@ test('a new enum variant is added to the field it names, and one it already has 
       'Variant added · the definition is now capdef:def',
     ),
   )
+})
+
+test('a definition refused as invalid says what the server named, and only that it was refused when it names nothing', async () => {
+  answers.author = {
+    status: 422,
+    body: {
+      type: 'about:blank',
+      title: 'Unprocessable',
+      status: 422,
+      code: codes.DEFINITION_INVALID,
+      detail: 'lifecycle on `status` must allow at least one transition',
+    },
+  }
+  await openDialog()
+  await click(button('Add variant'))
+  await waitFor(() => named('Variant field'))
+  fill('New variant', 'blocked')
+  await click(named('Add enum variant'))
+  await waitFor(() => screen().textContent.includes('refused as invalid'))
+  expect(screen().textContent).toContain(
+    'The definition was refused as invalid: lifecycle on `status` must allow at least one transition.',
+  )
+  // A refusal that names nothing says only that it was refused.
+  answers.author = {
+    status: 422,
+    body: {
+      title: 'Unprocessable',
+      status: 422,
+      code: codes.DEFINITION_INVALID,
+    },
+  }
+  await click(named('Add enum variant'))
+  await waitFor(() => !screen().textContent.includes('must allow'))
+  expect(screen().textContent).toContain(
+    'The definition was refused as invalid.',
+  )
+  expect(screen().textContent).not.toContain('Unprocessable')
+  expect(authored().length).toBe(2)
 })
 
 test('the lifecycle editor reads the declared lifecycle and sends it back edited', async () => {
