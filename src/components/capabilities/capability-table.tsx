@@ -69,6 +69,7 @@ import { usePageId } from '../pages/page-route'
 import { ActionForm } from './action-form'
 import type { PickerOptions } from './action-form'
 import { AuthoringDialog } from './authoring'
+import { RulesDialog, offersRules } from './rules'
 import { DescribeState, Loading, PermissionState, StatusLine } from './states'
 import type { Status } from './states'
 import {
@@ -112,6 +113,8 @@ function ViewBar({
   onAuthor,
   asking,
   onAsk,
+  rules,
+  onRules,
 }: {
   views: ViewSpec[]
   current: ViewSpec
@@ -120,6 +123,8 @@ function ViewBar({
   onAuthor: () => void
   asking: boolean
   onAsk: () => void
+  rules: boolean
+  onRules: () => void
 }) {
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-separator px-3 py-1.5">
@@ -156,6 +161,12 @@ function ViewBar({
         <Button size="xs" variant="ghost" onClick={onAuthor}>
           <Icon.Settings className="size-3.5" />
           Fields
+        </Button>
+      )}
+      {rules && (
+        <Button size="xs" variant="ghost" onClick={onRules}>
+          <Icon.Route className="size-3.5" />
+          Rules
         </Button>
       )}
     </div>
@@ -440,6 +451,7 @@ function CapabilityTableBody({
     row: CapabilityRecordRow
   }>()
   const [authoring, setAuthoring] = useState(false)
+  const [ruling, setRuling] = useState(false)
   const [busy, setBusy] = useState<string>()
 
   // A selection only holds rows still on screen: a refreshed page that dropped
@@ -658,6 +670,8 @@ function CapabilityTableBody({
         onAuthor={() => setAuthoring(true)}
         asking={!!context}
         onAsk={() => context && askAbout(context)}
+        rules={offersRules(described)}
+        onRules={() => setRuling(true)}
       />
       <StatusLine
         status={status}
@@ -787,6 +801,14 @@ function CapabilityTableBody({
           viewKey={spec.key}
           expectedDefinitionId={definitionId}
           onClose={() => setAuthoring(false)}
+        />
+      )}
+      {ruling && (
+        <RulesDialog
+          instanceId={instanceId}
+          described={described}
+          expectedDefinitionId={definitionId}
+          onClose={() => setRuling(false)}
         />
       )}
     </div>
