@@ -70,8 +70,21 @@ export function outbox(): Outbox {
 }
 
 export function resetConversations() {
+  holdConversations()
+  releaseConversations()
+}
+
+/** Throws away every session and queued message, without telling mounted views.
+ * Nothing can dispatch, restore, or start a conversation until the hold is
+ * released — used mid-replacement, while deciding whose account comes next. */
+export function holdConversations() {
   outgoing?.reset()
   shared?.reset()
+}
+
+/** Ends a hold: mounted views drop their stale leases and retain again, under
+ * whatever account is on the device by then. */
+export function releaseConversations() {
   generation += 1
   for (const listener of generationListeners) listener()
 }
@@ -242,26 +255,40 @@ export function useConversation(threadId: string): ConversationView {
           // and a still-live session could dispatch while the swap happens.
           // The decision is therefore made inside signIn's beforeReplace hook:
           // the candidate tokens are probed while the OLD bearer is still the
-          // installed one, and unless the candidate is proved to be the same
-          // person, the prior account's queued messages, drafts and journals
-          // are cleared — exactly as a sign-out does — before anything can
-          // serve a request under them. A failed lookup clears too: unknown
-          // identity is never assumed safe. If the hook throws, signIn leaves
-          // the old session installed.
+          // installed one, and unless it is proved to be the same person, the
+          // prior account's queued messages, drafts and journals are cleared —
+          // exactly as a sign-out does — before anything can serve a request
+          // under them. A failed lookup clears too: unknown identity is never
+          // assumed safe. If the hook throws, signIn leaves the old session
+          // installed.
+          //
+          // The mounted views are held, not released, inside the hook: a view
+          // told to re-attach while the old bearer is still installed would
+          // attach under it. The hold is released only once the replacement is
+          // on the device (or the candidate was never installed and the old
+          // bearer stands, which the same account may use).
           const before = await currentPrincipal()
           let cleared = false
-          await signIn(async (tokens) => {
-            const after = await principalOf(tokens)
-            if (before && after && before === after) return
-            // The mounted composer keeps its typed words in memory; the draft
-            // rows are gone with the account data, so without this they would
-            // sit in the new account's composer and could be sent under it.
-            runtimeRef.current?.thread.composer.setText('')
-            resetConversations()
-            clearAccountData()
-            intake.reset()
-            cleared = true
-          })
+          try {
+            await signIn(async (tokens) => {
+              const after = await principalOf(tokens)
+              if (before && after && before === after) return
+              // The mounted composer keeps its typed words in memory; the draft
+              // rows are gone with the account data, so without this they would
+              // sit in the new account's composer and could be sent under it.
+              runtimeRef.current?.thread.composer.setText('')
+              holdConversations()
+              clearAccountData()
+              intake.reset()
+              cleared = true
+            })
+          } finally {
+            // Success: views re-attach under the new bearer. Failure after a
+            // clear: the candidate was never installed, and the wiped queues
+            // and journals must still be rebuilt against the bearer that stayed
+            // — never leave mounted views holding discarded sessions.
+            if (cleared) releaseConversations()
+          }
           if (cleared) return
         }
         conversations().reconnect(threadId)
