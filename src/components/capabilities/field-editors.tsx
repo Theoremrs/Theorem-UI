@@ -3,6 +3,7 @@
 // add_enum_variant (an additive schema change) and set_lifecycle (initial values and a transitions
 // table), each sent over what was read so nothing the form does not show is dropped.
 import { useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -33,6 +34,56 @@ const variantsOf = (field: ResolvedField | undefined): string[] | undefined =>
 const enumFields = (schema: CollectionSchema | undefined) =>
   (schema?.fields ?? []).filter((field) => variantsOf(field) !== undefined)
 
+/** What stops a variant being added: no select field, no variant, or one the field already has. */
+function variantProblems(
+  field: ResolvedField | undefined,
+  variants: string[],
+  wanted: string,
+) {
+  const problems: string[] = []
+  if (!field) problems.push('a select field')
+  if (!wanted) problems.push('the new variant')
+  else if (variants.includes(wanted))
+    problems.push('a variant the field does not have yet')
+  return problems
+}
+
+/** The select field a variant goes to and the variants it has, or why the collection has none. */
+function VariantField({
+  fields,
+  field,
+  variants,
+  onChange,
+}: {
+  fields: ResolvedField[]
+  field: ResolvedField | undefined
+  variants: string[]
+  onChange: (fieldKey: string) => void
+}) {
+  return (
+    <>
+      {fields.length ? (
+        <Row label="Field">
+          <Choice
+            label="Variant field"
+            value={field?.key ?? ''}
+            options={fields.map((one) => ({
+              value: one.key,
+              label: one.label,
+            }))}
+            onChange={onChange}
+          />
+        </Row>
+      ) : (
+        <Note>
+          This collection declares no select field to add a variant to.
+        </Note>
+      )}
+      {field && <Note>Its variants now: {variants.join(', ') || 'none'}.</Note>}
+    </>
+  )
+}
+
 export function AddVariant({
   definition,
   schemas,
@@ -57,12 +108,7 @@ export function AddVariant({
   const [variant, setVariant] = useState('')
   const variants = variantsOf(field) ?? []
   const wanted = variant.trim()
-
-  const problems: string[] = []
-  if (!field) problems.push('a select field')
-  if (!wanted) problems.push('the new variant')
-  else if (variants.includes(wanted))
-    problems.push('a variant the field does not have yet')
+  const problems = variantProblems(field, variants, wanted)
 
   return (
     <div className="flex flex-col gap-2">
@@ -77,24 +123,12 @@ export function AddVariant({
           }}
         />
       </Row>
-      {fields.length ? (
-        <Row label="Field">
-          <Choice
-            label="Variant field"
-            value={field?.key ?? ''}
-            options={fields.map((one) => ({
-              value: one.key,
-              label: one.label,
-            }))}
-            onChange={setFieldKey}
-          />
-        </Row>
-      ) : (
-        <Note>
-          This collection declares no select field to add a variant to.
-        </Note>
-      )}
-      {field && <Note>Its variants now: {variants.join(', ') || 'none'}.</Note>}
+      <VariantField
+        fields={fields}
+        field={field}
+        variants={variants}
+        onChange={setFieldKey}
+      />
       <Row
         label="New variant"
         hint="Variants are only added: removing or renaming one is not supported."
@@ -134,6 +168,39 @@ export function AddVariant({
   )
 }
 
+/** The field a collection's lifecycle form opens on: the one its lifecycle governs, else its first select field. */
+const startField = (
+  definition: CapabilityDefinition,
+  schemas: CollectionSchema[],
+  collectionKey: string,
+) =>
+  definition.collections.find((one) => one.key === collectionKey)?.lifecycle
+    ?.fieldKey ??
+  enumFields(schemaFor(schemas, collectionKey))[0]?.key ??
+  ''
+
+/** The fields a lifecycle may govern. A lifecycle over a field the schema no longer lists as a select is still shown. */
+function lifecycleFieldOptions(
+  fields: ResolvedField[],
+  lifecycle: CollectionLifecycle | undefined,
+) {
+  const options = fields.map((one) => ({ value: one.key, label: one.label }))
+  if (lifecycle && !fields.some((one) => one.key === lifecycle.fieldKey))
+    options.unshift({ value: lifecycle.fieldKey, label: lifecycle.fieldKey })
+  return options
+}
+
+/** The values a lifecycle's field holds: its variants, or, for a field no longer a select, the values its transitions name. */
+const lifecycleValues = (
+  field: ResolvedField | undefined,
+  lifecycle: CollectionLifecycle | undefined,
+) =>
+  variantsOf(field) ?? [
+    ...new Set(
+      (lifecycle?.transitions ?? []).flatMap((one) => [...one.from, one.to]),
+    ),
+  ]
+
 /** Which collection's lifecycle, and over which field; the form below starts over with either. */
 export function LifecycleEditor({
   definition,
@@ -153,24 +220,14 @@ export function LifecycleEditor({
   const [collectionKey, setCollectionKey] = useState(
     collections[0]?.value ?? '',
   )
-  const collection = definition.collections.find(
+  const lifecycle = definition.collections.find(
     (one) => one.key === collectionKey,
-  )
-  const lifecycle = collection?.lifecycle
+  )?.lifecycle
   const fields = enumFields(schemaFor(schemas, collectionKey))
   const [fieldKey, setFieldKey] = useState(
-    lifecycle?.fieldKey ?? fields[0]?.key ?? '',
+    startField(definition, schemas, collectionKey),
   )
-  const fieldOptions = fields.map((one) => ({
-    value: one.key,
-    label: one.label,
-  }))
-  // A lifecycle over a field the schema no longer lists as a select is still shown.
-  if (lifecycle && !fields.some((one) => one.key === lifecycle.fieldKey))
-    fieldOptions.unshift({
-      value: lifecycle.fieldKey,
-      label: lifecycle.fieldKey,
-    })
+  const fieldOptions = lifecycleFieldOptions(fields, lifecycle)
 
   return (
     <div className="flex flex-col gap-2">
@@ -181,14 +238,7 @@ export function LifecycleEditor({
           options={collections}
           onChange={(next) => {
             setCollectionKey(next)
-            const nextCollection = definition.collections.find(
-              (one) => one.key === next,
-            )
-            setFieldKey(
-              nextCollection?.lifecycle?.fieldKey ??
-                enumFields(schemaFor(schemas, next))[0]?.key ??
-                '',
-            )
+            setFieldKey(startField(definition, schemas, next))
           }}
         />
       </Row>
@@ -206,16 +256,10 @@ export function LifecycleEditor({
             key={`${collectionKey}:${fieldKey}`}
             collectionKey={collectionKey}
             fieldKey={fieldKey}
-            variants={
-              variantsOf(fields.find((one) => one.key === fieldKey)) ?? [
-                ...new Set(
-                  (lifecycle?.transitions ?? []).flatMap((one) => [
-                    ...one.from,
-                    one.to,
-                  ]),
-                ),
-              ]
-            }
+            variants={lifecycleValues(
+              fields.find((one) => one.key === fieldKey),
+              lifecycle,
+            )}
             lifecycle={lifecycle}
             busy={busy}
             onSubmit={onSubmit}
@@ -231,38 +275,17 @@ export function LifecycleEditor({
   )
 }
 
-function LifecycleForm({
-  collectionKey,
-  fieldKey,
-  variants,
-  lifecycle,
-  busy,
-  onSubmit,
-}: {
-  collectionKey: string
-  fieldKey: string
-  variants: string[]
-  /** The collection's lifecycle as read, which this form edits only if it governs this field. */
-  lifecycle: CollectionLifecycle | undefined
-  busy: boolean
-  onSubmit: Submit
-}) {
-  const own = lifecycle?.fieldKey === fieldKey ? lifecycle : undefined
-  const [initial, setInitial] = useState<string[] | undefined>(own?.initial)
-  const [transitions, setTransitions] = useState<LifecycleTransition[]>(
-    own?.transitions ?? [],
-  )
-  const [clearing, setClearing] = useState(false)
+const toggled = (list: string[], value: string, on: boolean) =>
+  on
+    ? [...list.filter((one) => one !== value), value]
+    : list.filter((one) => one !== value)
 
-  const toggle = (list: string[], value: string, on: boolean) =>
-    on
-      ? [...list.filter((one) => one !== value), value]
-      : list.filter((one) => one !== value)
-  const setTransition = (at: number, change: Partial<LifecycleTransition>) =>
-    setTransitions((held) =>
-      held.map((one, i) => (i === at ? { ...one, ...change } : one)),
-    )
-
+/** What stops a lifecycle being saved: a transition from no value or to one the field does not hold, or such an initial value. */
+function lifecycleProblems(
+  transitions: LifecycleTransition[],
+  initial: string[] | undefined,
+  variants: string[],
+) {
   const problems: string[] = []
   transitions.forEach((transition, at) => {
     if (!transition.from.length)
@@ -275,153 +298,193 @@ function LifecycleForm({
   for (const value of initial ?? [])
     if (!variants.includes(value))
       problems.push(`${value} is not a value the field holds`)
+  return problems
+}
 
-  // The lifecycle as sent: the one read, with what this form edits over it.
+/** The lifecycle as sent: the one read, with what the form edits over it. No initial list leaves creates ungoverned. */
+function lifecycleAsSent(
+  own: CollectionLifecycle | undefined,
+  fieldKey: string,
+  transitions: LifecycleTransition[],
+  initial: string[] | undefined,
+): CollectionLifecycle {
   const next: CollectionLifecycle = { ...(own ?? {}), fieldKey, transitions }
   if (initial) next.initial = initial
   else delete next.initial
+  return next
+}
 
+/** Whether creates are governed, and the values a new record may start as. */
+function InitialValues({
+  variants,
+  initial,
+  onChange,
+}: {
+  variants: string[]
+  initial: string[] | undefined
+  onChange: (initial: string[] | undefined) => void
+}) {
   return (
-    <div className="flex flex-col gap-2">
-      <Note>
-        Every write that changes this field is held to the transitions below:
-        declared actions and generic updates alike.
-      </Note>
-      {lifecycle && !own && (
+    <fieldset className="flex flex-col gap-1">
+      <legend className="text-xs font-medium text-ink-muted">
+        Initial values
+      </legend>
+      <Tick
+        label="Govern initial values"
+        text="Govern what a new record may start as"
+        checked={initial !== undefined}
+        onChange={(on) => onChange(on ? [] : undefined)}
+      />
+      {initial === undefined ? (
         <Note>
-          This collection's lifecycle governs {lifecycle.fieldKey} now; saving
-          moves it to this field.
+          Ungoverned: a new record may start at any value the field holds.
         </Note>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-3 ps-4">
+            {variants.map((value) => (
+              <Tick
+                key={value}
+                label={`Initial ${value}`}
+                text={value}
+                checked={initial.includes(value)}
+                onChange={(on) => onChange(toggled(initial, value, on))}
+              />
+            ))}
+          </div>
+          {initial.length === 0 && (
+            <Note>With none chosen, no create may write this field.</Note>
+          )}
+        </>
       )}
-      <fieldset className="flex flex-col gap-1">
-        <legend className="text-xs font-medium text-ink-muted">
-          Initial values
-        </legend>
-        <Tick
-          label="Govern initial values"
-          text="Govern what a new record may start as"
-          checked={initial !== undefined}
-          onChange={(on) => setInitial(on ? [] : undefined)}
-        />
-        {initial === undefined ? (
-          <Note>
-            Ungoverned: a new record may start at any value the field holds.
-          </Note>
-        ) : (
-          <>
-            <div className="flex flex-wrap gap-3 ps-4">
-              {variants.map((value) => (
-                <Tick
-                  key={value}
-                  label={`Initial ${value}`}
-                  text={value}
-                  checked={initial.includes(value)}
-                  onChange={(on) => setInitial(toggle(initial, value, on))}
-                />
-              ))}
-            </div>
-            {initial.length === 0 && (
-              <Note>With none chosen, no create may write this field.</Note>
-            )}
-          </>
-        )}
-      </fieldset>
-      <fieldset className="flex flex-col gap-1">
-        <legend className="text-xs font-medium text-ink-muted">
-          Transitions
-        </legend>
-        {transitions.length === 0 ? (
-          <Note>
-            No transition is allowed yet: once saved, the field cannot change.
-          </Note>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>From</TableHead>
-                <TableHead>To</TableHead>
-                <TableHead className="w-px">
-                  <span className="sr-only">Remove</span>
-                </TableHead>
+    </fieldset>
+  )
+}
+
+/** The moves the field may make, one row each: the values it may move from, and the one it moves to. */
+function Transitions({
+  variants,
+  transitions,
+  onChange,
+}: {
+  variants: string[]
+  transitions: LifecycleTransition[]
+  onChange: Dispatch<SetStateAction<LifecycleTransition[]>>
+}) {
+  const setTransition = (at: number, change: Partial<LifecycleTransition>) =>
+    onChange((held) =>
+      held.map((one, i) => (i === at ? { ...one, ...change } : one)),
+    )
+  return (
+    <fieldset className="flex flex-col gap-1">
+      <legend className="text-xs font-medium text-ink-muted">
+        Transitions
+      </legend>
+      {transitions.length === 0 ? (
+        <Note>
+          No transition is allowed yet: once saved, the field cannot change.
+        </Note>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>From</TableHead>
+              <TableHead>To</TableHead>
+              <TableHead className="w-px">
+                <span className="sr-only">Remove</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {transitions.map((transition, at) => (
+              <TableRow key={at}>
+                <TableCell>
+                  <div className="flex flex-wrap gap-2">
+                    {variants.map((value) => (
+                      <Tick
+                        key={value}
+                        label={`Transition ${at + 1} from ${value}`}
+                        text={value}
+                        checked={transition.from.includes(value)}
+                        onChange={(on) =>
+                          setTransition(at, {
+                            from: toggled(transition.from, value, on),
+                          })
+                        }
+                      />
+                    ))}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Choice
+                    label={`Transition ${at + 1} to`}
+                    value={transition.to}
+                    options={(variants.includes(transition.to)
+                      ? variants
+                      : [transition.to, ...variants]
+                    ).map((value) => ({ value, label: value }))}
+                    onChange={(to) => setTransition(at, { to })}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    aria-label={`Remove transition ${at + 1}`}
+                    onClick={() =>
+                      onChange((held) => held.filter((_, i) => i !== at))
+                    }
+                  >
+                    ×
+                  </Button>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transitions.map((transition, at) => (
-                <TableRow key={at}>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-2">
-                      {variants.map((value) => (
-                        <Tick
-                          key={value}
-                          label={`Transition ${at + 1} from ${value}`}
-                          text={value}
-                          checked={transition.from.includes(value)}
-                          onChange={(on) =>
-                            setTransition(at, {
-                              from: toggle(transition.from, value, on),
-                            })
-                          }
-                        />
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Choice
-                      label={`Transition ${at + 1} to`}
-                      value={transition.to}
-                      options={(variants.includes(transition.to)
-                        ? variants
-                        : [transition.to, ...variants]
-                      ).map((value) => ({ value, label: value }))}
-                      onChange={(to) => setTransition(at, { to })}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      aria-label={`Remove transition ${at + 1}`}
-                      onClick={() =>
-                        setTransitions((held) =>
-                          held.filter((_, i) => i !== at),
-                        )
-                      }
-                    >
-                      ×
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-        <Button
-          size="xs"
-          variant="outline"
-          className="self-start"
-          disabled={variants.length === 0}
-          onClick={() =>
-            setTransitions((held) => [
-              ...held,
-              { from: [], to: variants[0] ?? '' },
-            ])
-          }
-        >
-          Add transition
-        </Button>
-      </fieldset>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      <Button
+        size="xs"
+        variant="outline"
+        className="self-start"
+        disabled={variants.length === 0}
+        onClick={() =>
+          onChange((held) => [...held, { from: [], to: variants[0] ?? '' }])
+        }
+      >
+        Add transition
+      </Button>
+    </fieldset>
+  )
+}
+
+/**
+ * What is still to do, saving, and clearing the lifecycle as read once the
+ * person confirms it. The question closes when the clear is taken.
+ */
+function LifecycleActions({
+  lifecycle,
+  problems,
+  busy,
+  onSave,
+  onClear,
+}: {
+  lifecycle: CollectionLifecycle | undefined
+  problems: string[]
+  busy: boolean
+  onSave: () => void
+  onClear: () => Promise<boolean>
+}) {
+  const [clearing, setClearing] = useState(false)
+  return (
+    <>
       {problems.length > 0 && <Note>Still to do: {problems.join('; ')}.</Note>}
       <div className="flex items-center gap-1.5">
         <Button
           size="sm"
           disabled={problems.length > 0 || busy}
           aria-busy={busy}
-          onClick={() =>
-            void onSubmit(
-              [{ op: 'set_lifecycle', collectionKey, lifecycle: next }],
-              'Lifecycle saved',
-            )
-          }
+          onClick={onSave}
         >
           Save lifecycle
         </Button>
@@ -449,10 +512,7 @@ function LifecycleForm({
               disabled={busy}
               aria-label="Confirm clear lifecycle"
               onClick={() =>
-                void onSubmit(
-                  [{ op: 'set_lifecycle', collectionKey, lifecycle: null }],
-                  'Lifecycle cleared',
-                ).then((taken) => taken && setClearing(false))
+                void onClear().then((taken) => taken && setClearing(false))
               }
             >
               Clear
@@ -467,6 +527,77 @@ function LifecycleForm({
           </div>
         </div>
       )}
+    </>
+  )
+}
+
+function LifecycleForm({
+  collectionKey,
+  fieldKey,
+  variants,
+  lifecycle,
+  busy,
+  onSubmit,
+}: {
+  collectionKey: string
+  fieldKey: string
+  variants: string[]
+  /** The collection's lifecycle as read, which this form edits only if it governs this field. */
+  lifecycle: CollectionLifecycle | undefined
+  busy: boolean
+  onSubmit: Submit
+}) {
+  const own = lifecycle?.fieldKey === fieldKey ? lifecycle : undefined
+  const [initial, setInitial] = useState<string[] | undefined>(own?.initial)
+  const [transitions, setTransitions] = useState<LifecycleTransition[]>(
+    own?.transitions ?? [],
+  )
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Note>
+        Every write that changes this field is held to the transitions below:
+        declared actions and generic updates alike.
+      </Note>
+      {lifecycle && !own && (
+        <Note>
+          This collection's lifecycle governs {lifecycle.fieldKey} now; saving
+          moves it to this field.
+        </Note>
+      )}
+      <InitialValues
+        variants={variants}
+        initial={initial}
+        onChange={setInitial}
+      />
+      <Transitions
+        variants={variants}
+        transitions={transitions}
+        onChange={setTransitions}
+      />
+      <LifecycleActions
+        lifecycle={lifecycle}
+        problems={lifecycleProblems(transitions, initial, variants)}
+        busy={busy}
+        onSave={() =>
+          void onSubmit(
+            [
+              {
+                op: 'set_lifecycle',
+                collectionKey,
+                lifecycle: lifecycleAsSent(own, fieldKey, transitions, initial),
+              },
+            ],
+            'Lifecycle saved',
+          )
+        }
+        onClear={() =>
+          onSubmit(
+            [{ op: 'set_lifecycle', collectionKey, lifecycle: null }],
+            'Lifecycle cleared',
+          )
+        }
+      />
     </div>
   )
 }
