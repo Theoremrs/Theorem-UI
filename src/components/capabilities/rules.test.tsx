@@ -326,10 +326,15 @@ test('a schedule rule saved unchanged keeps its start time, in any time zone', a
     inputs: { title: { source: 'literal', value: 'Review the day' } },
   }
   // bun test runs in UTC, where local and UTC wall times agree; a person's
-  // browser seldom does.
-  const zone = process.env.TZ
-  process.env.TZ = 'America/Detroit'
+  // browser seldom does. The zone moves through Bun.env: another test file
+  // may put a plain copy in process.env's place, and writing TZ on that
+  // moves no clock.
+  const zone = Bun.env.TZ
+  Bun.env.TZ = 'America/Detroit'
   try {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe(
+      'America/Detroit',
+    )
     const described = withRules()
     await openRules({
       ...described,
@@ -341,7 +346,7 @@ test('a schedule rule saved unchanged keeps its start time, in any time zone', a
     await waitFor(() => authored().length === 1)
     expect(authored()[0]?.ops).toEqual([{ op: 'replace_rule', rule }])
   } finally {
-    if (zone === undefined) delete process.env.TZ
-    else process.env.TZ = zone
+    // Deleting TZ would leave the machine's own zone, not bun test's UTC.
+    Bun.env.TZ = zone ?? 'Etc/UTC'
   }
 })
