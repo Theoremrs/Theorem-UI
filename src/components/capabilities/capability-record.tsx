@@ -67,7 +67,13 @@ const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
 const inlineEditable = (field: ResolvedField) =>
   isEditable(fieldSpecOf(field)) && field.fieldType.kind !== 'relation'
 
-/** A relation value, picked from the collection that target is part of. */
+/**
+ * A relation value, picked from the collection that target is part of. It is
+ * never cleared: an absent input leaves a field as it is and the executor
+ * refuses a null one, so no call can empty a field. A set value offers only
+ * other targets; an empty one shows that state as a placeholder that cannot be
+ * chosen, and nothing commits until a target is.
+ */
 function RelationPick({
   instanceId,
   definition,
@@ -114,9 +120,15 @@ function RelationPick({
         aria-label={`Choose ${field.label}`}
         className={fieldControl}
         value={current}
-        onChange={(event) => onCommit(event.target.value || null)}
+        onChange={(event) => {
+          if (event.target.value) onCommit(event.target.value)
+        }}
       >
-        <option value="">(none)</option>
+        {!current && (
+          <option value="" disabled>
+            Not set · choose one
+          </option>
+        )}
         {rows.map((row) => (
           <option key={row.id} value={row.id}>
             {rowTitle(targetFields, row)}

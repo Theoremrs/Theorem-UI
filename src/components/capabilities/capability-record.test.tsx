@@ -15,7 +15,7 @@ import type {
   DescribeResult,
   Grant,
 } from '@/lib/capabilities/contract'
-import { describeResult, taskRows } from './fixture'
+import { describeResult, row, taskRows } from './fixture'
 import type { ModuleViewProps } from '@/lib/modules/registry'
 import type { CapabilityContextReference } from '@/lib/capabilities/reference'
 
@@ -115,9 +115,13 @@ beforeEach(() => {
     const rest = url.pathname.slice(CAPABILITIES.length + 1).split('/')
     if (rest.length === 2) return json(described)
     if (rest[2] === 'query') {
-      // The page a locate-walk reads when nothing names the collection.
+      // The page a locate-walk reads when nothing names the collection; the
+      // people collection answers its own rows, for a relation's picker.
+      const people =
+        (body?.query as { collectionKey?: string } | undefined)
+          ?.collectionKey === 'people'
       return json({
-        records: rows,
+        records: people ? peopleRows : rows,
         total: rows.length,
         filtered: false,
         truncated: false,
@@ -194,6 +198,104 @@ async function showRecord(
 }
 
 const invoked = () => calls.filter((call) => call.path.endsWith('/invoke'))
+
+const peopleRows = [
+  row('person-1', { name: 'Ada' }, 1),
+  row('person-2', { name: 'Grace' }, 1),
+]
+
+/** The options a select offers, as value and the words shown. */
+const optionsOf = (select: HTMLSelectElement) =>
+  [...select.options].map((one) => ({
+    value: one.value,
+    text: one.textContent.trim(),
+    disabled: one.disabled,
+  }))
+
+/** Picks a value through the select's own setter, as React reads a change. */
+function choose(select: HTMLSelectElement, value: string) {
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLSelectElement.prototype,
+      'value',
+    )!.set!.call(select, value)
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+
+/** Every input value any invoke carried: none may be null. */
+const sentValues = () =>
+  invoked().flatMap((call) =>
+    Object.values((call.body?.inputs ?? {}) as Record<string, unknown>),
+  )
+
+// ── A relation is picked, never cleared: the contract cannot clear a field ───
+
+test('a relation that holds a value offers no clearing choice, and never sends null', async () => {
+  rows = [
+    {
+      ...taskRows[0]!,
+      fields: { ...taskRows[0]!.fields, assignee: 'person-1' },
+    },
+  ]
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => editMark(container, 'Assignee')?.click())
+  const select = await waitFor(() => {
+    const found = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Choose Assignee"]',
+    )
+    return found && found.options.length > 1 ? found : null
+  })
+  // Only the people it can point at: no empty value, no "(none)".
+  expect(optionsOf(select)).toEqual([
+    { value: 'person-1', text: 'Ada', disabled: false },
+    { value: 'person-2', text: 'Grace', disabled: false },
+  ])
+  expect(select.value).toBe('person-1')
+  // An empty value forced onto the control is not taken as a choice.
+  choose(select, '')
+  expect(container.textContent).not.toContain('unsaved')
+
+  choose(select, 'person-2')
+  await waitFor(() => container.textContent.includes('unsaved'))
+  await act(async () => button(container, 'Save Assignee')?.click())
+  const call = await waitFor(() => invoked()[0])
+  expect(call.body!.actionKey).toBe('assign')
+  expect(call.body!.inputs).toEqual({ assignee: 'person-2' })
+  expect(sentValues()).not.toContain(null)
+})
+
+test('an empty relation shows a placeholder that cannot be chosen', async () => {
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => editMark(container, 'Assignee')?.click())
+  const select = await waitFor(() => {
+    const found = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Choose Assignee"]',
+    )
+    return found && found.options.length > 1 ? found : null
+  })
+  const [placeholder, ...people] = optionsOf(select)
+  // The empty state is shown, and disabled, so it is never a submitted value.
+  expect(placeholder).toEqual({
+    value: '',
+    text: 'Not set · choose one',
+    disabled: true,
+  })
+  expect(people.map((one) => one.value)).toEqual(['person-1', 'person-2'])
+  expect(select.value).toBe('')
+  choose(select, '')
+  expect(container.textContent).not.toContain('unsaved')
+  expect(button(container, 'Save Assignee')).toBeUndefined()
+
+  choose(select, 'person-1')
+  await waitFor(() => container.textContent.includes('unsaved'))
+  await act(async () => button(container, 'Save Assignee')?.click())
+  const call = await waitFor(() => invoked()[0])
+  expect(call.body!.inputs).toEqual({ assignee: 'person-1' })
+  expect(sentValues()).not.toContain(null)
+})
 
 test('the fields come from the resolved schema, at the revision on screen', async () => {
   const { container, outputs } = await showRecord()
