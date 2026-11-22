@@ -186,8 +186,9 @@ const COMMAND_ICONS = {
   NewChat: Icon.NewChat,
   WebSearch: Icon.WebSearch,
   Plan: Icon.Plan,
-  Code: Icon.Code,
-  ReadAloud: Icon.ReadAloud,
+  // The painted Streamline coded page, as the + menu draws Code mode.
+  Code: Icon.CodeMode,
+  ReadAloud: Icon.ReadAloudControl,
   Plugins: Icon.Plugins,
 } as const
 
