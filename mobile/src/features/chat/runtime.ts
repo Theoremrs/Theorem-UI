@@ -253,6 +253,10 @@ export function useConversation(threadId: string): ConversationView {
           await signIn(async (tokens) => {
             const after = await principalOf(tokens)
             if (before && after && before === after) return
+            // The mounted composer keeps its typed words in memory; the draft
+            // rows are gone with the account data, so without this they would
+            // sit in the new account's composer and could be sent under it.
+            runtimeRef.current?.thread.composer.setText('')
             resetConversations()
             clearAccountData()
             intake.reset()
