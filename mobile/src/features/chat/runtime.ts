@@ -273,6 +273,10 @@ export function useConversation(threadId: string): ConversationView {
             await signIn(async (tokens) => {
               const after = await principalOf(tokens)
               if (before && after && before === after) return
+              // Claim the clear before any of it can fail: the finally below
+              // releases the views even if the cleanup itself throws, so a
+              // failed hold or wipe cannot leave mounted views held forever.
+              cleared = true
               // The mounted composer keeps its typed words in memory; the draft
               // rows are gone with the account data, so without this they would
               // sit in the new account's composer and could be sent under it.
@@ -280,13 +284,13 @@ export function useConversation(threadId: string): ConversationView {
               holdConversations()
               clearAccountData()
               intake.reset()
-              cleared = true
             })
           } finally {
-            // Success: views re-attach under the new bearer. Failure after a
-            // clear: the candidate was never installed, and the wiped queues
-            // and journals must still be rebuilt against the bearer that stayed
-            // — never leave mounted views holding discarded sessions.
+            // Success: views re-attach under the new bearer. Failure after the
+            // clear began: the candidate was never installed, and the wiped (or
+            // half-wiped) queues and journals must still be rebuilt against the
+            // bearer that stayed — never leave mounted views holding discarded
+            // sessions.
             if (cleared) releaseConversations()
           }
           if (cleared) return
