@@ -1,11 +1,13 @@
-// SOURCING: ./queue (the ComposerQueue reducer) driven over ./binding leases (HeadlessConversation through the journal, so every send is journaled first under its own command id); the wait-for-idle approach follows features/intake/queue.ts
+// SOURCING: ./queue (the ComposerQueue reducer) driven over ./binding leases (HeadlessConversation through the journal, so every send is journaled first under its own command id); ./outbox-store keeps waiting messages across termination; @theoremharness/sdk isDefiniteRefusal decides a refusal, as the SDK's own journal and features/intake/deliver.ts do; the wait-for-idle approach follows features/intake/queue.ts
 //
 // The app's one outbox for the conversation composer. A message is admitted
 // here with its command id, held while a run is going, and handed to the
 // conversation when it is free. The outbox keeps its own lease while it holds
 // anything, so leaving the screen does not strand a queued message, and
 // releasing a lease never stops a run: only `stop` does.
+import { isDefiniteRefusal, type ConversationState } from '@theoremharness/sdk'
 import type { ConversationBinding, Lease, TurnExtras } from './binding'
+import type { OutboxStore } from './outbox-store'
 import {
   availability,
   emptyQueue,
@@ -28,12 +30,43 @@ export type OutboxOptions = {
   newId: () => string
   /** What each send carries beyond its text (the phone's calendar operation). */
   extras?: () => TurnExtras
+  /** Where waiting messages are kept so a terminated app returns them under their original ids. */
+  store?: OutboxStore
 }
+
+/**
+ * The run a send started has settled. A terminal projection is the SDK's own
+ * signal; the terminal phases cover a conversation observed without one. A
+ * `ready` published just after a send is not here: the run may still be starting.
+ */
+const settled = (state: ConversationState): boolean =>
+  state.projection?.terminal === true ||
+  ['completed', 'cancelled', 'interrupted', 'failed'].includes(state.phase)
+
+/**
+ * The words still owed a send: the waiting ones plus the dispatched one. The
+ * dispatched message stays durable until its send resolves and the SDK journal
+ * owns it, so a termination in that interval loses nothing; restoration retries
+ * the same command id, which the journal deduplicates.
+ */
+const durableItems = (state: QueueState): QueuedMessage[] =>
+  state.inflight ? [state.inflight, ...state.items] : state.items
 
 export class Outbox {
   private readonly entries = new Map<string, Entry>()
+  /** Threads whose last save failed: the next change to the thread retries the write. */
+  private readonly unsaved = new Set<string>()
 
-  constructor(private readonly options: OutboxOptions) {}
+  constructor(private readonly options: OutboxOptions) {
+    // Carry on with what was waiting when the app last stopped, under the same
+    // command ids and the same pause, so a message is never lost, never sent
+    // twice under two ids, and never sent past a Stop without another Send.
+    for (const { threadId, items, paused } of options.store?.load() ?? []) {
+      if (!items.length && !paused) continue
+      this.attach(threadId)
+      this.apply(threadId, { type: 'restore', items, paused })
+    }
+  }
 
   private entry(threadId: string): Entry {
     let entry = this.entries.get(threadId)
@@ -57,11 +90,15 @@ export class Outbox {
   submit(threadId: string, text: string): string {
     const message: QueuedMessage = { id: this.options.newId(), text }
     this.attach(threadId)
+    // apply() saves the waiting words durably before it returns, so the caller
+    // may clear the draft once submit is back: the message is kept somewhere.
     this.apply(threadId, { type: 'submit', message })
     return message.id
   }
 
-  /** The person pressed Stop: the run is cancelled and nothing queued goes until they send again. */
+  /** The person pressed Stop: the run is cancelled and nothing queued goes until they send again.
+   * Rejects when the pause could not be kept on the device — the run is stopped and the pause
+   * holds for this session, but a restart before the retry lands could send what was stopped. */
   async stop(threadId: string): Promise<void> {
     const entry = this.entry(threadId)
     this.apply(threadId, { type: 'stopped' })
@@ -71,13 +108,20 @@ export class Outbox {
     } finally {
       if (lease !== entry.lease) lease.release()
     }
+    // Reported only if it is still unpersisted: a lifecycle change while the run
+    // was being cancelled may have retried the save successfully.
+    if (this.unsaved.has(threadId))
+      throw new Error(
+        'Stop paused the queue, but this device could not save the pause. If the app restarts, the waiting messages may send.',
+      )
   }
 
-  /** Takes a message out of the queue. `false` when it had already gone. */
+  /** Takes a message out of the queue. `false` when it had already gone, or when the removal
+   * could not be saved: an unsaved removal is not published, so the message stays queued —
+   * where a restart would send it — rather than vanish from a queue the device still holds. */
   remove(threadId: string, id: string): boolean {
     const had = this.snapshot(threadId).items.some((item) => item.id === id)
-    this.apply(threadId, { type: 'remove', id })
-    return had
+    return had && this.apply(threadId, { type: 'remove', id })
   }
 
   acknowledge(threadId: string, id: string): void {
@@ -92,6 +136,8 @@ export class Outbox {
       for (const listener of entry.listeners) listener()
     }
     this.entries.clear()
+    this.unsaved.clear()
+    this.options.store?.clear()
   }
 
   private attach(threadId: string) {
@@ -104,7 +150,10 @@ export class Outbox {
     // lease straight back, and the message being admitted would go nowhere.
     let attached = false
     entry.unsubscribe = lease.conversation.subscribe((state) => {
-      if (attached) this.apply(threadId, { type: 'availability', availability: availability(state.phase) })
+      if (!attached) return
+      this.apply(threadId, { type: 'availability', availability: availability(state.phase) })
+      // The run the last send started has settled: the queue may go on.
+      if (entry.state.settling && settled(state)) this.apply(threadId, { type: 'run-settled' })
     })
     attached = true
     entry.state = reduce(entry.state, {
@@ -113,24 +162,58 @@ export class Outbox {
     }).state
   }
 
-  /** Gives the lease back once nothing is waiting or on its way. */
+  /** Gives the lease back once nothing is waiting, on its way, or settling. */
   private settle(threadId: string, entry: Entry) {
-    const { items, inflight, refused } = entry.state
-    if (!entry.lease || items.length || inflight || refused.length) return
+    const { items, inflight, settling, refused } = entry.state
+    if (!entry.lease || items.length || inflight || settling || refused.length) return
     entry.unsubscribe()
     entry.unsubscribe = () => {}
     entry.lease.release()
     entry.lease = undefined
   }
 
-  private apply(threadId: string, event: QueueEvent) {
+  private apply(threadId: string, event: QueueEvent): boolean {
     const entry = this.entry(threadId)
-    const { state, dispatch } = reduce(entry.state, event)
-    const changed = state !== entry.state
+    const previous = entry.state
+    const { state, dispatch } = reduce(previous, event)
+    const changed = state !== previous
+    const durableChanged =
+      state.items !== previous.items || state.inflight !== previous.inflight || state.paused !== previous.paused
+    // Admitting new words must be durable before they are published or dispatched.
+    // If storage fails, submit throws and the caller keeps the draft; nothing is
+    // left inflight that no completion can clear.
+    if (event.type === 'submit' && durableChanged) {
+      const failure = this.persist(threadId, state)
+      if (failure) throw failure
+    }
+    // Taking a message out is published only once durable, for the same reason:
+    // a removal the device refused leaves the message exactly where it was.
+    if (event.type === 'remove' && durableChanged && this.persist(threadId, state)) return false
     entry.state = state
+    // Other lifecycle changes (a send admitted, a run settled, an uncertain retry,
+    // a Stop's pause) keep words that are already durable; a stale row only
+    // re-dispatches under the same command id, which deduplicates. Their failures
+    // are recorded and retried on this thread's next change, so the kept queue
+    // converges on the one the person sees. A Stop is published in memory whatever
+    // its save says: cancelling the run leaves the conversation idle, and an idle
+    // queue would otherwise send the very messages the person stopped.
+    if ((event.type !== 'submit' && event.type !== 'remove' && durableChanged) || this.unsaved.has(threadId))
+      this.persist(threadId, state)
     if (dispatch) void this.dispatch(threadId, entry, dispatch)
     if (changed) for (const listener of entry.listeners) listener()
     this.settle(threadId, entry)
+    return !this.unsaved.has(threadId)
+  }
+
+  /** Keeps the queue's durable shape; on a failed save returns the error, having recorded it for a retry. */
+  private persist(threadId: string, state: QueueState): Error | undefined {
+    try {
+      this.options.store?.save(threadId, durableItems(state), state.paused)
+      this.unsaved.delete(threadId)
+    } catch (error) {
+      this.unsaved.add(threadId)
+      return error instanceof Error ? error : new Error(String(error))
+    }
   }
 
   private async dispatch(threadId: string, entry: Entry, message: QueuedMessage) {
@@ -139,9 +222,20 @@ export class Outbox {
     try {
       // The queued id is the command id: asking again would be the same command.
       await lease.send(message.text, { id: message.id, ...this.options.extras?.() })
+      // A reset (sign-out, or an account change cleared during sign-in) discarded
+      // this entry while the send was in flight: its outcome belongs to the old
+      // account and updates nothing, not even a fresh entry for the same thread.
+      if (this.entries.get(threadId) !== entry) return
       this.apply(threadId, { type: 'sent', id: message.id })
+      // A fast run may already be settled; free the queue at once then.
+      if (settled(lease.conversation.state)) this.apply(threadId, { type: 'run-settled' })
     } catch (error) {
-      this.apply(threadId, { type: 'refused', id: message.id, error })
+      if (this.entries.get(threadId) !== entry) return
+      // The SDK's rule for its own journal: a definite no is dropped and its
+      // words go back; anything else leaves the outcome unknown, so the message
+      // keeps its id and waits rather than being sent again under a fresh one.
+      if (isDefiniteRefusal(error)) this.apply(threadId, { type: 'refused', id: message.id, error })
+      else this.apply(threadId, { type: 'uncertain', id: message.id, error })
     }
   }
 }
