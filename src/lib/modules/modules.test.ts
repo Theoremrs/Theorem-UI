@@ -132,6 +132,23 @@ describe('module files', () => {
   test('a page file that is not JSON says so', () => {
     expect(() => parsePage('Pages/a.page.json', '{')).toThrow('it is not JSON')
   })
+
+  test('a page or manifest the schema refuses names its file and the field', () => {
+    expect(() =>
+      parsePage(
+        'Pages/a.page.json',
+        JSON.stringify({ schema: 'theorem.page/1', title: 7 }),
+      ),
+    ).toThrow(
+      new ModuleFileError(
+        'Pages/a.page.json',
+        'title: Invalid input: expected string, received number',
+      ),
+    )
+    expect(() => parseManifest('Modules/x/module.json', '{')).toThrow(
+      new ModuleFileError('Modules/x/module.json', 'it is not JSON'),
+    )
+  })
 })
 
 describe('values', () => {

@@ -351,19 +351,19 @@ function parseJson(path: string, text: string): unknown {
   }
 }
 
-export function parseManifest(path: string, text: string): ModuleManifest {
-  const result = moduleManifest.safeParse(parseJson(path, text))
+/** One module or page file, read against its schema; a refusal names the file and the field. */
+function parseFile<T>(schema: z.ZodType<T>, path: string, text: string): T {
+  const result = schema.safeParse(parseJson(path, text))
   if (!result.success)
     throw new ModuleFileError(path, describeIssues(result.error))
   return result.data
 }
 
-export function parsePage(path: string, text: string): PageDocument {
-  const result = pageDocument.safeParse(parseJson(path, text))
-  if (!result.success)
-    throw new ModuleFileError(path, describeIssues(result.error))
-  return result.data
-}
+export const parseManifest = (path: string, text: string): ModuleManifest =>
+  parseFile(moduleManifest, path, text)
+
+export const parsePage = (path: string, text: string): PageDocument =>
+  parseFile(pageDocument, path, text)
 
 /** A page file's text: stable key order, two-space indent, trailing newline. */
 export const pageText = (page: PageDocument) =>
