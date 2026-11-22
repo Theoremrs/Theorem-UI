@@ -280,13 +280,18 @@ const toggled = (list: string[], value: string, on: boolean) =>
     ? [...list.filter((one) => one !== value), value]
     : list.filter((one) => one !== value)
 
-/** What stops a lifecycle being saved: a transition from no value or to one the field does not hold, or such an initial value. */
+/**
+ * What stops a lifecycle being saved: no transition at all (the server takes
+ * a lifecycle only when it allows one), a transition from no value or to one
+ * the field does not hold, or such an initial value.
+ */
 function lifecycleProblems(
   transitions: LifecycleTransition[],
   initial: string[] | undefined,
   variants: string[],
 ) {
   const problems: string[] = []
+  if (transitions.length === 0) problems.push('at least one transition')
   transitions.forEach((transition, at) => {
     if (!transition.from.length)
       problems.push(`transition ${at + 1} moves from no value`)
@@ -382,7 +387,8 @@ function Transitions({
       </legend>
       {transitions.length === 0 ? (
         <Note>
-          No transition is allowed yet: once saved, the field cannot change.
+          No transition yet: a lifecycle must allow at least one move, so add
+          one before saving.
         </Note>
       ) : (
         <Table>

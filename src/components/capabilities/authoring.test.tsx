@@ -463,12 +463,26 @@ test('a lifecycle over a field no longer a select is still shown from its transi
     "This collection's lifecycle governs stage now; saving moves it to this field.",
   )
   expect(screen().textContent).toContain(
-    'No transition is allowed yet: once saved, the field cannot change.',
-  )
-  expect(screen().textContent).toContain(
     'Ungoverned: a new record may start at any value the field holds.',
   )
+  // A lifecycle with no transition is one the server refuses: said, and held.
   expect(named('Transition 1 to')).toBeNull()
+  expect(screen().textContent).toContain(
+    'No transition yet: a lifecycle must allow at least one move, so add one before saving.',
+  )
+  expect(screen().textContent).not.toContain('once saved')
+  expect(screen().textContent).toContain(
+    'Still to do: at least one transition.',
+  )
+  expect(button('Save lifecycle')?.disabled).toBe(true)
+  await click(button('Save lifecycle'))
+  expect(authored().length).toBe(1)
+
+  // One transition, and it is sent.
+  await click(button('Add transition'))
+  await click(named('Transition 1 from next'))
+  fill('Transition 1 to', 'done')
+  expect(screen().textContent).not.toContain('Still to do')
   await click(button('Save lifecycle'))
   await waitFor(() => authored().length === 2)
   expect(authored()[1]).toEqual({
@@ -477,10 +491,20 @@ test('a lifecycle over a field no longer a select is still shown from its transi
       {
         op: 'set_lifecycle',
         collectionKey: 'tasks',
-        lifecycle: { fieldKey: 'status', transitions: [] },
+        lifecycle: {
+          fieldKey: 'status',
+          transitions: [{ from: ['next'], to: 'done' }],
+        },
       },
     ],
   })
+
+  // Removing the last transition of one read is held the same way.
+  fill('Lifecycle field', 'stage')
+  await click(named('Remove transition 2'))
+  await click(named('Remove transition 1'))
+  expect(screen().textContent).toContain('Still to do: at least one transition')
+  expect(button('Save lifecycle')?.disabled).toBe(true)
 })
 
 test('each collection starts from its own lifecycle or its first select field; a transition to a value the field does not hold is shown and named; keeping it cancels a clear', async () => {
