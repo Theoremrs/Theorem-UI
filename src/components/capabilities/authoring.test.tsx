@@ -8,7 +8,13 @@ import { cleanup, render, waitFor } from '../../../test/workspace'
 import { CAPABILITIES } from '@/lib/capabilities/api'
 import type { DescribeResult } from '@/lib/capabilities/contract'
 import { AuthoringDialog } from './authoring'
-import { describeResult, ownerGrant } from './fixture'
+import {
+  describeResult,
+  ownerGrant,
+  peopleSchema,
+  tasksSchema,
+  trackerDefinition,
+} from './fixture'
 
 const page = (
   window as unknown as { happyDOM: { setURL: (url: string) => void } }
@@ -240,6 +246,271 @@ test('a collection with no select field says it has nothing to govern', async ()
     'This collection declares no select field',
   )
   expect(button('Save lifecycle')).toBeUndefined()
+})
+
+test('adding a variant names what is still to do, over any select field, and a collection with none has nothing to add to', async () => {
+  described = {
+    ...describeResult(),
+    collectionSchemas: [
+      {
+        ...tasksSchema,
+        fields: [
+          ...tasksSchema.fields,
+          {
+            key: 'tags',
+            label: 'Tags',
+            fieldType: { kind: 'enum_many', variants: [] },
+            required: false,
+          },
+        ],
+      },
+      peopleSchema,
+    ],
+  }
+  await openDialog()
+  await click(button('Add variant'))
+  await waitFor(() => named('Variant field'))
+  expect(
+    [...named<HTMLSelectElement>('Variant field')!.options].map(
+      (one) => one.value,
+    ),
+  ).toEqual(['status', 'tags'])
+  expect(screen().textContent).toContain('Still to do: the new variant.')
+  expect(named<HTMLButtonElement>('Add enum variant')?.disabled).toBe(true)
+  fill('New variant', 'blocked')
+  expect(screen().textContent).not.toContain('Still to do')
+  fill('Variant field', 'tags')
+  expect(screen().textContent).toContain('Its variants now: none.')
+
+  // A collection with no select field: nothing to add to, and the typed variant is kept.
+  fill('Variant collection', 'people')
+  expect(named('Variant field')).toBeNull()
+  expect(screen().textContent).toContain(
+    'This collection declares no select field to add a variant to.',
+  )
+  expect(screen().textContent).not.toContain('Its variants now')
+  expect(screen().textContent).toContain('Still to do: a select field.')
+  expect(named<HTMLButtonElement>('Add enum variant')?.disabled).toBe(true)
+
+  // Back on tasks the field starts over at the first select field.
+  fill('Variant collection', 'tasks')
+  expect(named<HTMLSelectElement>('Variant field')?.value).toBe('status')
+  fill('Variant field', 'tags')
+  await click(named('Add enum variant'))
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [
+      {
+        op: 'add_enum_variant',
+        collectionKey: 'tasks',
+        fieldKey: 'tags',
+        variant: 'blocked',
+      },
+    ],
+  })
+})
+
+test('a lifecycle over a field no longer a select is still shown from its transitions, and moving it starts over', async () => {
+  described = {
+    ...describeResult(),
+    definition: {
+      ...trackerDefinition,
+      collections: [
+        {
+          ...trackerDefinition.collections[0]!,
+          lifecycle: {
+            fieldKey: 'stage',
+            initial: ['draft', 'gone'],
+            transitions: [
+              { from: ['draft'], to: 'live' },
+              { from: ['live'], to: 'archived' },
+            ],
+          },
+        },
+        trackerDefinition.collections[1]!,
+      ],
+    },
+  }
+  await openDialog()
+  await click(button('Lifecycle'))
+  await waitFor(() => named('Lifecycle field'))
+  expect(named<HTMLSelectElement>('Lifecycle field')?.value).toBe('stage')
+  expect(
+    [...named<HTMLSelectElement>('Lifecycle field')!.options].map(
+      (one) => one.value,
+    ),
+  ).toEqual(['stage', 'status'])
+  // Its values are the ones its transitions name.
+  expect(named('Initial draft')?.getAttribute('aria-checked')).toBe('true')
+  expect(named('Initial live')?.getAttribute('aria-checked')).toBe('false')
+  expect(named('Initial archived')?.getAttribute('aria-checked')).toBe('false')
+  expect(named('Initial gone')).toBeNull()
+  expect(screen().textContent).toContain(
+    'Still to do: gone is not a value the field holds.',
+  )
+  expect(button('Save lifecycle')?.disabled).toBe(true)
+  expect(screen().textContent).not.toContain('governs stage now')
+
+  // Ungoverned, then governed with none chosen, then one start value.
+  await click(named('Govern initial values'))
+  expect(screen().textContent).not.toContain('Still to do')
+  await click(named('Govern initial values'))
+  expect(screen().textContent).toContain(
+    'With none chosen, no create may write this field.',
+  )
+  await click(named('Initial live'))
+  expect(screen().textContent).not.toContain('With none chosen')
+  await click(button('Save lifecycle'))
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [
+      {
+        op: 'set_lifecycle',
+        collectionKey: 'tasks',
+        lifecycle: {
+          fieldKey: 'stage',
+          initial: ['live'],
+          transitions: [
+            { from: ['draft'], to: 'live' },
+            { from: ['live'], to: 'archived' },
+          ],
+        },
+      },
+    ],
+  })
+
+  // On another field the form starts over, and says the lifecycle moves.
+  fill('Lifecycle field', 'status')
+  expect(screen().textContent).toContain(
+    "This collection's lifecycle governs stage now; saving moves it to this field.",
+  )
+  expect(screen().textContent).toContain(
+    'No transition is allowed yet: once saved, the field cannot change.',
+  )
+  expect(screen().textContent).toContain(
+    'Ungoverned: a new record may start at any value the field holds.',
+  )
+  expect(named('Transition 1 to')).toBeNull()
+  await click(button('Save lifecycle'))
+  await waitFor(() => authored().length === 2)
+  expect(authored()[1]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [
+      {
+        op: 'set_lifecycle',
+        collectionKey: 'tasks',
+        lifecycle: { fieldKey: 'status', transitions: [] },
+      },
+    ],
+  })
+})
+
+test('each collection starts from its own lifecycle or its first select field; a transition to a value the field does not hold is shown and named; keeping it cancels a clear', async () => {
+  const tasks = trackerDefinition.collections[0]!
+  const people = trackerDefinition.collections[1]!
+  described = {
+    ...describeResult(),
+    definition: {
+      ...trackerDefinition,
+      // People first: the editor opens on a collection with no lifecycle.
+      collections: [
+        people,
+        {
+          ...tasks,
+          lifecycle: {
+            fieldKey: 'status',
+            transitions: [
+              { from: ['next'], to: 'done' },
+              { from: ['done'], to: 'cancelled' },
+            ],
+          },
+        },
+      ],
+    },
+    collectionSchemas: [
+      tasksSchema,
+      {
+        ...peopleSchema,
+        fields: [
+          ...peopleSchema.fields,
+          {
+            key: 'role',
+            label: 'Role',
+            fieldType: { kind: 'enum', variants: ['lead', 'member'] },
+            required: false,
+          },
+        ],
+      },
+    ],
+  }
+  const toOptions = () =>
+    [...named<HTMLSelectElement>('Transition 2 to')!.options].map(
+      (one) => one.value,
+    )
+  await openDialog()
+  await click(button('Lifecycle'))
+  await waitFor(() => named('Lifecycle field'))
+
+  // No lifecycle: its first select field, ungoverned, nothing to clear.
+  expect(named<HTMLSelectElement>('Lifecycle collection')?.value).toBe('people')
+  expect(named<HTMLSelectElement>('Lifecycle field')?.value).toBe('role')
+  expect(screen().textContent).not.toContain('lifecycle governs')
+  expect(button('Clear lifecycle')).toBeUndefined()
+  expect(named('Initial lead')).toBeNull()
+  await click(button('Add transition'))
+  expect(named<HTMLSelectElement>('Transition 1 to')?.value).toBe('lead')
+  await click(named('Transition 1 from member'))
+  await click(button('Save lifecycle'))
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [
+      {
+        op: 'set_lifecycle',
+        collectionKey: 'people',
+        lifecycle: {
+          fieldKey: 'role',
+          transitions: [{ from: ['member'], to: 'lead' }],
+        },
+      },
+    ],
+  })
+
+  // A lifecycle as read: a target the field does not hold is still offered, and named.
+  fill('Lifecycle collection', 'tasks')
+  expect(named<HTMLSelectElement>('Lifecycle field')?.value).toBe('status')
+  expect(named<HTMLSelectElement>('Transition 2 to')?.value).toBe('cancelled')
+  expect(toOptions()).toEqual([
+    'cancelled',
+    'next',
+    'in_progress',
+    'waiting',
+    'done',
+  ])
+  expect(screen().textContent).toContain(
+    'Still to do: transition 2 moves to a value the field does not hold.',
+  )
+  expect(button('Save lifecycle')?.disabled).toBe(true)
+  fill('Transition 2 to', 'next')
+  expect(toOptions()).toEqual(['next', 'in_progress', 'waiting', 'done'])
+  expect(screen().textContent).not.toContain('Still to do')
+
+  // Keeping it closes the question and sends nothing.
+  await click(button('Clear lifecycle'))
+  expect(button('Clear lifecycle')).toBeUndefined()
+  await click(button('Keep it'))
+  expect(screen().textContent).not.toContain('records are not changed')
+  expect(button('Clear lifecycle')).toBeTruthy()
+  expect(authored().length).toBe(1)
+
+  // Back on people the field starts over at its first select field.
+  fill('Lifecycle collection', 'people')
+  expect(named<HTMLSelectElement>('Lifecycle field')?.value).toBe('role')
+  expect(named('Transition 1 to')).toBeNull()
+  await click(button('Add transition'))
+  expect(named<HTMLSelectElement>('Transition 1 to')?.value).toBe('lead')
 })
 
 // ── Agent access: three separate controls ───────────────────────────────────
