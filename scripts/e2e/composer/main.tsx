@@ -10,9 +10,10 @@ import {
   useExternalStoreRuntime,
 } from '@assistant-ui/react'
 import type { AppendMessage, ThreadMessageLike } from '@assistant-ui/react'
-import { ComposerEditor } from '@/components/chat/composer-editor'
+import { ComposerEditor, insertInComposer } from '@/components/chat/composer-editor'
 
 const samples = {
+  Empty: '',
   Plain: 'First paragraph',
   Code: '```ts\nconst first = 1\n```',
   List: '- First item',
@@ -43,9 +44,13 @@ function Composer({ sent, reset }: { sent: string[]; reset: () => void }) {
         ))}
       </nav>
       <ComposerPrimitive.Root
+        data-slot="aui_composer-shell"
         onSubmitCapture={() => setSubmits((count) => count + 1)}
       >
         <ComposerEditor label="Message input" />
+        <button type="button" onClick={(event) => insertInComposer(event.currentTarget)}>
+          Insert code block
+        </button>
         <ComposerPrimitive.Send aria-label="Send message">
           Send message
         </ComposerPrimitive.Send>

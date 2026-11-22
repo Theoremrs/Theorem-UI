@@ -30,10 +30,10 @@ import {
 import type { TheoremChatAdapterOptions } from '@theoremharness/sdk/assistant-ui'
 import type { TheoremContextReference } from '@theoremharness/sdk'
 import { createAssistantStream } from 'assistant-stream'
-import pMap from 'p-map'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { create } from 'zustand'
 import { refreshConversation } from './conversation-refresh'
+import type { RefreshCursor } from './conversation-refresh'
 import type { ReactNode } from 'react'
 import { toastManager } from '@/components/coss/toast'
 import { useComposerReferences } from '@/components/chat/composer-references'
@@ -67,7 +67,7 @@ import { modelTurnOptions } from './models'
 import { bindRunInput } from './run-input-runtime'
 
 import { toHistoryMessages } from './message-history'
-import { isUntitledTitle, threadTitle } from './thread-title'
+import { isUntitledTitle, recoveredTitle, rememberTitle, threadTitle } from './thread-title'
 
 import { Figures } from '@/components/face/figures'
 import { useKitRequests } from '@/lib/kit/operations'
@@ -735,20 +735,6 @@ function useTheoremThreadRuntime() {
   usePresentRequests(runtime)
   // A coding session the agent started that stops working wakes the agent; this tells it.
   useSessionNoticeDelivery(runtime)
-  useEffect(() => {
-    let busy = false
-    const abort = new AbortController()
-    const refresh = async () => {
-      const remoteId = aui.threadListItem.getState().remoteId
-      if (busy || !remoteId || document.visibilityState !== 'visible') return
-      busy = true
-      try { await refreshConversation(runtime.thread,()=>theorem().chat.threads.get({threadId:remoteId},{abortSignal:abort.signal})) }
-      catch { /* A failed refresh leaves the last confirmed transcript intact. */ }
-      finally { busy = false }
-    }
-    const timer = setInterval(()=>void refresh(),3000)
-    return () => {clearInterval(timer);abort.abort()}
-  },[aui,runtime])
   return runtime
 }
 
@@ -760,6 +746,36 @@ export function createThreadListAdapter(
   activeProject: () => string,
 ): RemoteThreadListAdapter {
   const client = theorem()
+  const queued = new Map<string, Theorem.Thread>()
+  const pending = new Set<string>()
+  let workers = 0
+  const recoverTitles = () => {
+    const work = async () => {
+      workers += 1
+      try {
+        for (const [id, thread] of queued) {
+          queued.delete(id)
+          if (thread.projectId !== activeProject()) continue
+          pending.add(id)
+          try {
+            const snapshot = await client.chat.threads.get(
+              { threadId: id },
+              { timeoutInSeconds: 10, maxRetries: 0 },
+            )
+            rememberTitle(snapshot.thread, threadTitle(snapshot))
+          } catch {
+            // Leave authoritative list metadata visible if history is inaccessible.
+          } finally {
+            pending.delete(id)
+          }
+        }
+      } finally {
+        workers -= 1
+      }
+    }
+    const start = Math.min(4 - workers, queued.size)
+    for (let worker = 0; worker < start; worker++) void work()
+  }
   return {
     async list(params) {
       const page = await client.chat.threads.list({
@@ -774,24 +790,20 @@ export function createThreadListAdapter(
         ...useShell.getState().terminalThreadIds,
         ...documentThreadIds(),
       ])
+      const visible = page.items.filter((thread) => !apart.has(thread.threadId))
+      const threads = visible.map((thread) => {
+        if (!isUntitledTitle(thread.title)) {
+          rememberTitle(thread, thread.title)
+          return toMetadata(thread)
+        }
+        const recovered = recoveredTitle(thread)
+        if (!recovered && (thread.lastMessageAtMs !== undefined || thread.revision > 1) && !pending.has(thread.threadId))
+          queued.set(thread.threadId, thread)
+        return toMetadata(thread, recovered ?? thread.title)
+      })
+      if (queued.size) setTimeout(recoverTitles, 0)
       return {
-        threads: await pMap(
-          page.items.filter((thread) => !apart.has(thread.threadId)),
-          async (thread) => {
-            if (!isUntitledTitle(thread.title)) return toMetadata(thread)
-            try {
-              const snapshot = await client.chat.threads.get(
-                { threadId: thread.threadId },
-                { timeoutInSeconds: 10, maxRetries: 0 },
-              )
-              return toMetadata(snapshot.thread, threadTitle(snapshot))
-            } catch {
-              // One inaccessible history must not hide the rest of the chats.
-              return toMetadata(thread)
-            }
-          },
-          { concurrency: 4 },
-        ),
+        threads,
         nextCursor: page.nextCursor,
       }
     },
@@ -840,7 +852,9 @@ export function createThreadListAdapter(
     },
     async fetch(remoteId) {
       const snapshot = await client.chat.threads.get({ threadId: remoteId })
-      return toMetadata(snapshot.thread, threadTitle(snapshot))
+      const title = threadTitle(snapshot)
+      rememberTitle(snapshot.thread, title)
+      return toMetadata(snapshot.thread, title)
     },
     // This callback runs concurrently with sends; only runTurn writes titles.
     async generateTitle(remoteId, messages) {
@@ -858,11 +872,13 @@ export function TheoremRuntimeProvider({
   projectId,
   threadId,
   onThreadIdChange,
+  refreshVisible = true,
   children,
 }: {
   projectId: string
   threadId: string | undefined
   onThreadIdChange: (threadId: string | undefined) => void
+  refreshVisible?: boolean
   children: ReactNode
 }) {
   const project = useRef(projectId)
@@ -881,6 +897,58 @@ export function TheoremRuntimeProvider({
     threadId,
     onThreadIdChange,
   })
+  useEffect(() => {
+    if (!refreshVisible) return
+    let busy = false
+    let activeId: string | undefined
+    let pending: AbortController | undefined
+    let cursor: RefreshCursor = {}
+    const followSelection = () => {
+      const id = runtime.threads.mainItem.getState().remoteId ?? undefined
+      if (id === activeId) return
+      pending?.abort()
+      activeId = id
+      cursor = {}
+    }
+    const refresh = async () => {
+      followSelection()
+      const id = activeId
+      if (busy || !id || document.visibilityState !== 'visible') return
+      const request = new AbortController()
+      pending = request
+      const active = () => !request.signal.aborted && document.visibilityState === 'visible'
+      busy = true
+      try {
+        await refreshConversation(
+          runtime.thread,
+          () => theorem().chat.threads.get(
+            { threadId: id },
+            { abortSignal: request.signal, timeoutInSeconds: 10, maxRetries: 0 },
+          ),
+          cursor,
+          active,
+        )
+      } catch {
+        // A failed refresh leaves the last confirmed transcript intact.
+      } finally {
+        busy = false
+        pending = undefined
+      }
+    }
+    const visibility = () => {
+      if (document.visibilityState === 'visible') void refresh()
+      else pending?.abort()
+    }
+    const stop = runtime.threads.mainItem.subscribe(followSelection)
+    const timer = setInterval(() => void refresh(), 3000)
+    document.addEventListener('visibilitychange', visibility)
+    return () => {
+      stop()
+      clearInterval(timer)
+      pending?.abort()
+      document.removeEventListener('visibilitychange', visibility)
+    }
+  }, [runtime, refreshVisible])
   useKitClock()
   return (
     <AssistantRuntimeProvider runtime={runtime}>

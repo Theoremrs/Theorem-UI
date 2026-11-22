@@ -730,10 +730,17 @@ fn choosing_an_unavailable_row_keeps_the_picker_open_and_shows_why_until_selecti
     // It is on screen, under the list, in the warning role's line.
     let mut buf = Buffer::empty(Rect::new(0, 0, 200, 50));
     theorem_workbench_core::view(&m, Rect::new(0, 0, 200, 50), &mut buf, &Theme::plain());
-    let y = node.rect.unwrap().y;
-    let drawn: String = (node.rect.unwrap().x..node.rect.unwrap().x + node.rect.unwrap().width)
-        .map(|x| buf[(x, y)].symbol().to_owned())
-        .collect();
+    let rect = node.rect.unwrap();
+    let drawn = (rect.y..rect.y + rect.height)
+        .map(|y| {
+            (rect.x..rect.x + rect.width)
+                .map(|x| buf[(x, y)].symbol())
+                .collect::<String>()
+                .trim()
+                .to_owned()
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
     assert!(drawn.contains(why), "{drawn:?}");
 
     // Moving the selection clears it, on screen and in the tree.

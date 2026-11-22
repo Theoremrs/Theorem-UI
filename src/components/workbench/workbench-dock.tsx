@@ -1,4 +1,6 @@
-// SOURCING: anime.js createDraggable drags the workbench's inner edge (as side-terminal's WidthHandle drags the drawer's: x or y mapped to a CSS variable, bounded by the container, no throw on release); zustand shell state keeps the size and whether it is a drawer or part of the screen; the close on a double-click outside is the drawers' shared hook (terminal/close-on-outside-double-click); ResizeObserver measures the conversation column it attaches to (CSS anchor positioning would do this, but the Servo desktop host does not have it). A docked side is a second sheet beside the first, as the docked cabinet is; at the bottom, docked or a drawer, it is a card over the conversation column, so the side panel keeps its height. The workbench inside is the caller's (components/workbench/workbench.tsx), mounted once and kept mounted across placements so its panels, terminals and side chats outlast a move.
+// The shell keeps one mounted workspace. The right-hand placement uses the
+// conversation edge for its overlay and can also dock beside the sheet.
+// The bottom placement spans the frame, with the composer lifted above it.
 import { createDraggable } from 'animejs'
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react'
 import type {
@@ -6,6 +8,8 @@ import type {
   ReactNode,
   RefObject,
 } from 'react'
+import { Button } from '@/components/ui/button'
+import { useOpenMode, useShellMode } from '@/components/shell/modes'
 import { useShell } from '@/components/shell/shell-state'
 import { useTerminalTheme } from '@/components/terminal/live-terminal-theme'
 import { useCloseOnOutsideDoubleClick } from '@/components/terminal/close-on-outside-double-click'
@@ -18,8 +22,6 @@ import { WORKBENCH_LABEL } from './label'
 /** The shortest and tallest it gets under the sheet, as shares of the window. */
 const MIN_SHARE = 0.2
 const MAX_SHARE = 0.8
-/** The room the conversation gives up under itself for a docked bottom card: the card and the panel's gutter above and below it. */
-const BOTTOM_RESERVE = 'calc(var(--dock-height) + 2 * var(--panel-float, 8px))'
 const viewportWidth = () =>
   typeof window === 'undefined' ? 1440 : window.innerWidth
 
@@ -238,22 +240,163 @@ function useColumnEdges(
   }, [active, box, region])
 }
 
-/**
- * The workbench in its placement: the whole sheet's place, or beside or under
- * the conversation, where the person's choice in Settings makes it a drawer
- * over the screen (closed by a double-click outside it) or part of the screen
- * (a second sheet beside, or a card under the conversation that the
- * conversation makes room for). At the bottom it covers the conversation
- * column only, so the side panel keeps its height. Once mounted it stays
- * mounted while closed (hidden), so its runs and terminals carry on and
- * reopening shows them as they were.
- *
- * `frame` is the shell's row that holds the sheet and this region: the sizes
- * are written there, so the conversation inside the sheet can read the room a
- * docked bottom card takes (--workbench-reserve). It is the element, not a ref:
- * a parent's ref is attached only after its children's layout effects run, so
- * the shell keeps it in state and the first frame painted already has it.
- */
+/** Keep the bottom overlay above the safe area and the chat composer above it. */
+function useBottomClearance(
+  bottom: boolean,
+  frame: HTMLElement | null,
+  region: RefObject<HTMLDivElement | null>,
+) {
+  useLayoutEffect(() => {
+    const drawer = region.current
+    if (!bottom || !frame || !drawer) return
+    const selector = '[data-appearance-role="composer-form"]'
+    let composers = frame.querySelectorAll<HTMLElement>(selector)
+    let pending = 0
+    const measure = () => {
+      pending = 0
+      const box = frame.getBoundingClientRect()
+      const viewport = window.visualViewport
+      const occluded = viewport
+        ? Math.max(0, box.bottom - viewport.offsetTop - viewport.height)
+        : 0
+      frame.style.setProperty('--workbench-occluded', `${occluded}px`)
+      const height = Math.max(
+        0,
+        ...Array.from(composers, (item) => item.offsetHeight),
+      )
+      frame.style.setProperty(
+        '--workbench-composer-clearance',
+        `${Math.max(96, height + 64)}px`,
+      )
+      const edge = drawer.getBoundingClientRect().top
+      frame.style.setProperty(
+        '--workbench-reserve',
+        `${Math.max(0, box.bottom - edge + 8)}px`,
+      )
+    }
+    const queue = () => {
+      if (!pending) pending = requestAnimationFrame(measure)
+    }
+    const sizes = new ResizeObserver(queue)
+    const observeComposers = () => {
+      composers.forEach((element) => sizes.unobserve(element))
+      composers = frame.querySelectorAll(selector)
+      composers.forEach((element) => sizes.observe(element))
+    }
+    const nodes = new MutationObserver((changes) => {
+      if (
+        changes.some((change) =>
+          [...change.addedNodes, ...change.removedNodes].some(
+            (node) =>
+              node instanceof Element &&
+              (node.matches(selector) || node.querySelector(selector)),
+          ),
+        )
+      ) {
+        observeComposers()
+        queue()
+      }
+    })
+    sizes.observe(frame)
+    sizes.observe(drawer)
+    observeComposers()
+    nodes.observe(frame, { subtree: true, childList: true })
+    window.visualViewport?.addEventListener('resize', queue)
+    window.visualViewport?.addEventListener('scroll', queue)
+    measure()
+    return () => {
+      cancelAnimationFrame(pending)
+      sizes.disconnect()
+      nodes.disconnect()
+      window.visualViewport?.removeEventListener('resize', queue)
+      window.visualViewport?.removeEventListener('scroll', queue)
+      for (const name of [
+        '--workbench-reserve',
+        '--workbench-composer-clearance',
+        '--workbench-occluded',
+      ])
+        frame.style.removeProperty(name)
+    }
+  }, [bottom, frame, region])
+}
+
+const placementLabels = {
+  full: 'Full',
+  side: 'Right',
+  bottom: 'Bottom',
+} as const
+
+function WorkspaceControls({
+  drawn,
+  requested,
+}: {
+  drawn: Placement
+  requested: Placement
+}) {
+  const mode = useShellMode()
+  const openMode = useOpenMode()
+  const attachment = useShell((s) => s.workbenchAttachment)
+  const choose = (next: Placement) => {
+    if (next === 'full' && mode !== 'chat') openMode('chat')
+    useShell.getState().setWorkbench(next)
+  }
+  return (
+    <nav
+      aria-label="Workspace controls"
+      className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line px-2 py-1 text-ink"
+    >
+      {drawn === 'full' && (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => choose(useShell.getState().lastCompanion)}
+        >
+          Back to chat
+        </Button>
+      )}
+      {(Object.keys(placementLabels) as Placement[]).map((next) => (
+        <Button
+          key={next}
+          type="button"
+          size="sm"
+          variant={drawn === next ? 'secondary' : 'ghost'}
+          aria-pressed={drawn === next}
+          onClick={() => choose(next)}
+        >
+          {placementLabels[next]}
+        </Button>
+      ))}
+      {requested === 'side' && drawn === 'side' && (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          aria-pressed={attachment === 'docked'}
+          onClick={() =>
+            useShell
+              .getState()
+              .setWorkbenchAttachment(
+                attachment === 'docked' ? 'drawer' : 'docked',
+              )
+          }
+        >
+          Dock right
+        </Button>
+      )}
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={() => useShell.getState().setWorkbench('closed')}
+      >
+        Close workspace
+      </Button>
+    </nav>
+  )
+}
+
+/** Keep the same workbench mounted as its placement and visibility change. */
 export function WorkbenchDock({
   placement,
   frame,
@@ -271,17 +414,16 @@ export function WorkbenchDock({
   const ground = useTerminalTheme((s) => s.roles.chrome.bg)
   const viewport = useViewportWidth()
   const drawn = dockPresentation(placement, viewport)
-  const companion = drawn === 'side' || drawn === 'bottom'
-  const drawer = companion && attachment === 'drawer'
-  const dockedSide = drawn === 'side' && !drawer
-  const dockedBottom = drawn === 'bottom' && !drawer
-  // A card over the conversation column: a drawer either way, or docked at the bottom.
-  const card = drawer || dockedBottom
+  const bottom = drawn === 'bottom'
+  const sideDrawer = drawn === 'side' && attachment === 'drawer'
+  const drawer = bottom || sideDrawer
+  const dockedSide = drawn === 'side' && !sideDrawer
 
   useCloseOnOutsideDoubleClick(drawer, () =>
     useShell.getState().setWorkbench('closed'),
   )
-  useColumnEdges(card, frame, region)
+  useColumnEdges(sideDrawer, frame, region)
+  useBottomClearance(bottom, frame, region)
 
   useLayoutEffect(() => {
     const box = frame
@@ -291,19 +433,11 @@ export function WorkbenchDock({
       `${Math.min(width, maxWidth(viewport))}px`,
     )
     box.style.setProperty('--dock-height', `${share * 100}dvh`)
-    box.style.setProperty(
-      '--workbench-reserve',
-      dockedBottom ? BOTTOM_RESERVE : '0px',
-    )
-  }, [frame, width, share, viewport, dockedBottom])
+  }, [frame, width, share, viewport])
   useLayoutEffect(() => {
     const box = frame
     return () => {
-      for (const name of [
-        '--dock-width',
-        '--dock-height',
-        '--workbench-reserve',
-      ])
+      for (const name of ['--dock-width', '--dock-height'])
         box?.style.removeProperty(name)
     }
   }, [frame])
@@ -317,39 +451,37 @@ export function WorkbenchDock({
         ref={region}
         data-workbench-placement={drawn ?? 'closed'}
         data-workbench-requested-placement={placement ?? 'closed'}
-        data-workbench-attachment={companion ? attachment : undefined}
+        data-workbench-attachment={
+          bottom ? 'drawer' : drawn === 'side' ? attachment : undefined
+        }
+        data-active-surface={drawn === 'full' ? '' : undefined}
         // The drawers' shared hook leaves a double-click inside any drawer alone.
         data-terminal-drawer={drawer ? '' : undefined}
         hidden={placement === undefined}
-        style={card ? { background: ground } : undefined}
+        style={drawer ? { background: ground } : undefined}
         className={cn(
-          'min-h-0 min-w-0 overflow-hidden rounded-xl',
-          !card && 'relative bg-sheet shadow-sheet',
+          'min-h-0 min-w-0 flex-col overflow-hidden rounded-xl',
+          drawn && 'flex',
+          !drawer && 'relative bg-sheet shadow-sheet',
           drawn === 'full' && 'my-(--sheet-inset) me-(--sheet-inset) flex-1',
           dockedSide &&
             'my-(--sheet-inset) me-(--sheet-inset) w-(--dock-width) shrink-0',
-          card && 'absolute',
-          // At the bottom: over the conversation column only, its grip on top.
-          card &&
-            drawn === 'bottom' &&
-            'right-(--wb-right) bottom-(--wb-bottom) left-(--wb-left) h-[min(var(--dock-height),var(--wb-room-y))] pt-3',
+          drawer && 'absolute',
+          bottom &&
+            'inset-x-(--sheet-inset) bottom-[calc(var(--workbench-occluded,0px)+max(var(--sheet-inset),env(safe-area-inset-bottom)))] h-(--dock-height) max-h-[calc(100%-var(--workbench-occluded,0px)-var(--workbench-composer-clearance,10rem)-env(safe-area-inset-bottom))] pt-3',
           // On the right: the column's height, its grip on the left.
-          drawer &&
-            drawn === 'side' &&
+          sideDrawer &&
             'top-(--wb-top) right-(--wb-right) bottom-(--wb-bottom) w-[min(var(--dock-width),var(--wb-room-x))] ps-3',
-          dockedBottom && 'z-20 shadow-sheet',
           // A drawer slides in over everything on the sheet.
           drawer &&
             'z-30 transition-[translate] duration-(--duration-glide) ease-glide motion-reduce:transition-none',
-          drawer &&
-            drawn === 'bottom' &&
-            'shadow-[0_-8px_32px_rgb(0_0_0/0.28)] starting:translate-y-[calc(100%+var(--wb-bottom))]',
-          drawer &&
-            drawn === 'side' &&
+          bottom &&
+            'shadow-[0_-8px_32px_rgb(0_0_0/0.28)] starting:translate-y-full',
+          sideDrawer &&
             'shadow-[-8px_0_32px_rgb(0_0_0/0.28)] starting:translate-x-[calc(100%+var(--wb-right))]',
         )}
       >
-        {card && (
+        {drawer && (
           <EdgeHandle
             key={drawn}
             axis={drawn === 'side' ? 'x' : 'y'}
@@ -357,10 +489,12 @@ export function WorkbenchDock({
             grip
           />
         )}
-        {children({
-          shown: placement !== undefined,
-          companion: dockedSide || dockedBottom,
-        })}
+        {drawn && placement && (
+          <WorkspaceControls drawn={drawn} requested={placement} />
+        )}
+        <div className="min-h-0 flex-1">
+          {children({ shown: drawn !== undefined, companion: dockedSide })}
+        </div>
       </div>
     </>
   )

@@ -79,7 +79,7 @@ pub struct DockConfig {
     pub main_min_px: f32,
     pub tools_min_px: f32,
     pub splitter_hit_px: f32,
-    /// Main to tools share of the remainder in the default preset (2.0 means 2:1).
+    /// Initial split ratio before applying the inspector’s pinned width.
     pub main_to_tools: f32,
     /// Fewest rows a group needs (tab strip plus a little body).
     pub min_rows: u16,

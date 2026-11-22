@@ -2,7 +2,7 @@
 import type { ShellMode } from '@/components/shell/modes'
 import { CONVERSATION_MIN_WIDTH, WORKBENCH_MIN_WIDTH } from './dock-geometry'
 
-/** Where the workbench is drawn: over the whole sheet, docked beside the sheet, or docked under it. */
+/** Where the workbench is drawn: in place of the sheet, beside it, or over the bottom of the frame. */
 export type Placement = 'full' | 'side' | 'bottom'
 
 /** The placements that leave the conversation and its composer on screen. */
@@ -12,9 +12,8 @@ export type Companion = Exclude<Placement, 'full'>
 export type PlacementChoice = Placement | 'closed'
 
 /**
- * How the workbench sits beside or under the conversation, set in Settings: a
- * drawer over the screen that a double-click outside closes, or part of the
- * screen, docked, with the conversation giving up room for it.
+ * How the right-hand workbench attaches. Bottom placement always overlays the
+ * frame and leaves the right-hand preference available for when it returns.
  */
 export type Attachment = 'drawer' | 'docked'
 
