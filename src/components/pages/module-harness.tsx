@@ -1,6 +1,6 @@
 // SOURCING: none — a test harness. A vault module's files in test/blocks/memory-workspace, placed as
 // a page places one (useInstance under a PageRuntimeProvider, test/workspace's render with a
-// QueryClient) and run through VaultModule, with slice2-harness's stand-in for
+// QueryClient) and run through VaultModule (or SandboxedModule, which finds its own vault), with slice2-harness's stand-in for
 // /api/capabilities/v1 and the frame's document built with esbuild's Node build. happy-dom loads
 // no frame page, so frameOf says ready for the frame as its bridge script does and hands back the
 // frame's end of the port the page answers with: calls on it reach the host the module runs with.
@@ -24,7 +24,7 @@ import {
   PageRuntimeProvider,
   useInstance,
 } from './page-runtime'
-import { VaultModule } from './sandboxed-module'
+import { SandboxedModule, VaultModule } from './sandboxed-module'
 
 export const FOLDER = 'Modules/focus'
 
@@ -32,36 +32,61 @@ function Placed({
   client,
   definition,
 }: {
-  client: WorkspaceClient
+  /** Absent, the module is placed as a page places it and finds its own vault. */
+  client?: WorkspaceClient
   definition: ModuleDefinition
 }) {
   const view = useInstance(definition, { id: 'focus-1' }, false)
   return (
     <InstanceProvider path={view.path}>
-      <VaultModule
-        client={client}
-        definition={definition}
-        folder={FOLDER}
-        entry="index.html"
-        view={view}
-      />
+      {client ? (
+        <VaultModule
+          client={client}
+          definition={definition}
+          folder={FOLDER}
+          entry="index.html"
+          view={view}
+        />
+      ) : (
+        <SandboxedModule definition={definition} view={view} />
+      )}
     </InstanceProvider>
   )
 }
 
-/** Installs `module.json` and `index.html` in a vault's `Modules/focus` and places the module. */
-export async function placeModule(manifestText: string, source: string) {
-  const definition = fromManifest(
+const definitionOf = (manifestText: string) =>
+  fromManifest(
     parseManifest(`${FOLDER}/module.json`, manifestText),
     `${FOLDER}/module.json`,
   )
+
+/**
+ * Installs `module.json` and `index.html` (none when `source` is absent) in a
+ * vault's `Modules/focus` and places the module.
+ */
+export async function placeModule(manifestText: string, source?: string) {
+  const definition = definitionOf(manifestText)
   const client = memoryWorkspace({
     [`${FOLDER}/module.json`]: manifestText,
-    [`${FOLDER}/index.html`]: source,
+    ...(source === undefined ? {} : { [`${FOLDER}/index.html`]: source }),
   }) as unknown as WorkspaceClient
   const placed = await render(
     <PageRuntimeProvider>
       <Placed client={client} definition={definition} />
+    </PageRuntimeProvider>,
+  )
+  return { ...placed, definition }
+}
+
+/**
+ * Places the module where no Theorem vault opens: the stand-in server answers
+ * the Files API with a 404, as a server without it does.
+ */
+export async function placeOutsideVault(manifestText: string) {
+  const definition = definitionOf(manifestText)
+  const placed = await render(
+    <PageRuntimeProvider>
+      <Placed definition={definition} />
     </PageRuntimeProvider>,
   )
   return { ...placed, definition }

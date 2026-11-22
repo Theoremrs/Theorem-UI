@@ -20,6 +20,7 @@ import {
   endModuleTest,
   frameOf,
   placeModule,
+  placeOutsideVault,
 } from './module-harness'
 
 const manifest = {
@@ -77,6 +78,36 @@ test('a module that names no fallback still only asks', async () => {
   await waitFor(() => container.textContent.includes('It asks to'))
   expect(container.textContent).not.toContain('Write the plan')
   expect(sentTo('/query')).toEqual([])
+})
+
+test('a module with no vault to run from says why, and shows its records through the fallback', async () => {
+  const { container } = await placeOutsideVault(JSON.stringify(manifest))
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  expect(container.textContent).toContain(
+    'This module lives in the Theorem vault. The Theorem server does not serve it yet: it has no Files API (/api/files/v1).',
+  )
+  expect(button(container, 'Complete')).toBeTruthy()
+  expect(container.querySelector('iframe')).toBeNull()
+})
+
+test('a module with no vault and no fallback says only why', async () => {
+  const { container } = await placeOutsideVault(
+    JSON.stringify({ ...manifest, fallback: undefined }),
+  )
+  await waitFor(() =>
+    container.textContent.includes('This module lives in the Theorem vault.'),
+  )
+  expect(container.textContent).not.toContain('Write the plan')
+  expect(sentTo('/query')).toEqual([])
+})
+
+test('a module whose files do not read says so as an error, and shows its records through the fallback', async () => {
+  const { container } = await placeModule(JSON.stringify(manifest))
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  const alert = container.querySelector('[role="alert"]')
+  expect(alert?.textContent).toBeTruthy()
+  expect(container.textContent).not.toContain('It asks to')
+  expect(container.querySelector('iframe')).toBeNull()
 })
 
 test('asking about the module carries how an agent reads it, with its summary as it stands', async () => {
