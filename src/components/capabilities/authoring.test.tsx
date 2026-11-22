@@ -237,6 +237,43 @@ test('ungoverned creates send no initial list, and clearing sends null after ask
   })
 })
 
+test('a refused clear keeps the question open, and a taken one closes it', async () => {
+  await openDialog()
+  await click(button('Lifecycle'))
+  await waitFor(() => button('Clear lifecycle'))
+  answers.author = {
+    status: 403,
+    body: {
+      title: 'Forbidden',
+      status: 403,
+      code: 'capability_author_denied',
+      detail: 'No author grant.',
+    },
+  }
+  await click(button('Clear lifecycle'))
+  await click(named('Confirm clear lifecycle'))
+  await waitFor(() =>
+    screen().textContent.includes(
+      "You do not have permission to change this capability's definition.",
+    ),
+  )
+  expect(named('Confirm clear lifecycle')).toBeTruthy()
+  expect(button('Clear lifecycle')).toBeUndefined()
+
+  delete answers.author
+  await click(named('Confirm clear lifecycle'))
+  await waitFor(() => named('Confirm clear lifecycle') === null)
+  expect(screen().textContent).toContain(
+    'Lifecycle cleared · the definition is now capdef:def',
+  )
+  expect(screen().textContent).not.toContain('records are not changed')
+  expect(button('Clear lifecycle')).toBeTruthy()
+  expect(authored().at(-1)).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [{ op: 'set_lifecycle', collectionKey: 'tasks', lifecycle: null }],
+  })
+})
+
 test('a collection with no select field says it has nothing to govern', async () => {
   await openDialog()
   await click(button('Lifecycle'))
