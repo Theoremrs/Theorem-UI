@@ -18,8 +18,13 @@ export type CapabilityResource = {
   instanceId: string
   /** The collection the selected records belong to. */
   collectionKey: string
-  /** The page the selection came from, so the agent finds the module again. */
+  /**
+   * The page the selection came from, by its file's vault path, so the agent
+   * reads it with page_read and finds the module again.
+   */
   pageId?: string
+  /** The page component showing the selection, by the stable id a page_patch names. */
+  selectedComponentId?: string
   /** The view the rows were read through; absent for a record opened outside one. */
   viewKey?: string
   /** What the capability is for, as its definition says. */
@@ -49,6 +54,7 @@ export type CapabilityEnvelope = {
   instanceId: string
   collectionKey: string
   pageId?: string | undefined
+  selectedComponentId?: string | undefined
   viewKey?: string | undefined
   purpose: string
   label: string
@@ -70,6 +76,9 @@ export function capabilityContextReference(
         instanceId: envelope.instanceId,
         collectionKey: envelope.collectionKey,
         ...(envelope.pageId ? { pageId: envelope.pageId } : {}),
+        ...(envelope.selectedComponentId
+          ? { selectedComponentId: envelope.selectedComponentId }
+          : {}),
         ...(envelope.viewKey ? { viewKey: envelope.viewKey } : {}),
         purpose: envelope.purpose,
         selected,

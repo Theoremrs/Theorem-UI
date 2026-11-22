@@ -46,7 +46,7 @@ import type {
 } from '@/lib/capabilities/contract'
 import { capabilityContextReference } from '@/lib/capabilities/reference'
 import type { ModuleViewProps } from '@/lib/modules/registry'
-import { usePageId } from '../pages/page-route'
+import { usePagePath } from '../pages/page-route'
 import { ActionForm } from './action-form'
 import { DescribeState, Loading, PermissionState, StatusLine } from './states'
 import type { Status } from './states'
@@ -161,7 +161,9 @@ function CapabilityRecordBody({
   collectionKey: string | undefined
 }) {
   const { output, emit } = view
-  const pageId = usePageId()
+  const pageId = usePagePath()
+  // The page component that shows this: a composite's own id, when inside one.
+  const selectedComponentId = view.path.split('/')[0]
   const instanceId = text(view.settings.instanceId)
   // The view a connected table shows, when one is bound in: the envelope then
   // names it, so the agent knows where the record was picked from.
@@ -208,6 +210,7 @@ function CapabilityRecordBody({
             collectionKey: key,
             pageId,
             viewKey,
+            selectedComponentId,
             purpose: definition.purpose,
             label: `${definition.name} · ${rowTitle(fields, row)}`,
             selected: [{ id: row.id, revision: row.revision }],
@@ -217,7 +220,17 @@ function CapabilityRecordBody({
             truncated: false,
           })
         : undefined,
-    [row, shown, instanceId, key, pageId, viewKey, definition, fields],
+    [
+      row,
+      shown,
+      instanceId,
+      key,
+      pageId,
+      viewKey,
+      selectedComponentId,
+      definition,
+      fields,
+    ],
   )
 
   // What this module shows is also what the page can wire onward: its Selected

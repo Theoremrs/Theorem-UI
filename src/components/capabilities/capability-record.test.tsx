@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { act } from 'react'
 import { cleanup, render, waitFor } from '../../../test/workspace'
 import { CapabilityRecordModule } from './capability-record'
+import { PageFileContext } from '../pages/page-route'
 import { PageRuntimeProvider } from '../pages/page-runtime'
 import { CAPABILITIES } from '@/lib/capabilities/api'
 import { codes } from '@/lib/capabilities/contract'
@@ -175,6 +176,8 @@ async function showRecord(
   },
   inputs: Record<string, unknown> = {},
   grant?: Grant,
+  /** The page file it is on; none outside a page. */
+  page?: string,
 ) {
   if (grant) described = describeResult(grant)
   const outputs: Record<string, unknown[]> = {}
@@ -190,9 +193,11 @@ async function showRecord(
     arranging: false,
   }
   const shown = await render(
-    <PageRuntimeProvider>
-      <CapabilityRecordModule {...view} />
-    </PageRuntimeProvider>,
+    <PageFileContext.Provider value={page}>
+      <PageRuntimeProvider>
+        <CapabilityRecordModule {...view} />
+      </PageRuntimeProvider>
+    </PageFileContext.Provider>,
   )
   return { ...shown, outputs }
 }
@@ -478,11 +483,12 @@ test('what it shows rides to the composer as context, at one revision', async ()
   const context = await waitFor(
     () => outputs.context?.at(-1) as CapabilityContextReference,
   )
-  // Outside a page route there is no page to name, so the envelope carries none.
+  // Outside a page there is no page file to name; the module still names itself.
   expect(context.location.resource).toEqual({
     kind: 'capability',
     instanceId: 'tracker/main',
     collectionKey: 'tasks',
+    selectedComponentId: 'record-1',
     purpose: 'Track personal projects and tasks',
     selected: [{ id: 'rec-1', revision: 6 }],
     filtered: false,
@@ -506,6 +512,22 @@ test('a view bound in from a connected table is named by the envelope', async ()
     instanceId: 'tracker/main',
     viewKey: 'next',
     selected: [{ id: 'rec-1', revision: 6 }],
+  })
+})
+
+test('on a page, the envelope names the page file by its path', async () => {
+  const { outputs } = await showRecord(
+    undefined,
+    undefined,
+    undefined,
+    'Pages/Desk.page.json',
+  )
+  const context = await waitFor(
+    () => outputs.context?.at(-1) as CapabilityContextReference,
+  )
+  expect(context.location.resource).toMatchObject({
+    pageId: 'Pages/Desk.page.json',
+    selectedComponentId: 'record-1',
   })
 })
 

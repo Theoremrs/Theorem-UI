@@ -2,7 +2,9 @@
 // its parts (Components, Outline, Preview, Fields) arranges it, the canvas
 // in this document rather than an iframe so instances share the page's
 // runtime. Pages are files in the vault (store.ts), saved with If-Match, or
-// create-only for a mode's page that is still its template. DESIGN.md's state
+// create-only for a mode's page that is still its template; in the Theorem
+// vault through its page owner, which keeps each version (page-history.tsx
+// lists them, and one is previewed here before it is restored). DESIGN.md's state
 // grammar: unsaved, saved, conflict, failed and newer elsewhere each say so,
 // with the way out beside them.
 import { Puck, Render } from '@puckeditor/core'
@@ -23,10 +25,13 @@ import { usePageDrafts } from '@/lib/modules/drafts'
 import { prepareLayout, restoreLayout } from '@/lib/modules/layout'
 import { moduleById, useModuleCatalog } from '@/lib/modules/registry'
 import {
+  hasPageHistory,
   useInstalledModules,
   useModePage,
   usePage,
+  usePageRevision,
   useResetModePage,
+  useRestorePage,
   useSavePage,
   useVaultClient,
 } from '@/lib/modules/store'
@@ -36,12 +41,15 @@ import {
   modeTemplatePage,
 } from '@/lib/modules/templates'
 import type { PageMode } from '@/lib/modules/templates'
+import type { PageRevision } from '@/lib/pages/contract'
 import { WorkspaceConflictError } from '@/lib/workspace/types'
 import type { WorkspaceClient } from '@/lib/workspace/types'
 import { cn } from '@/lib/utils'
 // For its effect: the built-in modules join the catalog.
 import './builtins'
 import { ContentRendererContext } from './module-instance'
+import { PageHistory, RevisionPreviewBar } from './page-history'
+import { PageFileContext } from './page-route'
 import { PageRuntimeProvider, PageScopeProvider } from './page-runtime'
 import { PageSettingsProvider, withInstanceProps } from './page-settings'
 import type { WriteInstanceProps } from './page-settings'
@@ -120,14 +128,16 @@ export function VaultPage({
   return (
     // One runtime per page: another page, or this one again, starts fresh.
     <PageRuntimeProvider key={entryId}>
-      <PageEditor
-        client={client}
-        loaded={loaded.data}
-        reload={loaded.reload}
-        kind={{ kind: 'page' }}
-        draftKey={`page:${client.workspace.id}:${entryId}`}
-        newerProblem={loaded.error?.message}
-      />
+      <PageFileContext.Provider value={loaded.data.path}>
+        <PageEditor
+          client={client}
+          loaded={loaded.data}
+          reload={loaded.reload}
+          kind={{ kind: 'page' }}
+          draftKey={`page:${client.workspace.id}:${entryId}`}
+          newerProblem={loaded.error?.message}
+        />
+      </PageFileContext.Provider>
     </PageRuntimeProvider>
   )
 }
@@ -170,14 +180,16 @@ function VaultModePage({
   const { template, problem } = loaded.data
   return (
     <PageRuntimeProvider key={mode}>
-      <PageEditor
-        client={client}
-        loaded={loaded.data}
-        reload={loaded.reload}
-        kind={{ kind: 'mode', mode, template, problem }}
-        draftKey={`mode:${client.workspace.id}:${mode}`}
-        newerProblem={loaded.error?.message}
-      />
+      <PageFileContext.Provider value={loaded.data.path}>
+        <PageEditor
+          client={client}
+          loaded={loaded.data}
+          reload={loaded.reload}
+          kind={{ kind: 'mode', mode, template, problem }}
+          draftKey={`mode:${client.workspace.id}:${mode}`}
+          newerProblem={loaded.error?.message}
+        />
+      </PageFileContext.Provider>
     </PageRuntimeProvider>
   )
 }
@@ -275,6 +287,11 @@ function PageEditor({
   // A new arrangement session each time Arrange opens, or the page is replaced.
   const [session, setSession] = useState(0)
   const [conflict, setConflict] = useState<Conflict | null>(null)
+  // An earlier version shown in place of the page, from its history.
+  const [preview, setPreview] = useState<PageRevision | null>(null)
+  const [restoreConflict, setRestoreConflict] = useState(false)
+  const previewed = usePageRevision(client, loaded.path, preview?.revision)
+  const restore = useRestorePage(client)
   const save = useSavePage(client)
   const reset = useResetModePage(client)
   const [resetting, setResetting] = useState(false)
@@ -283,7 +300,8 @@ function PageEditor({
 
   const shown = draft ?? held.page
   const dirty = !!draft && !samePage(draft, held.page)
-  const newer = loaded.hash !== held.hash && !save.isPending
+  const newer =
+    loaded.hash !== held.hash && !save.isPending && !restore.isPending
 
   // Kept outside the view, so leaving the page does not lose it.
   useEffect(() => {
@@ -310,8 +328,14 @@ function PageEditor({
 
   // Settled through the save's promise, not mutate's callbacks: those do not
   // run once the view is gone, and a page saved and left must not stay unsaved.
-  const commit = (page: PageDocument, hash: string | null) =>
-    save.mutateAsync({ path: loaded.path, page, hash }).then(
+  // `base` is the page at `hash`, when known, so a page owner is sent only
+  // the components that changed.
+  const commit = (
+    page: PageDocument,
+    hash: string | null,
+    base?: PageDocument,
+  ) =>
+    save.mutateAsync({ path: loaded.path, page, hash, base }).then(
       (stored) => {
         const drafts = usePageDrafts.getState()
         if (drafts.drafts[draftKey]?.draft === page)
@@ -341,6 +365,31 @@ function PageEditor({
     const { data } = await reload()
     if (data) replaceWith(data)
   }
+  const showVersion = (revision: PageRevision) => {
+    setArranging(false)
+    setRestoreConflict(false)
+    restore.reset()
+    setPreview(revision)
+  }
+  // Written over the revision on screen, so a page changed since is a
+  // conflict here too, never overwritten.
+  const restoreVersion = (revision: PageRevision) =>
+    held.hash !== null &&
+    restore
+      .mutateAsync({
+        path: loaded.path,
+        revision: revision.revision,
+        expectedRevision: held.hash,
+      })
+      .then(
+        (stored) => {
+          setPreview(null)
+          replaceWith(stored)
+        },
+        (error: unknown) => {
+          if (error instanceof WorkspaceConflictError) setRestoreConflict(true)
+        },
+      )
 
   // A module in use can change one of its own settings (a table's picked view);
   // the change lands in the draft, as an arrangement does, and Save keeps it.
@@ -389,11 +438,19 @@ function PageEditor({
       onPin={() => {
         const pinned = !shown.pinned
         if (draft) setDraft({ ...draft, pinned })
-        commit({ ...held.page, pinned }, held.hash)
+        commit({ ...held.page, pinned }, held.hash, held.page)
       }}
       extra={
         <>
           {extra}
+          {hasPageHistory(client) && held.hash !== null && !arranging && (
+            <PageHistory
+              client={client}
+              path={loaded.path}
+              current={held.hash}
+              onPreview={showVersion}
+            />
+          )}
           <SaveAsTemplate client={client} page={shown} />
         </>
       }
@@ -406,7 +463,7 @@ function PageEditor({
           newer={newer && !conflict}
           newerProblem={conflict ? undefined : newerProblem}
           problems={problems.length}
-          onSave={() => draft && commit(draft, held.hash)}
+          onSave={() => draft && commit(draft, held.hash, held.page)}
           onDiscard={() => {
             setDraft(null)
             setStart(
@@ -427,6 +484,66 @@ function PageEditor({
       }
     />
   )
+
+  if (preview) {
+    const version = previewed.data?.page
+    return (
+      <ContentRendererContext.Provider value={renderContent}>
+        <div className="flex h-full min-h-0 flex-col">
+          <header className="flex shrink-0 items-center gap-2 border-b border-separator px-4 py-2">
+            <h1 className="min-w-0 flex-1 truncate font-heading text-[18px] font-medium">
+              {version?.title ?? shown.title}
+            </h1>
+          </header>
+          <RevisionPreviewBar
+            revision={preview}
+            blocked={
+              dirty
+                ? 'Save or discard your changes to this page first.'
+                : undefined
+            }
+            restoring={restore.isPending}
+            failed={
+              restore.error && !restoreConflict
+                ? restore.error.message
+                : undefined
+            }
+            conflict={restoreConflict}
+            onRestore={() => void restoreVersion(preview)}
+            onBack={() => setPreview(null)}
+            onTakeTheirs={() =>
+              void takeTheirs().then(() => setRestoreConflict(false))
+            }
+          />
+          <div className="min-h-0 flex-1 overflow-auto">
+            {previewed.error ? (
+              <PageStatus
+                title="This version did not open"
+                detail={previewed.error.message}
+              />
+            ) : !version ? (
+              <PageSkeleton />
+            ) : (
+              <PageScopeProvider layout={version.layout}>
+                <Render
+                  config={config}
+                  data={prepareLayout(version.layout, lookup, (type) =>
+                    LAYOUT_TYPES.has(type),
+                  )}
+                  metadata={
+                    {
+                      arranging: false,
+                      page: loaded.path,
+                    } satisfies PageMetadata
+                  }
+                />
+              </PageScopeProvider>
+            )}
+          </div>
+        </div>
+      </ContentRendererContext.Provider>
+    )
+  }
 
   if (arranging)
     return (

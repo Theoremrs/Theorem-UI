@@ -14,7 +14,14 @@ import {
 import { pageText, parsePage } from '@/lib/modules/contract'
 import { pagesUnsaved, usePageDrafts } from '@/lib/modules/drafts'
 import { newPage } from '@/lib/modules/layout'
+import { patchPage, savePage } from '@/lib/pages/api'
+import { stubPageOwner } from '../../../test/page-owner'
+import { RECORDS_NOT_AFFECTED } from './page-history'
 import { VaultPage } from './page-view'
+
+const happyDom = (
+  window as unknown as { happyDOM: { setURL: (url: string) => void } }
+).happyDOM
 
 afterEach(() => {
   cleanup()
@@ -175,4 +182,65 @@ test('a page saved and left before the save returns is saved', async () => {
     fake.text('Pages/Desk.page.json')?.includes('Reading desk'),
   )
   await waitFor(() => !pagesUnsaved())
+})
+
+test('in the Theorem vault a pin is a patch, and an earlier version is previewed in place and restored as a new one', async () => {
+  happyDom.setURL('http://localhost:3000/')
+  const fake = fakeWorkspace({})
+  const owner = stubPageOwner(fake)
+  try {
+    const path = 'Pages/Desk.page.json'
+    const first = await savePage({ path, page: newPage('Desk') })
+    await patchPage({
+      path,
+      expectedRevision: first.revision,
+      ops: [{ op: 'set_title', title: 'Study' }],
+    })
+    const entry = (await fake.client.tree()).find((e) => e.path === path)!
+    const { container } = await render(
+      <VaultPage client={owner.client} entryId={entry.id} />,
+    )
+    const title = () => container.querySelector('h1')?.textContent
+    await waitFor(() => title() === 'Study')
+
+    const before = owner.calls.length
+    act(() =>
+      container.querySelector<HTMLButtonElement>('[aria-label="Pin"]')!.click(),
+    )
+    await waitFor(() => owner.calls.length > before)
+    expect(owner.calls.at(-1)!.route).toBe('/patch')
+    expect(owner.calls.at(-1)!.body!.ops).toEqual([
+      { op: 'set_pinned', pinned: true },
+    ])
+    await waitFor(() => parsePage(path, fake.text(path)!).pinned)
+
+    act(() => button(container, 'History')!.click())
+    const body = document.body
+    await waitFor(() => body.textContent.includes('Version 1'))
+    expect(body.textContent).toContain(RECORDS_NOT_AFFECTED)
+    expect(body.textContent).toContain('Version 3')
+    const rows = [...body.querySelectorAll('li')]
+    const oldest = rows.find((li) => li.textContent.includes('Version 1'))!
+    act(() =>
+      [...oldest.querySelectorAll('button')]
+        .find((b) => b.textContent.trim() === 'Preview')!
+        .click(),
+    )
+    await waitFor(() => title() === 'Desk')
+    expect(container.textContent).toContain('You are looking at version 1')
+    expect(container.textContent).toContain(RECORDS_NOT_AFFECTED)
+    // Nothing is written by looking.
+    expect(parsePage(path, fake.text(path)!).title).toBe('Study')
+
+    act(() => button(container, 'Restore this version')!.click())
+    await waitFor(() => !button(container, 'Restore this version'))
+    expect(owner.calls.at(-1)!.route).toBe('/restore')
+    const restored = parsePage(path, fake.text(path)!)
+    expect(restored).toEqual(newPage('Desk'))
+    expect(title()).toBe('Desk')
+    expect(container.textContent).not.toContain('Unsaved changes')
+  } finally {
+    owner.restore()
+    happyDom.setURL('about:blank')
+  }
 })

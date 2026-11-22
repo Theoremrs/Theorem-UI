@@ -8,6 +8,7 @@ import { act } from 'react'
 import { cleanup, render, waitFor } from '../../../test/workspace'
 import { useComposerReferences } from '@/components/chat/composer-references'
 import { CapabilityTableModule } from './capability-table'
+import { PageFileContext } from '../pages/page-route'
 import { PageRuntimeProvider } from '../pages/page-runtime'
 import { CAPABILITIES } from '@/lib/capabilities/api'
 import { codes } from '@/lib/capabilities/contract'
@@ -213,12 +214,14 @@ async function showTable(
     viewKey: '',
   },
   grant?: Grant,
+  /** The page file it is on, and where on it; none outside a page. */
+  where: { page?: string; path?: string } = {},
 ) {
   if (grant) described = describeResult(grant)
   const outputs: Record<string, unknown[]> = {}
   const view: ModuleViewProps = {
     instanceId: 'table-1',
-    path: 'table-1',
+    path: where.path ?? 'table-1',
     settings,
     inputs: {},
     output: (name, value) => {
@@ -228,9 +231,11 @@ async function showTable(
     arranging: false,
   }
   const shown = await render(
-    <PageRuntimeProvider>
-      <CapabilityTableModule {...view} />
-    </PageRuntimeProvider>,
+    <PageFileContext.Provider value={where.page}>
+      <PageRuntimeProvider>
+        <CapabilityTableModule {...view} />
+      </PageRuntimeProvider>
+    </PageFileContext.Provider>,
   )
   return { ...shown, outputs }
 }
@@ -343,6 +348,7 @@ test('a selection rides to the composer as context, with no record bodies', asyn
     kind: 'capability',
     instanceId: 'tracker/main',
     collectionKey: 'tasks',
+    selectedComponentId: 'table-1',
     viewKey: 'next',
     purpose: 'Track personal projects and tasks',
     selected: [{ id: 'rec-1', revision: 6 }],
@@ -362,6 +368,26 @@ test('a selection rides to the composer as context, with no record bodies', asyn
       instanceId: 'tracker/main',
       collectionKey: 'tasks',
     },
+  })
+})
+
+test('on a page, the envelope names the page file by its path and the page component that shows it', async () => {
+  const { container, outputs } = await showTable(undefined, undefined, {
+    page: 'Pages/Desk.page.json',
+    // Inside a composite: the page holds the composite, which a page_patch names.
+    path: 'cols/table-1',
+  })
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () =>
+    container.querySelector<HTMLElement>('[data-slot="checkbox"]')!.click(),
+  )
+  const context = await waitFor(
+    () => outputs.context?.at(-1) as CapabilityContextReference,
+  )
+  expect(context.location.resource).toMatchObject({
+    pageId: 'Pages/Desk.page.json',
+    selectedComponentId: 'cols',
+    viewKey: 'next',
   })
 })
 
@@ -807,6 +833,8 @@ test('use in this conversation puts the view in the composer, with or without a 
     viewKey: 'next',
     purpose: 'Track personal projects and tasks',
     selected: [],
+    // The component the view is placed in, so a page patch can name it.
+    selectedComponentId: 'table-1',
     filtered: true,
     truncated: false,
   })
