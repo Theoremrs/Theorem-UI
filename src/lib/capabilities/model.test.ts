@@ -212,7 +212,7 @@ describe('values', () => {
     })
   })
 
-  test('a blank optional field is null, a blank required one is refused by the form', () => {
+  test('a blank optional field is left out of the inputs, a blank required one is refused by the form', () => {
     expect(parseValue({ kind: 'text' }, '  ')).toEqual({
       ok: true,
       value: null,
@@ -227,10 +227,10 @@ describe('values', () => {
       ok: false,
       errors: { title: 'needed' },
     })
-    expect(actionValues(action, { title: 'Plan', due_at: '' })).toEqual({
-      ok: true,
-      values: { title: 'Plan', due_at: null },
-    })
+    // Absent applies no effect; the executor refuses a null input outright.
+    const parsed = actionValues(action, { title: 'Plan', due_at: '' })
+    expect(parsed).toEqual({ ok: true, values: { title: 'Plan' } })
+    expect(parsed.ok && Object.hasOwn(parsed.values, 'due_at')).toBe(false)
   })
 
   test('a timestamp is normalised to RFC 3339 and a bad one refused', () => {

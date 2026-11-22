@@ -1,10 +1,9 @@
-// SOURCING: the narrow authoring controls the plan's UI section names (add an optional field, rename
-// a field's label, edit one view's filter), over the author route in lib/capabilities/api; the
-// records' Segmented control, the app's Dialog, and the native field styling pages/resource-field.tsx
-// uses. Each control sends one PatchOp naming the definition id it read, so two people authoring one
+// SOURCING: the authoring controls the plan's UI sections name (fields, views, and from slice 2 their
+// lifecycle, agent access, history and templates), over the author route in lib/capabilities/api; the
+// records' Segmented control, the app's Dialog, and the shared parts in ./authoring-parts. Each control
+// sends one patch naming the definition id describe answered with, so two people authoring one
 // definition cannot overwrite each other blind.
-import { useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Segmented } from '@/components/records/field-form'
 import {
@@ -19,33 +18,46 @@ import { Button } from '@/components/ui/button'
 import { fieldControl } from '@/components/pages/resource-field'
 import { codes } from '@/lib/capabilities/contract'
 import type {
-  CapabilityDefinition,
   CapabilityFieldType,
   CollectionSchema,
+  DescribeResult,
   PatchOp,
-  QueryFilter,
 } from '@/lib/capabilities/contract'
 import {
   addFieldOp,
-  describeFilter,
-  fieldsByKey,
-  filterRows,
   isValidFieldKey,
-  opsForField,
   renameFieldOp,
-  rowsFilter,
   schemaFor,
-  setViewFilterOp,
-  valueless,
 } from '@/lib/capabilities/model'
-import type { FilterRow } from '@/lib/capabilities/model'
 import { refusalCode, refusalMessage } from '@/lib/capabilities/api'
-import { capabilityKeys, useCapabilityAuthor } from './queries'
+import { AgentAccess } from './agent-access'
+import { Choice, Row, StatusLine } from './authoring-parts'
+import type { Status, Submit } from './authoring-parts'
+import { DefinitionHistoryPanel } from './definition-history'
+import { AddVariant, LifecycleEditor } from './field-editors'
+import {
+  capabilityKeys,
+  useCapabilityAuthor,
+  useCapabilityRepin,
+} from './queries'
+import { NewFromTemplate, SaveTemplate } from './templates'
+import { ViewEditor } from './view-editor'
+
+const SECTIONS = [
+  { value: 'fields', label: 'Fields' },
+  { value: 'views', label: 'Views' },
+  { value: 'agent', label: 'Agent access' },
+  { value: 'history', label: 'History' },
+  { value: 'templates', label: 'Templates' },
+] as const
+
+type Section = (typeof SECTIONS)[number]['value']
 
 const TABS = [
   { value: 'add', label: 'Add field' },
   { value: 'rename', label: 'Rename' },
-  { value: 'filter', label: 'View filter' },
+  { value: 'variant', label: 'Add variant' },
+  { value: 'lifecycle', label: 'Lifecycle' },
 ] as const
 
 type Tab = (typeof TABS)[number]['value']
@@ -89,129 +101,64 @@ function fieldTypeOf(
   }
 }
 
-function Row({
-  label,
-  hint,
-  children,
-}: {
-  label: string
-  hint?: string
-  children: ReactNode
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-ink-muted">{label}</span>
-      {children}
-      {hint && <span className="text-xs text-ink-faint">{hint}</span>}
-    </label>
-  )
-}
-
-function Choice({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  value: string
-  options: Array<{ value: string; label: string }>
-  onChange: (value: string) => void
-}) {
-  return (
-    <select
-      aria-label={label}
-      className={fieldControl}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  )
-}
-
-/** One control's line: what it is doing, and the refusal that stopped it. */
-function StatusLine({
-  status,
-}: {
-  status: { kind: 'pending' | 'saved' | 'failed'; message: string } | undefined
-}) {
-  if (!status) return null
-  return (
-    <p
-      role={status.kind === 'failed' ? 'alert' : 'status'}
-      className={
-        status.kind === 'failed'
-          ? 'rounded-md bg-error-container px-2 py-1.5 text-xs text-error-ink'
-          : 'rounded-md bg-raised px-2 py-1.5 text-xs text-ink-muted'
-      }
-    >
-      {status.message}
-    </p>
-  )
-}
-
-type Status = { kind: 'pending' | 'saved' | 'failed'; message: string }
-
 /**
  * The authoring controls for one instance, opened from the table module that
- * shows its rows. A patch names the definition id the rows were read under; a
+ * shows its rows. A patch names the definition id describe answered with; a
  * stale one is refused and the dialog says so, having read the current
  * definition back.
  */
 export function AuthoringDialog({
   instanceId,
-  definition,
-  schemas,
+  described,
   viewKey,
-  expectedDefinitionId,
   onClose,
+  onAsk,
+  onOpenInstance,
 }: {
   instanceId: string
-  definition: CapabilityDefinition
-  schemas: CollectionSchema[]
-  /** The view the module is showing, which the filter editor starts from. */
+  described: DescribeResult
+  /** The view the module is showing, which the view editor starts from. */
   viewKey: string
-  expectedDefinitionId: string
   onClose: () => void
+  /** Put what the module shows in the current conversation, as its Ask does. */
+  onAsk?: () => void
+  /** Switch the module to another instance, such as one just made from a template. */
+  onOpenInstance?: (instanceId: string) => void
 }) {
+  const [section, setSection] = useState<Section>('fields')
   const [tab, setTab] = useState<Tab>('add')
   const [status, setStatus] = useState<Status | undefined>()
   const authoring = useCapabilityAuthor(instanceId)
+  const repinning = useCapabilityRepin(instanceId)
   const client = useQueryClient()
+  const { definition, collectionSchemas: schemas } = described
+  const expectedDefinitionId = described.definitionId
 
   const collections = definition.collections.map((collection) => ({
     value: collection.key,
     label: collection.label,
   }))
-  const views = definition.views.map((view) => ({
-    value: view.key,
-    label: view.label,
-  }))
 
-  const submit = async (op: PatchOp, what: string) => {
+  const submit: Submit = async (ops, what) => {
     if (!expectedDefinitionId) {
       setStatus({
         kind: 'failed',
         message:
           'Nothing is loaded to author against. Reload the view, then try again.',
       })
-      return
+      return false
     }
     setStatus({ kind: 'pending', message: `${what}…` })
     try {
       const result = await authoring.mutateAsync({
         expectedDefinitionId,
-        ops: [op],
+        ops,
       })
       setStatus({
         kind: 'saved',
         message: `${what} · the definition is now ${result.definitionId}.`,
       })
+      return true
     } catch (error) {
       if (refusalCode(error) === codes.DEFINITION_CONFLICT) {
         // Read the current definition back before asking again, so the retry is
@@ -223,15 +170,35 @@ export function AuthoringDialog({
           kind: 'failed',
           message: `${refusalMessage(error, 'Authoring')} The current definition has been read again: check your change against the fields now shown and submit it once more.`,
         })
-        return
+        return false
       }
       setStatus({ kind: 'failed', message: refusalMessage(error, 'Authoring') })
+      return false
     }
   }
+  const one = (what: string) => (op: PatchOp) => void submit([op], what)
+
+  /** Pin an earlier definition again. It names the version, not a base: no conflict to read back. */
+  const repin = async (definitionId: string) => {
+    setStatus({ kind: 'pending', message: `Re-pinning to ${definitionId}…` })
+    try {
+      const result = await repinning.mutateAsync(definitionId)
+      setStatus({
+        kind: 'saved',
+        message: `Re-pinned · the instance now uses ${result.definitionId}. Records are not changed.`,
+      })
+    } catch (error) {
+      setStatus({
+        kind: 'failed',
+        message: refusalMessage(error, 'Re-pinning'),
+      })
+    }
+  }
+  const busy = authoring.isPending || repinning.isPending
 
   return (
     <Dialog open onOpenChange={(shown) => !shown && onClose()}>
-      <DialogContent showCloseButton={false} className="max-w-lg">
+      <DialogContent showCloseButton={false} className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Author {definition.name}</DialogTitle>
           <DialogDescription>
@@ -241,39 +208,91 @@ export function AuthoringDialog({
         </DialogHeader>
 
         <Segmented
-          value={tab}
-          options={[...TABS]}
-          onChange={setTab}
-          label="What to change"
+          value={section}
+          options={[...SECTIONS]}
+          onChange={(next) => {
+            setSection(next)
+            setStatus(undefined)
+          }}
+          label="What to author"
         />
         <StatusLine status={status} />
 
-        {tab === 'add' && (
-          <AddField
-            collections={collections}
-            schemas={schemas}
-            busy={authoring.isPending}
-            onSubmit={(op) => submit(op, 'Field added')}
-          />
-        )}
-        {tab === 'rename' && (
-          <RenameField
-            collections={collections}
-            schemas={schemas}
-            busy={authoring.isPending}
-            onSubmit={(op) => submit(op, 'Field renamed')}
-          />
-        )}
-        {tab === 'filter' && (
-          <ViewFilter
-            definition={definition}
-            schemas={schemas}
-            views={views}
-            startViewKey={viewKey}
-            busy={authoring.isPending}
-            onSubmit={(op) => submit(op, 'View filter set')}
-          />
-        )}
+        <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
+          {section === 'fields' && (
+            <>
+              <Segmented
+                value={tab}
+                options={[...TABS]}
+                onChange={setTab}
+                label="What to change"
+              />
+              {tab === 'add' && (
+                <AddField
+                  collections={collections}
+                  schemas={schemas}
+                  busy={busy}
+                  onSubmit={one('Field added')}
+                />
+              )}
+              {tab === 'rename' && (
+                <RenameField
+                  collections={collections}
+                  schemas={schemas}
+                  busy={busy}
+                  onSubmit={one('Field renamed')}
+                />
+              )}
+              {tab === 'variant' && (
+                <AddVariant
+                  definition={definition}
+                  schemas={schemas}
+                  busy={busy}
+                  onSubmit={submit}
+                />
+              )}
+              {tab === 'lifecycle' && (
+                <LifecycleEditor
+                  definition={definition}
+                  schemas={schemas}
+                  busy={busy}
+                  onSubmit={submit}
+                />
+              )}
+            </>
+          )}
+          {section === 'views' && (
+            <ViewEditor
+              definition={definition}
+              schemas={schemas}
+              startViewKey={viewKey}
+              busy={busy}
+              onSubmit={submit}
+            />
+          )}
+          {section === 'agent' && (
+            <AgentAccess
+              definition={definition}
+              grants={described.grants}
+              busy={busy}
+              onSubmit={submit}
+              onAsk={onAsk}
+            />
+          )}
+          {section === 'history' && (
+            <DefinitionHistoryPanel
+              instanceId={instanceId}
+              busy={busy}
+              onRepin={(definitionId) => void repin(definitionId)}
+            />
+          )}
+          {section === 'templates' && (
+            <div className="flex flex-col gap-4">
+              <SaveTemplate instanceId={instanceId} definition={definition} />
+              <NewFromTemplate onOpen={onOpenInstance} />
+            </div>
+          )}
+        </div>
 
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onClose}>
@@ -469,188 +488,6 @@ function RenameField({
         }
       >
         Rename field
-      </Button>
-    </div>
-  )
-}
-
-/**
- * One view's filter, as rows of field / op / value. The rows are a flat `and`:
- * an or or not group is what this editor cannot show yet, and the dialog says so
- * rather than dropping one quietly. Editing another view's rows does not keep
- * these.
- */
-function ViewFilter({
-  definition,
-  schemas,
-  views,
-  startViewKey,
-  busy,
-  onSubmit,
-}: {
-  definition: CapabilityDefinition
-  schemas: CollectionSchema[]
-  views: Array<{ value: string; label: string }>
-  startViewKey: string
-  busy: boolean
-  onSubmit: (op: PatchOp) => void
-}) {
-  const [viewKey, setViewKey] = useState(startViewKey)
-  const view =
-    definition.views.find((one) => one.key === viewKey) ?? definition.views[0]
-  const declared = useMemo(
-    () => (view ? filterRows(view.filter) : { rows: [], groups: 0 }),
-    [view],
-  )
-  const [editing, setEditing] = useState<{
-    viewKey: string
-    rows: FilterRow[]
-  }>()
-  const fields = useMemo(
-    () => fieldsByKey(schemaFor(schemas, view?.collectionKey ?? '')),
-    [schemas, view],
-  )
-  if (!view)
-    return (
-      <p className="text-xs text-ink-muted">
-        This definition declares no view yet.
-      </p>
-    )
-  const held = editing?.viewKey === view.key ? editing.rows : declared.rows
-  const setRows = (updater: (rows: FilterRow[]) => FilterRow[]) =>
-    setEditing({ viewKey: view.key, rows: updater(held) })
-
-  const fieldFor = (key: string) => fields.get(key)
-  const producing: QueryFilter = rowsFilter(held, fieldFor)
-  const fieldOptions = [...fields.values()].map((field) => ({
-    value: field.key,
-    label: field.label,
-  }))
-
-  return (
-    <div className="flex flex-col gap-2">
-      <Row label="View">
-        <Choice
-          label="View"
-          value={view.key}
-          options={views}
-          onChange={setViewKey}
-        />
-      </Row>
-      <p className="text-xs text-ink-muted">
-        Over {view.collectionKey}. Conditions combine with AND; an or or not
-        group is a follow-up, so this editor shows none and saving replaces the
-        whole filter with the rows below.
-      </p>
-      {declared.groups > 0 && (
-        <p
-          role="alert"
-          className="rounded-md bg-error-container px-2 py-1.5 text-xs text-error-ink"
-        >
-          This view's filter holds {declared.groups} group
-          {declared.groups === 1 ? '' : 's'} this editor cannot show. Saving
-          replaces them with the rows below.
-        </p>
-      )}
-      {held.map((row, at) => {
-        const ops = opsForField(fieldFor(row.fieldKey))
-        return (
-          <div key={at} className="flex items-center gap-1.5">
-            <Choice
-              label="Filter field"
-              value={row.fieldKey}
-              options={
-                fieldFor(row.fieldKey)
-                  ? fieldOptions
-                  : [
-                      { value: row.fieldKey, label: row.fieldKey },
-                      ...fieldOptions,
-                    ]
-              }
-              onChange={(next) =>
-                setRows((rows) =>
-                  rows.map((one, i) =>
-                    i === at
-                      ? {
-                          ...one,
-                          fieldKey: next,
-                          op: opsForField(fieldFor(next))[0] ?? 'eq',
-                          value: '',
-                        }
-                      : one,
-                  ),
-                )
-              }
-            />
-            <Choice
-              label="Filter operator"
-              value={row.op}
-              options={ops.map((one) => ({ value: one, label: one }))}
-              onChange={(next) =>
-                setRows((rows) =>
-                  rows.map((one, i) =>
-                    i === at ? { ...one, op: next as FilterRow['op'] } : one,
-                  ),
-                )
-              }
-            />
-            {!valueless(row.op) && (
-              <input
-                aria-label="Filter value"
-                className={fieldControl}
-                value={row.value}
-                onChange={(event) =>
-                  setRows((rows) =>
-                    rows.map((one, i) =>
-                      i === at ? { ...one, value: event.target.value } : one,
-                    ),
-                  )
-                }
-              />
-            )}
-            <Button
-              size="xs"
-              variant="ghost"
-              aria-label={`Remove condition ${at + 1}`}
-              onClick={() => setRows((rows) => rows.filter((_, i) => i !== at))}
-            >
-              ×
-            </Button>
-          </div>
-        )
-      })}
-      <Button
-        size="xs"
-        variant="outline"
-        className="self-start"
-        disabled={fields.size === 0}
-        onClick={() =>
-          setRows((rows) => {
-            const fieldKey =
-              rows.at(-1)?.fieldKey ?? fieldOptions[0]?.value ?? ''
-            return [
-              ...rows,
-              {
-                fieldKey,
-                op: opsForField(fieldFor(fieldKey))[0] ?? 'eq',
-                value: '',
-              },
-            ]
-          })
-        }
-      >
-        Add condition
-      </Button>
-      <p className="text-xs text-ink-faint">
-        This view will read: {describeFilter(producing)}.
-      </p>
-      <Button
-        size="sm"
-        disabled={busy || held.some((row) => !row.fieldKey)}
-        aria-busy={busy}
-        onClick={() => onSubmit(setViewFilterOp(view.key, producing))}
-      >
-        Save filter
       </Button>
     </div>
   )

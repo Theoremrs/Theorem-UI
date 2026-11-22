@@ -67,7 +67,13 @@ const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
 const inlineEditable = (field: ResolvedField) =>
   isEditable(fieldSpecOf(field)) && field.fieldType.kind !== 'relation'
 
-/** A relation value, picked from the collection that target is part of. */
+/**
+ * A relation value, picked from the collection that target is part of. It is
+ * never cleared: an absent input leaves a field as it is and the executor
+ * refuses a null one, so no call can empty a field. A set value offers only
+ * other targets; an empty one shows that state as a placeholder that cannot be
+ * chosen, and nothing commits until a target is.
+ */
 function RelationPick({
   instanceId,
   definition,
@@ -114,9 +120,15 @@ function RelationPick({
         aria-label={`Choose ${field.label}`}
         className={fieldControl}
         value={current}
-        onChange={(event) => onCommit(event.target.value || null)}
+        onChange={(event) => {
+          if (event.target.value) onCommit(event.target.value)
+        }}
       >
-        <option value="">(none)</option>
+        {!current && (
+          <option value="" disabled>
+            Not set · choose one
+          </option>
+        )}
         {rows.map((row) => (
           <option key={row.id} value={row.id}>
             {rowTitle(targetFields, row)}
@@ -151,6 +163,9 @@ function CapabilityRecordBody({
   const { output, emit } = view
   const pageId = usePageId()
   const instanceId = text(view.settings.instanceId)
+  // The view a connected table shows, when one is bound in: the envelope then
+  // names it, so the agent knows where the record was picked from.
+  const viewKey = text(view.inputs.viewKey) || undefined
   const definition = described.definition
   const grant = described.callerGrant
   const found = useCapabilityRecord(
@@ -192,6 +207,7 @@ function CapabilityRecordBody({
             instanceId,
             collectionKey: key,
             pageId,
+            viewKey,
             purpose: definition.purpose,
             label: `${definition.name} · ${rowTitle(fields, row)}`,
             selected: [{ id: row.id, revision: row.revision }],
@@ -201,7 +217,7 @@ function CapabilityRecordBody({
             truncated: false,
           })
         : undefined,
-    [row, shown, instanceId, key, pageId, definition, fields],
+    [row, shown, instanceId, key, pageId, viewKey, definition, fields],
   )
 
   // What this module shows is also what the page can wire onward: its Selected
@@ -397,6 +413,9 @@ function CapabilityRecordBody({
                       field={spec}
                       value={draft[field.key] ?? row.fields[field.key]}
                       row={shown}
+                      // The contract cannot clear a field: an absent input
+                      // changes nothing and a null one is refused.
+                      clearable={false}
                       onCommit={(value) => {
                         setDraft((held) => ({ ...held, [field.key]: value }))
                         setEditing(undefined)
@@ -500,8 +519,9 @@ function CapabilityRecordBody({
 
 /**
  * The module: it shows the record its Item input names, else the one its
- * Record setting does. The instance comes from this module's own setting, so a
- * selection wired from another page cannot reach across instances.
+ * Record setting does. The instance comes from this module's own setting or
+ * its Instance input, never from the record item, so a selection wired from
+ * another page cannot reach across instances.
  */
 export function CapabilityRecordModule(view: ModuleViewProps) {
   const instanceId = text(view.settings.instanceId)

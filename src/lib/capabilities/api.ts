@@ -5,20 +5,26 @@
 // Theorem's capabilities_api pins (docs/plans/user-authored-capabilities/README.md).
 import { mutate } from '@/lib/theorem/client'
 import { theoremJson } from '@/lib/theorem/passthrough'
-import { codes, matchAll } from './contract'
+import { INVOKE_TARGETS_MAX, codes, matchAll } from './contract'
 import type {
   AuthorResult,
   CapabilityDefinition,
   CapabilityRecordRow,
+  CapabilityTemplate,
   CreateInstanceRequest,
+  DefinitionHistory,
+  DefinitionHistoryQuery,
   DescribeResult,
   DiscoverResult,
   DefinitionPatch,
+  InstantiateTemplateRequest,
   InvocationReceipt,
   InvokeRequest,
   QueryRequest,
   QueryResult,
   RepinRequest,
+  SaveTemplateRequest,
+  TemplateList,
 } from './contract'
 
 export const CAPABILITIES = '/api/capabilities/v1'
@@ -231,6 +237,80 @@ export async function readRecordAnywhere(
   return undefined
 }
 
+// ── Slice 2: definition history, templates, multi-target invocation ─────────
+
+/**
+ * The instance's definition history, newest first: every pin it has held, why,
+ * and by whom. `cursor` and `limit` ride in the query string.
+ */
+export const history = (
+  instanceId: string,
+  { cursor, limit }: DefinitionHistoryQuery = {},
+) => {
+  const params = new URLSearchParams()
+  if (cursor) params.set('cursor', cursor)
+  if (limit !== undefined) params.set('limit', String(limit))
+  const search = params.size ? `?${params}` : ''
+  return read<DefinitionHistory>(
+    `${CAPABILITIES}/instances/${id(instanceId)}/history${search}`,
+  )
+}
+
+/**
+ * Save the instance's pinned definition as a library template. The server copies
+ * the definition and its declared types only: records, grants, enabled schedules
+ * and credentials are never part of a template.
+ */
+export const saveTemplate = (request: SaveTemplateRequest) =>
+  write<CapabilityTemplate>(`${CAPABILITIES}/library/templates`, request)
+
+/** The templates this caller may read. */
+export const listTemplates = () =>
+  read<TemplateList>(`${CAPABILITIES}/library/templates`)
+
+/** One template, by id. */
+export const readTemplate = (templateId: string) =>
+  read<CapabilityTemplate>(
+    `${CAPABILITIES}/library/templates/${id(templateId)}`,
+  )
+
+/** Bind a fresh instance from a template, under the id the caller chose. */
+export const instantiateTemplate = (
+  templateId: string,
+  request: InstantiateTemplateRequest,
+) =>
+  write<AuthorResult>(
+    `${CAPABILITIES}/library/templates/${id(templateId)}/instantiate`,
+    request,
+  )
+
+/**
+ * Run one update action over several records at once, all or nothing: every row
+ * is named at the revision on screen, so a record that moved refuses the whole
+ * call rather than part of it. The bounds are the contract's, checked here so a
+ * call that cannot be accepted is never sent.
+ */
+export function invokeTargets({
+  rows,
+  ...input
+}: Omit<InvokeInput, 'recordId' | 'expectedRevision' | 'targets'> & {
+  rows: ReadonlyArray<Pick<CapabilityRecordRow, 'id' | 'revision'>>
+}): Promise<InvocationReceipt> {
+  if (rows.length === 0)
+    return Promise.reject(new Error('Choose at least one record.'))
+  if (rows.length > INVOKE_TARGETS_MAX)
+    return Promise.reject(
+      new Error(`One call may change at most ${INVOKE_TARGETS_MAX} records.`),
+    )
+  return invoke({
+    ...input,
+    targets: rows.map((row) => ({
+      recordId: row.id,
+      expectedRevision: row.revision,
+    })),
+  })
+}
+
 // ── Refusals ────────────────────────────────────────────────────────────────
 
 /** The problem code a refusal carries, when it carries one at all. */
@@ -306,6 +386,8 @@ export function refusalMessage(error: unknown, action: string): string {
       return `The definition was refused as invalid.`
     case codes.INSTANCE_EXISTS:
       return `An instance with that id is already bound.`
+    case codes.TEMPLATE_NOT_FOUND:
+      return `That template is not there: it was never saved, or it is not yours to read.`
   }
   const detail =
     error !== null && typeof error === 'object' && 'body' in error

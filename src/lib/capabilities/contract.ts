@@ -193,6 +193,11 @@ export type Grant = {
   /** Action keys, or `["*"]` for every action. */
   invoke: string[]
   author: boolean
+  /**
+   * Slice 2: permission to enable rules and run background behavior. The owner
+   * holds it implicitly; the Rust skips it when false, so it is absent then.
+   */
+  background?: boolean
 }
 
 export type CapabilityInstance = {
@@ -253,6 +258,28 @@ export type PatchOp =
   | { op: 'set_view_filter'; viewKey: string; filter: QueryFilter }
   | { op: 'add_view'; view: ViewSpec }
   | { op: 'add_action'; action: ActionSpec }
+  // Slice 2: definition-only edits by stable key. Removing an action that a
+  // grant names is refused (`capability_input_invalid`) until the grant changes.
+  /** Replace the view with the same key: label, filter, order, display fields, layout. */
+  | { op: 'replace_view'; view: ViewSpec }
+  | { op: 'remove_view'; viewKey: string }
+  | { op: 'replace_action'; action: ActionSpec }
+  | { op: 'remove_action'; actionKey: string }
+  /** Additive: a new variant of an enum field. Removing or renaming one stays unsupported. */
+  | {
+      op: 'add_enum_variant'
+      collectionKey: string
+      fieldKey: string
+      variant: string
+    }
+  /** Replace a collection's lifecycle; `null` clears it (the Rust reads null and absent alike). */
+  | {
+      op: 'set_lifecycle'
+      collectionKey: string
+      lifecycle: CollectionLifecycle | null
+    }
+  /** The "discoverable to agents" control: whether discovery lists it, and how it is described. */
+  | { op: 'set_agent'; agent: AgentMetadata }
   | { op: 'set_purpose'; purpose: string }
   /** Instance-level grant replacement; requires author authority. */
   | { op: 'set_grants'; grants: Grant[] }
@@ -313,6 +340,11 @@ export type InvokeRequest = {
   invocationKey: string
   recordId?: string
   expectedRevision?: number
+  /**
+   * Slice 2: every record one update action runs over, all or nothing (1 to
+   * {@link INVOKE_TARGETS_MAX}). Exclusive with `recordId`/`expectedRevision`.
+   */
+  targets?: InvokeTarget[]
   inputs: Record<string, unknown>
 }
 
@@ -322,8 +354,10 @@ export type InvocationOutcome =
   | {
       outcome: 'completed'
       affected: AffectedRecord[]
-      /** The resulting field values of the affected record. */
+      /** The resulting field values of the affected record; empty for a multi-target call. */
       fields: Record<string, unknown>
+      /** Slice 2: each target's disclosed values, for a multi-target call. */
+      records?: RecordFields[]
     }
   | { outcome: 'failed'; code: string; message: string }
 
@@ -380,6 +414,90 @@ export type DescribeResult = {
   /** The caller's own effective permissions; other principals' grants are never disclosed. */
   callerGrant: Grant
   collectionSchemas: CollectionSchema[]
+  /** Slice 2: the pinned id this answer was built from: what an authoring patch names. */
+  definitionId: string
+  /**
+   * Slice 2: the instance's whole grant list, present only for a caller who
+   * holds author (the owner included), so `set_grants` can be authored over it.
+   */
+  grants?: Grant[]
+}
+
+// ── Slice 2: multi-target invocation, definition history, templates ─────────
+
+/** How many records one multi-target invocation may name. */
+export const INVOKE_TARGETS_MAX = 100
+
+/** One record a multi-target invocation runs over, at the revision the caller saw. */
+export type InvokeTarget = { recordId: string; expectedRevision?: number }
+
+/** One target's resulting values, under the same disclosure rule as `fields`. */
+export type RecordFields = { id: string; fields: Record<string, unknown> }
+
+export type DefinitionHistoryReason =
+  'created' | 'authored' | 'repinned' | 'instantiated'
+
+/**
+ * One pin of an instance's definition. Definition history only: records,
+ * receipts and runs keep their own histories, and re-pinning never moves records.
+ */
+export type DefinitionHistoryEntry = {
+  seq: number
+  definitionId: string
+  previousDefinitionId?: string
+  reason: DefinitionHistoryReason
+  principal: string
+  atMs: number
+  /** The patch's op discriminants, in order; the template id for `instantiated`. */
+  ops: string[]
+}
+
+/** An instance's pins, newest first. An instance pinned before slice 2 starts with none. */
+export type DefinitionHistory = {
+  instanceId: string
+  currentDefinitionId: string
+  entries: DefinitionHistoryEntry[]
+  nextCursor?: string
+}
+
+/** The query `GET /instances/{id}/history` takes. */
+export type DefinitionHistoryQuery = { cursor?: string; limit?: number }
+
+/** What a template needs to work where it is instantiated. */
+export type TemplateRequirements = { modules: string[] }
+
+/**
+ * A reusable design: the pinned definition and its collections' register
+ * declarations. Never records, grants, rule enablement, the instance's config,
+ * or credentials.
+ */
+export type CapabilityTemplate = {
+  /** `captpl:{hash}` over everything but `savedBy` and `savedAtMs`. */
+  templateId: string
+  name: string
+  description: string
+  definition: CapabilityDefinition
+  declareTypes: unknown[]
+  sourceDefinitionId?: string
+  requirements: TemplateRequirements
+  savedBy: string
+  savedAtMs: number
+}
+
+/** Save an instance's pinned design as a template. Author grant on the instance. */
+export type SaveTemplateRequest = {
+  instanceId: string
+  name: string
+  description: string
+}
+
+/** The caller's own templates. */
+export type TemplateList = { templates: CapabilityTemplate[] }
+
+/** Bind a new instance, with its own empty collections, from a template. */
+export type InstantiateTemplateRequest = {
+  instanceId: string
+  workspaceId?: string
 }
 
 // ── Refusals ────────────────────────────────────────────────────────────────
@@ -403,4 +521,6 @@ export const codes = {
   COLLECTION_UNKNOWN: 'capability_collection_unknown',
   DEFINITION_INVALID: 'capability_definition_invalid',
   INSTANCE_EXISTS: 'capability_instance_exists',
+  // Slice 2.
+  TEMPLATE_NOT_FOUND: 'capability_template_not_found',
 } as const

@@ -9,7 +9,7 @@ import { Puck, Render } from '@puckeditor/core'
 import type { Data } from '@puckeditor/core'
 import '@puckeditor/core/puck.css'
 import { Pin, PinOff } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -43,6 +43,8 @@ import { cn } from '@/lib/utils'
 import './builtins'
 import { ContentRendererContext } from './module-instance'
 import { PageRuntimeProvider, PageScopeProvider } from './page-runtime'
+import { PageSettingsProvider, withInstanceProps } from './page-settings'
+import type { WriteInstanceProps } from './page-settings'
 import { LAYOUT_TYPES, usePageConfig } from './puck-config'
 import type { PageMetadata } from './puck-config'
 import type { PagePresentation } from './layout-parts'
@@ -340,6 +342,17 @@ function PageEditor({
     if (data) replaceWith(data)
   }
 
+  // A module in use can change one of its own settings (a table's picked view);
+  // the change lands in the draft, as an arrangement does, and Save keeps it.
+  const writeProps = useCallback<WriteInstanceProps>(
+    (id, props) =>
+      setDraft((current) => {
+        const base = current ?? held.page
+        return { ...base, layout: withInstanceProps(base.layout, id, props) }
+      }),
+    [held.page],
+  )
+
   const renderContent = useContentRenderer(
     config,
     { arranging, page: loaded.path },
@@ -469,13 +482,18 @@ function PageEditor({
         <div className="min-h-0 flex-1 overflow-auto">
           {prepared.content.length ? (
             <PageScopeProvider layout={shown.layout}>
-              <Render
-                config={config}
-                data={prepared}
-                metadata={
-                  { arranging: false, page: loaded.path } satisfies PageMetadata
-                }
-              />
+              <PageSettingsProvider value={writeProps}>
+                <Render
+                  config={config}
+                  data={prepared}
+                  metadata={
+                    {
+                      arranging: false,
+                      page: loaded.path,
+                    } satisfies PageMetadata
+                  }
+                />
+              </PageSettingsProvider>
             </PageScopeProvider>
           ) : (
             <PageStatus

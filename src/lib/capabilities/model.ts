@@ -237,8 +237,9 @@ const absent: Parsed = { ok: true, value: null }
 
 /**
  * An input's text as the typed value the action's input declares. Numbers and
- * integers are refused rather than rounded when they do not parse; a blank
- * required field is refused by the caller, a blank optional one goes as null.
+ * integers are refused rather than rounded when they do not parse. A blank
+ * text parses to null, which only marks it blank: the caller refuses a blank
+ * required field and leaves a blank optional one out of the call.
  */
 export function parseValue(type: CapabilityFieldType, text: string): Parsed {
   const trimmed = text.trim()
@@ -292,9 +293,11 @@ export function isRequiredBlank(field: InputField, parsed: Parsed): boolean {
 
 /**
  * An action form's texts as the inputs the call carries. A blank optional field
- * goes as null, which is what clearing a field means; a blank required field is
- * refused here so the form says which one. An input the action does not declare
- * is never sent: the executor refuses unknown inputs.
+ * is left out: an absent input applies no effect (the field is untouched on an
+ * update and unwritten on a create), while the executor refuses a null input
+ * rather than storing it. A blank required field is refused here so the form
+ * says which one. An input the action does not declare is never sent: the
+ * executor refuses unknown inputs.
  */
 export function actionValues(
   action: ActionSpec,
@@ -314,6 +317,7 @@ export function actionValues(
       errors[field.key] = 'needed'
       continue
     }
+    if (parsed.value === null) continue
     values[field.key] = parsed.value
   }
   return Object.keys(errors).length
@@ -364,7 +368,7 @@ export type LeafOp =
   | 'is_not_empty'
 
 /** A filter's leaf members: everything but the and/or/not groups. */
-type LeafFilter = Extract<QueryFilter, { op: LeafOp }>
+export type LeafFilter = Extract<QueryFilter, { op: LeafOp }>
 
 /**
  * The leaf comparisons the filter editor offers for a field, in reading order.
@@ -405,7 +409,7 @@ export type FilterRow = { fieldKey: string; op: LeafOp; value: string }
 export const valueless = (op: LeafOp) =>
   op === 'is_empty' || op === 'is_not_empty'
 
-const isLeaf = (filter: QueryFilter): filter is LeafFilter =>
+export const isLeaf = (filter: QueryFilter): filter is LeafFilter =>
   filter.op !== 'and' && filter.op !== 'or' && filter.op !== 'not'
 
 /**
@@ -461,7 +465,8 @@ export const rowsFilter = (
   conditions: rows.map((row) => filterOfRow(row, fieldFor)),
 })
 
-const rowOfFilter = (filter: LeafFilter): FilterRow => {
+/** One leaf as the row the editor shows: field, op, and its value as text. */
+export const rowOfFilter = (filter: LeafFilter): FilterRow => {
   switch (filter.op) {
     case 'in':
       return {
@@ -482,7 +487,8 @@ const rowOfFilter = (filter: LeafFilter): FilterRow => {
   }
 }
 
-const filterOfRow = (
+/** One edited row as the leaf it means, its value typed by the field. */
+export const filterOfRow = (
   row: FilterRow,
   fieldFor: (fieldKey: string) => ResolvedField | undefined,
 ): QueryFilter => {
