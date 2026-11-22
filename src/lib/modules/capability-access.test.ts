@@ -167,6 +167,13 @@ describe('asking for and granting capability access', () => {
     ).toEqual([])
   })
 
+  test('invoke with every asked action allowed is granted, even for one action', () => {
+    expect(granted(requested, requested).instances).toEqual([
+      tracker,
+      { instanceId: 'notes/main', methods: ['describe'], actions: [] },
+    ])
+  })
+
   test('a grant given before capability access existed allows none of it', () => {
     const old = { read: ['Notes/**'], write: [], state: [], net: [] }
     expect(granted(requested, old)).toEqual({ ...old, instances: [] })

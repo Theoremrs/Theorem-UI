@@ -4,7 +4,7 @@
 // is seen to reach nothing.
 import { describe, expect, test } from 'bun:test'
 import { memoryWorkspace } from '../../../test/blocks/memory-workspace'
-import { serveBridge } from './bridge'
+import { capabilityFailure, serveBridge } from './bridge'
 import type { AppCapabilities, BridgeHost } from './bridge'
 import { noCapabilities } from './declarations'
 import { call, rpcOver } from './sandbox/protocol'
@@ -247,4 +247,14 @@ describe('the scoped capability methods', () => {
       close()
     }
   })
+})
+
+test('a refusal that is not a problem body is told as a capability failure', () => {
+  expect(capabilityFailure(null)).toEqual({
+    code: 'capability_failure',
+    message: 'null',
+  })
+  expect(
+    capabilityFailure(Object.assign(new Error('offline'), { body: null })),
+  ).toEqual({ code: 'capability_failure', message: 'offline' })
 })

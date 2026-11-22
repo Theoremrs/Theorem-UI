@@ -160,4 +160,18 @@ describe('the host behind a module’s capability calls', () => {
       close()
     }
   })
+
+  test('a host told of no invoke listener still answers the call', async () => {
+    const done = await moduleCapabilities(scope).invoke({
+      instanceId: 'tracker/main',
+      actionKey: 'complete',
+      recordId: 'rec-1',
+      expectedRevision: 6,
+      inputs: {},
+    })
+    expect(done).toMatchObject({
+      actionKey: 'complete',
+      outcome: { affected: [{ id: 'rec-1', revision: 7 }] },
+    })
+  })
 })

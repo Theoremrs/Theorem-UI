@@ -38,3 +38,15 @@ test('a summary longer than the envelope carries is cut, and the envelope says s
   expect(resource.summaryTruncated).toBe(true)
   expect(resource.pageId).toBe('Desk')
 })
+
+test('a null summary is none, and one exactly the envelope long is whole', () => {
+  const nulled = componentContextReference({ ...envelope, summary: null })
+  expect('summary' in nulled.location.resource).toBe(false)
+  const exact = 'x'.repeat(ENVELOPE_SUMMARY_MAX)
+  const { resource } = componentContextReference({
+    ...envelope,
+    summary: exact,
+  }).location
+  expect(resource.summary).toBe(exact)
+  expect(resource.summaryTruncated).toBeUndefined()
+})
