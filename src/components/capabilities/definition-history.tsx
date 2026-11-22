@@ -36,6 +36,50 @@ function changed(entry: DefinitionHistoryEntry) {
   return REASONS[entry.reason]
 }
 
+/** One pin: what it changed, to which definition, by whom and when; "In use" or a way back to it. */
+function HistoryEntry({
+  entry,
+  inUse,
+  busy,
+  onRepin,
+}: {
+  entry: DefinitionHistoryEntry
+  inUse: boolean
+  busy: boolean
+  onRepin: (definitionId: string) => void
+}) {
+  return (
+    <li className="flex items-start gap-2 rounded-md border border-separator px-2 py-1.5">
+      <span className="w-8 shrink-0 text-xs text-ink-faint">#{entry.seq}</span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-xs text-ink">{changed(entry)}</span>
+        <code className="truncate font-mono text-xs text-ink-muted">
+          {entry.definitionId}
+        </code>
+        <span className="text-xs text-ink-faint">
+          {entry.principal} · {WHEN.format(new Date(entry.atMs))}
+        </span>
+      </span>
+      {inUse ? (
+        <span className="shrink-0 rounded-md bg-raised px-1.5 py-0.5 text-xs text-ink-muted">
+          In use
+        </span>
+      ) : (
+        <Button
+          size="xs"
+          variant="outline"
+          disabled={busy}
+          aria-label={`Re-pin entry ${entry.seq}`}
+          title={`Use ${entry.definitionId} again; records are not changed`}
+          onClick={() => onRepin(entry.definitionId)}
+        >
+          Re-pin
+        </Button>
+      )}
+    </li>
+  )
+}
+
 export function DefinitionHistoryPanel({
   instanceId,
   busy,
@@ -80,44 +124,15 @@ export function DefinitionHistoryPanel({
         </Note>
       ) : (
         <ol aria-label="Definition history" className="flex flex-col gap-1">
-          {entries.map((entry) => {
-            const inUse = entry.definitionId === current
-            return (
-              <li
-                key={entry.seq}
-                className="flex items-start gap-2 rounded-md border border-separator px-2 py-1.5"
-              >
-                <span className="w-8 shrink-0 text-xs text-ink-faint">
-                  #{entry.seq}
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="text-xs text-ink">{changed(entry)}</span>
-                  <code className="truncate font-mono text-xs text-ink-muted">
-                    {entry.definitionId}
-                  </code>
-                  <span className="text-xs text-ink-faint">
-                    {entry.principal} · {WHEN.format(new Date(entry.atMs))}
-                  </span>
-                </span>
-                {inUse ? (
-                  <span className="shrink-0 rounded-md bg-raised px-1.5 py-0.5 text-xs text-ink-muted">
-                    In use
-                  </span>
-                ) : (
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    disabled={busy}
-                    aria-label={`Re-pin entry ${entry.seq}`}
-                    title={`Use ${entry.definitionId} again; records are not changed`}
-                    onClick={() => onRepin(entry.definitionId)}
-                  >
-                    Re-pin
-                  </Button>
-                )}
-              </li>
-            )
-          })}
+          {entries.map((entry) => (
+            <HistoryEntry
+              key={entry.seq}
+              entry={entry}
+              inUse={entry.definitionId === current}
+              busy={busy}
+              onRepin={onRepin}
+            />
+          ))}
         </ol>
       )}
       {history.hasNextPage && (
