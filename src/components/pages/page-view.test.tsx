@@ -9,15 +9,18 @@ import {
   cleanup,
   fakeWorkspace,
   render,
+  settle,
   waitFor,
 } from '../../../test/workspace'
 import { pageText, parsePage } from '@/lib/modules/contract'
 import { pagesUnsaved, usePageDrafts } from '@/lib/modules/drafts'
 import { newPage } from '@/lib/modules/layout'
 import { patchPage, savePage } from '@/lib/pages/api'
+import type { PageDocument } from '@/lib/modules/contract'
+import type { WorkspaceClient, WorkspaceEvent } from '@/lib/workspace/types'
 import { stubPageOwner } from '../../../test/page-owner'
 import { RECORDS_NOT_AFFECTED } from './page-history'
-import { VaultPage } from './page-view'
+import { VaultModePage, VaultPage } from './page-view'
 
 const happyDom = (
   window as unknown as { happyDOM: { setURL: (url: string) => void } }
@@ -239,6 +242,89 @@ test('in the Theorem vault a pin is a patch, and an earlier version is previewed
     expect(restored).toEqual(newPage('Desk'))
     expect(title()).toBe('Desk')
     expect(container.textContent).not.toContain('Unsaved changes')
+  } finally {
+    owner.restore()
+    happyDom.setURL('about:blank')
+  }
+})
+
+// Theorem brings the vault's change events on their own long poll, so the
+// event for a write can come after the write's answer, or not while the poll
+// is down. A restored version is on screen from the restore's answer.
+test('a mode’s page restored to an earlier version shows it, with no newer version of its own behind Show it', async () => {
+  happyDom.setURL('http://localhost:3000/')
+  const fake = fakeWorkspace({})
+  const owner = stubPageOwner(fake)
+  // The vault's events, held until the test lets them through.
+  const held: Array<() => void> = []
+  let holding = true
+  const client: WorkspaceClient = {
+    ...owner.client,
+    subscribe: (listener) =>
+      fake.client.subscribe((event: WorkspaceEvent) =>
+        holding ? held.push(() => listener(event)) : listener(event),
+      ),
+  }
+  const note = (text: string): PageDocument => ({
+    ...newPage('Index mode'),
+    layout: {
+      root: { props: {} },
+      content: [{ type: 'theorem.text', props: { id: 'note', text } }],
+    },
+  })
+  try {
+    const path = 'Modes/index.page.json'
+    const first = await savePage({ path, page: note('First draft') })
+    await savePage({
+      path,
+      page: note('Second draft'),
+      expectedRevision: first.revision,
+    })
+    const { container } = await render(
+      <VaultModePage client={client} mode="index" />,
+    )
+    await waitFor(() => container.textContent.includes('Second draft'))
+
+    act(() => button(container, 'History')!.click())
+    const body = document.body
+    await waitFor(() => body.textContent.includes('Version 1'))
+    const oldest = [...body.querySelectorAll('li')].find((li) =>
+      li.textContent.includes('Version 1'),
+    )!
+    act(() => button(oldest, 'Preview')!.click())
+    await waitFor(() => button(container, 'Restore this version'))
+    act(() => button(container, 'Restore this version')!.click())
+    await waitFor(() => !button(container, 'Restore this version'))
+    expect(owner.calls.at(-1)!.route).toBe('/restore')
+    expect(parsePage(path, fake.text(path)!)).toEqual(note('First draft'))
+    expect(container.textContent).toContain('First draft')
+    expect(container.textContent).not.toContain(
+      'A newer version of this page is in the vault.',
+    )
+    expect(button(container, 'Show it')).toBeUndefined()
+
+    // The restore's own event, once it comes, changes nothing on screen.
+    holding = false
+    act(() => held.splice(0).forEach((deliver) => deliver()))
+    await settle()
+    expect(container.textContent).toContain('First draft')
+    expect(container.textContent).not.toContain('Second draft')
+    expect(container.textContent).not.toContain('A newer version')
+
+    // A version written elsewhere is still newer, behind Show it.
+    const restored = await fake.client.readText(path)
+    await savePage({
+      path,
+      page: note('Third draft'),
+      expectedRevision: restored.hash,
+    })
+    await waitFor(() =>
+      container.textContent.includes(
+        'A newer version of this page is in the vault.',
+      ),
+    )
+    act(() => button(container, 'Show it')!.click())
+    await waitFor(() => container.textContent.includes('Third draft'))
   } finally {
     owner.restore()
     happyDom.setURL('about:blank')

@@ -13,6 +13,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { conflictRevision, pageOwner } from '@/lib/pages/api'
 import type { PageOwner } from '@/lib/pages/api'
@@ -447,6 +448,31 @@ const noteWritten = (path: string, hash: string | null) => {
 export const wroteHere = (path: string, hash: string | null) =>
   writtenHere.get(path)?.has(hash ?? '') ?? false
 
+/**
+ * What this window wrote to a page file, kept as what the page now reads, so
+ * neither it nor its mode waits on a read of it or shows it as a newer version
+ * from elsewhere. Its history is read again.
+ */
+function keepWritten(
+  queryClient: QueryClient,
+  client: WorkspaceClient,
+  path: string,
+  stored: { page: PageDocument; hash: string },
+) {
+  void queryClient.invalidateQueries({
+    queryKey: historyKey(client.workspace.id, path),
+  })
+  noteWritten(path, stored.hash)
+  queryClient.setQueryData(pageKey(client.workspace.id, path), stored)
+  // A mode reads its page under its own key. Its first save makes the
+  // file, and the mode would otherwise wait on a read of what it wrote.
+  if (isModePagePath(path))
+    queryClient.setQueryData<ModeRead>(
+      modeKey(client.workspace.id, path),
+      stored,
+    )
+}
+
 /** A page file written by the vault itself, for a vault with no page owner. */
 async function writeFile(
   client: WorkspaceClient,
@@ -493,18 +519,7 @@ export function useSavePage(client: WorkspaceClient) {
       const stored = owner
         ? await saveThroughOwner(owner, path, page, hash, base)
         : await writeFile(client, path, page, hash)
-      void queryClient.invalidateQueries({
-        queryKey: historyKey(client.workspace.id, path),
-      })
-      noteWritten(path, stored.hash)
-      queryClient.setQueryData(pageKey(client.workspace.id, path), stored)
-      // A mode reads its page under its own key. Its first save makes the
-      // file, and the mode would otherwise wait on a read of what it wrote.
-      if (isModePagePath(path))
-        queryClient.setQueryData<ModeRead>(
-          modeKey(client.workspace.id, path),
-          stored,
-        )
+      keepWritten(queryClient, client, path, stored)
       return stored
     },
   })
@@ -570,14 +585,7 @@ export function useRestorePage(client: WorkspaceClient) {
         owner.restore(request),
       )
       const stored = { page: receipt.page, hash: receipt.revision }
-      noteWritten(request.path, stored.hash)
-      queryClient.setQueryData(
-        pageKey(client.workspace.id, request.path),
-        stored,
-      )
-      void queryClient.invalidateQueries({
-        queryKey: historyKey(client.workspace.id, request.path),
-      })
+      keepWritten(queryClient, client, request.path, stored)
       return stored
     },
   })
