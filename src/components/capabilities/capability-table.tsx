@@ -65,7 +65,7 @@ import type {
 import { capabilityContextReference } from '@/lib/capabilities/reference'
 import type { ModuleViewProps } from '@/lib/modules/registry'
 import { useModuleAction } from '../pages/page-runtime'
-import { usePageId } from '../pages/page-route'
+import { usePagePath } from '../pages/page-route'
 import { ActionForm } from './action-form'
 import type { PickerOptions } from './action-form'
 import { AuthoringDialog } from './authoring'
@@ -409,7 +409,9 @@ function CapabilityTableBody({
   start: ViewSpec
 }) {
   const { output, emit } = view
-  const pageId = usePageId()
+  const pageId = usePagePath()
+  // The page component that shows this: a composite's own id, when inside one.
+  const selectedComponentId = view.path.split('/')[0]
   const instanceId = instanceIdOf(view.settings.instanceId)
   const definition = described.definition
   const grant = described.callerGrant
@@ -459,6 +461,7 @@ function CapabilityTableBody({
             instanceId,
             collectionKey: spec.collectionKey,
             pageId,
+            selectedComponentId,
             viewKey: spec.key,
             purpose: definition.purpose,
             label: `${definition.name} · ${spec.label} · ${selected.length} selected`,
@@ -477,6 +480,7 @@ function CapabilityTableBody({
       definition.name,
       definition.purpose,
       pageId,
+      selectedComponentId,
       filtered,
       truncated,
     ],

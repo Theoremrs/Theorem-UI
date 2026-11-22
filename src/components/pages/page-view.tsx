@@ -42,6 +42,7 @@ import { cn } from '@/lib/utils'
 // For its effect: the built-in modules join the catalog.
 import './builtins'
 import { ContentRendererContext } from './module-instance'
+import { PageFileContext } from './page-route'
 import { PageRuntimeProvider, PageScopeProvider } from './page-runtime'
 import { LAYOUT_TYPES, usePageConfig } from './puck-config'
 import type { PageMetadata } from './puck-config'
@@ -118,14 +119,16 @@ export function VaultPage({
   return (
     // One runtime per page: another page, or this one again, starts fresh.
     <PageRuntimeProvider key={entryId}>
-      <PageEditor
-        client={client}
-        loaded={loaded.data}
-        reload={loaded.reload}
-        kind={{ kind: 'page' }}
-        draftKey={`page:${client.workspace.id}:${entryId}`}
-        newerProblem={loaded.error?.message}
-      />
+      <PageFileContext.Provider value={loaded.data.path}>
+        <PageEditor
+          client={client}
+          loaded={loaded.data}
+          reload={loaded.reload}
+          kind={{ kind: 'page' }}
+          draftKey={`page:${client.workspace.id}:${entryId}`}
+          newerProblem={loaded.error?.message}
+        />
+      </PageFileContext.Provider>
     </PageRuntimeProvider>
   )
 }
@@ -168,14 +171,16 @@ function VaultModePage({
   const { template, problem } = loaded.data
   return (
     <PageRuntimeProvider key={mode}>
-      <PageEditor
-        client={client}
-        loaded={loaded.data}
-        reload={loaded.reload}
-        kind={{ kind: 'mode', mode, template, problem }}
-        draftKey={`mode:${client.workspace.id}:${mode}`}
-        newerProblem={loaded.error?.message}
-      />
+      <PageFileContext.Provider value={loaded.data.path}>
+        <PageEditor
+          client={client}
+          loaded={loaded.data}
+          reload={loaded.reload}
+          kind={{ kind: 'mode', mode, template, problem }}
+          draftKey={`mode:${client.workspace.id}:${mode}`}
+          newerProblem={loaded.error?.message}
+        />
+      </PageFileContext.Provider>
     </PageRuntimeProvider>
   )
 }
