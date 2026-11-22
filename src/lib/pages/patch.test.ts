@@ -89,3 +89,74 @@ test('anything a shallow merge cannot say is a whole-document save', () => {
   zones.layout.zones = { 'cols:extra': [] }
   expect(patchOps(page(), zones)).toBeNull()
 })
+
+test('a list of plain or typed values is a prop like any other, not a slot', () => {
+  const links = page()
+  links.layout.content[0]!.props.links = [{ type: 'link', href: '/a' }]
+  const relinked = page()
+  relinked.layout.content[0]!.props.links = [{ type: 'link', href: '/b' }]
+  expect(patchOps(links, relinked)).toEqual([
+    {
+      op: 'set_props',
+      componentId: 'note',
+      props: { links: [{ type: 'link', href: '/b' }] },
+    },
+  ])
+
+  const untagged = page()
+  untagged.layout.content[0]!.props.tags = []
+  const tagged = page()
+  tagged.layout.content[0]!.props.tags = ['urgent']
+  expect(patchOps(untagged, tagged)).toEqual([
+    { op: 'set_props', componentId: 'note', props: { tags: ['urgent'] } },
+  ])
+})
+
+test('a component swapped for another in its place, or changed outside its props, is a whole save', () => {
+  const swapped = page()
+  swapped.layout.content[0]!.props.id = 'other_note'
+  expect(patchOps(page(), swapped)).toBeNull()
+
+  const locked = page()
+  locked.layout.content[0]!.readOnly = { text: true }
+  expect(patchOps(page(), locked)).toBeNull()
+})
+
+test('a slot gained, or a child added inside a slot, is a whole save', () => {
+  const gained = page()
+  gained.layout.content[0]!.props.aside = [
+    { type: 'theorem.text', props: { id: 'aside_note', text: 'More' } },
+  ]
+  expect(patchOps(page(), gained)).toBeNull()
+
+  const grown = page()
+  const left = grown.layout.content[1]!.props
+    .left as PageDocument['layout']['content']
+  left.push({ type: 'theorem.text', props: { id: 'below', text: 'x' } })
+  expect(patchOps(page(), grown)).toBeNull()
+})
+
+test('a legacy zone that kept its components is patched in place', () => {
+  const zoned = (): PageDocument => {
+    const one = page()
+    one.layout.zones = {
+      'cols:extra': [
+        { type: 'theorem.text', props: { id: 'zoned', text: 'In a zone' } },
+      ],
+    }
+    return one
+  }
+  const renamed = { ...zoned(), title: 'Work' }
+  expect(patchOps(zoned(), renamed)).toEqual([
+    { op: 'set_title', title: 'Work' },
+  ])
+  const edited = zoned()
+  edited.layout.zones!['cols:extra']![0]!.props.text = 'Still in a zone'
+  expect(patchOps(zoned(), edited)).toEqual([
+    {
+      op: 'set_props',
+      componentId: 'zoned',
+      props: { text: 'Still in a zone' },
+    },
+  ])
+})
