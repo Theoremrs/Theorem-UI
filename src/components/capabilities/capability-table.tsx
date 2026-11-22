@@ -1229,18 +1229,25 @@ function NoInstance({
 }
 
 /**
+ * How this module switches to another instance, by writing its own Instance
+ * setting, or undefined where it cannot. A new instance opens at its first
+ * view; a bound Instance input is not ours to change.
+ */
+function useOpenInstance(view: ModuleViewProps) {
+  const own = useOwnSettings(view)
+  return own && !('instanceId' in view.inputs)
+    ? (next: string) => own({ instanceId: next, viewKey: '' })
+    : undefined
+}
+
+/**
  * `theorem.capability.table`: one view's rows, with the definition's quick-add
  * and action buttons over them.
  */
 export function CapabilityTableModule(view: ModuleViewProps) {
   const instanceId = instanceIdOf(view.settings.instanceId)
   const described = useCapabilityDescribe(instanceId || undefined)
-  const own = useOwnSettings(view)
-  // A new instance opens at its first view; a bound Instance input is not ours to change.
-  const openInstance =
-    own && !('instanceId' in view.inputs)
-      ? (next: string) => own({ instanceId: next, viewKey: '' })
-      : undefined
+  const openInstance = useOpenInstance(view)
   if (!instanceId)
     return (
       <NoInstance arranging={view.arranging} onOpenInstance={openInstance} />
