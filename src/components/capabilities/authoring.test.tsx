@@ -834,6 +834,38 @@ test('history lists the pins newest first, pages back, and re-pins an older one'
   expect(authored()).toEqual([])
 })
 
+test('a refused history read says why, and Try again reads it again', async () => {
+  answers.history = {
+    status: 404,
+    body: {
+      title: 'Not found',
+      status: 404,
+      code: 'capability_not_found',
+      detail: 'gone',
+    },
+  }
+  await openDialog()
+  await click(button('History'))
+  await waitFor(() => button('Try again'))
+  expect(screen().querySelector('[role="alert"]')?.textContent).toContain(
+    'This capability instance is not there.',
+  )
+  expect(named('Definition history')).toBeNull()
+  const reads = () => calls.filter((call) => call.path.endsWith('/history'))
+  const before = reads().length
+  answers.history = {
+    status: 200,
+    body: {
+      currentDefinitionId: 'capdef:abc',
+      entries: [pin(1, 'capdef:abc', 'created')],
+    },
+  }
+  await click(button('Try again'))
+  await waitFor(() => named('Definition history'))
+  expect(reads().length).toBe(before + 1)
+  expect(screen().querySelector('[role="alert"]')).toBeNull()
+})
+
 test('an instance with no recorded pins says why, rather than inventing a past', async () => {
   answers.history = {
     status: 200,
