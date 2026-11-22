@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { cleanup, waitFor } from '../../../test/workspace'
 import { ruleCodes } from '@/lib/capabilities/contract'
+import type { RuleSpec } from '@/lib/capabilities/contract'
 import { ownerGrant, readerGrant } from './fixture'
 import {
   button,
@@ -257,4 +258,57 @@ test('the switch sends set_rule_enabled, and a refusal says why', async () => {
       'Your grant does not let rules run in the background as you.',
     ),
   )
+})
+
+test('a rule saved unchanged goes back as it was, whatever its trigger and its sources', async () => {
+  const kept: RuleSpec[] = [
+    {
+      key: 'watch_status',
+      label: 'Retitle on status',
+      trigger: {
+        kind: 'record_updated',
+        collectionKey: 'tasks',
+        fieldKeys: ['status'],
+      },
+      actionKey: 'update',
+      inputs: {
+        title: { source: 'trigger_field', fieldKey: 'title' },
+        effort_minutes: { source: 'literal', value: 30 },
+      },
+    },
+    {
+      key: 'close_waiting',
+      label: 'Close waiting tasks',
+      trigger: {
+        kind: 'transition',
+        collectionKey: 'tasks',
+        to: 'done',
+        from: ['waiting'],
+      },
+      actionKey: 'complete',
+      inputs: {},
+    },
+    {
+      key: 'copy_new',
+      label: 'Copy new tasks',
+      trigger: { kind: 'record_created', collectionKey: 'tasks' },
+      actionKey: 'add',
+      inputs: {
+        title: { source: 'trigger_field', fieldKey: 'title' },
+        due_at: { source: 'now' },
+      },
+    },
+  ]
+  const described = withRules()
+  await openRules({
+    ...described,
+    definition: { ...described.definition, rules: kept },
+  })
+  for (const [at, rule] of kept.entries()) {
+    await press(named(`Edit ${rule.label}`))
+    await press(button(screen(), 'Save rule'))
+    await waitFor(() => authored().length === at + 1)
+    expect(authored()[at]?.ops).toEqual([{ op: 'replace_rule', rule }])
+    await waitFor(() => !button(screen(), 'Save rule'))
+  }
 })
