@@ -18,11 +18,7 @@ import {
 } from '@/components/records/fields'
 import { Button } from '@/components/ui/button'
 import { fieldControl } from '@/components/pages/resource-field'
-import {
-  isReloadConflict,
-  readReceipt,
-  refusalMessage,
-} from '@/lib/capabilities/api'
+import { readReceipt } from '@/lib/capabilities/api'
 import {
   canInvoke,
   capabilityRecordItem,
@@ -35,7 +31,6 @@ import {
   schemaFor,
   updateActions,
 } from '@/lib/capabilities/model'
-import { codes } from '@/lib/capabilities/contract'
 import type {
   ActionSpec,
   CapabilityDefinition,
@@ -48,7 +43,14 @@ import { capabilityContextReference } from '@/lib/capabilities/reference'
 import type { ModuleViewProps } from '@/lib/modules/registry'
 import { usePagePath } from '../pages/page-route'
 import { ActionForm } from './action-form'
-import { DescribeState, Loading, PermissionState, StatusLine } from './states'
+import {
+  DescribeState,
+  Loading,
+  PermissionState,
+  StatusLine,
+  receiptStatus,
+  refusedStatus,
+} from './states'
 import type { Status } from './states'
 import {
   useCapabilityDescribe,
@@ -247,33 +249,12 @@ function CapabilityRecordBody({
     )
   }, [output, row, instanceId, key, fields])
 
+  /** What a receipt means: a saved call leaves nothing unsaved. */
   const report = (receipt: InvocationReceipt): boolean => {
-    if (receipt.status === 'dispatched') {
-      setStatus({
-        kind: 'pending',
-        message: `${receipt.actionKey} is journaled and has not finished, so whether it took effect is not yet known.`,
-        receipt: { instanceId: receipt.instanceId, recordId: receipt.recordId },
-      })
-      return false
-    }
-    const { outcome } = receipt
-    if (outcome.outcome === 'completed') {
-      setDraft({})
-      const at = outcome.affected
-        .map((affected) => `r${affected.revision}`)
-        .join(', ')
-      setStatus({
-        kind: 'saved',
-        message: `${receipt.actionKey} saved${at ? ` · ${at}` : ''}.`,
-      })
-      return true
-    }
-    setStatus({
-      kind: 'failed',
-      message: `${outcome.code}: ${outcome.message}`,
-      reload: outcome.code === codes.REVISION_CONFLICT,
-    })
-    return false
+    const next = receiptStatus(receipt)
+    if (next.kind === 'saved') setDraft({})
+    setStatus(next)
+    return next.kind === 'saved'
   }
 
   const run = async (action: ActionSpec, values: Record<string, unknown>) => {
@@ -292,11 +273,7 @@ function CapabilityRecordBody({
       })
       if (report(receipt)) setCalling(undefined)
     } catch (error) {
-      setStatus({
-        kind: 'failed',
-        message: refusalMessage(error, action.label),
-        reload: isReloadConflict(error),
-      })
+      setStatus(refusedStatus(error, action.label))
     } finally {
       setBusy(false)
     }
@@ -383,11 +360,7 @@ function CapabilityRecordBody({
           try {
             report(await readReceipt(at.instanceId, at.recordId))
           } catch (error) {
-            setStatus({
-              kind: 'failed',
-              message: refusalMessage(error, 'The receipt'),
-              reload: isReloadConflict(error),
-            })
+            setStatus(refusedStatus(error, 'The receipt'))
           }
         }}
       />
