@@ -147,6 +147,105 @@ test('each run shows its status, trigger, attempts, outcome codes and times', as
   expect(list?.headers.get('X-CSRF-Token')).toBeNull()
 })
 
+test('a pending run says when it tries next, attempts are counted, and older runs are paged in', async () => {
+  const retrying = {
+    ...failed,
+    runId: 'caprun:p1',
+    status: 'pending',
+    attempts: [
+      failed.attempts[0]!,
+      { ...failed.attempts[0]!, attempt: 2, finishedAtMs: at(5) },
+    ],
+    nextAttemptAtMs: at(10),
+    finishedAtMs: undefined,
+  } as RuleRun
+  const queued = {
+    ...retrying,
+    runId: 'caprun:q1',
+    attempts: [],
+    nextAttemptAtMs: at(11),
+  } as RuleRun
+  // The server pages the list: the first page names the cursor of the next.
+  const served = window.fetch
+  window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input))
+    if (url.pathname.endsWith('/runs')) {
+      const older = url.searchParams.get('cursor') === 'c2'
+      return new Response(
+        JSON.stringify(
+          older
+            ? { runs: [nightlyRun] }
+            : { runs: [failed, retrying, queued], nextCursor: 'c2' },
+        ),
+        { headers: { 'content-type': 'application/json' } },
+      )
+    }
+    return served(input, init)
+  }) as typeof fetch
+  await openRuns()
+  const next = row('caprun:p1')?.textContent ?? ''
+  expect(next).toContain(
+    '2 attempts (capability_grant_denied, capability_grant_denied)',
+  )
+  expect(next).toContain(`Next attempt ${iso(10)}`)
+  expect(next).not.toContain('Finished')
+  // Not yet tried: nothing says when it tries next.
+  expect(row('caprun:q1')?.textContent).toContain(
+    `0 attempts · Queued ${iso(0)}`,
+  )
+  expect(row('caprun:q1')?.textContent).not.toContain('Next attempt')
+
+  expect(row('caprun:ok')).toBeNull()
+  await press(button(screen(), 'Older runs'))
+  await waitFor(() => row('caprun:ok'))
+  expect(button(screen(), 'Older runs')).toBeUndefined()
+  // An attempt with no outcome code adds nothing after the count.
+  expect(row('caprun:ok')?.textContent).toContain(
+    `1 attempt · Queued ${iso(0)}`,
+  )
+})
+
+test('a refused list or run read says why, and an empty list says no rule has run', async () => {
+  server.refuse.set('/runs', {
+    status: 404,
+    code: ruleCodes.RULE_UNKNOWN,
+    detail: 'no rule',
+  })
+  const { container } = await showTable(withRules())
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await press(button(container, 'Rules'))
+  await press(await waitFor(() => button(screen(), 'Runs')))
+  await waitFor(() =>
+    screen().textContent.includes(
+      'This rule is no longer part of the definition.',
+    ),
+  )
+  expect(screen().textContent).not.toContain('No rule has run yet.')
+  cleanup()
+
+  server.refuse = new Map([
+    [
+      `/runs/${encodeURIComponent('caprun:f1')}`,
+      { status: 404, code: ruleCodes.RUN_NOT_FOUND, detail: 'no run' },
+    ],
+  ])
+  await openRuns()
+  await press(named('Inspect run caprun:f1'))
+  await waitFor(() =>
+    row('caprun:f1')?.textContent.includes('That run is not here.'),
+  )
+  cleanup()
+
+  server.refuse = new Map()
+  server.runs = []
+  const shown = await showTable(withRules())
+  await waitFor(() => shown.container.textContent.includes('Write the plan'))
+  await press(button(shown.container, 'Rules'))
+  await press(await waitFor(() => button(screen(), 'Runs')))
+  await waitFor(() => screen().textContent.includes('No rule has run yet.'))
+  expect(button(screen(), 'Older runs')).toBeUndefined()
+})
+
 test('a skipped loop run shows why it did not run', async () => {
   await openRuns()
   expect(row('caprun:s1')?.textContent).toContain(
