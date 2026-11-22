@@ -460,8 +460,14 @@ function CapabilityTableBody({
     () => rows.filter((row) => selection[row.id]),
     [rows, selection],
   )
-  const quick = quickAction(definition, spec.collectionKey)
-  const actions = updateActions(definition, spec.collectionKey)
+  // A custom module's fallback names the actions it offers; a placed table offers them all.
+  const only = view.settings.actions
+  const offered = (action: ActionSpec) =>
+    !Array.isArray(only) || only.includes(action.key)
+  const declaredQuick = quickAction(definition, spec.collectionKey)
+  const quick =
+    declaredQuick && offered(declaredQuick) ? declaredQuick : undefined
+  const actions = updateActions(definition, spec.collectionKey).filter(offered)
 
   /** The envelope the composer carries: what is on screen, and no record bodies. */
   const context = useMemo(

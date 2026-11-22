@@ -16,7 +16,13 @@ import type {
   RuleSpec,
 } from '@/lib/capabilities/contract'
 import type { ModuleViewProps } from '@/lib/modules/registry'
-import { describeResult, ownerGrant, queryResult, taskRows } from './fixture'
+import {
+  completedReceipt,
+  describeResult,
+  ownerGrant,
+  queryResult,
+  taskRows,
+} from './fixture'
 
 export const nightly: RuleSpec = {
   key: 'nightly_review',
@@ -131,6 +137,15 @@ export function install() {
     const [, instanceId, tail, key, verb] = rest
     if (rest.length === 2) return json(server.described)
     if (tail === 'query') return json(queryResult(taskRows))
+    if (tail === 'invoke')
+      return json(
+        completedReceipt(String(body?.actionKey), [
+          {
+            id: String(body?.recordId),
+            revision: Number(body?.expectedRevision ?? 0) + 1,
+          },
+        ]),
+      )
     if (tail === 'author') {
       if (body?.expectedDefinitionId !== 'capdef:abc')
         return problem(
