@@ -14,6 +14,8 @@ import { codes } from '@/lib/capabilities/contract'
 import type {
   CapabilityRecordRow,
   DescribeResult,
+  InvocationOutcome,
+  InvokeTarget,
   QueryFilter,
   QueryRequest,
   Grant,
@@ -48,6 +50,8 @@ let answers: Record<
 let pinned = 'capdef:abc'
 /** The caller's saved templates. */
 let library: unknown[] = []
+/** The next finished receipt carries this outcome instead of a completion. */
+let invokeOutcome: InvocationOutcome | undefined
 
 const button = (container: HTMLElement, name: string) =>
   [...container.querySelectorAll('button')].find(
@@ -75,6 +79,7 @@ beforeEach(() => {
   invokeRefusal = undefined
   pinned = 'capdef:abc'
   library = []
+  invokeOutcome = undefined
   answers = {
     next: { rows: taskRows, filtered: true, total: 4 },
     all: { rows: [], filtered: false, total: 0 },
@@ -156,9 +161,15 @@ beforeEach(() => {
         requestDigest: 'sha256:abc',
         startedAtMs: 1,
         status: 'finished',
-        outcome: {
+        outcome: invokeOutcome ?? {
           outcome: 'completed',
-          affected: [{ id: body?.recordId ?? 'rec-new', revision: 7 }],
+          // Several targets move together, each one revision on.
+          affected: Array.isArray(body?.targets)
+            ? (body.targets as InvokeTarget[]).map((target) => ({
+                id: target.recordId,
+                revision: (target.expectedRevision ?? 0) + 1,
+              }))
+            : [{ id: body?.recordId ?? 'rec-new', revision: 7 }],
           fields: { status: 'done' },
         },
         finishedAtMs: 2,
@@ -828,4 +839,115 @@ test('a module that names no instance offers a new one from a template', async (
       "Name it in a capability module's Instance setting to open it.",
     ),
   )
+})
+
+// ── Bulk: one update action over the selected records, all or nothing ──────
+
+/** The bar a selection of two or more records brings up. */
+const bulkBar = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>(
+    '[role="toolbar"][aria-label="Selected records"]',
+  )
+
+/** Tick the row checkboxes at these places, in order. */
+async function tick(container: HTMLElement, ...at: number[]) {
+  const boxes = container.querySelectorAll<HTMLElement>(
+    '[data-slot="checkbox"]',
+  )
+  for (const one of at) await act(async () => boxes[one]!.click())
+}
+
+test('two selected records run one update action over both, at the revisions shown', async () => {
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await tick(container, 0)
+  // One record is a row's own business; the bar is for several.
+  expect(bulkBar(container)).toBeNull()
+  await tick(container, 1)
+  const bar = await waitFor(() => bulkBar(container))
+  expect(bar.textContent).toContain('2 selected')
+  expect(bar.textContent).toContain('all or nothing')
+  // Every update action the grant reaches; the create action is not one.
+  expect(byLabel(bar, 'Complete the 2 selected')).toBeTruthy()
+  expect(byLabel(bar, 'Edit the 2 selected')).toBeTruthy()
+  expect(byLabel(bar, 'Add task the 2 selected')).toBeNull()
+
+  await act(async () => byLabel(bar, 'Complete the 2 selected')?.click())
+  const invoked = await waitFor(() => sentTo('/invoke')[0])
+  expect(invoked.body).toEqual({
+    instanceId: 'tracker/main',
+    actionKey: 'complete',
+    invocationKey: expect.any(String),
+    inputs: {},
+    targets: [
+      { recordId: 'rec-1', expectedRevision: 6 },
+      { recordId: 'rec-2', expectedRevision: 3 },
+    ],
+  })
+  expect(sentTo('/invoke').length).toBe(1)
+  await waitFor(() =>
+    container.textContent.includes('complete saved on 2 records · r7, r4.'),
+  )
+})
+
+test('the bar offers only the actions the grant reaches', async () => {
+  const { container } = await showTable(undefined, {
+    principal: 'user:sam',
+    read: true,
+    invoke: ['complete'],
+    author: false,
+  })
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await tick(container, 0, 1)
+  const bar = await waitFor(() => bulkBar(container))
+  expect(byLabel(bar, 'Complete the 2 selected')).toBeTruthy()
+  expect(byLabel(bar, 'Edit the 2 selected')).toBeNull()
+  expect(byLabel(bar, 'Assign the 2 selected')).toBeNull()
+})
+
+test('one refusing record fails the whole call, and the bar says which and that nothing changed', async () => {
+  invokeOutcome = {
+    outcome: 'failed',
+    code: codes.PRECONDITION_FAILED,
+    message: 'rec-2: status is not one of next, in_progress, waiting',
+  }
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await tick(container, 0, 1)
+  const bar = await waitFor(() => bulkBar(container))
+  await act(async () => byLabel(bar, 'Complete the 2 selected')?.click())
+  await waitFor(() =>
+    container.textContent.includes(
+      'No record was changed. capability_precondition_failed: rec-2: status is not one of next, in_progress, waiting',
+    ),
+  )
+  expect(container.textContent).not.toContain('saved · r')
+})
+
+test('an action with inputs asks once, and the same values go to every selected record', async () => {
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await tick(container, 0, 1)
+  const bar = await waitFor(() => bulkBar(container))
+  await act(async () => byLabel(bar, 'Edit the 2 selected')?.click())
+  await waitFor(() =>
+    screen().textContent.includes('The same values go to every selected record'),
+  )
+  expect(screen().textContent).toContain('a field left blank is written blank')
+  const status = screen().querySelector<HTMLInputElement>(
+    'input[aria-label="status (optional)"]',
+  )!
+  type(status, 'waiting')
+  await act(async () => button(screen(), 'Edit 2 records')?.click())
+  const invoked = await waitFor(() => sentTo('/invoke')[0])
+  expect(invoked.body?.targets).toEqual([
+    { recordId: 'rec-1', expectedRevision: 6 },
+    { recordId: 'rec-2', expectedRevision: 3 },
+  ])
+  expect(invoked.body?.inputs).toEqual({
+    title: null,
+    status: 'waiting',
+    effort_minutes: null,
+  })
+  expect(invoked.body?.recordId).toBeUndefined()
 })

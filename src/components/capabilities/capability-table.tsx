@@ -51,7 +51,7 @@ import {
   updateActions,
   viewFor,
 } from '@/lib/capabilities/model'
-import { codes } from '@/lib/capabilities/contract'
+import { codes, INVOKE_TARGETS_MAX } from '@/lib/capabilities/contract'
 import type {
   ActionSpec,
   CapabilityRecordRow,
@@ -77,6 +77,7 @@ import {
   useCapabilityDescribe,
   useCapabilityDiscover,
   useCapabilityInvoke,
+  useCapabilityInvokeTargets,
   useCapabilityPickers,
   useCapabilityRows,
 } from './queries'
@@ -86,6 +87,61 @@ const instanceIdOf = (value: unknown) =>
 
 /** What a row's call did, so the person sees the revision it moved to. */
 type Moved = Record<string, number>
+
+/** The busy mark while one call runs over the selection rather than one row. */
+const BULK = '*selection'
+
+/**
+ * The bar a selection of two or more records brings up: each update action the
+ * grant reaches, run once over every selected record. The call is all or
+ * nothing, so the bar says so before anything is pressed.
+ */
+function BulkBar({
+  count,
+  actions,
+  busy,
+  onRun,
+  onClear,
+}: {
+  count: number
+  actions: ActionSpec[]
+  busy: boolean
+  onRun: (action: ActionSpec) => void
+  onClear: () => void
+}) {
+  const over = count > INVOKE_TARGETS_MAX
+  return (
+    <div
+      role="toolbar"
+      aria-label="Selected records"
+      className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-separator bg-raised px-3 py-1.5"
+    >
+      <span className="text-xs text-ink-muted">
+        {count} selected · all or nothing
+      </span>
+      {actions.map((action) => (
+        <Button
+          key={action.key}
+          size="xs"
+          variant="outline"
+          disabled={busy || over}
+          aria-label={`${action.label} the ${count} selected`}
+          onClick={() => onRun(action)}
+        >
+          {action.label}
+        </Button>
+      ))}
+      {over && (
+        <span className="text-xs text-ink-faint">
+          One call changes at most {INVOKE_TARGETS_MAX} records.
+        </span>
+      )}
+      <Button size="xs" variant="ghost" onClick={onClear}>
+        Clear selection
+      </Button>
+    </div>
+  )
+}
 
 function RowMark({
   revision,
@@ -428,6 +484,7 @@ function CapabilityTableBody({
   const rowsQuery = useCapabilityRows(instanceId, spec.key)
   const { rows, total, filtered, truncated } = flattenRows(rowsQuery.data)
   const invoking = useCapabilityInvoke()
+  const invokingTargets = useCapabilityInvokeTargets()
 
   const [selection, setSelection] = useState<Record<string, true>>({})
   const [lastMarked, setLastMarked] = useState<string>()
@@ -438,6 +495,7 @@ function CapabilityTableBody({
     action: ActionSpec
     row: CapabilityRecordRow
   }>()
+  const [bulking, setBulking] = useState<ActionSpec>()
   const [authoring, setAuthoring] = useState(false)
   const [busy, setBusy] = useState<string>()
 
@@ -449,6 +507,7 @@ function CapabilityTableBody({
   )
   const quick = quickAction(definition, spec.collectionKey)
   const actions = updateActions(definition, spec.collectionKey)
+  const bulkActions = actions.filter((action) => canInvoke(grant, action.key))
 
   /**
    * The envelope the composer carries: what is on screen, and no record bodies.
@@ -534,8 +593,11 @@ function CapabilityTableBody({
     setLastMarked(undefined)
   })
 
-  /** What a receipt means, as the one line the person reads. */
-  const report = (receipt: InvocationReceipt): boolean => {
+  /**
+   * What a receipt means, as the one line the person reads. `count` is how
+   * many records one call ran over, when it ran over a selection.
+   */
+  const report = (receipt: InvocationReceipt, count?: number): boolean => {
     if (receipt.status === 'dispatched') {
       setStatus({
         kind: 'pending',
@@ -555,15 +617,18 @@ function CapabilityTableBody({
       const at = outcome.affected
         .map((affected) => `r${affected.revision}`)
         .join(', ')
+      const over = count === undefined ? '' : ` on ${count} records`
       setStatus({
         kind: 'saved',
-        message: `${receipt.actionKey} saved${at ? ` · ${at}` : ''}.`,
+        message: `${receipt.actionKey} saved${over}${at ? ` · ${at}` : ''}.`,
       })
       return true
     }
+    // A call over several records fails whole: its message names the first
+    // record that refused, and no record was written.
     setStatus({
       kind: 'failed',
-      message: `${outcome.code}: ${outcome.message}`,
+      message: `${count === undefined ? '' : 'No record was changed. '}${outcome.code}: ${outcome.message}`,
       reload: outcome.code === codes.REVISION_CONFLICT,
     })
     return false
@@ -592,6 +657,36 @@ function CapabilityTableBody({
       setStatus({
         kind: 'failed',
         message: refusalMessage(error, call.action.label),
+        reload: isReloadConflict(error),
+      })
+    } finally {
+      setBusy(undefined)
+    }
+  }
+
+  /** One update action over every selected record, at the revisions on screen. */
+  const runSelected = async (
+    action: ActionSpec,
+    values: Record<string, unknown>,
+  ) => {
+    const rows = selected
+    setBusy(BULK)
+    setStatus({
+      kind: 'pending',
+      message: `${action.label} on ${rows.length} records…`,
+    })
+    try {
+      const receipt = await invokingTargets.mutateAsync({
+        instanceId,
+        actionKey: action.key,
+        inputs: values,
+        rows,
+      })
+      if (report(receipt, rows.length)) setBulking(undefined)
+    } catch (error) {
+      setStatus({
+        kind: 'failed',
+        message: refusalMessage(error, action.label),
         reload: isReloadConflict(error),
       })
     } finally {
@@ -669,6 +764,22 @@ function CapabilityTableBody({
         onReload={reload}
         onCheck={() => void check()}
       />
+      {selected.length > 1 && bulkActions.length > 0 && (
+        <BulkBar
+          count={selected.length}
+          actions={bulkActions}
+          busy={busy !== undefined}
+          onRun={(action) =>
+            action.input.length
+              ? setBulking(action)
+              : void runSelected(action, {})
+          }
+          onClear={() => {
+            setSelection({})
+            setLastMarked(undefined)
+          }}
+        />
+      )}
       {spec.layout === 'board' && (
         <p className="px-3 pt-1.5 text-xs text-ink-faint">
           This view is a board; its grouping is not shown here yet, so these are
@@ -779,6 +890,31 @@ function CapabilityTableBody({
               busy={busy !== undefined}
               onSubmit={(values) => void run(calling, values)}
               onCancel={() => setCalling(undefined)}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+      {bulking && (
+        <Dialog open onOpenChange={(shown) => !shown && setBulking(undefined)}>
+          <DialogContent showCloseButton={false} className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>
+                {bulking.label} · {selected.length} records
+              </DialogTitle>
+              <DialogDescription>
+                The same values go to every selected record, each at the
+                revision shown; a field left blank is written blank. If any
+                record refuses, none is changed.
+              </DialogDescription>
+            </DialogHeader>
+            <ActionCall
+              instanceId={instanceId}
+              action={bulking}
+              schemas={described.collectionSchemas}
+              submitLabel={`${bulking.label} ${selected.length} records`}
+              busy={busy !== undefined}
+              onSubmit={(values) => void runSelected(bulking, values)}
+              onCancel={() => setBulking(undefined)}
             />
           </DialogContent>
         </Dialog>
