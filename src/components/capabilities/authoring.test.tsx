@@ -655,6 +655,66 @@ test('the grants editor starts from the list describe disclosed and sends it bac
   })
 })
 
+test('a grant’s actions are ticked off one at a time or all at once, and only a background grant says it keeps that', async () => {
+  described = {
+    ...describeResult(),
+    grants: [
+      { ...ownerGrant, background: true },
+      {
+        principal: 'user:sam',
+        read: true,
+        invoke: ['complete', 'retired'],
+        author: false,
+      },
+    ],
+  }
+  await openDialog()
+  await click(button('Agent access'))
+  await waitFor(() => named('Principal 2'))
+  const grantText = (n: number) =>
+    named(`Principal ${n}`)?.closest('fieldset')?.textContent ?? ''
+  const kept =
+    'May also run background behavior; this editor keeps that as it is.'
+  expect(grantText(1)).toContain(kept)
+  expect(grantText(2)).not.toContain(kept)
+  // A declared action is named by its label; a retired key by itself.
+  expect(grantText(2)).toContain('Complete')
+  expect(grantText(2)).toContain('retired')
+  expect(named('Grant 1 invokes complete')).toBeNull()
+
+  await click(named('Grant 2 invokes complete'))
+  expect(named('Grant 2 invokes complete')?.getAttribute('aria-checked')).toBe(
+    'false',
+  )
+  await click(named('Grant 1 invokes every action'))
+  expect(named('Grant 1 invokes complete')?.getAttribute('aria-checked')).toBe(
+    'false',
+  )
+  await click(named('Grant 2 invokes every action'))
+  expect(named('Grant 2 invokes retired')).toBeNull()
+
+  await click(button('Save grants'))
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toEqual({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [
+      {
+        op: 'set_grants',
+        grants: [
+          {
+            principal: 'user:travis',
+            read: true,
+            invoke: [],
+            author: true,
+            background: true,
+          },
+          { principal: 'user:sam', read: true, invoke: ['*'], author: false },
+        ],
+      },
+    ],
+  })
+})
+
 test('without the grant list in the answer, no grants editor is offered', async () => {
   const { grants: _withheld, ...withheld } = describeResult()
   described = withheld
@@ -947,6 +1007,91 @@ test('a new instance with nowhere to open it says where to name it', async () =>
       "Created reading/home from Reading list. Name it in a capability module's Instance setting to open it.",
     ),
   )
+})
+
+test('a template names the modules it is shown through, and a refused create says why', async () => {
+  answers['GET templates'] = {
+    status: 200,
+    body: {
+      templates: [
+        {
+          ...template('captpl:bare', 'Bare tracker', ''),
+          requirements: { modules: [] },
+        },
+        template('captpl:reading', 'Reading list', 'Books to read'),
+      ],
+    },
+  }
+  answers.instantiate = {
+    status: 409,
+    body: {
+      title: 'Conflict',
+      status: 409,
+      code: 'capability_instance_exists',
+      detail: 'taken',
+    },
+  }
+  await openDialog()
+  await click(button('Templates'))
+  await waitFor(() => named('Template to use'))
+  expect(screen().textContent).not.toContain('Shown through')
+  expect(screen().textContent).toContain('Still to do: an instance id.')
+  fill('Template to use', 'captpl:reading')
+  expect(screen().textContent).toContain(
+    'Shown through theorem.capability.table.',
+  )
+  fill('New instance id', 'reading/home')
+  expect(screen().textContent).not.toContain('Still to do')
+  await click(button('Create instance'))
+  await waitFor(() => calls.find((call) => call.path.endsWith('/instantiate')))
+  await waitFor(() => !screen().textContent.includes('Creating reading/home…'))
+  expect(screen().textContent).not.toContain('Created reading/home')
+  expect(screen().textContent).toContain(
+    'An instance with that id is already bound.',
+  )
+})
+
+test('a refused template list says why and offers no form', async () => {
+  answers['GET templates'] = {
+    status: 404,
+    body: {
+      title: 'Not found',
+      status: 404,
+      code: 'capability_template_not_found',
+      detail: 'gone',
+    },
+  }
+  await openDialog()
+  await click(button('Templates'))
+  await waitFor(() => screen().querySelector('[role="alert"]'))
+  expect(screen().querySelector('[role="alert"]')?.textContent).toBe(
+    'That template is not there: it was never saved, or it is not yours to read.',
+  )
+  expect(named('Template to use')).toBeNull()
+  expect(button('Create instance')).toBeUndefined()
+})
+
+test('a created instance that can be opened says what it was made from', async () => {
+  answers['GET templates'] = {
+    status: 200,
+    body: { templates: [template('captpl:reading', 'Reading list', 'Books')] },
+  }
+  answers.instantiate = {
+    status: 201,
+    body: {
+      definitionId: 'capdef:fresh',
+      instance: { instanceId: 'reading/home', definitionId: 'capdef:fresh' },
+    },
+  }
+  await openDialog({ onOpenInstance: () => {} })
+  await click(button('Templates'))
+  await waitFor(() => named('New instance id'))
+  fill('New instance id', 'reading/home')
+  await click(button('Create instance'))
+  await waitFor(() =>
+    screen().textContent.includes('Created reading/home from Reading list.'),
+  )
+  expect(screen().textContent).not.toContain('Name it in a capability module')
 })
 
 test('with no templates saved, new from template says how to make one', async () => {
