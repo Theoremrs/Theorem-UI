@@ -159,7 +159,10 @@ const githubNeutrals = {
 
 /** GitHub Sharp's cool grey and Stone's warm one. */
 const GITHUB_HUE = 250
-const STONE_HUE = 70
+// Taupe, owner's pick on 2026-11-22. At 70 Stone light's mid-lightness greys
+// read olive (a darkened yellow); 40 keeps the same faint tint, turned toward
+// rose-brown.
+const STONE_HUE = 40
 const ATTENTION_HUE = 75
 
 const modes: Array<Mode & { hue: number }> = [
