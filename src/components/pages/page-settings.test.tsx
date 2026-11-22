@@ -303,3 +303,51 @@ test('an instance made from a template is opened by writing the module’s setti
     viewKey: '',
   })
 })
+
+test('an instance made from a template beside a bound Instance input leaves the page as it is', async () => {
+  library = [
+    {
+      templateId: 'captpl:reading',
+      name: 'Reading list',
+      description: 'Books to read',
+      definition: describeResult().definition,
+      declareTypes: [],
+      requirements: { modules: [] },
+      savedBy: 'user:travis',
+      savedAtMs: 1,
+    },
+  ]
+  const before = {
+    root: { props: {} },
+    content: [
+      instance('theorem.text', 'which', { text: '' }),
+      instance('theorem.capability.table', 'table', {
+        instanceId: '',
+        viewKey: '',
+        bind: { instanceId: { from: 'which', port: 'text' } },
+      }),
+    ],
+  }
+  const { container, saved } = await openPage(before)
+  const id = await waitFor(() =>
+    container.querySelector<HTMLInputElement>(
+      'input[aria-label="New instance id"]',
+    ),
+  )
+  type(id, 'reading/home')
+  await act(async () => button(container, 'Create instance')?.click())
+  // The Instance setting is the binding's, so the module cannot switch to the
+  // new instance: it says where to name it, and the page has nothing to save.
+  await waitFor(() =>
+    container.textContent.includes(
+      "Created reading/home from Reading list. Name it in a capability module's Instance setting to open it.",
+    ),
+  )
+  expect(container.textContent).not.toContain('Unsaved changes')
+  expect(findComponent(saved().layout, 'table')?.props).toEqual({
+    id: 'table',
+    instanceId: '',
+    viewKey: '',
+    bind: { instanceId: { from: 'which', port: 'text' } },
+  })
+})
