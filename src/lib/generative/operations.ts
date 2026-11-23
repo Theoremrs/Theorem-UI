@@ -49,9 +49,9 @@ function presentSchema(): Record<string, unknown> {
     .map((name) => {
       const description =
         styledGenerativeUILibrary[name]?.description ?? ''
-      return `${name}: ${(description.split('.')[0] ?? '').slice(0, 36)}`
+      return `${name}: ${(description.split('.')[0] ?? '').slice(0, 34)}`
     })
-    .join('; ')
+    .join(';')
   const properties = strip(full.properties) as Record<string, unknown>
   properties._type = { type: 'string', enum: typeProp.enum, description: hints }
   properties.children = {
@@ -61,7 +61,12 @@ function presentSchema(): Record<string, unknown> {
       { type: 'object' },
     ],
   }
-  properties.a2ui = { type: 'array', items: { type: 'object' } }
+  properties.a2ui = {
+    type: 'array',
+    items: { type: 'object' },
+    description:
+      'Each {"version":"v0.9", createSurface|updateComponents|updateDataModel}; components [{"id","component":"Type",...props}]',
+  }
   return {
     type: 'object',
     properties,

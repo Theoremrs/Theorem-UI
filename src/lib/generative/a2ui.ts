@@ -18,6 +18,9 @@ import {
 } from '@assistant-ui/generative-ui/a2ui'
 import type { A2uiOperation } from '@assistant-ui/generative-ui/a2ui'
 
+/** The protocol versions applyA2uiOperations reads. */
+const A2UI_VERSIONS = ['v0.9', 'v0.9.1', 'v1.0'] as const
+
 type Node = Record<string, unknown>
 
 const isNode = (value: unknown): value is Node =>
@@ -142,6 +145,14 @@ export function presentation(
   if (Array.isArray(args.a2ui)) {
     const reduced = applyA2uiOperations(new Map(), args.a2ui as Array<A2uiOperation>)
     warnings.push(...reduced.warnings)
+    // The reducer names the operation but not what it reads; say it, so the
+    // agent can fix the stamp rather than guess.
+    if (reduced.warnings.some((warning) => warning.includes('unsupported version')))
+      warnings.push(`Each message needs "version" set to ${A2UI_VERSIONS.map((v) => `"${v}"`).join(', ')}.`)
+    if (reduced.warnings.some((warning) => /^Component at .* is malformed|malformed components/.test(warning)))
+      warnings.push(
+        'A component is a flat object: {"id": "gauge", "component": "Gauge", ...its props}, its type a string; a parent names its children by id ("children": ["a", "b"]) and one component has the id "root".',
+      )
     for (const [surfaceId, surface] of reduced.state) {
       const converted = convertSurfaceToUISpec(surface, { keepUnknownComponents: true })
       warnings.push(...converted.warnings)

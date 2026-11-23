@@ -85,6 +85,23 @@ describe('agent A2UI', () => {
     expect(warnings.length).toBeGreaterThan(0)
   })
 
+  test('a message stamped with a version the reducer does not read says which versions it does', () => {
+    const unstamped = OPERATIONS.map(({ version: _, ...message }) => ({ ...message, version: '0.9' }))
+    const { painted, warnings } = presentation({ a2ui: unstamped }, inVocabulary)
+    expect(painted).toEqual([])
+    expect(warnings.at(-1)).toBe('Each message needs "version" set to "v0.9", "v0.9.1", "v1.0".')
+  })
+
+  test('a component written in another shape is answered with the shape the reducer reads', () => {
+    const nested = [
+      OPERATIONS[0],
+      { version: 'v0.9', updateComponents: { surfaceId: 'ops', components: [{ id: 'root', component: { Text: { text: 'Hi' } } }] } },
+    ]
+    const { painted, warnings } = presentation({ a2ui: nested }, inVocabulary)
+    expect(painted).toEqual([])
+    expect(warnings.some((line) => line.includes('"component": "Gauge"'))).toBe(true)
+  })
+
   test('openUrl opens web addresses only', () => {
     const call = (url: string) => ({ type: 'a2ui:functionCall', call: 'openUrl', args: { url } })
     expect(openUrlOf(call('https://example.com/a'))).toBe('https://example.com/a')
