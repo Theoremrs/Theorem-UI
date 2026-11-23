@@ -58,7 +58,7 @@ Reference artifacts live under `docs/plans/evidence/refs/` and are named `<compo
 | B07 | VT widget | `tui-term` 0.3.4 | MIT | |
 | B08 | Graphemes, display width | `unicode-segmentation`, `unicode-width` 0.2 | MIT OR Apache-2.0 | |
 | B09 | Wire types to TypeScript | `ts-rs` | MIT | Dev-time only |
-| B10 | Code tokens, diff parsing | `@tanstack/highlight`, `diff` (jsdiff) | per package | Already in use by the terminal |
+| B10 | Code tokens, diff parsing | `shiki`, `diff` (jsdiff) | per package | Already in use by the terminal |
 | B11 | Document sessions, SCM, language, terminals, workbench record | `@theoremharness/sdk` 0.6.0-alpha.10 (vendored) | per package | The checkout and acceptance record use alpha.10; alpha.5 was the earlier Gate 0 pin. |
 | B12 | Local checkpoints | `@rustyreddb/browser` 0.1.0-beta.2 (vendored) | per package | |
 | B13 | Key, mouse, focus and paste encoding for process panes | `terminput` 0.5.16 | MIT OR Apache-2.0 | No `crossterm`; builds for wasm. Application cursor and keypad, and Ctrl with punctuation, are layered on top in `workbench-vt` because the crate does not read terminal modes |
