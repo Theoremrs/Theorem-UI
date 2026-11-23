@@ -49,21 +49,28 @@ export async function readUploadHead(
   if (!response.ok) throw new Error(`The file answered ${response.status}`)
   const type = response.headers.get('content-type') ?? ''
   const reader = response.body?.getReader()
-  if (!reader) return { head: await response.blob(), whole: true }
   const chunks: BlobPart[] = []
   let read = 0
-  let whole = false
-  while (!whole && read < limit) {
+  let ended = !reader
+  if (!reader) {
+    const blob = await response.blob()
+    chunks.push(blob)
+    read = blob.size
+  }
+  while (reader && !ended && read < limit) {
     const { done, value } = await reader.read()
-    if (done) whole = true
+    if (done) ended = true
     else {
       chunks.push(value)
       read += value.byteLength
     }
   }
-  // At the limit, one more read tells a file that ends there from a longer one.
-  if (!whole) whole = (await reader.read()).done
-  if (!whole) void reader.cancel()
+  // Exactly at the limit, one more read tells a file that ends there from a
+  // longer one. Past it, the file is longer than a card keeps, however soon
+  // it ends: the card has its beginning and nothing more.
+  if (reader && !ended && read === limit) ended = (await reader.read()).done
+  const whole = ended && read <= limit
+  if (reader && !ended) void reader.cancel()
   const head = new Blob(chunks, { type })
   return { head: whole ? head : head.slice(0, limit, type), whole }
 }
