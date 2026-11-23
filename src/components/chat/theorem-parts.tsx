@@ -9,7 +9,9 @@
 import { useAui, useAuiState, useAssistantDataUI } from '@assistant-ui/react'
 import { renderGenerativeUI } from '@assistant-ui/generative-ui/react'
 import { styledGenerativeUILibrary } from '@/components/assistant-ui/elements/generative-ui'
-import { PRESENT } from '@/lib/generative/operations'
+import { a2uiActionMessage, openUrlOf, presentation } from '@/lib/generative/a2ui'
+import type { GenerativeUIAction } from '@assistant-ui/generative-ui/react'
+import { inVocabulary, PRESENT } from '@/lib/generative/operations'
 import { CatchBoundary } from '@tanstack/react-router'
 import type {
   AssistantState,
@@ -392,19 +394,35 @@ export function appCheckProblems(data: unknown): string | undefined {
  * Something the agent asked this page to do. Nothing draws here: a check of
  * an App is a row of the tool-calls section, and the fox on the stage shows
  * what Kit's operations did. A `ui.present` call is the exception: the tree
- * it carries is the reply's interface, drawn from the styled vocabulary.
+ * or A2UI surfaces it carries are the reply's interface, drawn from the
+ * styled vocabulary, with any component it does not name drawn from its
+ * properties.
  */
 const ClientOperationPart: DataMessagePartComponent = ({ data }) => {
   const call = object(data)
   const args = object(call.args)
+  const aui = useAui()
   const running = useAuiState((s) => s.message.status?.type === 'running')
+  const trees = useMemo(() => presentation(args, inVocabulary).trees, [args])
   if (str(call.operation) !== PRESENT) return null
   const state = str(call.state) ?? 'pending'
   // While the call streams, the tree is partial; the renderer tolerates that.
   const status = state === 'pending' && running ? 'streaming' : 'done'
+  // An A2UI surface's actions go to the agent that wrote it; `openUrl` opens
+  // a web address.
+  const dispatch = (action: GenerativeUIAction) => {
+    const url = openUrlOf(action)
+    if (url) return void window.open(url, '_blank', 'noopener,noreferrer')
+    const message = a2uiActionMessage(action)
+    if (message && !aui.thread.getState().isRunning) aui.thread.append(message)
+  }
   return (
-    <div data-slot="theorem-present" className="aui-p-present my-2">
-      {renderGenerativeUI(args, styledGenerativeUILibrary, { status })}
+    <div data-slot="theorem-present" className="aui-p-present my-2 flex flex-col gap-3">
+      {trees.map(({ key, tree }) => (
+        <Fragment key={key}>
+          {renderGenerativeUI(tree, styledGenerativeUILibrary, { status, dispatch })}
+        </Fragment>
+      ))}
     </div>
   )
 }

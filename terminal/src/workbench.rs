@@ -162,7 +162,7 @@ fn load_nonce() -> String {
 /// changes with the workspace's theme exactly as the agent terminal does. The
 /// state and diff roles take the palette field of the same name: a diff line is
 /// text on the line's tint, changed words on the stronger one.
-fn theme_of(p: &Palette) -> Theme {
+pub(crate) fn theme_of(p: &Palette) -> Theme {
     let on = |bg| Style::new().fg(p.ink).bg(bg);
     let fg = |color| Style::new().fg(color);
     // The chosen thing is told by its letters, never by a band behind them: the mark colour,
@@ -240,7 +240,7 @@ fn theme_of(p: &Palette) -> Theme {
 /// The modifier flags a DOM keyboard or pointer event carries.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
-struct Modifiers {
+pub(crate) struct Modifiers {
     ctrl_key: bool,
     alt_key: bool,
     shift_key: bool,
@@ -248,7 +248,7 @@ struct Modifiers {
 }
 
 impl Modifiers {
-    fn of(event: &KeyboardEvent) -> Self {
+    pub(crate) fn of(event: &KeyboardEvent) -> Self {
         Self {
             ctrl_key: event.ctrl_key(),
             alt_key: event.alt_key(),
@@ -258,7 +258,7 @@ impl Modifiers {
     }
 
     /// `keybinds` tells Cmd from Win; the DOM only says Meta.
-    fn mods(self, platform: Platform) -> Mods {
+    pub(crate) fn mods(self, platform: Platform) -> Mods {
         let mut mods = Mods::NONE;
         mods.set(Mods::CTRL, self.ctrl_key);
         mods.set(Mods::ALT, self.alt_key);
@@ -344,7 +344,7 @@ fn positional_key(code: &str) -> Option<String> {
 /// A keydown as two inputs: the key the browser reports, and, on a Mac with Option held, the
 /// key by its position. The second is the chord a person meant when Option turned the first
 /// into another character.
-fn key_inputs(
+pub(crate) fn key_inputs(
     key: &str,
     code: &str,
     mods: Mods,
@@ -364,7 +364,7 @@ fn key_inputs(
     (reported, positional)
 }
 
-fn is_bare_printable(input: &KeyInput) -> bool {
+pub(crate) fn is_bare_printable(input: &KeyInput) -> bool {
     matches!(input.key(), Key::Char(_))
         && !input
             .mods()
@@ -1036,7 +1036,7 @@ impl Drawn for Mounted {
     }
 }
 
-fn platform_of(window: &web_sys::Window) -> Platform {
+pub(crate) fn platform_of(window: &web_sys::Window) -> Platform {
     let navigator = window.navigator();
     let mac = |text: Result<String, JsValue>| text.is_ok_and(|t| t.contains("Mac"));
     if mac(navigator.platform()) || mac(navigator.user_agent()) {
@@ -1640,11 +1640,7 @@ mod tests {
         // The marks of a diff's lines are the code colours Theo drew them in.
         assert_eq!(theme.diff_added_mark, Style::new().fg(p.syntax_tag));
         assert_eq!(theme.diff_removed_mark, Style::new().fg(p.syntax_keyword));
-        // The transcript's roles resolve to the raised ground and the bright name it drew.
-        assert_eq!(p.completed_row(), p.raised);
-        assert_eq!(p.running_row(), p.raised);
-        assert_eq!(p.pending_row(), p.raised);
-        assert_eq!(p.failed_row(), p.raised);
+        // The transcript's roles resolve to the bright name it drew.
         assert_eq!(p.completed_ink(), p.bright);
         assert_eq!(p.text_disabled(), p.muted);
         assert_eq!(p.diff_added_mark(), p.syntax_tag);
@@ -1654,7 +1650,7 @@ mod tests {
     #[test]
     fn a_page_that_sends_the_semantic_roles_changes_them_and_nothing_else() {
         let sent: Palette = serde_json::from_str(
-            r##"{"canvas":"#101820","selectedRow":"#34445a","completedRow":"#101820",
+            r##"{"canvas":"#101820","selectedRow":"#34445a",
                  "textDisabled":"#7a828a","info":"#58a6ff"}"##,
         )
         .expect("the roles parse beside the legacy keys");
@@ -1667,8 +1663,6 @@ mod tests {
             theme.selected_region,
             Style::new().bg(Color::Rgb(0x34, 0x44, 0x5a))
         );
-        assert_eq!(sent.completed_row(), Color::Rgb(0x10, 0x18, 0x20));
-        assert_eq!(sent.running_row(), base.raised);
         assert_eq!(theme.text_disabled.fg, Some(Color::Rgb(0x7a, 0x82, 0x8a)));
         assert_eq!(theme.gutter, theme.text_disabled);
         assert_eq!(theme.muted, theme_of(&base).muted);

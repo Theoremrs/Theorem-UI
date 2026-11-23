@@ -594,7 +594,7 @@ export function TerminalScreen({
         onFocus={() => handle.current?.set_focused(true)}
         onBlur={() => handle.current?.set_focused(false)}
         data-terminal-grid=""
-        className="relative min-h-0 flex-1 cursor-default overflow-hidden bg-term font-mono text-[12.5px] whitespace-pre text-term-ink outline-none"
+        className="relative min-h-0 flex-1 cursor-default overflow-hidden bg-term-canvas font-mono text-[12.5px] whitespace-pre text-term-ink outline-none"
       />
       {/* Over the header bar's last columns, which the terminal leaves
           clear. Outside the host, whose contents Ratzilla replaces. */}

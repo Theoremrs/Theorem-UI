@@ -44,6 +44,7 @@ import { FaceBench, FaceBook } from '@/components/face/face-bench'
 import { FaceStage } from '@/components/face/face-stage'
 import { TheoFaceInverse } from '@/components/face/terminal-face-story'
 import { CommandTerminalLiveStory } from '@/components/terminal/command-terminal-story'
+import { CellsTerminalStory } from '@/components/terminal/cells-terminal-story'
 import { speechAdapter } from '@/lib/speech/adapter'
 import { theFace } from '@/lib/face/store'
 import { useMicLevel } from '@/lib/speech/dictation'
@@ -132,7 +133,6 @@ import { SCENE_STORY_RENDERS } from './scene-stories'
 import type { ArtifactStory } from './fixtures/artifacts'
 import {
   ResponseDetailsStory,
-  ResponseStylePickerStory,
   ResponseStylesSettingsStory,
 } from './response-styles-stories'
 import { documentFixtures } from './fixtures/notes'
@@ -1163,6 +1163,69 @@ function PresentStory() {
   )
 }
 
+/** A reply that holds an interactive view: Observable cells the person works
+ *  in the answer and edits in the terminal under it. */
+const VIEW_TREE = {
+  _type: 'View',
+  title: 'Sales by region',
+  caption: 'Drag the slider to hide the smaller regions.',
+  data: [
+    { name: 'North', sales: 42 },
+    { name: 'South', sales: 31 },
+    { name: 'East', sales: 27 },
+    { name: 'West', sales: 18 },
+  ],
+  cells: [
+    'const min = view(Inputs.range([0, 50], { label: "At least", step: 1, value: 20 }))',
+    'Plot.barY(data.filter((d) => d.sales >= min), { x: "name", y: "sales" }).plot()',
+  ],
+}
+
+function ViewStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: [
+      {
+        id: 'message-view',
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        metadata: { custom: { theoremRunId: 'run-view-story' } },
+        content: [
+          { type: 'text', text: 'Here are the sales by region.' },
+          {
+            type: 'data',
+            name: 'theorem-client_operation',
+            data: {
+              requestRef: 'req-view-story',
+              operation: 'ui.present',
+              state: 'answered',
+              args: VIEW_TREE,
+              expectedRevision: 0,
+              receipt: { outcome: 'applied', result: { painted: 'View' } },
+            },
+          },
+        ],
+      },
+    ],
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+    adapters: {
+      threadList: {
+        threadId: 'story-view',
+        threads: [{ status: 'regular', id: 'story-view', remoteId: 'thread_story_view' }],
+      },
+    },
+  })
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+    </AssistantRuntimeProvider>
+  )
+}
+
 /** One of the interactive-responses plan's representative replies, over its
  *  committed fixture: the real thread and part renderers, the real
  *  present bridge, a thread-list adapter so context references have a
@@ -1367,6 +1430,8 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'shell-compare': ShellCompareStory,
   'populated-shell': PopulatedShellStory,
   'command-live': CommandTerminalLiveStory,
+  'view-cells': CellsTerminalStory,
+  'present-view': ViewStory,
   'project-home': ProjectHomeStory,
   'session-graph': SessionGraphStory,
   'shell-navigation': ShellNavigationStory,
@@ -1390,7 +1455,6 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'note-kinds': NoteKindsStory,
   'canvas-note-types': CanvasNoteTypesStory,
   'program-note': ProgramNoteStory,
-  'response-style-picker': ResponseStylePickerStory,
   'response-details': ResponseDetailsStory,
   'response-styles-settings': ResponseStylesSettingsStory,
   'cpu-gpu-tradeoff': () => <NotebookStory id="cpu-gpu-tradeoff" />,

@@ -216,7 +216,7 @@ describe('the output under a command', () => {
     expect(outputShows('done', { printed: false }, true)).toBe(false)
   })
 
-  test('makes room for the chevron that opens it, and for the time once it has run', () => {
+  test('makes room for its line, and for the time once it has run', () => {
     const run = {
       command: 'bun test src/tiles --coverage',
       stdout: '14 pass',
@@ -224,10 +224,10 @@ describe('the output under a command', () => {
       exitCode: 0,
       state: 'done' as const,
     }
-    // The command's line, then " ▸".
-    expect(terminalColumns(run)).toBe(2 + 29 + 1 + 1 + 2 + 2)
+    // The prompt, the command, a space and the ending, inside the margins.
+    expect(terminalColumns(run)).toBe(2 + 29 + 1 + 1 + 2)
     // And "10m 10s " before the ending, so the terminal does not widen as it counts.
-    expect(terminalColumns(run, true)).toBe(2 + 29 + 1 + 8 + 1 + 2 + 2)
+    expect(terminalColumns(run, true)).toBe(2 + 29 + 1 + 8 + 1 + 2)
   })
 })
 

@@ -72,17 +72,6 @@ function useStoryRuntime(messages: readonly ThreadMessageLike[]) {
   })
 }
 
-export function ResponseStylePickerStory() {
-  const runtime = useStoryRuntime([])
-  return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <div className="mx-auto flex h-[320px] w-full max-w-(--spacing-reading) flex-col">
-        <Thread autoFocus={false} />
-      </div>
-    </AssistantRuntimeProvider>
-  )
-}
-
 export function ResponseDetailsStory() {
   const runtime = useStoryRuntime(detailMessages)
   useEffect(() => {

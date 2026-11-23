@@ -60,6 +60,13 @@ export interface AppSelection {
    * source: the nearest `[data-theorem-source]`.
    */
   source?: string
+  /**
+   * What a view named of its own selection with `theorem.select`: the records
+   * chosen by id, and the view's state (a brush's extent, a focused node, the
+   * parameters moved off the values the reply assumed).
+   */
+  ids?: Array<string>
+  state?: Record<string, unknown>
 }
 
 /** The reads a database answers. A subscription keeps one of them current. */

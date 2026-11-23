@@ -68,7 +68,8 @@ export const UI_CONTRIBUTIONS: ReadonlyArray<ArtifactContribution> = [
     kinds: ['document'],
     media: ['text/markdown'],
     presentations: [
-      presentation('artifact_native', 'theorem-document.excerpt', ['preview']),
+      // In the reply a document is a card that opens it in the Gallery.
+      presentation('artifact_native', 'theorem-document.reply', ['preview']),
       presentation('artifact_native', 'theorem-document', [
         'thing',
         'interactive',
@@ -87,12 +88,27 @@ export const UI_CONTRIBUTIONS: ReadonlyArray<ArtifactContribution> = [
     locators: ['code_range'],
     followsTheme: true,
   }),
+  // The agent picks how a diagram is drawn by its kind: a "diagram" is
+  // Mermaid source, drawn as written; a "graph" is a DAG of nodes naming what
+  // each depends on, laid out as a flow graph. Either sits bare in the reply.
   contribution('theorem.diagram', 'Diagram', {
     provider: 'theorem-ui',
     kinds: ['diagram'],
     media: ['text/vnd.mermaid'],
     presentations: [
+      presentation('artifact_native', 'theorem-diagram.reply', ['preview']),
       presentation('artifact_native', 'theorem-diagram', [
+        'thing',
+        'interactive',
+      ]),
+    ],
+    followsTheme: true,
+  }),
+  contribution('theorem.graph', 'Graph', {
+    provider: 'theorem-ui',
+    kinds: ['graph'],
+    presentations: [
+      presentation('artifact_native', 'theorem-graph', [
         'preview',
         'thing',
         'interactive',
@@ -199,6 +215,7 @@ export function subjectOf(
 
 let mounted: Readonly<Record<string, FC<RendererProps>>> = {}
 let bare: ReadonlySet<string> = new Set()
+let cards: ReadonlySet<string> = new Set()
 let fills: ReadonlySet<string> = new Set()
 
 /**
@@ -208,16 +225,23 @@ let fills: ReadonlySet<string> = new Set()
  * A `bare` renderer draws the whole surface in the reply itself: its own
  * sizing, expansion, loading and failure, and Ask. The conversation adds no
  * card around it (docs/plans/interactive-answer-artifacts.md: no visible
- * chrome, an invisible frame contract). A renderer that `fills` takes the
- * whole of a panel's body, with no reading column or padding, and sizes
- * itself to it.
+ * chrome, an invisible frame contract). A `card` renderer is the reply's
+ * own card for an artifact shown elsewhere: the conversation adds nothing
+ * around it, and the working turn's still opens in its panel. A renderer
+ * that `fills` takes the whole of a panel's body, with no reading column or
+ * padding, and sizes itself to it.
  */
 export function mountRenderers(
   table: Record<string, FC<RendererProps>>,
-  options: { bare?: ReadonlyArray<string>; fills?: ReadonlyArray<string> } = {},
+  options: {
+    bare?: ReadonlyArray<string>
+    cards?: ReadonlyArray<string>
+    fills?: ReadonlyArray<string>
+  } = {},
 ) {
   mounted = { ...mounted, ...table }
   bare = new Set([...bare, ...(options.bare ?? [])])
+  cards = new Set([...cards, ...(options.cards ?? [])])
   fills = new Set([...fills, ...(options.fills ?? [])])
 }
 
@@ -234,6 +258,12 @@ export function fillsPanel(
 export function isBare(artifact: TheoremArtifact, distance: Distance): boolean {
   const { renderer } = representationOf(artifact, distance)
   return renderer !== undefined && renderer in mounted && bare.has(renderer)
+}
+
+/** Whether the artifact's renderer at `distance` draws the reply's card itself. */
+export function isCard(artifact: TheoremArtifact, distance: Distance): boolean {
+  const { renderer } = representationOf(artifact, distance)
+  return renderer !== undefined && renderer in mounted && cards.has(renderer)
 }
 
 export function rendererFor(
@@ -291,6 +321,11 @@ const SOURCES: Record<
   'theorem.diagram': (artifact) => ({
     noun: '',
     mediaType: 'text/vnd.mermaid',
+    load: inline(artifact),
+  }),
+  'theorem.graph': (artifact) => ({
+    noun: '',
+    mediaType: 'application/json',
     load: inline(artifact),
   }),
   // A payload this build cannot read still hands over its content: the

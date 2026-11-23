@@ -13,6 +13,7 @@ import protocol from './sandbox/protocol.ts?raw'
 import standalone from './sandbox/standalone.ts?raw'
 import theme from './sandbox/theme.ts?raw'
 import values from './sandbox/values.ts?raw'
+import views from './sandbox/views.ts?raw'
 
 /** The sandbox runtime's TypeScript sources by module name. */
 export const runtimeSources: Record<string, string> = {
@@ -28,4 +29,5 @@ export const runtimeSources: Record<string, string> = {
   standalone,
   theme,
   values,
+  views,
 }

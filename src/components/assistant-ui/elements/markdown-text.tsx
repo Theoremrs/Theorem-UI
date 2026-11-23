@@ -7,7 +7,11 @@ import {
   memoizeMarkdownComponents,
   useIsMarkdownCodeBlock
 } from "@assistant-ui/react-markdown";
-import type { CodeHeaderProps, MarkdownTextPrimitiveProps } from "@assistant-ui/react-markdown";
+import type {
+  CodeHeaderProps,
+  MarkdownTextPrimitiveProps,
+  SyntaxHighlighterProps,
+} from "@assistant-ui/react-markdown";
 import {
   escapeCurrencyDollars,
   normalizeMathDelimiters,
@@ -21,9 +25,7 @@ import type { TextMessagePartProps } from "@assistant-ui/react";
 
 import { MermaidDiagram } from "@/components/assistant-ui/elements/mermaid-diagram.aui";
 import { SyntaxHighlighter } from "@/components/assistant-ui/elements/code-highlighter.aui";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/icons";
-import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
+import { bareDrawing } from "@/components/assistant-ui/elements/surfaces";
 import {
   Table,
   TableBody,
@@ -56,10 +58,15 @@ const useShallowStable = <T extends Record<string, unknown> | undefined>(
   return ref.current;
 };
 
-// Fenced mermaid blocks render as diagrams under the plain header; every
+/** A fenced mermaid block is the drawing alone, in line with the reply's text. */
+const MermaidFence: FC<SyntaxHighlighterProps> = (props) => (
+  <MermaidDiagram {...props} className={cn("my-3", bareDrawing)} />
+);
+
+// Fenced mermaid blocks render as diagrams with no header, box or fill; every
 // other fence is a glass code block, whose chrome is its header.
 const defaultComponentsByLanguage: MarkdownTextPrimitiveProps["componentsByLanguage"] = {
-  mermaid: { SyntaxHighlighter: MermaidDiagram, CodeHeader: (props) => <PlainCodeHeader {...props} /> },
+  mermaid: { SyntaxHighlighter: MermaidFence, CodeHeader: () => null },
 };
 
 const MarkdownTextImpl: FC<MarkdownTextProps> = ({
@@ -97,39 +104,6 @@ const preprocessMath = (text: string) =>
 
 /** The glass code block draws its own chrome, so a fence's separate header is empty. */
 export const CodeHeader: FC<CodeHeaderProps> = () => null;
-
-/** The header over a block that is not glass code: a mermaid diagram's language and copy. */
-const PlainCodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
-  const { isCopied, copyToClipboard } = useCopyToClipboard({
-    copiedDuration: 1500,
-  });
-  const onCopy = () => {
-    if (!code || isCopied) return;
-    copyToClipboard(code);
-  };
-
-  return (
-    <div className="aui-code-header-root border-separator bg-raised mt-3 flex items-center justify-between rounded-t-lg border border-b-0 py-1 ps-3.5 pe-1 text-xs">
-      <span data-appearance-recipe="metadata" {...appearancePair("secondary", "popover")} className="aui-code-header-language text-ink-muted font-mono lowercase">
-        {language}
-      </span>
-      <Button
-        variant="ghost"
-        size="xs"
-        onClick={onCopy}
-        aria-label={isCopied ? "Copied" : "Copy code"}
-        className="text-ink-muted"
-      >
-        {isCopied ? (
-          <Icon.Copied className="animate-in fade-in zoom-in-30 -spin-in-20 ease-lift duration-(--duration-lift)" />
-        ) : (
-          <Icon.Copy className="animate-in fade-in zoom-in-75" />
-        )}
-        {isCopied ? "copied!" : "copy"}
-      </Button>
-    </div>
-  );
-};
 
 /** Inline code longer than this many characters reads as a diagnostic block. */
 const DIAGNOSTIC_LENGTH = 72;

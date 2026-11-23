@@ -242,7 +242,7 @@ const containerClassName = {
   panel:
     "aui-code-block [&_pre]:border-separator [&_pre]:bg-popover! [&_pre]:overflow-x-auto [&_pre]:rounded-t-none [&_pre]:rounded-b-lg [&_pre]:border [&_pre]:border-t-0 [&_pre]:p-3.5 [&_pre]:text-[13px] [&_pre]:leading-relaxed",
   glass:
-    "aui-code-block [&_pre]:bg-transparent! [&_pre]:overflow-x-auto [&_pre]:m-0 [&_pre]:rounded-none [&_pre]:border-0 [&_pre]:px-5 [&_pre]:py-4 [&_pre]:text-[13px] [&_pre]:leading-[1.55]",
+    "aui-code-block [&_pre]:bg-transparent! [&_pre]:overflow-x-auto [&_pre]:m-0 [&_pre]:rounded-none [&_pre]:border-0 [&_pre]:px-4 [&_pre]:py-2.5 [&_pre]:text-[13px] [&_pre]:leading-[1.5]",
 } as const;
 
 /**

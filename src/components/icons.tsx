@@ -421,6 +421,10 @@ const Plan = painted(CONTROL_LAYERS.plan, 180, true)
 const WebSearch = painted(CONTROL_LAYERS.browser, 180, true)
 const Plugins = painted(CONTROL_LAYERS.plugins, 180, true)
 const CodeMode = painted(CONTROL_LAYERS.fileCode, 180, true)
+// The / menu's Read aloud (owner, 2026-11-21): Streamline's page with a
+// speaker, in the painted family beside Code mode. The reply toolbar keeps
+// Theorem's own solid speaker with the rest of its marks.
+const ReadAloudControl = painted(CONTROL_LAYERS.readAloud, 180, true)
 // Skills in the same menu: Icon.Skill's atom traced as a control mark, so it
 // sits in the painted family beside them rather than as a thinner mask.
 const SkillControl = painted(CONTROL_LAYERS.skill, 180, true)
@@ -594,6 +598,7 @@ export const Icon = {
   WebSearch,
   Plugins,
   CodeMode,
+  ReadAloudControl,
   SkillControl,
   Agent,
   Attachments,

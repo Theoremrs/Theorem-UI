@@ -264,6 +264,8 @@ export function kindLabel(artifact: TheoremArtifact): string {
       return artifact.language ? `Code · ${artifact.language}` : 'Code'
     case 'diagram':
       return 'Diagram'
+    case 'graph':
+      return 'Graph'
     case 'observable':
       return 'Notebook · Observable'
     case 'marimo':

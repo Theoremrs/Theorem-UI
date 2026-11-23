@@ -102,10 +102,11 @@ export function SaveAsPage({
       </Button>
       {saved && <SavedPage {...saved} />}
       {open && documentId && (
-        <VaultDialog
-          artifact={artifact}
+        <SaveAppAsPageDialog
+          title={artifact.title}
           documentId={documentId}
           latest={latest}
+          loadSource={() => sourceOf(artifact, true).load()}
           onClose={() => setOpen(false)}
           onSaved={setSaved}
         />
@@ -114,11 +115,17 @@ export function SaveAsPage({
   )
 }
 
-/** The vault is resolved when the dialog opens, not for every artifact shown. */
-function VaultDialog(props: {
-  artifact: TheoremArtifact
+/**
+ * Save as page for an App document, wherever it came from: an App artifact
+ * or a view saved from a reply. The vault is resolved when the dialog opens,
+ * not for every App shown.
+ */
+export function SaveAppAsPageDialog(props: {
+  title: string
   documentId: string
   latest: boolean
+  /** The App as it is saved now: what the page will run. */
+  loadSource: () => Promise<string>
   onClose: () => void
   onSaved: (page: { entryId: string; title: string }) => void
 }) {
@@ -132,7 +139,6 @@ function VaultDialog(props: {
           ? undefined
           : `A page is a file in the Theorem vault. ${missing}`
       }
-      loadSource={() => sourceOf(props.artifact, true).load()}
     />
   )
 }
@@ -141,7 +147,7 @@ function VaultDialog(props: {
 export function SaveAsPageDialog({
   client,
   vaultProblem,
-  artifact,
+  title: initialTitle,
   documentId,
   latest,
   loadSource,
@@ -150,7 +156,8 @@ export function SaveAsPageDialog({
 }: {
   client: WorkspaceClient | undefined
   vaultProblem?: string
-  artifact: TheoremArtifact
+  /** The page's title to start from: the App's own. */
+  title: string
   documentId: string
   latest: boolean
   /** The App as it is saved now: what the page will run. */
@@ -158,7 +165,7 @@ export function SaveAsPageDialog({
   onClose: () => void
   onSaved: (page: { entryId: string; title: string }) => void
 }) {
-  const [title, setTitle] = useState(artifact.title || 'App')
+  const [title, setTitle] = useState(initialTitle || 'App')
   const source = useQuery({
     queryKey: ['artifacts', 'save-as-page', documentId],
     queryFn: loadSource,
@@ -269,7 +276,7 @@ function CreateForm({
 }
 
 /** What was made, with the way to it. */
-function SavedPage({ entryId, title }: { entryId: string; title: string }) {
+export function SavedPage({ entryId, title }: { entryId: string; title: string }) {
   // Absent outside a router, as in this module's tests.
   const router = useRouter({ warn: false }) as
     ReturnType<typeof useRouter> | undefined

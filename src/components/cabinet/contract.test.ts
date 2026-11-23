@@ -45,14 +45,14 @@ describe('inert-preview eligibility (A07)', () => {
     }
   })
 
-  it('still resolves an inert document excerpt', () => {
+  it('still resolves an inert document card', () => {
     const r = inertRepresentation(
       { kind: 'document' },
       'preview',
       UI_CONTRIBUTIONS,
       mountedAll,
     )
-    expect(r.renderer).toBe('theorem-document.excerpt')
+    expect(r.renderer).toBe('theorem-document.reply')
   })
 })
 

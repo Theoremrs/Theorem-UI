@@ -17,7 +17,7 @@ import {
 } from 'react'
 import { create } from 'zustand'
 import type { StoreApi, UseBoundStore } from 'zustand'
-import { ArtifactPlacement } from '@/components/artifacts/artifact-message'
+import { ArtifactPlacement } from '@/components/artifacts/artifact-view'
 import { Thread } from '@/components/assistant-ui/elements/thread.aui'
 import { DocumentApp } from '@/components/blocks/document-app'
 import { useComposerReferences } from '@/components/chat/composer-references'

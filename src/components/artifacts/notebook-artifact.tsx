@@ -25,6 +25,7 @@ import type { FrameConnection } from '@/lib/blocks/executor'
 import { call } from '@/lib/blocks/sandbox/protocol'
 import type {
   AppSelection,
+  FrameError,
   SandboxMethods,
 } from '@/lib/blocks/sandbox/protocol'
 import { resolvedTheme } from '@/lib/blocks/sandbox/theme'
@@ -60,6 +61,7 @@ const denied = (what: string) => async () => {
  */
 export function notebookHost(
   onSelection?: (selection: AppSelection) => void,
+  onError?: (error: FrameError) => void,
 ): BridgeHost {
   return {
     state: {
@@ -75,6 +77,7 @@ export function notebookHost(
     },
     run: denied('starts no agents'),
     onSelection,
+    onError,
   }
 }
 
@@ -123,22 +126,37 @@ function usePage(build: (theme: ThemeState) => Promise<string>, key: unknown) {
   return page.key === key ? page : {}
 }
 
-/** A notebook's frame: its document, the deny-all host, the page's theme followed in. */
-function NotebookFrame({
+/**
+ * A notebook's frame: its document, the deny-all host, the page's theme
+ * followed in. `onError` hears what its cells throw and nothing catches;
+ * `onBuilt` hears when the page for `buildKey` is built.
+ */
+export function NotebookFrame({
   build,
   buildKey,
   title,
   loading,
   onSelection,
+  onError,
+  onBuilt,
 }: {
   build: (theme: ThemeState) => Promise<string>
   buildKey: unknown
   title: string
   loading: string
   onSelection: (selection: AppSelection) => void
+  onError?: (error: FrameError) => void
+  onBuilt?: (key: unknown) => void
 }) {
   const page = usePage(build, buildKey)
-  const host = useMemo(() => notebookHost(onSelection), [onSelection])
+  const built = Boolean(page.src || page.error)
+  useEffect(() => {
+    if (built) onBuilt?.(buildKey)
+  }, [built, buildKey, onBuilt])
+  const host = useMemo(
+    () => notebookHost(onSelection, onError),
+    [onSelection, onError],
+  )
   if (page.error) return <BlockMessage tone="error">{page.error}</BlockMessage>
   if (!page.src)
     return (

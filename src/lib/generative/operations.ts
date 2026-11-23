@@ -7,14 +7,16 @@
 // @assistant-ui/generative-ui's buildPresentParameters over the styled
 // vocabulary for the model-facing schema, compacted to the server's 8 KB
 // cap; @tanstack/react-query's MutationObserver retries a receipt that
-// failed to post. The tree the model composes is rendered by the installed
-// generative-ui element, so the reply carries an interface, not just prose.
+// failed to post. The tree the model composes, or the A2UI surfaces it
+// writes (a2ui.ts), is rendered by the installed generative-ui element, so
+// the reply carries an interface, not just prose.
 import type { ThreadMessage } from '@assistant-ui/react'
 import { buildPresentParameters } from '@assistant-ui/generative-ui/react'
 import { MutationObserver, QueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { styledGenerativeUILibrary } from '@/components/assistant-ui/elements/generative-ui'
 import { hasStatus, mutate, theorem } from '@/lib/theorem/client'
+import { presentation } from './a2ui'
 
 /** The operation that paints a composed interface into the reply. */
 export const PRESENT = 'ui.present'
@@ -47,9 +49,9 @@ function presentSchema(): Record<string, unknown> {
     .map((name) => {
       const description =
         styledGenerativeUILibrary[name]?.description ?? ''
-      return `${name}: ${(description.split('.')[0] ?? '').slice(0, 40)}`
+      return `${name}: ${(description.split('.')[0] ?? '').slice(0, 34)}`
     })
-    .join('; ')
+    .join(';')
   const properties = strip(full.properties) as Record<string, unknown>
   properties._type = { type: 'string', enum: typeProp.enum, description: hints }
   properties.children = {
@@ -59,9 +61,14 @@ function presentSchema(): Record<string, unknown> {
       { type: 'object' },
     ],
   }
+  properties.a2ui = {
+    type: 'array',
+    items: { type: 'object' },
+    description:
+      'Each {"version":"v0.9", createSurface|updateComponents|updateDataModel}; components [{"id","component":"Type",...props}]',
+  }
   return {
     type: 'object',
-    required: ['_type'],
     properties,
     additionalProperties: true,
   }
@@ -78,7 +85,7 @@ export const GENERATIVE_OPERATIONS = [
   {
     name: PRESENT,
     description:
-      'Paints a small interface into your reply from a component vocabulary: headings, text, facts, cards, rows and columns, tables, lists, steps, timelines, charts, badges, alerts, tabs, forms, inputs, buttons, images, diagrams and markdown. Pass a tree whose root has `_type` naming a component and that component\'s properties; `children` nests more components or a string. Use it when a layout says more than prose: a comparison as a table, a plan as steps, a result as a fact card. Keep it to what the answer needs; the person reads it inline. Nothing outside the reply is changed.',
+      'Paints an interface into your reply. Pass a tree whose root `_type` names a component (headings, text, facts, cards, rows, columns, tables, lists, steps, timelines, charts, alerts, tabs, forms, inputs, buttons, images, diagrams, markdown, views) with its properties; `children` nests components or a string. Or pass `a2ui`: A2UI messages in any catalog; unknown components are drawn from their properties. Use it when a layout says more than prose. For an answer to explore, use `View`: `cells` are Observable JavaScript cells, sandboxed with no network, with d3, Plot, Inputs, `data` and `invalidation`. What the reader selects in `views` becomes context for their next question: `views.linked(rows, {x, y, id})`, `views.graph({nodes, links})`, `views.tree(root)`, `views.timeline(events, {start, end})`, `const k = view(views.param(Inputs.range([0, 1]), "k"))`. Add a `caption` when it helps; credit data and adapted notebooks in `source`; release WebGL in `invalidation`. Nothing outside the reply is changed.',
     effect: 'presentation',
     inputSchema: PRESENT_SCHEMA,
   },
@@ -136,15 +143,8 @@ export function presentRequestsOf(
   })
 }
 
-/**
- * Whether a tree's root names a component the vocabulary can draw. The
- * renderer itself tolerates partial and unknown nodes while streaming; this
- * only refuses a root that could never render, so the run is told plainly.
- */
-function paintable(args: Record<string, unknown>): boolean {
-  const type = args._type
-  return typeof type === 'string' && type in styledGenerativeUILibrary
-}
+/** Whether the vocabulary draws a component itself. */
+export const inVocabulary = (type: string) => Object.hasOwn(styledGenerativeUILibrary, type)
 
 export interface PresentReceipt {
   readonly outcome: 'applied' | 'rejected' | 'failed'
@@ -190,16 +190,25 @@ export function servePresentRequests(
     served.add(request.requestRef)
     answered.push(
       (async () => {
-        const receipt: PresentReceipt = paintable(request.args)
+        // Anything the agent wrote is painted; what it is told back only
+        // helps it fix its own output. Only a call with nothing to paint is
+        // refused, with the reducer's warnings when it sent A2UI.
+        const { painted, warnings } = presentation(request.args, inVocabulary)
+        const receipt: PresentReceipt = painted.length
           ? {
               outcome: 'applied',
-              result: { painted: request.args._type },
+              result: {
+                painted: painted.length === 1 ? painted[0] : painted,
+                ...(warnings.length && { warnings }),
+              },
               revision: request.expectedRevision,
             }
           : {
               outcome: 'rejected',
-              reason:
-                'The tree needs a root `_type` naming a component in the vocabulary.',
+              reason: [
+                'Pass a tree whose root `_type` names a component, or `a2ui` messages that create a surface with a root component.',
+                ...warnings,
+              ].join(' '),
               revision: request.expectedRevision,
             }
         await new MutationObserver(receipts, {
