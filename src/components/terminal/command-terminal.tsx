@@ -239,6 +239,8 @@ export function CommandTerminal({
   const [cut, setCut] = useState(false)
   const [chosen, setChosen] = useState<boolean>()
   const open = outputShows(state, { printed, cut, exitCode }, chosen)
+  // Whether the prompt's line opens the terminal: there is something to show.
+  const opens = printed || cut
   const [failed, setFailed] = useState(false)
   const { isCopied, copyToClipboard } = useCopyToClipboard({
     copiedDuration: 1500,
@@ -405,7 +407,7 @@ export function CommandTerminal({
               }}
               className="relative max-w-full overflow-hidden whitespace-pre text-term-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
             />
-            {(printed || cut) && (
+            {opens && (
               <button
                 type="button"
                 aria-expanded={open}
@@ -424,9 +426,10 @@ export function CommandTerminal({
               onClick={() => void copyToClipboard(command)}
               className={cn(
                 // Over the prompt while the terminal is pointed at or the copy has focus; a
-                // finger, which cannot point, finds it once the terminal is open.
+                // finger, which cannot point, finds it once the terminal is open, or at
+                // once when there is nothing to open.
                 'absolute top-0 left-0 flex h-[1.5em] w-[3ch] items-center justify-center bg-term text-term-muted opacity-0 transition-opacity group-hover/command:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none',
-                open || isCopied
+                open || isCopied || !opens
                   ? 'pointer-coarse:opacity-100'
                   : 'pointer-coarse:pointer-events-none',
                 isCopied && 'opacity-100',

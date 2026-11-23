@@ -52,6 +52,13 @@ const FAILS: Script = {
   exitCode: 101,
 }
 
+const QUIET: Script = {
+  command: 'mkdir -p dist/tiles',
+  stdout: [],
+  stderr: [],
+  exitCode: 0,
+}
+
 /** One round: the lines arrive one by one, the command ends, and the round hands on. */
 function Round({ script, onEnd }: { script: Script; onEnd: () => void }) {
   const [shown, setShown] = useState(0)
@@ -88,12 +95,13 @@ function Replay({ script }: { script: Script }) {
   return <Round key={round} script={script} onEnd={next} />
 }
 
-/** Two commands running over and over: one ends well and closes, one fails and stays open. */
+/** Three commands running over and over: one ends well and closes, one fails and stays open, one prints nothing. */
 export function CommandTerminalLiveStory() {
   return (
     <div className="mx-auto flex max-w-2xl flex-col items-start gap-6 p-8">
       <Replay script={PASSES} />
       <Replay script={FAILS} />
+      <Replay script={QUIET} />
     </div>
   )
 }
