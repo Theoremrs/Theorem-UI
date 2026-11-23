@@ -50,7 +50,6 @@ import {
 import { ProgramPart } from '@/components/chat/program-part'
 import { CompletionFooter } from '@/components/chat/run-footer'
 import { UserMarkdown } from '@/components/chat/user-markdown'
-import { NoteImage } from '@/components/notes/kinds/embed-block'
 import { ReviewAnswerCard } from '@/components/review/review-card'
 import { PlanToolCall } from '@/components/chat/plan-graph'
 import { useRevealFile } from '@/components/ide/follow'
@@ -86,7 +85,7 @@ import type {
   ApprovalOutcome,
   TheoremApproval,
 } from '@/lib/theorem/approval'
-import { uploadContentPath } from '@/lib/theorem/uploads'
+import { StoredAttachment } from '@/components/chat/stored-attachment'
 import { DRAFT_PLAN } from '@/lib/theorem/plans'
 import { cn, humanize } from '@/lib/utils'
 import { appearancePair } from '@/lib/appearance-policy'
@@ -973,12 +972,12 @@ const ATTACHMENT_STATES: Partial<Record<string, string>> = {
 const AttachmentPart: DataMessagePartComponent = ({ data }) => {
   const part = object(data)
   const uploadId = str(part.uploadId)
-  if (uploadId && str(part.mediaType)?.startsWith('image/'))
+  if (uploadId && !ATTACHMENT_STATES[str(part.state) ?? 'ready'])
     return (
-      <NoteImage
-        src={uploadContentPath(uploadId)}
-        alt={str(part.name) ?? 'Attachment'}
-        className="me-1.5 mt-2 inline-block max-h-40 rounded-md border border-separator"
+      <StoredAttachment
+        uploadId={uploadId}
+        name={str(part.name) ?? 'Attachment'}
+        mediaType={str(part.mediaType)}
       />
     )
   return (

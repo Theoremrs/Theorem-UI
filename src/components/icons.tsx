@@ -412,6 +412,8 @@ const Thread = painted(CONTROL_LAYERS.thread, 180, true)
 const ChatSearch = painted(CONTROL_LAYERS.chatSearch, 180, true)
 const Send = painted(CONTROL_LAYERS.send, 0, true)
 const Attachment = painted(CONTROL_LAYERS.upload, 180, true)
+/** An attached file the composer has no picture of. */
+const AttachedFile = painted(CONTROL_LAYERS.officeFileText, 180, true)
 const AttachFolder = painted(CONTROL_LAYERS.attachFolder, 45, true)
 const Plan = painted(CONTROL_LAYERS.plan, 180, true)
 // The owner's 2026-11-16 + menu set: a browser window for Web search, a Lego
@@ -498,6 +500,7 @@ export const Icon = {
   Article,
   AttachFolder,
   Attachment,
+  AttachedFile,
   Calendar,
   Chat,
   ChatSearch,
