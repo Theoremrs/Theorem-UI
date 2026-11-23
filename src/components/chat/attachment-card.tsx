@@ -18,8 +18,8 @@ export const AttachmentFace: FC<{
   file: Blob | undefined
   /** The file's words, once read; the facts count its lines. */
   text?: string | undefined
-  /** The whole file's size, where `file` is only its beginning. */
-  size?: number | undefined
+  /** The whole file's size, where `file` is only its beginning; null when not known. */
+  size?: number | null | undefined
   /** Said in place of the facts, such as why an upload failed. */
   status?: string | undefined
 }> = ({ name, type, file, text, size, status }) => {
@@ -47,7 +47,14 @@ export const AttachmentFace: FC<{
               : 'text-ink-muted truncate text-[0.6875rem]'
           }
         >
-          {status ?? factLine(name, type, file, text, size ?? file?.size)}
+          {status ??
+            factLine(
+              name,
+              type,
+              file,
+              text,
+              size === undefined ? file?.size : size,
+            )}
         </span>
       </span>
     </span>

@@ -21,18 +21,19 @@ export function byteSize(n: number): string {
 
 /**
  * The card's fact line: format, then lines for words or bytes otherwise.
- * `size` is the whole file's, where `file` is only its beginning.
+ * `size` is the whole file's, where `file` is only its beginning; null when
+ * that is not known, so the beginning's size is never said for the whole.
  */
 export function factLine(
   name: string,
   type: string,
   file: Blob | undefined,
   text: string | undefined,
-  size: number | undefined = file?.size,
+  size: number | null | undefined = file?.size,
 ): string {
   const parts = [formatLabel(name, type)]
   if (text !== undefined) parts.push(count(lineCount(text), 'line'))
-  else if (size !== undefined) parts.push(byteSize(size))
+  else if (size != null) parts.push(byteSize(size))
   return parts.join(' · ')
 }
 

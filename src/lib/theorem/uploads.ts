@@ -29,11 +29,9 @@ export async function readUpload(
   return response.blob()
 }
 
-/** An upload's first bytes, and how big it is whole. */
+/** An upload's first bytes. */
 export type UploadHead = {
   head: Blob
-  /** The whole file's size, when the server says it or the head is all of it. */
-  size: number | undefined
   /** Whether the head is the whole file. */
   whole: boolean
 }
@@ -50,13 +48,8 @@ export async function readUploadHead(
   const response = await theorem().fetch(path, { signal })
   if (!response.ok) throw new Error(`The file answered ${response.status}`)
   const type = response.headers.get('content-type') ?? ''
-  const length = response.headers.get('content-length')
-  const size = length === null ? undefined : Number(length)
   const reader = response.body?.getReader()
-  if (!reader) {
-    const head = await response.blob()
-    return { head, size: head.size, whole: true }
-  }
+  if (!reader) return { head: await response.blob(), whole: true }
   const chunks: BlobPart[] = []
   let read = 0
   let whole = false
@@ -72,9 +65,7 @@ export async function readUploadHead(
   if (!whole) whole = (await reader.read()).done
   if (!whole) void reader.cancel()
   const head = new Blob(chunks, { type })
-  return whole
-    ? { head, size: head.size, whole }
-    : { head: head.slice(0, limit, type), size, whole }
+  return { head: whole ? head : head.slice(0, limit, type), whole }
 }
 
 /**
@@ -132,6 +123,26 @@ export function useUploadHead(uploadId: string, limit: number) {
     staleTime: Number.POSITIVE_INFINITY,
     queryFn: ({ signal }) =>
       readUploadHead(uploadContentPath(uploadId), limit, signal),
+  })
+}
+
+/**
+ * An upload's size, from its record, once `enabled`: what a card that read
+ * only the beginning of a file says. The answer's own length does not come
+ * through the proxy, which drops it with the encoding it described.
+ */
+export function useUploadSize(uploadId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['theorem', 'upload-size', uploadId],
+    enabled,
+    // An upload's bytes never change.
+    staleTime: Number.POSITIVE_INFINITY,
+    queryFn: async () =>
+      (
+        await theoremJson<{ byteLen?: number }>(
+          `${BASE}/${encodeURIComponent(uploadId)}`,
+        )
+      ).byteLen ?? null,
   })
 }
 

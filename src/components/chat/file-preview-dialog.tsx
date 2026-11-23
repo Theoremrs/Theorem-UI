@@ -52,8 +52,8 @@ export const FilePreviewDialog: FC<{
   kind: FileKind
   /** The file, once it is here. */
   file: Blob | undefined
-  /** The whole file's size, known before the file is. */
-  size?: number | undefined
+  /** The whole file's size, known before the file is; null when not known. */
+  size?: number | null | undefined
   /** Shown in place of the file until it is here, such as a failed read. */
   status?: ReactNode
   /** The control that opens it; without one, `open` and `onOpenChange` do. */
@@ -76,7 +76,7 @@ export const FilePreviewDialog: FC<{
     <DialogContent className="aui-file-preview-dialog flex max-h-[90dvh] flex-col sm:max-w-3xl">
       <DialogTitle className="truncate pe-8">{name}</DialogTitle>
       <DialogDescription>
-        {factLine(name, type, file, undefined, size ?? file?.size)}
+        {factLine(name, type, file, undefined, file?.size ?? size)}
       </DialogDescription>
       {/* Mounted only while open, so a closed dialog holds no player. */}
       {file ? <Media kind={kind} file={file} /> : status}

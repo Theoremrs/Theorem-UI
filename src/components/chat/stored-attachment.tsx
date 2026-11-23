@@ -1,4 +1,4 @@
-// SOURCING: assistant-ui's attachment element (elements/attachment.aui: its tile and its preview dialog) over the bytes of a Theorem upload (lib/theorem/uploads useUploadHead for the card, useUploadBlob once opened, both @tanstack/react-query); a stored theorem-attachment part has no attachment scope of its own, so the tile is given the file the scope would have held.
+// SOURCING: assistant-ui's attachment element (elements/attachment.aui: its tile and its preview dialog) over the bytes of a Theorem upload (lib/theorem/uploads useUploadHead for the card, useUploadSize for the size from the upload's record, useUploadBlob once opened, all @tanstack/react-query); a stored theorem-attachment part has no attachment scope of its own, so the tile is given the file the scope would have held.
 import { useState } from 'react'
 import type { FC } from 'react'
 import {
@@ -10,7 +10,11 @@ import { Button } from '@/components/ui/button'
 import { useFileSrc } from '@/hooks/use-attachment-src'
 import { fileKind, isTextual } from '@/lib/theorem/attachment-kinds'
 import type { FileKind } from '@/lib/theorem/attachment-kinds'
-import { useUploadBlob, useUploadHead } from '@/lib/theorem/uploads'
+import {
+  useUploadBlob,
+  useUploadHead,
+  useUploadSize,
+} from '@/lib/theorem/uploads'
 import { cn } from '@/lib/utils'
 import { AttachmentFace } from './attachment-card'
 import { FilePreviewDialog, opensAsMedia } from './file-preview-dialog'
@@ -23,7 +27,7 @@ const CARD_BYTES = 4 * 1024 * 1024
  * How much of a file its card fetches: an image whole, since the card is the
  * image; the beginning of words, which is all the card draws; a PDF or video
  * whole only when small; nothing of audio or a document it cannot draw, whose
- * size comes with the answer's headers.
+ * size comes from the upload's record.
  */
 function cardBytes(kind: FileKind): number {
   if (kind === 'image') return Number.POSITIVE_INFINITY
@@ -67,6 +71,8 @@ export const StoredAttachment: FC<{
   const [open, setOpen] = useState(false)
   const card = useUploadHead(uploadId, cardBytes(kind))
   const whole = card.data?.whole ? card.data.head : undefined
+  // A card that read only the beginning asks the record how big the file is.
+  const recorded = useUploadSize(uploadId, card.data?.whole === false)
   // The whole file is fetched only once it is opened, and only when the card
   // did not already fetch all of it.
   const opened = useUploadBlob(uploadId, open && card.data?.whole === false)
@@ -101,7 +107,7 @@ export const StoredAttachment: FC<{
         type={type}
         file={drawn}
         text={text}
-        size={card.data?.size}
+        size={whole?.size ?? recorded.data ?? null}
         status={card.error?.message}
       />
     </span>
@@ -123,7 +129,7 @@ export const StoredAttachment: FC<{
           type={type}
           kind={kind}
           file={file}
-          size={card.data?.size}
+          size={whole?.size ?? recorded.data ?? null}
           trigger={tile}
           open={open}
           onOpenChange={setOpen}

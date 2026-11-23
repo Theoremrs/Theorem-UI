@@ -76,19 +76,17 @@ function Sent({ name, mediaType }: { name: string; mediaType: string }) {
   )
 }
 
-/** An upload as Theorem answers it, with its length, as the server sends it. */
+/** An upload as the UI's proxy hands it on: typed, without its length. */
 const content = (body: string | Uint8Array<ArrayBuffer>, type: string) =>
-  new Response(body, {
-    headers: {
-      'content-type': type,
-      'content-length': String(new Blob([body]).size),
-    },
-  })
+  new Response(body, { headers: { 'content-type': type } })
 
 const answer = (
   body: string | Uint8Array<ArrayBuffer>,
   type: string,
 ): Record<string, FakeAnswer> => ({
+  'GET /api/chat/v1/uploads/:uploadId': () => ({
+    byteLen: new Blob([body]).size,
+  }),
   'GET /api/chat/v1/uploads/:uploadId/content': ({ uploadId }) =>
     uploadId?.startsWith('upload-')
       ? content(body, type)
@@ -153,11 +151,12 @@ test('a long sent text draws its card from its beginning, and is read whole only
     (_, row) => `row ${row + 1}, a line of a long log`,
   ).join('\n')
   let reads = 0
+  const bytes = new TextEncoder().encode(long)
   restore = installFakeTheorem({
+    'GET /api/chat/v1/uploads/:uploadId': () => ({ byteLen: bytes.length }),
     'GET /api/chat/v1/uploads/:uploadId/content': () => {
       reads += 1
       // In parts, as the network brings it.
-      const bytes = new TextEncoder().encode(long)
       let at = 0
       const body = new ReadableStream<Uint8Array>({
         pull(stream) {
@@ -165,20 +164,18 @@ test('a long sent text draws its card from its beginning, and is read whole only
           stream.enqueue(bytes.slice(at, (at += 4096)))
         },
       })
-      return new Response(body, {
-        headers: {
-          'content-type': 'text/plain',
-          'content-length': String(bytes.length),
-        },
-      })
+      return new Response(body, { headers: { 'content-type': 'text/plain' } })
     },
   })
   const { container } = await render(
     <Sent name="server.log" mediaType="text/plain" />,
   )
   const card = await tile(container)
-  // Its size from the answer's length; its lines are not counted from a part.
-  await waitFor(() => card.textContent.includes('KB'))
+  // The whole file's size, from its record, never its beginning's; its lines
+  // are not counted from a part.
+  const size = `${Math.round(bytes.length / 1024)} KB`
+  await waitFor(() => card.textContent.includes(size))
+  expect(size).not.toBe('16 KB')
   expect(card.textContent).not.toContain('lines')
   expect(reads).toBe(1)
   await click(card)
