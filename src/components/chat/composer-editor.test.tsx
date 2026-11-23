@@ -315,7 +315,9 @@ test('a long paste stays in the draft when the attachments take no plain text', 
   )
   const editor = await editorOf(container)
   await pasteText(editor, LONG)
-  await waitFor(() => composer.getState().text.includes('Log line 80'))
+  await waitFor(() =>
+    composer.getState().text.includes(`Log line ${PASTED_TEXT_MIN_LINES}`),
+  )
   expect(composer.getState().attachments).toHaveLength(0)
 })
 
@@ -338,7 +340,9 @@ test('Paste inline puts a pasted text back in the draft and drops its attachment
   )
   await click(await waitFor(() => buttonNamed(document, 'Paste inline')))
   await waitFor(() => composer.getState().attachments.length === 0)
-  await waitFor(() => composer.getState().text.includes('Log line 80'))
+  await waitFor(() =>
+    composer.getState().text.includes(`Log line ${PASTED_TEXT_MIN_LINES}`),
+  )
   expect(composer.getState().text).toContain('Log line 1: request served')
   expect(container.querySelector('.aui-attachment-tile')).toBeNull()
 })
