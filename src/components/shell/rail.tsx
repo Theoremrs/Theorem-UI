@@ -121,8 +121,7 @@ function AccountMenu() {
 /** Opens the workbench beside the conversation (where it was last docked), and closes it. */
 function TerminalToggle() {
   const { requestedPlacement, toggle } = useWorkbenchPlacement()
-  const open =
-    requestedPlacement === 'side' || requestedPlacement === 'bottom'
+  const open = requestedPlacement !== undefined
   return (
     <Button
       variant="ghost"
@@ -336,10 +335,17 @@ function Destination({
  * while it is the active one its tab runs straight on into that edge. On the
  * desktop the active destination also shows and hides its mode's panel.
  */
-export function Rail({ collapsible = false }: { collapsible?: boolean }) {
+export function Rail({
+  collapsible = false,
+  workspaceFull = false,
+}: {
+  collapsible?: boolean
+  workspaceFull?: boolean
+}) {
   const mode = useShellMode()
   const openMode = useOpenMode()
   const panelOpen = useShell((s) => !s.panelCollapsed[mode])
+  const filesShown = useShell((s) => s.filesShown)
   const togglePanel = useShell((s) => s.togglePanel)
   const railOrder = useShell((s) => s.railOrder)
   const setRailOrder = useShell((s) => s.setRailOrder)
@@ -360,32 +366,39 @@ export function Rail({ collapsible = false }: { collapsible?: boolean }) {
   const [junction, setJunction] = useState<Omit<Junction, 'joins'>>()
   // On the desktop the Vault lays the sheet over the panel, so the tab joins the sheet there.
   const covered = collapsible && navigatorMode(mode) !== mode
-  const joins = !collapsible || (panelOpen && !covered) ? 'navigation' : 'sheet'
+  const joins =
+    !workspaceFull && (!collapsible || (panelOpen && !covered))
+      ? 'navigation'
+      : 'sheet'
+  const flush = modes[0]?.mode === mode
   useLayoutEffect(() => {
     const rail = railRef.current
     const active = destinations.current.get(mode)
     if (!rail || !active) return
-    const box = rail.getBoundingClientRect()
-    const { top, height } = active.getBoundingClientRect()
-    const y = top - box.top
-    const flush = modes[0]?.mode === mode
-    // Level with the top, the tab starts where the sheet does, which can sit
-    // a little above the first destination, so the sheet's corner never shows
-    // above the tab.
-    const sheet = rail.closest('.appearance-shell')?.querySelector('.sheet')
-    const lead =
-      flush && sheet ? sheet.getBoundingClientRect().top - box.top : y
-    // How far down the rail the tab sits, for the glow colour it takes.
-    setJunction({
-      y,
-      lead: Math.min(lead, y),
-      h: height,
-      t: box.height ? y / box.height : 0,
-      flush,
-    })
-    // `order` stands for `modes`, whose identity changes every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, order])
+    const surface = rail
+      .closest('.appearance-shell')
+      ?.querySelector('[data-active-surface]')
+    const measure = () => {
+      const box = rail.getBoundingClientRect()
+      const { top, height } = active.getBoundingClientRect()
+      const y = top - box.top
+      const lead =
+        flush && surface ? surface.getBoundingClientRect().top - box.top : y
+      setJunction({
+        y,
+        lead: Math.min(lead, y),
+        h: height,
+        t: box.height ? y / box.height : 0,
+        flush,
+      })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(rail)
+    observer.observe(active)
+    if (surface) observer.observe(surface)
+    return () => observer.disconnect()
+  }, [mode, order, workspaceFull, flush])
 
   /** Puts `moved` where `target` is, among every mode, hidden ones included. */
   const place = (moved: ShellMode, target: ShellMode) => {
@@ -452,8 +465,9 @@ export function Rail({ collapsible = false }: { collapsible?: boolean }) {
               {modes.map(({ mode: value, label, Mark }) => {
                 const active = value === mode
                 const toggles = active && collapsible
+                const modePanelOpen = panelOpen && !filesShown && !workspaceFull
                 const tooltip = toggles
-                  ? `${panelOpen ? 'Hide' : 'Show'} ${label} panel`
+                  ? `${modePanelOpen ? 'Hide' : 'Show'} ${label} panel`
                   : label
                 return (
                   <Tooltip key={value}>
@@ -466,11 +480,22 @@ export function Rail({ collapsible = false }: { collapsible?: boolean }) {
                           onMove={move}
                           aria-label={label}
                           aria-current={active ? 'page' : undefined}
-                          aria-expanded={toggles ? panelOpen : undefined}
+                          aria-expanded={toggles ? modePanelOpen : undefined}
                           onClick={() => {
                             if (dragged.current) return
+                            const shell = useShell.getState()
+                            const returning = shell.filesShown || workspaceFull
+                            // A destination reveals its own list when Files or
+                            // the full workspace covers it; a later press can
+                            // collapse that list.
+                            if (workspaceFull) shell.setWorkbench('closed')
+                            if (returning) {
+                              shell.setFilesShown(false)
+                              shell.setPanelOpen(navigatorMode(value), true)
+                            }
                             if (!active) void openMode(value)
-                            else if (collapsible) togglePanel(value)
+                            else if (collapsible && !returning)
+                              togglePanel(value)
                           }}
                           className={`${railButton} h-12 aria-[current=page]:text-ink aria-[current=page]:hover:bg-transparent`}
                         >

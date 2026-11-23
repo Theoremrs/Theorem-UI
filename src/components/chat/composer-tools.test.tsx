@@ -574,13 +574,13 @@ test('Code mode in the + menu opens the workbench in the page and sends the next
   expect(useShell.getState().workbench).toBe('side')
 })
 
-test('the + menu reads Web search, Connectors, Skills, Code mode, then Manage tools', async () => {
+test('the + menu lists Insert code block separately from Code mode', async () => {
   const { container } = await mount(<Harness text="" sent={[]} />)
   await plusItem(container, 'Web search')
   const texts = [...document.querySelectorAll('[role="menu"] [role^="menuitem"]')].map(
     (item) => item.textContent.trim(),
   )
-  expect(texts).toEqual(['Web search', 'Connectors', 'Skills', 'Code mode', 'Manage tools'])
+  expect(texts).toEqual(['Web search', 'Connectors', 'Skills', 'Insert code block', 'Code mode', 'Manage tools'])
   // Manage tools is a link to the tool and MCP settings, not a submenu.
   const manage = await plusItem(container, 'Manage tools')
   expect(manage.tagName).toBe('A')

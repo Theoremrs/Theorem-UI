@@ -1,16 +1,10 @@
 // SOURCING: @tanstack/react-router (each mode is a route), assistant-ui Thread element, the Spaces canvas (React Flow), the IDE frame (browser-only Theia), the Vault's file list on a phone (FoldersSection), the program canvas (React Flow), Index mode (its page, pages/mode-page.tsx), Pages (Puck over the vault's page files; a mode's page opens there to be arranged), Notes (Theorem documents in the Milkdown note editor), a project's home in chat mode (components/projects/project-home), and records (components/crm: saved people, organizations and what is owed) inside Index mode
-import { Canvas } from '@/components/canvas/canvas'
-import { ProgramSurface } from '@/components/program/program-surface'
 import { RailMark } from './rail-marks'
-import { IdeFrame } from '@/components/ide/ide-frame'
 import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { Thread } from '@/components/assistant-ui/elements/thread.aui'
-import { VaultPhone } from '@/components/vault/vault-phone'
-import { useCallback } from 'react'
+import { Suspense, lazy, useCallback } from 'react'
 import type React from 'react'
-import { useMatches, useNavigate, useParams } from '@tanstack/react-router'
-import { IndexMode } from '@/components/pages/mode-page'
-import { NotesView } from '@/components/notes/notes-view'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import { ProjectHome } from '@/components/projects/project-home'
 import {
   ModePageView,
@@ -20,15 +14,42 @@ import {
 import { isPageMode } from '@/lib/modules/templates'
 import { useShell } from './shell-state'
 
-export type ShellMode =
-  | 'chat'
-  | 'index'
-  | 'notes'
-  | 'pages'
-  | 'vault'
-  | 'spaces'
-  | 'canvas'
-  | 'ide'
+import { useShellMode } from './shell-mode'
+import type { ShellMode } from './shell-mode'
+
+export { useShellMode } from './shell-mode'
+export type { ShellMode } from './shell-mode'
+
+const Canvas = lazy(() =>
+  import('@/components/canvas/canvas').then((module) => ({
+    default: module.Canvas,
+  })),
+)
+const ProgramSurface = lazy(() =>
+  import('@/components/program/program-surface').then((module) => ({
+    default: module.ProgramSurface,
+  })),
+)
+const IdeFrame = lazy(() =>
+  import('@/components/ide/ide-frame').then((module) => ({
+    default: module.IdeFrame,
+  })),
+)
+const VaultPhone = lazy(() =>
+  import('@/components/vault/vault-phone').then((module) => ({
+    default: module.VaultPhone,
+  })),
+)
+const IndexMode = lazy(() =>
+  import('@/components/pages/mode-page').then((module) => ({
+    default: module.IndexMode,
+  })),
+)
+const NotesView = lazy(() =>
+  import('@/components/notes/notes-view').then((module) => ({
+    default: module.NotesView,
+  })),
+)
 
 /** The rail's destinations, in order. */
 export const MODES = [
@@ -69,30 +90,6 @@ export const modeLabel = (mode: ShellMode) =>
  */
 export const navigatorMode = (mode: ShellMode): ShellMode =>
   mode === 'vault' ? 'chat' : mode
-
-/**
- * The mode is the route: /index, /notes, /pages, /vault, /spaces, /canvas and /ide, and chat everywhere else. It reads
- * the router's matches, as useParams does, so the mode and the thread id
- * always describe the same navigation.
- */
-export function useShellMode(): ShellMode {
-  return useMatches({
-    select: (matches) => {
-      for (const { routeId } of matches) {
-        if (routeId === '/_chat/index') return 'index'
-        if (routeId === '/_chat/notes' || routeId === '/_chat/notes/$documentId')
-          return 'notes'
-        if (routeId === '/_chat/pages' || routeId === '/_chat/pages/$pageId')
-          return 'pages'
-        if (routeId === '/_chat/vault') return 'vault'
-        if (routeId === '/_chat/spaces') return 'spaces'
-        if (routeId === '/_chat/canvas') return 'canvas'
-        if (routeId === '/_chat/ide') return 'ide'
-      }
-      return 'chat'
-    },
-  })
-}
 
 /** Navigates to a mode; chat returns to the conversation last left. */
 export function useOpenMode() {
@@ -143,13 +140,21 @@ export function ModeView({
           <Thread covered={mode !== 'chat'} />
         </LifeBackdrop>
       </div>
-      {mode === 'ide' && !docked && <IdeFrame />}
-      {mode === 'vault' && !docked && <VaultPhone />}
-      {mode === 'index' && <IndexMode />}
-      {mode === 'notes' && <NotesView docked={docked} actions={actions} />}
-      {mode === 'pages' && <PagesView />}
-      {mode === 'spaces' && <Canvas />}
-      {mode === 'canvas' && <ProgramSurface />}
+      <Suspense
+        fallback={
+          <p role="status" className="p-3 text-sm">
+            Loading {modeLabel(mode)}…
+          </p>
+        }
+      >
+        {mode === 'ide' && !docked && <IdeFrame />}
+        {mode === 'vault' && !docked && <VaultPhone />}
+        {mode === 'index' && <IndexMode />}
+        {mode === 'notes' && <NotesView docked={docked} actions={actions} />}
+        {mode === 'pages' && <PagesView />}
+        {mode === 'spaces' && <Canvas />}
+        {mode === 'canvas' && <ProgramSurface />}
+      </Suspense>
     </>
   )
 }

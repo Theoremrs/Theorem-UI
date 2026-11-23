@@ -3,4 +3,4 @@
 /**
  * What the person or an adapter asks of the arrangements.
  */
-export type ArrangementMsg = { "type": "load" } | { "type": "save", name: string, } | { "type": "apply", name: string, } | { "type": "rename", from: string, to: string, } | { "type": "delete", name: string, } | { "type": "appearance", value: string, };
+export type ArrangementMsg = { "type": "load" } | { "type": "retrySave" } | { "type": "save", name: string, } | { "type": "apply", name: string, } | { "type": "rename", from: string, to: string, } | { "type": "delete", name: string, } | { "type": "appearance", value: string, };

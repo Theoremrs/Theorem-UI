@@ -61,10 +61,14 @@ try {
     })
   })
   for (const dark of [false, true, false]) {
-    await page.evaluate(
-      (dark) => document.documentElement.classList.toggle('dark', dark),
-      dark,
-    )
+    await page.evaluate(async (dark) => {
+      document.documentElement.classList.toggle('dark', dark)
+      // Reduced motion still allows a short transition. Measure the new
+      // foreground and background after the browser has painted the mode.
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      )
+    }, dark)
     const paint = await page
       .locator('[data-surface-role="assistant-reading"]')
       .first()

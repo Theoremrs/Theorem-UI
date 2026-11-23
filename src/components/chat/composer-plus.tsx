@@ -323,6 +323,14 @@ export function ComposerPlus() {
                 </MenuLinkItem>
               </MenuSubPopup>
             </MenuSub>
+            <MenuItem
+              onClick={() =>
+                (next.current = () => insertInComposer(anchor.current))
+              }
+            >
+              <Icon.CodeMode />
+              Insert code block
+            </MenuItem>
             <MenuCheckboxItem
               variant="switch"
               checked={code}

@@ -41,6 +41,7 @@ import { Route as SettingsKeysRouteImport } from './routes/settings/keys'
 import { Route as SettingsPluginsRouteImport } from './routes/settings/plugins'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsResponsesRouteImport } from './routes/settings/responses'
+import { Route as SettingsStylesRouteImport } from './routes/settings/styles'
 import { Route as SettingsWorkRouteImport } from './routes/settings/work'
 import { Route as StoryAssetsSceneHostDothtmlRouteImport } from './routes/story-assets.scene-host[.]html'
 import { Route as StoryIdRouteImport } from './routes/story.$id'
@@ -251,6 +252,11 @@ const SettingsProfileRoute = SettingsProfileRouteImport.update({
 const SettingsResponsesRoute = SettingsResponsesRouteImport.update({
   id: '/responses',
   path: '/responses',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsStylesRoute = SettingsStylesRouteImport.update({
+  id: '/styles',
+  path: '/styles',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsWorkRoute = SettingsWorkRouteImport.update({
@@ -562,6 +568,7 @@ export interface FileRoutesByFullPath {
   '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
+  '/settings/styles': typeof SettingsStylesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story-assets/scene-host.html': typeof StoryAssetsSceneHostDothtmlRoute
   '/story/$id': typeof StoryIdRoute
@@ -644,6 +651,7 @@ export interface FileRoutesByTo {
   '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
+  '/settings/styles': typeof SettingsStylesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story-assets/scene-host.html': typeof StoryAssetsSceneHostDothtmlRoute
   '/story/$id': typeof StoryIdRoute
@@ -730,6 +738,7 @@ export interface FileRoutesById {
   '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
+  '/settings/styles': typeof SettingsStylesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story-assets/scene-host.html': typeof StoryAssetsSceneHostDothtmlRoute
   '/story/$id': typeof StoryIdRoute
@@ -817,6 +826,7 @@ export interface FileRouteTypes {
     | '/settings/plugins'
     | '/settings/profile'
     | '/settings/responses'
+    | '/settings/styles'
     | '/settings/work'
     | '/story-assets/scene-host.html'
     | '/story/$id'
@@ -899,6 +909,7 @@ export interface FileRouteTypes {
     | '/settings/plugins'
     | '/settings/profile'
     | '/settings/responses'
+    | '/settings/styles'
     | '/settings/work'
     | '/story-assets/scene-host.html'
     | '/story/$id'
@@ -984,6 +995,7 @@ export interface FileRouteTypes {
     | '/settings/plugins'
     | '/settings/profile'
     | '/settings/responses'
+    | '/settings/styles'
     | '/settings/work'
     | '/story-assets/scene-host.html'
     | '/story/$id'
@@ -1324,6 +1336,13 @@ declare module '@tanstack/react-router' {
       path: '/responses'
       fullPath: '/settings/responses'
       preLoaderRoute: typeof SettingsResponsesRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/styles': {
+      id: '/settings/styles'
+      path: '/styles'
+      fullPath: '/settings/styles'
+      preLoaderRoute: typeof SettingsStylesRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/work': {
@@ -1748,6 +1767,7 @@ interface SettingsRouteChildren {
   SettingsPluginsRoute: typeof SettingsPluginsRoute
   SettingsProfileRoute: typeof SettingsProfileRoute
   SettingsResponsesRoute: typeof SettingsResponsesRoute
+  SettingsStylesRoute: typeof SettingsStylesRoute
   SettingsWorkRoute: typeof SettingsWorkRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   SettingsObserveIndexRoute: typeof SettingsObserveIndexRoute
@@ -1764,6 +1784,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsPluginsRoute: SettingsPluginsRoute,
   SettingsProfileRoute: SettingsProfileRoute,
   SettingsResponsesRoute: SettingsResponsesRoute,
+  SettingsStylesRoute: SettingsStylesRoute,
   SettingsWorkRoute: SettingsWorkRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   SettingsObserveIndexRoute: SettingsObserveIndexRoute,

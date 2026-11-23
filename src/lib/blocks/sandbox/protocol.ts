@@ -84,6 +84,39 @@ export interface DbFailure {
 export type DbOutcome =
   { ok: true; value: unknown } | { ok: false; error: DbFailure }
 
+/** What a module may do on a capability instance it was allowed. */
+export type CapabilityMethod = 'describe' | 'query' | 'invoke'
+
+/** A capability's refusal: its own code, such as `capability_precondition_failed`. */
+export interface CapabilityFailure {
+  code: string
+  message: string
+}
+
+/** A capability call's outcome. A refusal is a value, so its code crosses the bridge. */
+export type CapabilityOutcome =
+  { ok: true; value: unknown } | { ok: false; error: CapabilityFailure }
+
+/** One page of an instance's view, or an ad-hoc query over one of its collections. */
+export interface CapabilityQueryParams {
+  instanceId: string
+  viewKey?: string
+  query?: Record<string, unknown>
+  cursor?: string
+  limit?: number
+}
+
+/** One declared action, run by the host as the person who granted it. */
+export interface CapabilityInvokeParams {
+  instanceId: string
+  actionKey: string
+  inputs: Record<string, unknown>
+  recordId?: string
+  expectedRevision?: number
+  /** The frame's own key for one intended call, so a retry it makes runs once. */
+  invocationKey?: string
+}
+
 /** Something a frame's code threw and nothing caught, as the frame saw it. */
 export interface FrameError {
   message: string
@@ -140,6 +173,16 @@ export interface PageMethods {
     params: { html: string; outline?: string }
     result: null
   }
+  /**
+   * A capability instance's definition and the person's grant, read by the
+   * host with its own session: only an instance the module declared and the
+   * person allowed.
+   */
+  'capability.describe': { params: { instanceId: string }; result: CapabilityOutcome }
+  /** Records of an allowed instance, read by the host. */
+  'capability.query': { params: CapabilityQueryParams; result: CapabilityOutcome }
+  /** One of an allowed instance's allowed actions, run by the host. */
+  'capability.invoke': { params: CapabilityInvokeParams; result: CapabilityOutcome }
   /** A page module publishing one of its declared outputs. */
   'module.output': { params: { name: string; value: unknown }; result: null }
   /** A person used a page module's frame: its next events are theirs. */

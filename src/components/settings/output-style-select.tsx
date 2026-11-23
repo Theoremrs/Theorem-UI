@@ -8,10 +8,14 @@ import {
 } from '@/components/coss/select'
 import { Button } from '@/components/ui/button'
 import { describeError } from '@/lib/theorem/client'
-import { useOutputStyles } from '@/lib/theorem/output-styles'
+import {
+  useResponseStyles,
+  useSelectionMutation,
+} from '@/lib/theorem/response-styles'
 
 export function OutputStyleSelect({ threadId }: { threadId?: string }) {
-  const { data, error, isPending, refetch, save } = useOutputStyles(threadId)
+  const { data, error, refetch } = useResponseStyles({ threadId })
+  const save = useSelectionMutation()
   if (error)
     return (
       <div role="alert" className="text-sm text-ink-muted">
@@ -21,7 +25,7 @@ export function OutputStyleSelect({ threadId }: { threadId?: string }) {
         </Button>
       </div>
     )
-  if (isPending)
+  if (!data)
     return <p className="text-sm text-ink-muted">Loading output styles…</p>
   const selected = threadId
     ? data.selection.conversation
@@ -37,7 +41,13 @@ export function OutputStyleSelect({ threadId }: { threadId?: string }) {
         value={selected ?? ''}
         disabled={save.isPending}
         onValueChange={(value) => {
-          if (typeof value === 'string') save.mutate(value || null)
+          if (typeof value !== 'string') return
+          const style = value || null
+          save.mutate(
+            threadId
+              ? { scope: 'conversation', threadId, style }
+              : { scope: 'account', style },
+          )
         }}
       >
         <SelectTrigger

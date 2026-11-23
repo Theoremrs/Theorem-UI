@@ -1,0 +1,130 @@
+{
+  "instanceId": "reading/main",
+  "declareTypes": [
+    {
+      "name_singular": "book",
+      "name_plural": "books",
+      "label_singular": "Book",
+      "label_plural": "Books",
+      "node_label": "ReadingListBook",
+      "label_identifier_field": "title",
+      "enforcement": "reject",
+      "extensions": {
+        "theorem.context": { "version": 1, "assistance": "available", "mention_fields": ["title", "author"] }
+      },
+      "fields": [
+        { "key": "title", "label": "Title", "field_type": { "kind": "text" }, "required": true, "system": false },
+        { "key": "author", "label": "Author", "field_type": { "kind": "text" }, "required": false, "system": false },
+        { "key": "status", "label": "Status", "field_type": { "kind": "enum", "variants": ["queued", "reading", "finished", "abandoned"] }, "required": true, "system": false },
+        { "key": "rating", "label": "Rating", "field_type": { "kind": "integer" }, "required": false, "system": false },
+        { "key": "finished_at", "label": "Finished", "field_type": { "kind": "timestamp" }, "required": false, "system": false },
+        { "key": "url", "label": "Link", "field_type": { "kind": "text" }, "required": false, "system": false }
+      ]
+    }
+  ],
+  "definition": {
+    "capabilityId": "reading-list",
+    "name": "Reading list",
+    "purpose": "Track books to read, currently reading, and finished, with optional ratings and links.",
+    "collections": [
+      {
+        "key": "books",
+        "objectTypeId": "schema:object-type:{{tenant}}:book",
+        "label": "Books",
+        "semanticRoles": {
+          "statusField": "status",
+          "completionField": "finished_at"
+        },
+        "lifecycle": {
+          "fieldKey": "status",
+          "initial": ["queued"],
+          "transitions": [
+            { "from": ["queued"], "to": "reading" },
+            { "from": ["queued"], "to": "abandoned" },
+            { "from": ["reading"], "to": "finished" },
+            { "from": ["reading"], "to": "abandoned" },
+            { "from": ["finished"], "to": "reading" }
+          ]
+        }
+      }
+    ],
+    "views": [
+      {
+        "key": "reading",
+        "label": "Reading now",
+        "collectionKey": "books",
+        "filter": { "op": "eq", "fieldKey": "status", "value": "reading" },
+        "layout": "list"
+      },
+      {
+        "key": "queued",
+        "label": "Queue",
+        "collectionKey": "books",
+        "filter": { "op": "eq", "fieldKey": "status", "value": "queued" },
+        "layout": "list"
+      },
+      {
+        "key": "finished",
+        "label": "Finished",
+        "collectionKey": "books",
+        "filter": { "op": "eq", "fieldKey": "status", "value": "finished" },
+        "orderBy": { "fieldKey": "finished_at", "direction": "desc" },
+        "layout": "table"
+      }
+    ],
+    "actions": [
+      {
+        "key": "add_book",
+        "label": "Add book",
+        "collectionKey": "books",
+        "creates": true,
+        "input": [
+          { "key": "title", "fieldType": { "kind": "text" }, "required": true },
+          { "key": "author", "fieldType": { "kind": "text" }, "required": false },
+          { "key": "url", "fieldType": { "kind": "text" }, "required": false }
+        ],
+        "preconditions": [],
+        "effects": [
+          { "fieldKey": "title", "source": "input", "key": "title" },
+          { "fieldKey": "author", "source": "input", "key": "author" },
+          { "fieldKey": "url", "source": "input", "key": "url" },
+          { "fieldKey": "status", "source": "literal", "value": "queued" }
+        ]
+      },
+      {
+        "key": "start_book",
+        "label": "Start reading",
+        "collectionKey": "books",
+        "creates": false,
+        "input": [],
+        "preconditions": [
+          { "op": "in", "fieldKey": "status", "values": ["queued", "finished"] }
+        ],
+        "effects": [
+          { "fieldKey": "status", "source": "literal", "value": "reading" }
+        ]
+      },
+      {
+        "key": "finish_book",
+        "label": "Finish",
+        "collectionKey": "books",
+        "creates": false,
+        "input": [
+          { "key": "rating", "fieldType": { "kind": "integer" }, "required": false }
+        ],
+        "preconditions": [
+          { "op": "eq", "fieldKey": "status", "value": "reading" }
+        ],
+        "effects": [
+          { "fieldKey": "status", "source": "literal", "value": "finished" },
+          { "fieldKey": "finished_at", "source": "now" },
+          { "fieldKey": "rating", "source": "input", "key": "rating" }
+        ]
+      }
+    ],
+    "agent": {
+      "discoverable": true,
+      "description": "Personal reading list. Query books by status; start and finish books with the declared actions, which record finish time and optional rating."
+    }
+  }
+}

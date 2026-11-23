@@ -15,7 +15,6 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { useRouter } from '@tanstack/react-router'
 import { create } from 'zustand'
 import type { StoreApi, UseBoundStore } from 'zustand'
 import { ArtifactPlacement } from '@/components/artifacts/artifact-message'
@@ -60,6 +59,8 @@ import type { PageRuntime } from '@/lib/modules/runtime'
 import { useVaultClient } from '@/lib/modules/store'
 import { isItem, isReference } from '@/lib/modules/values'
 import { useNothingToShow } from './layout-parts'
+import { CAPABILITY_MODULES } from './capability-modules'
+import { usePageId } from './page-route'
 import { useModuleAction, usePageRuntime } from './page-runtime'
 import { WORK_MODULES } from './work-modules'
 
@@ -274,15 +275,6 @@ function InspectorModule({ inputs, emit }: ModuleViewProps) {
  */
 export const moduleViewKey = (pageId: string | undefined, path: string) =>
   pageId ? `module:${pageId}:${path}` : `module:${path}`
-
-/** The vault entry of the page on screen, from its route. */
-function usePageId(): string | undefined {
-  // Absent outside a router, as in a page's own tests.
-  const router = useRouter({ warn: false }) as
-    ReturnType<typeof useRouter> | undefined
-  const match = router?.state.location.pathname.match(/\/pages\/([^/]+)/)
-  return match?.[1]
-}
 
 function RecordsModule({ settings, output, emit, path }: ModuleViewProps) {
   const name = text(settings.object)
@@ -613,6 +605,7 @@ export const BUILTIN_MODULES: ReadonlyArray<ModuleDefinition> = [
     events: [item('opened', 'Opened a record')],
     Component: RecordsModule,
   }),
+  ...CAPABILITY_MODULES,
   builtin({
     id: 'theorem.conversation',
     label: 'Conversation',

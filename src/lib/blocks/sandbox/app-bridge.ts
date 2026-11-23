@@ -18,6 +18,8 @@ import {
 import { MAX_FRAME_ERRORS, call, rpcOver, serve } from './protocol'
 import type {
   ArtifactObservation,
+  CapabilityInvokeParams,
+  CapabilityQueryParams,
   DossierContext,
   DossierState,
   FrameError,
@@ -284,6 +286,21 @@ const theorem = {
      */
     run: async (id: string) =>
       call<PageMethods, 'artifacts.run'>((await context_()).rpc, 'artifacts.run', { id }),
+  },
+  /**
+   * Capability instances a page module's manifest declared and the person
+   * allowed, reached through the page with its own session: the App never
+   * holds a credential. A refusal comes back as `{ ok: false, error }` with
+   * the capability's code; an instance, method or action that was not allowed
+   * is refused by the page before anything is reached.
+   */
+  capability: {
+    describe: async (instanceId: string) =>
+      call<PageMethods, 'capability.describe'>((await context_()).rpc, 'capability.describe', { instanceId }),
+    query: async (request: CapabilityQueryParams) =>
+      call<PageMethods, 'capability.query'>((await context_()).rpc, 'capability.query', request),
+    invoke: async (request: CapabilityInvokeParams) =>
+      call<PageMethods, 'capability.invoke'>((await context_()).rpc, 'capability.invoke', request),
   },
   /** Resolves once the page has connected this app. */
   ready: context.then(() => undefined),

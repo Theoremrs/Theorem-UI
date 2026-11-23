@@ -1,15 +1,71 @@
 import { defaultDirectiveFormatter } from '@assistant-ui/react'
+import { Link, useRouter } from '@tanstack/react-router'
 import type { Root, Text } from 'mdast'
 import { decodeString } from 'micromark-util-decode-string'
 import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
+import type { HTMLAttributes, MouseEvent } from 'react'
 import remarkGfm from 'remark-gfm'
 import type { Plugin } from 'unified'
 import { SKIP, visit } from 'unist-util-visit'
 import { createDirectiveText } from '@/components/assistant-ui/elements/directive-text'
+import { useOpenDocumentHandler } from '@/components/crm/open-document'
+import { parseRecordItemId } from '@/components/records/model'
 import { appearancePair } from '@/lib/appearance-policy'
 
-const ToolText = createDirectiveText(defaultDirectiveFormatter)
+const DOCUMENT_MENTION = 'document:'
+
+/**
+ * The element an @ pick's chip renders as, so the chip opens what it cites:
+ * a document where the surrounding inspector opens documents, else (as any
+ * record or document) as the Index's open item, beside its view. With nowhere
+ * to open it (no router, as in a story), and for a / tool or + skill, the chip
+ * stays text.
+ */
+function MentionLink({
+  type,
+  id,
+  ...props
+}: { type: string; id: string } & HTMLAttributes<HTMLElement>) {
+  const router = useRouter({ warn: false })
+  const openDocument = useOpenDocumentHandler()
+  const documentId =
+    type === 'document' && id.startsWith(DOCUMENT_MENTION)
+      ? id.slice(DOCUMENT_MENTION.length) || undefined
+      : undefined
+  const item =
+    documentId ?? (type === 'record' && parseRecordItemId(id) ? id : undefined)
+  // The message around the chip has its own click handling (selecting, editing).
+  const stop = (event: MouseEvent) => event.stopPropagation()
+  if (documentId && openDocument)
+    return (
+      <button
+        type="button"
+        {...props}
+        onClick={(event) => {
+          stop(event)
+          openDocument(documentId)
+        }}
+      />
+    )
+  if (item && router)
+    return (
+      <Link
+        to="/index"
+        search={(prev) => ({ ...prev, item })}
+        {...props}
+        onClick={stop}
+      />
+    )
+  return <span {...props} />
+}
+
+const ToolText = createDirectiveText(defaultDirectiveFormatter, {
+  renderChip: ({ type, id }) =>
+    type === 'record' || type === 'document' ? (
+      <MentionLink type={type} id={id} />
+    ) : undefined,
+})
 
 /** The inside of a JSON string, as assistant-ui writes a quoted label or id. */
 const QUOTED = String.raw`(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[\da-fA-F]{4})){1,1024}`

@@ -9,9 +9,17 @@ fn default_widths_follow_the_spec_targets() {
     let f = d.solve(area(160, 40), m());
     assert_eq!(f.presentation, Presentation::Tiled);
     let w = |g| f.group(g).unwrap().rect.width;
-    // Files 224 px at 8 px a cell is 28 cells; the rest splits 2:1.
+    // Secondary groups keep their targets; the conversation gains additional width.
     assert_eq!(w(r.files), 28);
-    assert_eq!((w(r.main), w(r.tools)), (87, 43));
+    assert_eq!((w(r.main), w(r.tools)), (90, 40));
+    assert_eq!(
+        d.solve(area(240, 40), m())
+            .group(r.tools)
+            .unwrap()
+            .rect
+            .width,
+        40
+    );
     assert_eq!(w(r.files) + w(r.main) + w(r.tools) + 2 * GUTTER, 160);
     assert_exact_tiling(&f);
 }

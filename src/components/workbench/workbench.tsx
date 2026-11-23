@@ -70,6 +70,8 @@ import { SemanticOverlay } from './semantic-overlay'
 import { settle, typedSince } from './semantic-overlay/mirror'
 import type { InputMirror } from './semantic-overlay/mirror'
 import { WORKBENCH_LABEL } from './label'
+import { WorkspaceLayoutStatus } from './layout-status'
+import type { LayoutStatus } from '@/lib/workbench/layout/status'
 
 /** What the surface lets an adapter's builder do to the mounted core besides answering effects. */
 export interface SurfaceHost {
@@ -77,6 +79,8 @@ export interface SurfaceHost {
   arrangement: (message: ArrangementMsg) => void
   /** The presets and the account's saved arrangements, as the core lists them. */
   arrangements: () => { name: string; builtin: boolean }[]
+  terminalViews: () => string
+  restoreTerminalViews: (json: string) => void
   /** The person's key overrides (the core's `Overrides`, JSON): what the key table is rebuilt from. */
   setKeys: (overridesJson: string) => void
 }
@@ -250,6 +254,10 @@ export function WorkbenchSurface({
               name: string
               builtin: boolean
             }[],
+          terminalViews: () => mounted.terminal_views(),
+          restoreTerminalViews: (json) => {
+            if (!disposed) mounted.restore_terminal_views(json)
+          },
           setKeys: (json) => {
             if (!disposed) mounted.set_keys(json)
           },
@@ -301,10 +309,15 @@ export function WorkbenchSurface({
       textSize.disconnect()
       element.removeEventListener('wheel', wheel)
       adapter?.dispose()
+      handle.current?.set_visible(false)
       handle.current = undefined
       setMountedHandle(undefined)
     }
   }, [feed, icons])
+
+  useEffect(() => {
+    mountedHandle?.set_visible(shown)
+  }, [mountedHandle, shown])
 
   // A run's agent reaches the workbench only while the person can see it: a
   // closed one is opened first (lib/workbench/agent/operations.ts).
@@ -458,7 +471,11 @@ export function WorkbenchSurface({
 }
 
 /** What `Workbench` owns for one signed-in account; all of it lets go together. */
-type Owners = { adapter: AccountAdapter; stop: () => void }
+type Owners = {
+  adapter: AccountAdapter
+  perform: (effect: Effect) => void
+  stop: () => void
+}
 
 /**
  * The workbench of a project: the environment, then every owner that has a module (files, documents,
@@ -499,6 +516,11 @@ export function Workbench({
   const [side, setSide] = useState(ownSideChats)
   if (side.projectId !== projectId) setSide(ownSideChats())
   const sideChats = side.chats
+  const surfaceHost = useRef<SurfaceHost>(undefined)
+  const [layoutStatus, setLayoutStatus] = useState<LayoutStatus>({
+    kind: 'pending',
+    operation: 'restore',
+  })
   const [access, setAccess] = useState<{
     code: 'signed_out' | 'forbidden'
     reason: string
@@ -506,6 +528,7 @@ export function Workbench({
   const connect = useCallback(
     (dispatch: Dispatch, surface: SurfaceHost): Adapter => {
       let disposed = false
+      surfaceHost.current = surface
       let current: Owners | undefined
       /** Effects asked for while no adapter serves (before the account is known, or between accounts). */
       let waiting: Effect[] = []
@@ -541,7 +564,14 @@ export function Workbench({
         // One store per account: the layout checkpoint and the document drafts share it.
         const store = createLocalStore({ directory, account })
         const checkpoints = createCheckpoints({ directory, account, store })
-        const layout = createLayout({ environment, checkpoints })
+        let stopped = false
+        const layout = createLayout({
+          environment,
+          checkpoints,
+          onStatus: (status) => {
+            if (!disposed && !stopped) setLayoutStatus(status)
+          },
+        })
         // The terminal owner and its live stream come from the environment's own SDK build.
         const { host, stop: stopTerminal } = connectTerminalHost(environment)
         const files = createFiles(environment)
@@ -589,6 +619,18 @@ export function Workbench({
         })
         const refresh = () => void watch.refresh()
         window.addEventListener('focus', refresh)
+        const terminalKey = `theorem-terminal-views.1:${JSON.stringify([account, workspaceId])}`
+        let loadingLayout: Effect['id'] | null | undefined
+        const saveTerminalViews = () => {
+          // A second reload during startup must leave the previous snapshot available.
+          if (loadingLayout !== null || watch.current !== account) return
+          try {
+            window.sessionStorage.setItem(terminalKey, surface.terminalViews())
+          } catch {
+            // Storage can be disabled or full. The workspace still works for this page load.
+          }
+        }
+        window.addEventListener('pagehide', saveTerminalViews)
         const adapter = createAdapter({
           environment,
           files,
@@ -608,14 +650,53 @@ export function Workbench({
           delegations: createDelegationsPort(delegations),
           clipboard: createClipboardPort(),
           appearance: createAppearancePort(useAppearance),
-          dispatch,
+          dispatch(message) {
+            dispatch(message)
+            if (
+              message.channel !== 'completion' ||
+              message.effect !== loadingLayout
+            )
+              return
+            // A retiring adapter answers in-flight effects with `uncertain` after
+            // the core has cleared the old account. Never restore that account here.
+            if (
+              watch.current !== account ||
+              message.outcome.status === 'uncertain'
+            )
+              return
+            if (
+              message.outcome.status === 'refused' &&
+              (message.outcome.code === 'signed_out' ||
+                message.outcome.code === 'forbidden')
+            ) {
+              loadingLayout = undefined
+              return
+            }
+            loadingLayout = null
+            try {
+              const saved = window.sessionStorage.getItem(terminalKey)
+              if (saved) {
+                surface.restoreTerminalViews(saved)
+                window.sessionStorage.removeItem(terminalKey)
+              }
+            } catch {
+              // Unavailable storage or an unreadable snapshot leaves the account layout in place.
+            }
+          },
           account: watch,
           retiring: [store, { retire: () => documentOwner.dispose() }],
         })
         return {
           adapter,
+          perform(effect) {
+            if (loadingLayout === undefined && effect.kind === 'layoutLoad')
+              loadingLayout = effect.id
+            adapter.perform(effect)
+          },
           stop() {
+            stopped = true
             window.removeEventListener('focus', refresh)
+            window.removeEventListener('pagehide', saveTerminalViews)
             watch.dispose()
             unsubscribe()
             adapter.dispose()
@@ -659,7 +740,7 @@ export function Workbench({
           if (retirement.code === 'account_changed') void start(true)
           else setAccess(retirement)
         })
-        for (const effect of waiting.splice(0)) owners.adapter.perform(effect)
+        for (const effect of waiting.splice(0)) owners.perform(effect)
         // The new account's saved arrangements. The old adapter already told the core the
         // account changed; the core is not told again.
         surface.arrangement({ type: 'load' })
@@ -668,11 +749,12 @@ export function Workbench({
 
       return {
         perform(effect) {
-          if (current) current.adapter.perform(effect)
+          if (current) current.perform(effect)
           else waiting.push(effect)
         },
         dispose() {
           disposed = true
+          if (surfaceHost.current === surface) surfaceHost.current = undefined
           stopTelling()
           waiting = []
           current?.stop()
@@ -690,20 +772,28 @@ export function Workbench({
       />
     )
   return (
-    <WorkbenchSurface
-      key={projectId}
-      connect={connect}
-      project={{ id: projectId, title: projectTitle }}
-      shown={shown}
-      companion={companion}
-    >
-      {(feed, parts) => (
-        <>
-          <sideChats.Hosts />
-          <SemanticOverlay feed={feed} parts={parts} />
-          {children?.(feed)}
-        </>
-      )}
-    </WorkbenchSurface>
+    <div className="flex h-full min-h-0 flex-col">
+      <WorkspaceLayoutStatus
+        status={layoutStatus}
+        recover={(type) => surfaceHost.current?.arrangement({ type })}
+      />
+      <div className="min-h-0 flex-1">
+        <WorkbenchSurface
+          key={projectId}
+          connect={connect}
+          project={{ id: projectId, title: projectTitle }}
+          shown={shown}
+          companion={companion}
+        >
+          {(feed, parts) => (
+            <>
+              <sideChats.Hosts />
+              <SemanticOverlay feed={feed} parts={parts} />
+              {children?.(feed)}
+            </>
+          )}
+        </WorkbenchSurface>
+      </div>
+    </div>
   )
 }
