@@ -908,6 +908,8 @@ impl Drawn for Cabinet {
 /// The mounted cabinet. React calls these from its own event handlers.
 #[wasm_bindgen]
 pub struct CabinetHandle {
+    // The loop stops when its last owner drops it, so the handle keeps it.
+    _frames: Rc<crate::FrameLoop>,
     cabinet: Rc<RefCell<Cabinet>>,
     on_action: js_sys::Function,
 }
@@ -967,8 +969,12 @@ pub fn mount_cabinet(
 ) -> Result<CabinetHandle, JsValue> {
     let screen = Screen::new(parent_id)?;
     let cabinet = Rc::new(RefCell::new(Cabinet::new(on_geometry)));
-    run_frames(screen, cabinet.clone());
-    Ok(CabinetHandle { cabinet, on_action })
+    let frames = run_frames(screen, cabinet.clone());
+    Ok(CabinetHandle {
+        _frames: frames,
+        cabinet,
+        on_action,
+    })
 }
 
 #[cfg(test)]
