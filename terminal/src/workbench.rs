@@ -131,7 +131,7 @@ fn process_styles() -> theorem_workbench_process::ProcessStyles {
 
 /// The sixteen ANSI colours from the palette's roles: black the deep surface, red the error
 /// colour and so on, the bright eight repeating them with muted for bright black.
-fn ansi_of(p: &Palette) -> [Color; 16] {
+pub(crate) fn ansi_of(p: &Palette) -> [Color; 16] {
     [
         p.deep,
         p.error,

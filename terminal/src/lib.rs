@@ -51,6 +51,7 @@ use wasm_bindgen::prelude::*;
 mod blocks;
 mod cabinet;
 mod cabinet_panel;
+mod command;
 pub mod preview;
 mod theo;
 mod workbench;
@@ -940,13 +941,13 @@ fn is_diff(part: &Part) -> bool {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn now() -> f64 {
+pub(crate) fn now() -> f64 {
     js_sys::Date::now()
 }
 
 /// The host's clock, so the transcript's spinner and notices run in tests.
 #[cfg(not(target_arch = "wasm32"))]
-fn now() -> f64 {
+pub(crate) fn now() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0.0, |since| since.as_secs_f64() * 1000.0)
@@ -955,7 +956,7 @@ fn now() -> f64 {
 /// The spinner's frame for now. The index is taken in f64: the clock over
 /// 80 ms is past `u32::MAX`, so a `usize` cast on wasm32 saturates and the
 /// spinner would stop on one frame.
-fn spinner() -> &'static str {
+pub(crate) fn spinner() -> &'static str {
     SPINNER[(now() / 80.0 % SPINNER.len() as f64) as usize]
 }
 
