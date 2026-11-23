@@ -9,7 +9,7 @@ test('a fence that names its file reads as a breadcrumb over numbered, highlight
     <CodeFile code={'const a = 1\n  const b = 2'} language="ts:src/lib/a.ts" />,
   )
   const block = container.querySelector('figure[data-code-block]')!
-  expect(block.querySelector('figcaption')?.textContent).toBe('src / lib / a.ts')
+  expect(block.querySelector('figcaption')?.textContent).toBe('src/lib/a.ts')
   expect(block.querySelector('button[aria-label="Copy code"]')).not.toBeNull()
   await waitFor(() => block.querySelector('pre.shiki'))
   const rows = [...block.querySelectorAll('.line')]

@@ -42,6 +42,10 @@
 
   --shadow-tint: 36 41 46;
 
+  /* The ground a code block sits on, the editor's own where the palette
+     follows one: GitHub's code ground in light. */
+  --surface-code: #f6f8fa;
+
   /* shadcn / assistant-ui element contract */
   --background: var(--surface-neutral);
   --foreground: var(--ink);
@@ -87,6 +91,14 @@
   --glow-to: rgb(53 132 185 / 0.38);
 
   --shadow-tint: 0 0 0;
+
+  /* The near-black of the rail, so code reads as an editor set into the sheet. */
+  --surface-code: var(--surface-frame);
+}
+
+/* Ember: the warm raised step in light, its near-black frame in dark. */
+[data-palette='ember']:not(.dark) {
+  --surface-code: var(--surface-raised);
 }
 
 /* Stone (DESIGN.md), the warm palette the app was authored in. */
@@ -97,6 +109,9 @@
   --glow-to: transparent;
 
   --shadow-tint: 48 49 45;
+
+  /* Stone's lightest paper, the rail's. */
+  --surface-code: var(--surface-rail);
 }
 
 /* Stone's dark. */
@@ -122,6 +137,9 @@
   --glow-to: transparent;
 
   --shadow-tint: 57 58 52;
+
+  /* Vitesse Light's editor. */
+  --surface-code: #ffffff;
 }
 
 /* Vitesse Dark, after franmc01's JetBrains theme: the #121212 rail takes a
@@ -135,6 +153,15 @@
   --glow-to: rgb(99 148 191 / 0.3);
 
   --shadow-tint: 0 0 0;
+
+  /* Vitesse Dark's editor, the ground its code colours were drawn on. */
+  --surface-code: #121212;
+}
+
+/* A custom palette names no code ground; its popover stands in. */
+[data-palette='custom'],
+.dark[data-palette='custom'] {
+  --surface-code: var(--popover);
 }
 
 /* Dock theme. Structure follows dockview's light theme; colours map to the
@@ -370,6 +397,7 @@
   --color-selected: var(--surface-selected);
   --color-composer: var(--surface-composer);
   --color-artifact: var(--surface-artifact);
+  --color-code: var(--surface-code);
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
   --color-ink-faint: var(--ink-faint);

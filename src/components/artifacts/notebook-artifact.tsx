@@ -440,7 +440,7 @@ export function MarimoNotebookView({
         />
       ) : null}
       {source && (
-        <CodeFile className="my-0" language="python" code={notebook.source} />
+        <CodeFile className="my-0 w-full" language="python" code={notebook.source} />
       )}
     </NotebookSurface>
   )

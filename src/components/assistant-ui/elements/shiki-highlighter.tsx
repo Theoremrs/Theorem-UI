@@ -1,4 +1,4 @@
-// SOURCING: assistant-ui's shiki-highlighter element (registry item shiki-highlighter, https://www.assistant-ui.com/elements/shiki-highlighter; the owner's choice, 2026-11-23): react-shiki/core over Shiki's JavaScript regex engine, one highlighter per engine, languages and themes loaded on demand, the highlight-lines transformer, and the plain code while streaming. Changed: theme objects load as well as bundled names, because the default theme is the palette's code theme (lib/palette) with every colour kept readable on the popover by Culori (lib/code-contrast), as the TanStack block did; @shikijs/transformers' render-whitespace marks spaces and tabs; this element's own line transformer numbers each row from the gutter lines it is given (code-lines.ts, which numbers a diff as its new file does), marks the rows a diff added or removed, and hangs a wrapped line under its indentation. The plain code renders the same rows, so settling is a colour change.
+// SOURCING: assistant-ui's shiki-highlighter element (registry item shiki-highlighter, https://www.assistant-ui.com/elements/shiki-highlighter; the owner's choice, 2026-11-23): react-shiki/core over Shiki's JavaScript regex engine, one highlighter per engine, languages and themes loaded on demand, the highlight-lines transformer, and the plain code while streaming. Changed: theme objects load as well as bundled names, because the default theme is the palette's code theme (lib/palette) with every colour kept readable on the palette's code ground (--surface-code) by Culori (lib/code-contrast), as the TanStack block did; @shikijs/transformers' render-whitespace marks spaces and tabs; this element's own line transformer numbers each row from the gutter lines it is given (code-lines.ts, which numbers a diff as its new file does), marks the rows a diff added or removed, and hangs a wrapped line under its indentation. The plain code renders the same rows, so settling is a colour change.
 "use client";
 
 import {
@@ -48,7 +48,7 @@ export type SyntaxHighlighterProps = Omit<
   ShikiHighlighterProps,
   "children" | "theme"
 > & {
-  /** A Shiki theme; the palette's code theme, readable on the popover, when not given. */
+  /** A Shiki theme; the palette's code theme, readable on the code ground, when not given. */
   theme?: ShikiHighlighterProps["theme"];
   code: string;
   highlightLines?: readonly number[] | undefined;
@@ -428,8 +428,8 @@ const readableTheme = (name: string, background: string) => {
 };
 
 /**
- * The palette's code theme with every token readable on the popover the
- * block is painted on, read once the palette's variables apply.
+ * The palette's code theme with every token readable on the code ground
+ * (--surface-code) the block is painted on, read once the palette's variables apply.
  */
 function usePaletteTheme(enabled: boolean) {
   const palette = useAppearance((state) => state.appearance.palette);
@@ -455,7 +455,7 @@ function usePaletteTheme(enabled: boolean) {
     const timer = setTimeout(() => {
       const root = document.documentElement;
       const background = getComputedStyle(root)
-        .getPropertyValue("--popover")
+        .getPropertyValue("--surface-code")
         .trim();
       const dark = root.classList.contains("dark");
       readableTheme(

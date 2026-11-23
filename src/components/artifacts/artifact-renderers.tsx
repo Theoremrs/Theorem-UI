@@ -85,7 +85,7 @@ const DocumentArtifact: FC<RendererProps> = ({ artifact }) => (
 
 const CodeArtifact: FC<RendererProps> = ({ artifact }) => (
   <CodeFile
-    className="my-0"
+    className="my-0 w-full"
     language={artifact.language ?? 'text'}
     code={artifact.content}
   />

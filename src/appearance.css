@@ -750,12 +750,16 @@
 }
 
 /* Code stays inside the prose column, as tables do, and scrolls sideways in
-   its own region. */
+   its own region. A code block is as wide as its longest row, so a short
+   snippet is a short panel; one wider than the column wraps or scrolls. */
 .appearance-assistant-prose
   .aui-md
   > :is(.aui-code-block, .aui-md-pre, .aui-code-header-root) {
   inline-size: 100%;
   max-inline-size: 100%;
+}
+.appearance-assistant-prose .aui-md > .aui-code-block {
+  inline-size: fit-content;
 }
 
 [data-appearance-part='popover'],

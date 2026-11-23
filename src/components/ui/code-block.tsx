@@ -1,15 +1,7 @@
-// SOURCING: assistant-ui's CodeBlock (https://www.assistant-ui.com/design/components/code-block, copied into components/ui as its docs direct; the owner's choice, 2026-11-23). Kept: the figure with a title header and a copy button that floats on hover without one, the focusable code region, the copy guard against a write settling after unmount, and maxCollapsedLines with its measured height and "Show all" toggle. Changed to the owner's editor screenshot: an opaque popover surface on the artifact radius with the separator hairline; the title as a path breadcrumb in sans type, its last part in full ink; the app's copy icons; the line gutter, whitespace marks and diff bar come from the highlighter's data-line rows (appearance.css), so the source's CSS counter and lineNumbers prop give way to it.
+// SOURCING: assistant-ui's CodeBlock (https://www.assistant-ui.com/design/components/code-block, copied into components/ui as its docs direct; the owner's choice, 2026-11-23). Kept: the figure with a title header and a copy button that floats on hover without one, the focusable code region, the copy guard against a write settling after unmount, and maxCollapsedLines with its measured height and "Show all" toggle. Changed to the owner's editor screenshot: an opaque panel on the palette's code ground (--surface-code: Vitesse's own editor colours under Vitesse) at the artifact radius with the separator hairline, as wide as its longest row; the title as a short, tightly set path breadcrumb in sans type, its folders faint and its file muted; the app's copy marks; the line gutter, whitespace marks and diff bar come from the highlighter's data-line rows (appearance.css), so the source's CSS counter and lineNumbers prop give way to it.
 "use client";
 
-import {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState
-  
-  
-} from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import { Icon } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -72,7 +64,7 @@ function CopyButton({
         copyTimer.current = setTimeout(() => setCopied(false), 1500);
       }}
       className={cn(
-        "text-ink-muted hover:text-ink grid size-7 shrink-0 place-items-center rounded-(--appearance-radius-field) transition-colors",
+        "text-ink-muted hover:text-ink grid size-6 shrink-0 place-items-center rounded-(--appearance-radius-field) transition-colors",
         className,
       )}
     >
@@ -85,23 +77,26 @@ function CopyButton({
   );
 }
 
-/** A path as the editor's header shows it: each part spaced by a slash, the file itself in full ink and never cut. */
+/**
+ * A path as the editor's header shows it: the folders faint, each slash set
+ * close between them, the file a step darker and never cut.
+ */
 function Breadcrumb({ path }: { path: string }) {
   const parts = path.split("/").filter(Boolean);
   const file = parts.pop();
   return (
-    <span className="flex min-w-0 whitespace-pre">
+    <span className="flex min-w-0 tracking-tight">
       {parts.length > 0 && (
-        <span className="min-w-0 truncate">
+        <span className="text-ink-faint min-w-0 truncate">
           {parts.map((part, index) => (
             <span key={index}>
               {part}
-              <span className="text-ink-faint"> / </span>
+              <span className="mx-[0.2em] opacity-70">/</span>
             </span>
           ))}
         </span>
       )}
-      <span className="text-ink shrink-0">{file}</span>
+      <span className="text-ink-muted shrink-0">{file}</span>
     </span>
   );
 }
@@ -184,13 +179,13 @@ export function CodeBlock({
     <figure
       data-code-block=""
       className={cn(
-        "aui-code-block not-prose group/code border-separator bg-popover relative my-3 flex min-w-0 flex-col overflow-hidden rounded-(--appearance-radius-artifact) border",
+        "aui-code-block not-prose group/code border-separator bg-code relative my-3 flex w-fit max-w-full min-w-0 flex-col overflow-hidden rounded-(--appearance-radius-artifact) border",
         className,
       )}
       {...props}
     >
       {title ? (
-        <figcaption className="border-separator text-ink-muted flex h-9 shrink-0 items-center justify-between gap-2 border-b py-0 ps-3.5 pe-1 text-xs">
+        <figcaption className="border-separator text-ink-faint flex h-6.5 shrink-0 items-center justify-between gap-3 border-b py-0 ps-3.5 pe-0.5 text-xs">
           {typeof title === "string" ? <Breadcrumb path={title} /> : title}
           <CopyButton getText={getText} onCopied={onCopied} />
         </figcaption>
@@ -198,7 +193,7 @@ export function CodeBlock({
         <CopyButton
           getText={getText}
           onCopied={onCopied}
-          className="bg-popover/80 absolute end-1.5 top-1.5 z-10 opacity-0 backdrop-blur-sm transition-opacity group-hover/code:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
+          className="bg-code/80 absolute end-1 top-1 z-10 opacity-0 backdrop-blur-sm transition-opacity group-hover/code:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
         />
       )}
       <div className="relative min-w-0">
@@ -211,6 +206,9 @@ export function CodeBlock({
           style={isCollapsed ? { maxHeight: collapsedHeight } : undefined}
           className={cn(
             "aui-code-viewport focus-visible:outline-separator overflow-x-auto py-2.5 focus-visible:outline-1 focus-visible:-outline-offset-1",
+            // The block is as wide as its longest row, so without a header the
+            // floating copy button needs room of its own at the row's end.
+            !title && "pe-5",
             isCollapsed && "overflow-y-hidden",
             viewportClassName,
           )}
@@ -220,7 +218,7 @@ export function CodeBlock({
         {isCollapsed && (
           <div
             aria-hidden="true"
-            className="from-popover pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t to-transparent"
+            className="from-code pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t to-transparent"
           />
         )}
       </div>
