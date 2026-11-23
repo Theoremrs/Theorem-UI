@@ -3918,28 +3918,27 @@ impl Panel for TheoPanel {
                 .iter()
                 .filter(|b| b.message == index)
                 .collect();
-            // Thinking and the summary of a folded turn: headers that open and close.
+            // The summary of a folded turn, a header that opens and closes, and thinking,
+            // which reads in full where it is and so is a named group with no action.
             for block in blocks
                 .iter()
                 .filter(|b| matches!(b.kind, BlockKind::Thinking | BlockKind::Summary))
             {
                 let mut kid = Node::new(
                     &format!("b:{}", block.key),
-                    Role::Button,
+                    if block.expanded.is_some() { Role::Button } else { Role::Group },
                     &block.name,
                     header(block.line),
                 );
                 kid.state.expanded = block.expanded;
                 kid.state.selected = session.cursor.as_ref() == Some(&block.key);
                 kid.state.description = block.holds.clone();
-                kid.actions = vec![act(
-                    format!("{ACTION_BLOCK}{}", block.key),
-                    if block.expanded == Some(true) {
-                        "Close"
-                    } else {
-                        "Open"
-                    },
-                )];
+                if let Some(open) = block.expanded {
+                    kid.actions = vec![act(
+                        format!("{ACTION_BLOCK}{}", block.key),
+                        if open { "Close" } else { "Open" },
+                    )];
+                }
                 kids.push(kid);
             }
             for part in &message.parts {
@@ -4223,10 +4222,9 @@ impl Panel for TheoPanel {
         activity.state.description = Some(format!(
             "Shows {}; alt+v takes the next level",
             match level {
-                Activity::All => "every thinking, tool call and diff open",
-                Activity::Headers =>
-                    "one header per thinking and tool call, a finished turn folded to its summary",
-                Activity::Summary => "each turn's activity as its summary line",
+                Activity::All => "every tool call's output and diff open",
+                Activity::Headers => "each tool call on its block with its output folded, and the thinking",
+                Activity::Summary => "each turn's activity as one summary line",
             }
         ));
         activity.shortcut = Some("Alt+V".to_owned());
@@ -5466,12 +5464,13 @@ mod tests {
             "complete",
         );
         r.show(1, "t1", json!({"messages": [asked, reply]}));
-        // The finished turn's activity is its summary line; the edit keeps its diff block.
+        // The calls lead the turn, each a block, and what it says follows; the edit keeps its
+        // diff block.
         let drawn = r.drawn();
-        assert!(drawn.contains("Read a file"), "{drawn}");
-        assert!(!drawn.contains("read_file"), "{drawn}");
-        r.act("theo.view.block.sum:m2:1");
-        let drawn = r.drawn();
+        let row = |needle: &str| drawn.lines().position(|l| l.contains(needle));
+        assert!(row("read_file") < row("Reading the log first."), "{drawn}");
+        assert!(row("edit_file") < row("Reading the log first."), "{drawn}");
+        assert!(drawn.contains("(ctrl+o to expand)"), "{drawn}");
         assert!(drawn.contains("@build.log"), "{drawn}");
         assert!(drawn.contains("read_file"), "{drawn}");
         assert!(drawn.contains("let a = 2;"), "{drawn}");
@@ -6903,44 +6902,39 @@ mod tests {
     }
 
     #[test]
-    fn thinking_is_one_header_line_that_opens_by_enter_and_by_click() {
+    fn thinking_reads_in_full_after_the_calls_and_neither_opens_nor_closes() {
         let mut r = rig();
         r.show(1, "t1", working_turn());
         let drawn = r.drawn();
-        let header = drawn
-            .lines()
-            .position(|l| l.contains("Thinking") && l.contains("4s"))
-            .unwrap_or_else(|| panic!("one header with its duration: {drawn}"));
-        assert!(
-            !drawn.contains("older entry"),
-            "closed at the headers level"
-        );
-        let node = r.node("Thinking, 4s").expect("a node for the header");
-        assert_eq!(node.role, Role::Button);
-        assert_eq!(node.state.expanded, Some(false));
-        // Alt+Up gives the keys to the blocks; Up walks to the thinking; Enter opens it.
+        let row = |needle: &str| {
+            drawn
+                .lines()
+                .position(|l| l.contains(needle))
+                .unwrap_or_else(|| panic!("{needle}: {drawn}"))
+        };
+        // The run thought first, but the turn leads with its calls and the thought follows.
+        assert!(row("grep") < row("older entry"), "{drawn}");
+        assert!(row("edit_file") < row("older entry"), "{drawn}");
+        let thought = row("older entry");
+        let node = r.node("Thinking, 4s").expect("a node for the thought");
+        assert_eq!(node.role, Role::Group);
+        assert_eq!(node.state.expanded, None);
+        assert!(node.actions.is_empty());
+        // The keys stop only on what opens, so Alt+Up passes it for the diff.
         r.key(Key::Up, Mods::ALT);
-        for _ in 0..4 {
-            r.key(Key::Up, Mods::NONE);
-        }
-        r.enter();
-        assert!(r.drawn().contains("older entry"), "{}", r.drawn());
-        assert!(
-            conversation_effects(&r.seen).is_empty(),
-            "Enter sent nothing"
-        );
+        assert!(!r.node("Thinking, 4s").unwrap().state.selected);
+        assert!(r.node("Tool edit_file: running").unwrap().state.selected);
         r.key(Key::Esc, Mods::NONE);
-        // A click on the header closes it again.
+        // A click on it changes nothing.
         let origin = main_body(&r);
         r.send(Msg::Pointer(theorem_workbench_core::Pointer {
             kind: PointerKind::Down(theorem_workbench_core::Button::Left),
             x: origin.x + 4,
-            y: header as u16,
+            y: thought as u16,
             mods: Mods::NONE,
             clicks: 1,
         }));
-        assert!(!r.drawn().contains("older entry"), "{}", r.drawn());
-        assert_eq!(r.node("Thinking, 4s").unwrap().state.expanded, Some(false));
+        assert!(r.drawn().contains("older entry"), "{}", r.drawn());
     }
 
     #[test]
@@ -7050,8 +7044,9 @@ mod tests {
     }
 
     #[test]
-    fn a_finished_turn_folds_to_one_summary_that_opens_to_its_headers() {
+    fn at_the_summary_level_a_finished_turn_folds_to_one_summary_that_opens_to_its_blocks() {
         let mut r = rig();
+        r.act("theo.view.activity.summary");
         let mut done = working_turn();
         done["run"] = json!({"state": "idle"});
         done["messages"][1]["status"] = json!("complete");
@@ -7067,29 +7062,35 @@ mod tests {
             drawn.contains("Thought twice, ran a command, searched once"),
             "{drawn}"
         );
-        assert!(!drawn.contains("grep"), "{drawn}");
-        // The edit keeps its own header, open, at this level.
+        assert!(!drawn.contains("grep") && !drawn.contains("older entry"), "{drawn}");
+        // The edit keeps its own header at this level; the summary is one line, though the
+        // edit is drawn between the calls and the thinking, and it takes the first call's key.
         assert!(drawn.contains("edit_file"), "{drawn}");
+        assert_eq!(drawn.matches("Thought twice").count(), 1, "{drawn}");
         let summary = r
             .tree()
             .nodes
             .into_iter()
-            .find(|n| n.id.as_str().ends_with("b:sum:m2:0"))
+            .find(|n| n.id.as_str().ends_with("b:sum:m2:2"))
             .expect("the summary's node");
         assert_eq!(summary.role, Role::Button);
         assert_eq!(summary.state.expanded, Some(false));
-        r.act("theo.view.block.sum:m2:0");
+        r.act("theo.view.block.sum:m2:2");
         let drawn = r.drawn();
         assert!(
             drawn.contains("grep") && drawn.contains("run_command"),
             "{drawn}"
         );
-        assert_eq!(drawn.matches("Thinking").count(), 2, "{drawn}");
+        assert!(
+            drawn.contains("older entry") && drawn.contains("a second thought"),
+            "{drawn}"
+        );
     }
 
     #[test]
     fn a_block_opened_while_the_transcript_follows_its_end_stays_where_it_was() {
         let mut r = rig();
+        r.act("theo.view.activity.summary");
         let mut done = working_turn();
         done["run"] = json!({"state": "idle"});
         done["messages"][1]["status"] = json!("complete");
@@ -7122,7 +7123,7 @@ mod tests {
             }
         }
         let before = before.expect("the transcript scrolled with the summary on screen");
-        r.act("theo.view.block.sum:m2:0");
+        r.act("theo.view.block.sum:m2:1");
         r.drawn();
         assert_eq!(row(&r), Some(before), "the header stayed under the pointer");
         assert!(r.drawn().contains("grep"), "it opened below its header");
@@ -7147,8 +7148,12 @@ mod tests {
     fn the_three_activity_levels_change_the_drawing_and_survive_a_reload() {
         let mut r = rig();
         r.show(1, "t1", working_turn());
-        // Headers (the default): one header each while the turn works.
-        assert!(r.drawn().contains("grep") && !r.drawn().contains("older entry"));
+        // Headers (the default): each call a block with its output behind it, and the thinking.
+        let drawn = r.drawn();
+        assert!(
+            drawn.contains("grep") && drawn.contains("older entry") && !drawn.contains("src/merge.rs:41"),
+            "{drawn}"
+        );
         // Alt+V: summary only, even for the working turn.
         r.key(Key::Char('v'), Mods::ALT);
         let drawn = r.drawn();

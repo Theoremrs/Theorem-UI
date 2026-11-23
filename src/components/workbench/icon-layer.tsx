@@ -1,12 +1,11 @@
-// SOURCING: hand-roll over painted() and CONTROL_LAYERS (components/icons.tsx, the owner's Streamline marks) and React's useSyncExternalStore: nothing in Ratatui or Ratzilla models an image in a cell, so the core marks where an icon goes (terminal/crates/workbench-core/src/icons.rs) and this layer draws it over the grid, one absolutely positioned element per icon at its cell. The store is icon-layer/store.ts.
+// SOURCING: hand-roll over painted() and CONTROL_LAYERS (components/icons.tsx, the owner's Streamline marks) and React's useSyncExternalStore: nothing in Ratatui or Ratzilla models an image in a cell, so the core marks where an icon goes (terminal/crates/workbench-core/src/icons.rs) and this layer draws it over the grid, the workbench's and the agent terminal's, one absolutely positioned element per icon at its cell. The store is icon-layer/store.ts.
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type { CSSProperties } from 'react'
 import { CONTROL_LAYERS } from '@/assets/icons/streamline/control/layers'
 import { useTerminalTheme } from '@/components/terminal/live-terminal-theme'
 import { painted } from '@/components/icons'
-import type { PlacedIcon } from '@/lib/workbench/wire'
 import type { WorkbenchHandle } from '@/terminal-wasm/theorem_terminal'
-import type { IconStore } from './icon-layer/store'
+import type { FrameIcon, IconStore } from './icon-layer/store'
 
 /** The turn of the wheel each mark takes from the terminal's accent, and whether its page is softened: the sidebar's session marks (icons.tsx), with the plus of a new file kept at the full accent. */
 const SHIFT: Partial<Record<keyof typeof CONTROL_LAYERS, number>> = {
@@ -55,6 +54,16 @@ const GLYPH = {
   width: 'var(--wb-icon)',
   height: 'var(--wb-icon)',
 } as CSSProperties
+/**
+ * An arrow stands in for a text glyph (the agent terminal's prompt pointer and its folds), so it
+ * takes the glyph's size, not the slot's: the chevron fills its square, and Paper Mono's `❯` and
+ * capitals are about 0.72 em tall. At the slot's size it would meet the words beside it.
+ */
+const TEXT_GLYPH = {
+  width: '0.72em',
+  height: '0.72em',
+} as CSSProperties
+const IN_TEXT: ReadonlySet<Name> = new Set(['arrowRight', 'arrowDown'])
 /**
  * A folder's fill starts from the terminal's gold, not its accent: the source marks are yellow
  * folders and white pages, and a tree is read by telling the two apart at a glance. The gold is a
@@ -145,7 +154,7 @@ export function IconLayer({
   )
 }
 
-function Slot({ placed }: { placed: PlacedIcon }) {
+function Slot({ placed }: { placed: FrameIcon }) {
   const Mark = MARKS[placed.icon]
   return (
     <span
@@ -157,10 +166,19 @@ function Slot({ placed }: { placed: PlacedIcon }) {
         ...SLOT,
         left: cells(placed.x, 'w'),
         top: cells(placed.y, 'h'),
+        // A mark at rest is painted from currentColor: the glyph's own colour, when the frame
+        // says which glyph the icon stands for.
+        color: placed.ink,
       }}
     >
       <Mark
-        style={placed.icon.startsWith('folder') ? FOLDER : GLYPH}
+        style={
+          placed.icon.startsWith('folder')
+            ? FOLDER
+            : IN_TEXT.has(placed.icon)
+              ? TEXT_GLYPH
+              : GLYPH
+        }
         className="size-auto"
       />
     </span>

@@ -42,6 +42,7 @@ use ratzilla::{
 use serde::Deserialize;
 use serde_json::json;
 use theorem_workbench_core::caret::escaped;
+use theorem_workbench_core::icons::{Icon, put_icon, take_icons};
 use theorem_workbench_panels::clip::finish_cut;
 use theorem_workbench_text::field::{Field as TextField, FieldStyles, Keyed};
 use theorem_workbench_text::visible::visible;
@@ -86,6 +87,7 @@ struct Palette {
     idle: Color,
     #[serde(deserialize_with = "colour")]
     sage: Color,
+    /// The transcript's Markdown headings, as pi's are gold (owner, 2026-11-22).
     #[serde(deserialize_with = "colour")]
     gold: Color,
     #[serde(deserialize_with = "colour")]
@@ -167,6 +169,12 @@ struct Palette {
     diff_added_mark: Option<Color>,
     #[serde(deserialize_with = "optional_colour")]
     diff_removed_mark: Option<Color>,
+    /// A tool call's block, the one ground besides a diff's and the selected row's.
+    #[serde(deserialize_with = "optional_colour")]
+    call: Option<Color>,
+    /// A tool call's target (its file or command) on its block.
+    #[serde(deserialize_with = "optional_colour")]
+    call_ink: Option<Color>,
 }
 
 impl Palette {
@@ -185,6 +193,12 @@ impl Palette {
     }
     fn diff_removed_mark(&self) -> Color {
         self.diff_removed_mark.unwrap_or(self.syntax_keyword)
+    }
+    fn call(&self) -> Color {
+        self.call.unwrap_or(self.raised)
+    }
+    fn call_ink(&self) -> Color {
+        self.call_ink.unwrap_or(self.accent)
     }
 }
 
@@ -249,6 +263,8 @@ const SLATE: Palette = Palette {
     text_disabled: None,
     diff_added_mark: None,
     diff_removed_mark: None,
+    call: None,
+    call_ink: None,
 };
 
 impl Default for Palette {
@@ -302,6 +318,8 @@ pub fn set_palette(json: &str) -> Result<(), JsValue> {
 const DIFF_FOLD: usize = 12;
 
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+/// The prompt's glyph. The page draws the owner's Streamline arrow over it (`Icon::ArrowRight`), in
+/// its colour; the glyph is what the grid holds without a page, and what its cells read as text.
 const PROMPT: &str = "❯ ";
 /// Transcript text sits under the prompt's text, not under its glyph.
 const INDENT: &str = "  ";
@@ -318,11 +336,9 @@ const BLINK_MS: f64 = 530.0;
 struct Markdown;
 
 impl StyleSheet for Markdown {
-    fn heading(&self, level: u8) -> Style {
-        match level {
-            1 | 2 => Style::new().fg(palette().heading).bold(),
-            _ => Style::new().fg(palette().heading),
-        }
+    // Every level in gold, bold, its # marks kept, as pi's are (owner, 2026-11-22).
+    fn heading(&self, _level: u8) -> Style {
+        Style::new().fg(palette().gold).bold()
     }
     // Inline code is told by its colour alone, on no band (owner, 2026-11-22).
     fn code(&self) -> Style {
@@ -332,7 +348,7 @@ impl StyleSheet for Markdown {
         Style::new().fg(palette().link).underlined()
     }
     fn blockquote(&self) -> Style {
-        Style::new().fg(palette().muted).italic()
+        Style::new().fg(palette().muted)
     }
     fn heading_meta(&self) -> Style {
         Style::new().fg(palette().muted)
@@ -658,18 +674,49 @@ enum Hit {
     New,
 }
 
+/// tui-markdown's lines, owned, set the terminal's way: no italic (Paper Mono has no
+/// italic face, and the owner wants none, 2026-11-22), and a heading sits on what
+/// follows it, with no blank row between: the space above a heading parts it from
+/// what came before, so none below it is needed to tie it to its section. A heading
+/// straight under another keeps its blank row.
 fn own(text: Text<'_>) -> Vec<Line<'static>> {
-    text.lines
+    let upright = |mut style: Style| {
+        style.add_modifier.remove(Modifier::ITALIC);
+        style
+    };
+    let lines: Vec<Line<'static>> = text
+        .lines
         .into_iter()
         .map(|line| {
             Line::from(
                 line.spans
                     .into_iter()
-                    .map(|span| Span::styled(span.content.into_owned(), span.style))
+                    .map(|span| Span::styled(span.content.into_owned(), upright(span.style)))
                     .collect::<Vec<_>>(),
             )
-            .style(line.style)
+            .style(upright(line.style))
         })
+        .collect();
+    let heading = Markdown.heading(1);
+    // tui-markdown styles a heading's line, its # marks a raw span on it.
+    let is_heading = |line: &Line| {
+        line.spans.first().is_some_and(|span| {
+            line.style.patch(span.style) == heading && span.content.starts_with('#')
+        })
+    };
+    // A heading straight under another keeps its blank row: that is the space above it.
+    let dropped: Vec<bool> = (0..lines.len())
+        .map(|at| {
+            blank(&lines[at])
+                && at > 0
+                && is_heading(&lines[at - 1])
+                && lines.get(at + 1).is_some_and(|next| !is_heading(next))
+        })
+        .collect();
+    lines
+        .into_iter()
+        .zip(dropped)
+        .filter_map(|(line, dropped)| (!dropped).then_some(line))
         .collect()
 }
 
@@ -871,9 +918,26 @@ struct Built {
     links: Vec<(usize, Open)>,
     blocks: Vec<blocks::BlockRow>,
     receipts: Vec<(usize, String)>,
+    /// Glyphs drawn as icons: the line, the glyph's column and the icon.
+    marks: Vec<(usize, u16, Icon)>,
 }
 
 impl Built {
+    /// Pushes a header whose fold mark the page draws as an arrow over the glyph.
+    fn fold_header(&mut self, line: Line<'static>, open: bool) {
+        if let Some(col) = blocks::fold_col(&line) {
+            self.marks.push((self.lines.len(), col, blocks::fold_icon(open)));
+        }
+        self.lines.push(line);
+    }
+
+    /// Words sent to a working run, their prompt glyph drawn as the pointer.
+    fn sent(&mut self, sent: &Sent) {
+        self.marks.push((self.lines.len(), 0, Icon::ArrowRight));
+        self.lines.extend(sent_lines(sent));
+        self.lines.push(Line::default());
+    }
+
     /// Lines whose rows carry a background, noting which.
     fn filled(&mut self, rows: Vec<(Line<'static>, Option<Color>)>) {
         for (line, fill) in rows {
@@ -885,13 +949,57 @@ impl Built {
     }
 
     /// A code block with no fences: its syntax colours on the canvas, indented, on no
-    /// band; only a diff's rows are drawn on a ground (owner, 2026-11-22).
+    /// band; only a diff's rows and a tool call's block are drawn on a ground.
     fn code(&mut self, code: &[Vec<Token>]) {
         self.lines.extend(blocks::code_block(code));
+    }
+
+    /// Ends what is built so far with one blank row unless it already does. A call
+    /// block's padding is its ground, not a gap, so a block is always set apart.
+    fn gap(&mut self) {
+        let Some(last) = self.lines.len().checked_sub(1) else {
+            return;
+        };
+        if !blank(&self.lines[last]) || self.fills.iter().any(|&(line, _)| line == last) {
+            self.lines.push(Line::default());
+        }
+    }
+
+    /// Opens a tool call's block, as pi draws one: set apart by a blank row, then a
+    /// padding row on the call's ground. Returns where the block starts, for `close_call`.
+    fn open_call(&mut self) -> (usize, usize) {
+        self.gap();
+        let at = (self.lines.len(), self.fills.len());
+        self.lines.push(Line::default());
+        at
+    }
+
+    /// Closes the block `open_call` opened with a padding row, and lays the call's ground
+    /// under every row of it, beneath the fills already there so a diff keeps its own.
+    fn close_call(&mut self, (line, fill): (usize, usize)) {
+        self.lines.push(Line::default());
+        let ground = palette().call();
+        let rows: Vec<_> = (line..self.lines.len()).map(|row| (row, ground)).collect();
+        self.fills.splice(fill..fill, rows);
     }
 }
 
 /// Thinking, or a tool call that has ended: what a finished turn folds into its summary.
+/// The order a turn's parts are drawn in: its calls first, with the receipts that
+/// answer them, then its thinking, then everything it says, each kept in the order it
+/// came. What the agent did leads, then why, then the answer (owner, 2026-11-22, as
+/// pi's transcript reads).
+fn turn_order(parts: &[Part]) -> Vec<usize> {
+    let rank = |part: &Part| match part {
+        Part::Tool { .. } | Part::Program { .. } | Part::Receipt { .. } => 0,
+        Part::Reasoning { .. } => 1,
+        _ => 2,
+    };
+    let mut order: Vec<usize> = (0..parts.len()).collect();
+    order.sort_by_key(|&at| rank(&parts[at]));
+    order
+}
+
 fn is_activity(part: &Part) -> bool {
     match part {
         Part::Reasoning { .. } => true,
@@ -971,6 +1079,12 @@ struct Session {
     pin: Option<usize>,
     /// Lines whose background spans the whole row, as a diff's rows do.
     fills: Vec<(usize, Color)>,
+    /// Glyphs the page draws as icons, by line and column (`Built::marks`).
+    marks: Vec<(usize, u16, Icon)>,
+    /// Whether the page lays the owner's arrows over the prompt and fold glyphs. The side
+    /// terminal's page does; the workbench's Theo, whose icon layer paints a mark in one colour
+    /// and whose composer is its own, keeps the glyphs.
+    arrows: bool,
     /// The body's area and its first shown row at the last draw.
     body: Rect,
     top: usize,
@@ -1020,6 +1134,8 @@ impl Session {
             starts: Vec::new(),
             pin: None,
             fills: Vec::new(),
+            marks: Vec::new(),
+            arrows: false,
             body: Rect::default(),
             top: 0,
             built_for: None,
@@ -1065,8 +1181,8 @@ impl Session {
         }
     }
 
-    /// One piece of activity as its header: thinking, or a finished tool call. Opened, its
-    /// prose or its output follows.
+    /// One piece of activity: thinking, inline as it reads, or a finished tool call's block,
+    /// its output inside when opened.
     fn activity(&self, part: &Part, at: (usize, &str, usize), width: u16, out: &mut Built) {
         let (message, key_of_message, place) = at;
         let all = self.level == blocks::Activity::All;
@@ -1076,10 +1192,9 @@ impl Session {
                 started_at_ms,
                 ended_at_ms,
             } => {
+                // Thinking always reads in full, so it neither opens nor closes.
                 let key = format!("think:{key_of_message}:{place}");
-                let open = self.is_open(&key, all);
                 let time = blocks::took(*started_at_ms, *ended_at_ms);
-                out.toggles.push((out.lines.len(), key.clone()));
                 out.blocks.push(blocks::BlockRow {
                     line: out.lines.len(),
                     key,
@@ -1088,7 +1203,7 @@ impl Session {
                         Some(time) => format!("Thinking, {time}"),
                         None => "Thinking".to_owned(),
                     },
-                    expanded: Some(open),
+                    expanded: None,
                     open: None,
                     path_cols: None,
                     message,
@@ -1096,10 +1211,7 @@ impl Session {
                     holds: None,
                 });
                 out.lines
-                    .push(blocks::quiet_header("Thinking", time.as_deref(), open));
-                if open {
-                    out.lines.extend(blocks::thought_lines(text));
-                }
+                    .extend(blocks::thought_inline(text, Span::raw(INDENT), width as usize));
             }
             Part::Tool {
                 name,
@@ -1111,6 +1223,7 @@ impl Session {
                 started_at_ms,
                 ended_at_ms,
             } => {
+                let call = out.open_call();
                 if let Some(open) = open {
                     out.links.push((out.lines.len(), open.clone()));
                 }
@@ -1149,27 +1262,35 @@ impl Session {
                     counts: None,
                     holds: None,
                 });
-                let extra = time
-                    .map(|t| {
-                        vec![Span::styled(
-                            format!("  {t}"),
-                            Style::new().fg(palette().text_disabled()),
-                        )]
-                    })
-                    .unwrap_or_default();
-                out.lines
-                    .push(tool_row_extra(name, summary, status, open.is_some(), width, extra).0);
+                let quiet = Style::new().fg(palette().text_disabled());
+                // A block holds what the call returned, as pi's does: folded, it says how to open it.
+                let hint = (output.is_some() && !shown)
+                    .then(|| Span::styled("  (ctrl+o to expand)", quiet));
+                let extra = hint
+                    .into_iter()
+                    .chain(time.map(|t| Span::styled(format!("  {t}"), quiet)))
+                    .collect();
+                let row = tool_row_extra(name, summary, status, open.is_some(), width, extra).0;
+                out.lines.push(row);
                 if let Some(output) = output.as_ref().filter(|_| shown) {
                     out.filled(output_lines(output, usize::MAX));
                 }
+                out.close_call(call);
             }
             _ => {}
         }
     }
 
+    /// Code the agent writes, in a call's block.
+    fn diff_block(&self, part: &Part, at: (usize, &str, usize), width: u16, out: &mut Built) {
+        let call = out.open_call();
+        self.diff_rows(part, at, width, out);
+        out.close_call(call);
+    }
+
     /// Code the agent writes: its header (what wrote it, the file, the lines added and
     /// removed) and, open, the diff. A write still streaming shows its newest lines.
-    fn diff_block(&self, part: &Part, at: (usize, &str, usize), width: u16, out: &mut Built) {
+    fn diff_rows(&self, part: &Part, at: (usize, &str, usize), width: u16, out: &mut Built) {
         let Part::Tool {
             name,
             summary,
@@ -1212,7 +1333,7 @@ impl Session {
             counts: Some((added, removed)),
             holds: None,
         });
-        out.lines.push(header);
+        out.fold_header(header, shown);
         if !shown {
             return;
         }
@@ -1249,7 +1370,10 @@ impl Session {
 
     fn build(&mut self, width: u16) {
         let mut out = Built::default();
-        let options = Options::new(Markdown).table_width(width.saturating_sub(INDENT.len() as u16));
+        let options = Options::new(Markdown)
+            .table_width(width.saturating_sub(INDENT.len() as u16))
+            .table_row_dividers(true);
+        let text_cols = usize::from(width).saturating_sub(INDENT.len());
 
         let last_message = self.snapshot.messages.len().saturating_sub(1);
         let mut caret = None;
@@ -1287,16 +1411,24 @@ impl Session {
                     .collect::<Vec<_>>()
                     .join("\n");
                 let mut rows = Vec::new();
-                for (index, row) in text.lines().enumerate() {
+                let wrapped: Vec<Line<'static>> = text
+                    .lines()
+                    .flat_map(|row| {
+                        blocks::hung(
+                            Line::from(Span::styled(row.to_owned(), Style::new().fg(p.bright))),
+                            text_cols,
+                        )
+                    })
+                    .collect();
+                for (index, mut row) in wrapped.into_iter().enumerate() {
                     let lead = if index == 0 {
+                        out.marks.push((out.lines.len() + rows.len(), 0, Icon::ArrowRight));
                         Span::styled(PROMPT, Style::new().fg(p.accent).bold())
                     } else {
                         Span::raw(INDENT)
                     };
-                    rows.push(Line::from(vec![
-                        lead,
-                        Span::styled(row.to_owned(), Style::new().fg(p.bright)),
-                    ]));
+                    row.spans.insert(0, lead);
+                    rows.push(row);
                 }
                 for name in &message.attachments {
                     rows.push(Line::from(vec![
@@ -1311,20 +1443,35 @@ impl Session {
             let key_of_message = message.id.clone().unwrap_or_else(|| index.to_string());
             let parts = &message.parts;
             let writing = self.snapshot.running && index == last_message;
-            // A finished turn's activity folds to its summary at the headers level; every
-            // turn's does at the summary level; nothing folds when everything shows.
-            let fold = match self.level {
-                blocks::Activity::All => false,
-                blocks::Activity::Headers => !writing,
-                blocks::Activity::Summary => true,
+            // At the summary level a turn's activity (its thinking and finished calls) folds
+            // to one summary, drawn where the first of it would be; at the others it shows.
+            let order = turn_order(parts);
+            let folded: Vec<usize> = if self.level == blocks::Activity::Summary {
+                order.iter().copied().filter(|&at| is_activity(&parts[at])).collect()
+            } else {
+                Vec::new()
             };
+            // One blank row where activity meets the answer.
+            let mut after_activity = false;
+            // Every call's block is set apart from what follows it.
+            let mut after_call = false;
             // A code block keeps a blank line from what comes before and after it.
             let mut after_code = false;
-            let mut at = 0;
-            while at < parts.len() {
-                if fold && is_activity(&parts[at]) {
-                    let run = parts[at..].iter().take_while(|p| is_activity(p)).count();
-                    let group: Vec<&Part> = parts[at..at + run].iter().collect();
+            // Text the agent wrote between calls meets the next text once the calls draw
+            // first, so each keeps a blank row as the paragraph it was.
+            let mut after_text = false;
+            let mut pos = 0;
+            while pos < order.len() {
+                // A part keeps its place in the message as its key, so what the person
+                // opened stays open as the turn grows.
+                let at = order[pos];
+                if folded.contains(&at) {
+                    if folded[0] != at {
+                        pos += 1;
+                        continue;
+                    }
+                    let places = folded.as_slice();
+                    let group: Vec<&Part> = places.iter().map(|&at| &parts[at]).collect();
                     if after_code {
                         separate(&mut out.lines);
                         after_code = false;
@@ -1359,21 +1506,18 @@ impl Session {
                         counts: None,
                         holds: Some(holds),
                     });
-                    out.lines.push(blocks::quiet_header(&words, None, shown));
+                    out.fold_header(blocks::quiet_header(&words, None, shown), shown);
+                    after_activity = true;
                     if shown {
-                        for (offset, part) in group.into_iter().enumerate() {
-                            self.activity(
-                                part,
-                                (index, &key_of_message, at + offset),
-                                width,
-                                &mut out,
-                            );
+                        for (&place, part) in places.iter().zip(group) {
+                            self.activity(part, (index, &key_of_message, place), width, &mut out);
                         }
                     }
-                    at += run;
+                    pos += 1;
                     continue;
                 }
                 let part = &parts[at];
+                // The part the run wrote last, wherever the turn's order draws it.
                 let last_part = at + 1 == parts.len();
                 // A finished program folds to a row unless shown; the one being written shows.
                 let open_program = matches!(part, Part::Program { streaming, .. }
@@ -1386,9 +1530,27 @@ impl Session {
                     || running
                     || matches!(part, Part::Text { text } if text.contains("```") || text.contains("~~~"));
                 if is_code || after_code {
-                    separate(&mut out.lines);
+                    out.gap();
                 }
+                let activity_part = is_activity(part);
+                if after_activity != activity_part && pos > 0 {
+                    out.gap();
+                }
+                after_activity = activity_part;
+                if after_call {
+                    out.gap();
+                }
+                after_call = match part {
+                    Part::Tool { .. } => !running,
+                    Part::Program { .. } => !open_program,
+                    _ => false,
+                };
                 after_code = is_code;
+                let text = matches!(part, Part::Text { .. });
+                if text && after_text {
+                    out.gap();
+                }
+                after_text = text;
                 let start = out.lines.len();
                 let place = (index, key_of_message.as_str(), at);
                 match part {
@@ -1398,7 +1560,12 @@ impl Session {
                                 blocks::Piece::Prose(prose) => {
                                     let rendered =
                                         tui_markdown::from_str_with_options(&prose, &options);
-                                    out.lines.extend(own(rendered).into_iter().map(indented));
+                                    out.lines.extend(
+                                        own(rendered)
+                                            .into_iter()
+                                            .flat_map(|line| blocks::hung(line, text_cols))
+                                            .map(indented),
+                                    );
                                 }
                                 blocks::Piece::Code(code) => {
                                     separate(&mut out.lines);
@@ -1467,14 +1634,13 @@ impl Session {
                             let count = code.len();
                             let summary =
                                 format!("{count} line{}", if count == 1 { "" } else { "s" });
+                            let call = out.open_call();
                             out.lines
                                 .push(tool_row("program", &summary, "complete", false, width));
+                            out.close_call(call);
                         }
                     }
-                    Part::Input(sent) => {
-                        out.lines.extend(sent_lines(sent));
-                        out.lines.push(Line::default());
-                    }
+                    Part::Input(sent) => out.sent(sent),
                     Part::Receipt {
                         text,
                         outcome,
@@ -1499,11 +1665,19 @@ impl Session {
                         _ => None,
                     };
                 }
-                at += 1;
+                pos += 1;
             }
             out.lines.push(Line::default());
         }
 
+        if let Some(row) = caret {
+            out.lines[row]
+                .spans
+                .push(Span::styled(CARET, Style::new().fg(palette().accent)));
+        }
+        for sent in &self.snapshot.outgoing {
+            out.sent(sent);
+        }
         let Built {
             mut lines,
             fills,
@@ -1511,17 +1685,8 @@ impl Session {
             links,
             blocks,
             receipts,
+            marks,
         } = out;
-        if let Some(row) = caret {
-            lines[row]
-                .spans
-                .push(Span::styled(CARET, Style::new().fg(palette().accent)));
-        }
-
-        for sent in &self.snapshot.outgoing {
-            lines.extend(sent_lines(sent));
-            lines.push(Line::default());
-        }
 
         if let Some(error) = &self.snapshot.error {
             lines.push(indented(Line::styled(
@@ -1578,6 +1743,7 @@ impl Session {
         self.toggles = toggles;
         self.starts = starts;
         self.fills = fills;
+        self.marks = marks;
         self.blocks = blocks;
         self.receipts = receipts;
         self.lines = lines;
@@ -1743,6 +1909,15 @@ impl Session {
             }
         }
         paragraph.scroll((top, 0)).render(inner, buf);
+        // A glyph the page draws as an icon: the icon takes its cell and the next, in the
+        // glyph's own colour (the cell keeps the style the line gave it).
+        for &(line, col, icon) in self.marks.iter().filter(|_| self.arrows) {
+            let Some(&row) = self.rows.get(line).filter(|row| shown.contains(row)) else {
+                continue;
+            };
+            let y = inner.y + (row - shown.start) as u16;
+            put_icon(buf, inner.x.saturating_add(col), y, inner.right(), icon, Style::new());
+        }
         // The block the keys are on sits on the selected band, across its header row.
         let row = self
             .cursor
@@ -1902,6 +2077,9 @@ impl Session {
             Span::styled(PROMPT, Style::new().fg(palette().accent).bold()),
         ])
         .render(inner, buf);
+        if self.arrows {
+            put_icon(buf, inner.x + 1, inner.y, inner.right(), Icon::ArrowRight, Style::new());
+        }
         // The terminal's own cursor is the caret, so the field draws none.
         let styles = FieldStyles {
             text: Style::new().fg(palette().bright),
@@ -2268,10 +2446,10 @@ fn tool_row_extra(
     width: u16,
     extra: Vec<Span<'static>>,
 ) -> (Line<'static>, (u16, u16)) {
-    // A row's state is its text's colour, on no band of its own: only a diff is drawn
-    // on a ground (owner, 2026-11-22). The glyph is the register; a finished call's name
-    // recedes, and one that failed, waits on a decision or was interrupted takes its
-    // register in its name as well.
+    // A row's state is its text's colour: the glyph is the register, and a call that
+    // failed, waits on a decision or was interrupted takes its register in its name as
+    // well. The row sits on its call's block, its name the bold primary text and its
+    // target in the call's ink, as pi draws a call.
     let p = palette();
     let (glyph, color, name_ink) = match status {
         "complete" => ("✓", p.success, p.completed_ink()),
@@ -2301,11 +2479,13 @@ fn tool_row_extra(
         Span::raw("  "),
         Span::styled(
             summary,
-            if link {
-                Style::new().fg(p.muted).add_modifier(Modifier::UNDERLINED)
-            } else {
-                Style::new().fg(p.muted)
-            },
+            Style::new()
+                .fg(p.call_ink())
+                .add_modifier(if link {
+                    Modifier::UNDERLINED
+                } else {
+                    Modifier::empty()
+                }),
         ),
     ];
     spans.extend(extra);
@@ -2329,13 +2509,19 @@ struct App {
     typed_at: f64,
     /// The prompt cursor's cell at the last draw.
     cursor: Option<Position>,
-    /// The backend's cell size in CSS pixels, for clicks and the cursor.
-    cell: (f32, f32),
+    /// The backend's cell size in CSS pixels, for clicks and the cursor. The handle shares it:
+    /// the page asks for it from `on_icons`, which runs while a frame holds the App.
+    cell: Rc<Cell<(f32, f32)>>,
     /// Tab bar targets at the last draw: start and end columns on `tab_row`.
     hits: Vec<(u16, u16, Hit)>,
     tab_row: u16,
     /// The prompt's area at the last draw, the one place that takes typing.
     prompt: Rect,
+    /// The last frame's icons as the page's icon layer reads them (`icons_json`), the last ones
+    /// sent, and where they go.
+    icons: String,
+    sent_icons: Option<String>,
+    on_icons: Option<js_sys::Function>,
 }
 
 impl App {
@@ -2347,10 +2533,13 @@ impl App {
             focused: false,
             typed_at: 0.0,
             cursor: None,
-            cell: (0.0, 0.0),
+            cell: Rc::default(),
             hits: Vec::new(),
             tab_row: 0,
             prompt: Rect::default(),
+            icons: String::from("[]"),
+            sent_icons: None,
+            on_icons: None,
         }
     }
 
@@ -2368,7 +2557,10 @@ impl App {
                     session.title = visible(&entry.title);
                     session
                 }
-                None => Session::new(entry.id, visible(&entry.title), tabbed),
+                None => Session {
+                    arrows: true,
+                    ..Session::new(entry.id, visible(&entry.title), tabbed)
+                },
             })
             .collect();
         self.active = self
@@ -2554,7 +2746,7 @@ impl App {
     /// A press at CSS pixels from the terminal's top left.
     /// The cell under a point in CSS pixels from the terminal's top left.
     fn cell_at(&self, x: f64, y: f64) -> Option<Position> {
-        let (width, height) = self.cell;
+        let (width, height) = self.cell.get();
         if width <= 0.0 || height <= 0.0 || x < 0.0 || y < 0.0 {
             return None;
         }
@@ -2646,14 +2838,40 @@ trait Drawn {
 
 impl Drawn for App {
     fn set_cell(&mut self, cell: (f32, f32)) {
-        self.cell = cell;
+        self.cell.set(cell);
     }
     fn draw(&mut self, frame: &mut Frame) {
         App::draw(self, frame);
+        self.icons = icons_json(frame.buffer_mut());
     }
     fn caret(&self) -> Option<(Position, bool, f64)> {
         self.cursor.map(|at| (at, self.focused, self.typed_at))
     }
+    fn drawn(&mut self) {
+        if self.sent_icons.as_ref() == Some(&self.icons) {
+            return;
+        }
+        if let Some(on_icons) = &self.on_icons {
+            let _ = on_icons.call1(&JsValue::NULL, &JsValue::from_str(&self.icons));
+        }
+        self.sent_icons = Some(self.icons.clone());
+    }
+}
+
+/// The pass after a frame: every icon it placed as the page's icon layer reads it, where it is,
+/// what it is and the colour of the glyph it stands for, with its cells blanked.
+fn icons_json(buf: &mut Buffer) -> String {
+    let icons: Vec<serde_json::Value> = take_icons(buf)
+        .into_iter()
+        .map(|placed| {
+            let ink = match buf[(placed.x, placed.y)].fg {
+                Color::Rgb(r, g, b) => Some(format!("#{r:02x}{g:02x}{b:02x}")),
+                _ => None,
+            };
+            json!({ "x": placed.x, "y": placed.y, "icon": placed.icon, "ink": ink })
+        })
+        .collect();
+    serde_json::Value::from(icons).to_string()
 }
 
 /// Starts `navigator.clipboard.writeText`; an error is why it could not start.
@@ -2693,11 +2911,18 @@ fn clipboard_reason(error: &JsValue) -> String {
 pub struct TerminalHandle {
     _frames: Rc<FrameLoop>,
     app: Rc<RefCell<App>>,
+    cell: Rc<Cell<(f32, f32)>>,
     on_action: js_sys::Function,
 }
 
 #[wasm_bindgen]
 impl TerminalHandle {
+    /// The measured cell in CSS pixels as JSON `{width, height}`, once a frame has measured it.
+    pub fn cell_size(&self) -> Option<String> {
+        let (width, height) = self.cell.get();
+        (width > 0.0 && height > 0.0).then(|| json!({ "width": width, "height": height }).to_string())
+    }
+
     fn emit(&self, action: Option<(Action, String)>) {
         if let Some((action, tab)) = action {
             if let Action::Clipboard { text, cut } = action {
@@ -3064,20 +3289,26 @@ fn run_frames<D: Drawn + 'static>(mut screen: Screen, app: Rc<RefCell<D>>) -> Rc
 /// Mounts the terminal into the element with `parent_id`, which it fills and
 /// which must be positioned (the cursor sits on it absolutely). `tabbed` draws
 /// a tab bar; without it the terminal shows its one tab's header. Tabs come
-/// from `set_tabs`. `on_action` receives each action as a JSON string. Frames
+/// from `set_tabs`. `on_action` receives each action as a JSON string, and
+/// `on_icons` the icons of each frame that changed them (`icons_json`). Frames
 /// run until the element leaves the page; mount once per element.
 #[wasm_bindgen]
 pub fn mount(
     parent_id: &str,
     tabbed: bool,
     on_action: js_sys::Function,
+    on_icons: js_sys::Function,
 ) -> Result<TerminalHandle, JsValue> {
     let screen = Screen::new(parent_id)?;
-    let app = Rc::new(RefCell::new(App::new(tabbed)));
+    let mut app = App::new(tabbed);
+    app.on_icons = Some(on_icons);
+    let cell = app.cell.clone();
+    let app = Rc::new(RefCell::new(app));
     let frames = run_frames(screen, app.clone());
     Ok(TerminalHandle {
         _frames: frames,
         app,
+        cell,
         on_action,
     })
 }
@@ -3183,6 +3414,255 @@ mod tests {
         let mut app = App::new(false);
         terminal.draw(|frame| app.draw(frame)).unwrap();
         terminal.backend().buffer()[(39, 0)].bg
+    }
+
+    /// The side terminal with one tab holding `state`.
+    fn side_terminal(state: &str) -> App {
+        let mut app = App::new(false);
+        app.set_tabs(r#"{"tabs":[{"id":"t","title":"T"}],"active":"t"}"#)
+            .unwrap();
+        app.set_state("t", state).unwrap();
+        app
+    }
+
+    /// One whole frame through the screen's pass, and the icons the pass handed the page.
+    fn framed(app: &mut App) -> (Buffer, Vec<serde_json::Value>) {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(64, 20)).unwrap();
+        terminal.draw(|frame| Drawn::draw(app, frame)).unwrap();
+        let icons = serde_json::from_str(&app.icons).unwrap();
+        (terminal.backend().buffer().clone(), icons)
+    }
+
+    fn hex(color: Color) -> String {
+        match color {
+            Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    fn cell_of(icon: &serde_json::Value) -> (u16, u16) {
+        let at = |key: &str| u16::try_from(icon[key].as_u64().unwrap()).unwrap();
+        (at("x"), at("y"))
+    }
+
+    const DIFF_TURN: &str = r#"{"messages":[
+        {"role":"user","parts":[{"type":"text","text":"tour this"}]},
+        {"role":"assistant","parts":[{"type":"tool","name":"edit_file","summary":"src/parser.rs",
+         "status":"complete","id":"e1","output":{"diff":[{"k":"add","t":[{"t":"fn fields()"}]}]}}]}
+    ]}"#;
+
+    #[test]
+    fn the_side_terminal_lays_the_pointer_arrow_over_each_prompt_glyph_in_the_glyphs_colour() {
+        let mut app = side_terminal(DIFF_TURN);
+        let (buf, icons) = framed(&mut app);
+        let pointers: Vec<_> = icons.iter().filter(|i| i["icon"] == "arrowRight" && i["ink"] == hex(palette().accent).as_str()).collect();
+        // The person's prompt in the transcript, at the body's first column, and the prompt line's.
+        assert_eq!(pointers.len(), 2, "{icons:?}");
+        let columns: Vec<u16> = pointers.iter().map(|i| cell_of(i).0).collect();
+        assert_eq!(columns, vec![1, 2]);
+        for icon in &pointers {
+            let (x, y) = cell_of(icon);
+            assert_eq!([buf[(x, y)].symbol(), buf[(x + 1, y)].symbol()], [" ", " "]);
+        }
+        let (x, y) = cell_of(pointers[0]);
+        assert_eq!(buf[(x + 2, y)].symbol(), "t", "the words start after the icon");
+        let text: String = buf.content().iter().map(|c| c.symbol()).collect();
+        assert!(!text.contains('❯'), "{text}");
+    }
+
+    #[test]
+    fn a_folds_mark_is_the_right_arrow_while_closed_and_the_down_arrow_once_open_in_the_quiet_ink() {
+        let mut app = side_terminal(DIFF_TURN);
+        let (_, icons) = framed(&mut app);
+        let muted = hex(palette().muted);
+        let fold = |icons: &[serde_json::Value]| -> Vec<String> {
+            icons
+                .iter()
+                .filter(|i| i["ink"] == muted.as_str())
+                .map(|i| i["icon"].as_str().unwrap().to_owned())
+                .collect()
+        };
+        let shown = fold(&icons);
+        assert_eq!(shown.len(), 1, "{icons:?}");
+        // A click on the diff's header opens or closes it; its mark turns with it.
+        let flipped = if shown[0] == "arrowDown" { "arrowRight" } else { "arrowDown" };
+        app.sessions[0].toggle("diff:e1");
+        let (_, icons) = framed(&mut app);
+        assert_eq!(fold(&icons), vec![flipped.to_owned()], "{icons:?}");
+    }
+
+    #[test]
+    fn a_folds_glyph_has_a_blank_cell_after_it_so_the_arrow_covers_no_text() {
+        for open in [false, true] {
+            let header = blocks::quiet_header("Thinking", Some("4s"), open);
+            let mut extra = Line::from(blocks::diff_extra(3, 1, open));
+            extra.spans.push(Span::raw("   "));
+            for line in [header, extra] {
+                let cells: Vec<char> = line.spans.iter().flat_map(|s| s.content.chars()).collect();
+                let col = usize::from(blocks::fold_col(&line).unwrap());
+                assert_eq!(cells[col], if open { '▾' } else { '▸' });
+                assert_eq!(cells[col + 1], ' ');
+            }
+            assert_eq!(blocks::fold_icon(open), if open { Icon::ArrowDown } else { Icon::ArrowRight });
+        }
+    }
+
+    #[test]
+    fn the_workbenchs_theo_keeps_the_glyphs_its_page_paints_in_one_colour() {
+        let mut s = session(DIFF_TURN);
+        let area = Rect::new(0, 0, 64, 12);
+        let mut buf = Buffer::empty(area);
+        s.draw_body(&mut buf, area);
+        assert!(take_icons(&mut buf).is_empty());
+        let text: String = buf.content().iter().map(|c| c.symbol()).collect();
+        assert!(text.contains('❯'), "{text}");
+    }
+
+    #[test]
+    fn a_call_block_pads_its_row_above_and_below_on_its_ground_and_keeps_a_diffs_own() {
+        let mut laddered = palette();
+        laddered.call = Some(Color::Rgb(0x09, 0x20, 0x1b));
+        PALETTE.set(laddered);
+        let diff = Color::Rgb(0x26, 0x2f, 0x26);
+        let mut out = Built::default();
+        out.lines.push(Line::raw("a thought"));
+        let at = out.open_call();
+        out.lines.push(Line::raw("✓ edit_file  src/parser.rs"));
+        out.filled(vec![(Line::raw("+ fn fields()"), Some(diff))]);
+        out.close_call(at);
+        // A blank row sets the block apart, then pad, row, diff row, pad.
+        assert!(blank(&out.lines[1]));
+        assert_eq!(out.lines.len(), 6);
+        let call = Color::Rgb(0x09, 0x20, 0x1b);
+        // The block's ground is laid first, so the diff row's own fill paints over it.
+        let fills: Vec<_> = out.fills.clone();
+        assert_eq!(&fills[..4], &[(2, call), (3, call), (4, call), (5, call)]);
+        assert_eq!(fills[4], (4, diff));
+        PALETTE.set(SLATE);
+    }
+
+    /// The built transcript's rows as text, trimmed, and the session for its styles.
+    fn built(json: &str) -> (Session, Vec<String>) {
+        let mut s = session(json);
+        s.build(80);
+        let rows = s
+            .lines
+            .iter()
+            .map(|line| line.spans.iter().map(|span| span.content.as_ref()).collect::<String>())
+            .map(|row| row.trim().to_owned())
+            .collect();
+        (s, rows)
+    }
+
+    #[test]
+    fn a_turn_draws_its_calls_then_its_thinking_then_its_answer_each_in_the_order_it_came() {
+        let (_, rows) = built(
+            r#"{"messages":[{"role":"assistant","parts":[
+            {"type":"reasoning","text":"first a thought"},
+            {"type":"text","text":"Checking one thing."},
+            {"type":"tool","name":"read_file","summary":"a.rs","status":"complete"},
+            {"type":"reasoning","text":"then another"},
+            {"type":"tool","name":"grep","summary":"needle","status":"complete"},
+            {"type":"text","text":"Done."}
+        ]}]}"#,
+        );
+        let at = |needle: &str| {
+            rows.iter()
+                .position(|row| row.contains(needle))
+                .unwrap_or_else(|| panic!("{needle}: {rows:#?}"))
+        };
+        let order = [
+            at("read_file"),
+            at("grep"),
+            at("first a thought"),
+            at("then another"),
+            at("Checking one thing."),
+            at("Done."),
+        ];
+        assert!(order.windows(2).all(|pair| pair[0] < pair[1]), "{rows:#?}");
+    }
+
+    #[test]
+    fn text_written_before_a_call_keeps_a_blank_row_from_the_answer_it_now_meets() {
+        let (_, rows) = built(
+            r###"{"messages":[{"role":"assistant","parts":[
+            {"type":"text","text":"I'll look first."},
+            {"type":"tool","name":"read_file","summary":"a.rs","status":"complete"},
+            {"type":"text","text":"## Findings\n\nAll good."}
+        ]}]}"###,
+        );
+        let said = rows.iter().position(|row| row == "I'll look first.").expect("preamble");
+        assert_eq!(rows[said + 1], "", "{rows:#?}");
+        assert_eq!(rows[said + 2], "## Findings", "{rows:#?}");
+    }
+
+    #[test]
+    fn nothing_in_a_turn_is_italic() {
+        let (s, rows) = built(
+            r#"{"messages":[{"role":"assistant","parts":[
+            {"type":"reasoning","text":"a quiet thought"},
+            {"type":"text","text":"Some *emphasis*, and\n\n> a quote"}
+        ]}]}"#,
+        );
+        assert!(rows.iter().any(|row| row.contains("emphasis")), "{rows:#?}");
+        let italic = s
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter().map(move |span| line.style.patch(span.style)))
+            .any(|style| style.add_modifier.contains(Modifier::ITALIC));
+        assert!(!italic, "{:#?}", s.lines);
+    }
+
+    #[test]
+    fn a_heading_is_gold_and_sits_on_its_section_unless_a_heading_follows() {
+        let mut gold = palette();
+        gold.gold = Color::Rgb(0xd6, 0xbc, 0x8a);
+        PALETTE.set(gold);
+        let (s, rows) = built(
+            r###"{"messages":[{"role":"assistant","parts":[
+            {"type":"text","text":"## A tour\n\n### 1. What it does\n\nIt draws.\n\n### 2. Next\n\n- a point"}
+        ]}]}"###,
+        );
+        let at = |needle: &str| rows.iter().position(|row| row == needle).unwrap_or_else(|| panic!("{needle}: {rows:#?}"));
+        // Stacked headings keep the blank row between them: the space above the lower one.
+        assert_eq!(at("### 1. What it does"), at("## A tour") + 2, "{rows:#?}");
+        // A heading sits on what follows it.
+        assert_eq!(at("It draws."), at("### 1. What it does") + 1, "{rows:#?}");
+        assert_eq!(at("- a point"), at("### 2. Next") + 1, "{rows:#?}");
+        // and keeps the blank row above it.
+        assert!(rows[at("### 2. Next") - 1].is_empty(), "{rows:#?}");
+        let heading = &s.lines[at("### 2. Next")];
+        let style = heading.style.patch(heading.spans[1].style);
+        assert_eq!(style.fg, Some(Color::Rgb(0xd6, 0xbc, 0x8a)));
+        assert!(style.add_modifier.contains(Modifier::BOLD));
+        PALETTE.set(SLATE);
+    }
+
+    #[test]
+    fn a_block_ends_in_padding_yet_whatever_follows_it_is_set_apart() {
+        let mut out = Built::default();
+        let at = out.open_call();
+        out.lines.push(Line::raw("✓ read_file  src/parser.rs"));
+        out.close_call(at);
+        out.gap();
+        assert_eq!(out.lines.len(), 4);
+        assert!(blank(&out.lines[3]));
+        assert!(!out.fills.iter().any(|&(line, _)| line == 3));
+        // A gap never doubles a blank row of the canvas.
+        out.gap();
+        assert_eq!(out.lines.len(), 4);
+    }
+
+    #[test]
+    fn the_call_roles_resolve_to_the_raised_surface_and_the_accent_when_the_page_sends_none() {
+        let p: Palette = serde_json::from_str("{}").unwrap();
+        assert_eq!(p.call(), p.raised);
+        assert_eq!(p.call_ink(), p.accent);
+        let p: Palette =
+            serde_json::from_str(r##"{"call":"#09201b","callInk":"#82a098"}"##).unwrap();
+        assert_eq!(p.call(), Color::Rgb(0x09, 0x20, 0x1b));
+        assert_eq!(p.call_ink(), Color::Rgb(0x82, 0xa0, 0x98));
     }
 
     #[test]

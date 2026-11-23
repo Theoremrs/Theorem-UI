@@ -30,6 +30,22 @@ describe('the icon store', () => {
     ).toEqual([{ x: 1, y: 2, icon: 'folderFile' }])
   })
 
+  test("keeps the colour of the glyph an icon stands for, when it is a #rrggbb colour", () => {
+    expect(
+      parseIcons(
+        JSON.stringify([
+          { x: 1, y: 2, icon: 'arrowRight', ink: '#82A098' },
+          { x: 3, y: 2, icon: 'arrowDown', ink: 'red' },
+          { x: 5, y: 2, icon: 'arrowDown', ink: null },
+        ]),
+      ),
+    ).toEqual([
+      { x: 1, y: 2, icon: 'arrowRight', ink: '#82A098' },
+      { x: 3, y: 2, icon: 'arrowDown' },
+      { x: 5, y: 2, icon: 'arrowDown' },
+    ])
+  })
+
   test('JSON that is not a list is no icons', () => {
     expect(parseIcons('not json')).toEqual([])
     expect(parseIcons('{"x":1}')).toEqual([])
@@ -94,6 +110,29 @@ describe('the icon layer', () => {
     const mark = slot(1, 1).querySelector('.rail-mark') as HTMLElement
     expect(mark).not.toBeNull()
     expect(mark.querySelectorAll('.icon-mask').length).toBeGreaterThan(1)
+  })
+
+  test("paints an icon that stands for a glyph in the glyph's colour, and the rest in the layer's", async () => {
+    const store = createIconStore()
+    store.set(
+      JSON.stringify([
+        { x: 1, y: 1, icon: 'arrowRight', ink: '#82a098' },
+        { x: 4, y: 1, icon: 'fileText' },
+      ]),
+    )
+    await render(<IconLayer store={store} handle={handle} />)
+    expect(['#82a098', 'rgb(130, 160, 152)']).toContain(slot(1, 1).style.color)
+    expect(slot(1, 1).querySelector('.rail-mark')).not.toBeNull()
+    expect(slot(4, 1).style.color).toBe('')
+  })
+
+  test("sizes an arrow to the text glyph it stands for and every other mark to the slot", async () => {
+    const store = createIconStore()
+    store.set(icons([1, 1, 'arrowRight'], [4, 1, 'arrowDown'], [7, 1, 'fileText']))
+    await render(<IconLayer store={store} handle={handle} />)
+    const size = (x: number) => (slot(x, 1).querySelector('.rail-mark') as HTMLElement).style
+    for (const x of [1, 4]) expect([size(x).width, size(x).height]).toEqual(['0.72em', '0.72em'])
+    expect([size(7).width, size(7).height]).toEqual(['var(--wb-icon)', 'var(--wb-icon)'])
   })
 
   test('follows the frame: a new list moves, adds and removes elements', async () => {

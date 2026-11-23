@@ -91,6 +91,8 @@ import folderCheckPaper from './folderCheck-paper.svg'
 import folderEditLine from './folderEdit-line.svg'
 import folderEditAccent from './folderEdit-accent.svg'
 import folderEditPaper from './folderEdit-paper.svg'
+import arrowRightLine from './arrowRight-line.svg'
+import arrowDownLine from './arrowDown-line.svg'
 import settingsLine from './settings-line.svg'
 import settingsTint from './settings-tint.svg'
 import settingsPaper from './settings-paper.svg'
@@ -160,6 +162,8 @@ export const CONTROL_LAYERS = {
   folderHome: { line: folderHomeLine, accent: folderHomeAccent, paper: folderHomePaper },
   folderCheck: { line: folderCheckLine, accent: folderCheckAccent, tint: folderCheckTint, paper: folderCheckPaper },
   folderEdit: { line: folderEditLine, accent: folderEditAccent, paper: folderEditPaper },
+  arrowRight: { line: arrowRightLine },
+  arrowDown: { line: arrowDownLine },
   settings: { line: settingsLine, tint: settingsTint, paper: settingsPaper },
   archive: { line: archiveLine, accent: archiveAccent },
   link: { line: linkLine, tint: linkTint },

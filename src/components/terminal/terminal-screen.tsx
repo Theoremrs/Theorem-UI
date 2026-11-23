@@ -1,4 +1,4 @@
-// SOURCING: Ratzilla (ratatui in the browser, built from terminal/ into src/terminal-wasm) draws the terminal, its tab bar (ratatui Tabs) and prompt; assistant-ui useLocalRuntime runs each session's turns through the same Theorem SDK adapter, history and resume as the chat (lib/theorem/runtime); zustand carries each session's snapshot and outbox between its runtime and the WASM; what the person sends while a run works goes to the run's inbox through the SDK's runs.command (command input); a selection added from the IDE rides the next turn as a typed context reference (the chat's composer-references keys), and a file a tool worked on opens in the IDE through Follow's reveal; the close button is the shared TooltipIconButton with Streamline's X; closing on a double-click outside is a document listener, since Base UI's drawer only dismisses on an outside press
+// SOURCING: Ratzilla (ratatui in the browser, built from terminal/ into src/terminal-wasm) draws the terminal, its tab bar (ratatui Tabs) and prompt; assistant-ui useLocalRuntime runs each session's turns through the same Theorem SDK adapter, history and resume as the chat (lib/theorem/runtime); zustand carries each session's snapshot and outbox between its runtime and the WASM; what the person sends while a run works goes to the run's inbox through the SDK's runs.command (command input); a selection added from the IDE rides the next turn as a typed context reference (the chat's composer-references keys), and a file a tool worked on opens in the IDE through Follow's reveal; the close button is the shared TooltipIconButton with Streamline's X; the prompt pointer and fold marks are the owner's Streamline arrows, laid over their glyphs by the workbench's IconLayer and icon store from the icons each frame places; closing on a double-click outside is a document listener, since Base UI's drawer only dismisses on an outside press
 import { useLocalRuntime } from '@assistant-ui/react'
 import type {
   AssistantRuntime,
@@ -6,13 +6,16 @@ import type {
   ThreadMessage,
 } from '@assistant-ui/react'
 import type { TheoremContextReference } from '@theoremharness/sdk'
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { referenceKey } from '@/components/chat/composer-references'
 import { Icon } from '@/components/icons'
 import { useRevealFile, workingRuns } from '@/components/ide/follow'
 import { useShell } from '@/components/shell/shell-state'
+import { IconLayer } from '@/components/workbench/icon-layer'
+import { createIconStore } from '@/components/workbench/icon-layer/store'
+import type { IconStore } from '@/components/workbench/icon-layer/store'
 import { describeError, mutate, theorem } from '@/lib/theorem/client'
 import type { Theorem } from '@/lib/theorem/client'
 import {
@@ -454,12 +457,16 @@ function mountTerminal(
   host: HTMLElement,
   tabbed: boolean,
   onAction: (action: TerminalAction) => void,
+  icons: IconStore,
 ) {
   let mounted = mounts.get(host)
   if (!mounted) {
     mounted = loadWasm().then((wasm) => {
-      return wasm.mount(host.id, tabbed, (json: string) =>
-        onAction(JSON.parse(json) as TerminalAction),
+      return wasm.mount(
+        host.id,
+        tabbed,
+        (json: string) => onAction(JSON.parse(json) as TerminalAction),
+        (json: string) => void icons.set(json),
       )
     })
     mounts.set(host, mounted)
@@ -495,6 +502,9 @@ export function TerminalScreen({
 }) {
   const host = useRef<HTMLDivElement>(null)
   const handle = useRef<TerminalHandle>(undefined)
+  // The icon layer measures the cell from the mounted terminal, so it renders once there is one.
+  const [mounted, setMounted] = useState<TerminalHandle>()
+  const [icons] = useState(createIconStore)
   const latest = useRef(onAction)
   useLayoutEffect(() => {
     latest.current = onAction
@@ -513,11 +523,15 @@ export function TerminalScreen({
     const element = host.current
     if (!element) return
     let disposed = false
-    void mountTerminal(element, tabbed, (action) =>
-      latest.current(action),
-    ).then((mounted) => {
+    void mountTerminal(
+      element,
+      tabbed,
+      (action) => latest.current(action),
+      icons,
+    ).then((terminal) => {
       if (disposed) return
-      handle.current = mounted
+      handle.current = terminal
+      setMounted(terminal)
     })
     const unsubscribe = useTerminalSessions.subscribe((s, prev) => {
       for (const [id, session] of Object.entries(s))
@@ -528,7 +542,7 @@ export function TerminalScreen({
       disposed = true
       unsubscribe()
     }
-  }, [tabbed])
+  }, [tabbed, icons])
 
   // A tab the terminal has not seen starts blank, so every snapshot follows
   // the list.
@@ -536,17 +550,20 @@ export function TerminalScreen({
     let disposed = false
     const element = host.current
     if (!element) return
-    void mountTerminal(element, tabbed, (action) =>
-      latest.current(action),
-    ).then((mounted) => {
+    void mountTerminal(
+      element,
+      tabbed,
+      (action) => latest.current(action),
+      icons,
+    ).then((terminal) => {
       if (disposed) return
-      mounted.set_tabs(list)
-      pushSnapshots(mounted, ids)
+      terminal.set_tabs(list)
+      pushSnapshots(terminal, ids)
     })
     return () => {
       disposed = true
     }
-  }, [list, ids, tabbed])
+  }, [list, ids, tabbed, icons])
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col font-mono text-[12.5px]">
@@ -596,6 +613,8 @@ export function TerminalScreen({
         data-terminal-grid=""
         className="relative min-h-0 flex-1 cursor-default overflow-hidden bg-term-canvas font-mono text-[12.5px] whitespace-pre text-term-ink outline-none"
       />
+      {/* Over the grid and outside the host, whose contents Ratzilla replaces. */}
+      <IconLayer store={icons} handle={mounted} />
       {/* Over the header bar's last columns, which the terminal leaves
           clear. Outside the host, whose contents Ratzilla replaces. */}
       {closable && (

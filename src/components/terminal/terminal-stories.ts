@@ -63,6 +63,27 @@ function input(inputId: string, text: string, status: string, reason?: string) {
 }
 
 const text = (value: string) => ({ type: 'text', text: value })
+const reasoning = (value: string) => ({ type: 'reasoning', text: value })
+
+/** A tool call that waits on the person's answer, as the SDK keeps it on the part. */
+function asking(id: string, toolName: string, args: Record<string, unknown>) {
+  return {
+    ...tool(id, toolName, args),
+    artifact: {
+      theoremApproval: {
+        approvalId: `approval-${id}`,
+        toolCallId: id,
+        toolName,
+        summary: `Allow ${toolName} to run ${String(Object.values(args)[0])}?`,
+        status: 'requires_action',
+        options: [
+          { optionId: 'allow', kind: 'allow_once' },
+          { optionId: 'deny', kind: 'reject_once' },
+        ],
+      },
+    },
+  }
+}
 
 export type TerminalStory = {
   id: string
@@ -121,6 +142,92 @@ const EDIT = [
   '     }',
   ' }',
 ].join('\n')
+
+const TOUR_ANSWER = [
+  '## Terminal crate: a tour',
+  '',
+  '### 1. What it does',
+  '',
+  "The terminal crate draws the agent's transcript with **Ratatui** on Ratzilla's DOM backend, compiled to WebAssembly. React owns the run and pushes each snapshot in as JSON; the crate edits the prompt and hands actions back.",
+  '',
+  '### 2. Main flow (React to grid)',
+  '',
+  '1. **Snapshot**: `snapshotOf()` turns the thread into JSON and calls `push()`',
+  '2. **Build**: `Session::build()` lays out every message as lines, once per width and palette',
+  '3. **Draw**: the frame loop paints the visible rows into the cell grid',
+  "4. **Keys**: `TerminalHandle` takes keys, paste and wheel from React's container",
+  '5. **Actions**: submit, approve and open go back to React as JSON',
+  '',
+  '### 3. Five most important files',
+  '',
+  '| File | Role |',
+  '| --- | --- |',
+  '| `terminal/src/lib.rs` | The session, the transcript build, tool rows and the frame loop |',
+  '| `terminal/src/blocks.rs` | Folded activity, thinking headers, the running block and code blocks |',
+  '| `terminal-roles.ts` | The role contract `set_palette` reads, checked for contrast |',
+  '| `terminal-transcript.ts` | The thread as the terminal draws it, approvals included |',
+  '| `terminal-screen.tsx` | Mounts the WebAssembly and forwards keys and actions |',
+  '',
+  '### 4. Three things to know first',
+  '',
+  '- **Rebuilds are cached**: the transcript rebuilds only when the snapshot, the width or the palette changes.',
+  "- **Every word is spelled out**: a control character in a tool's arguments cannot dress up an approval.",
+  '- **Colours are roles**: the crate picks no colour; the page sends the whole contract.',
+].join('\n')
+
+/** A finished answer laid out the way the pi reference's is: thinking, reads, headings, a table. */
+function tour(): ThreadMessage[] {
+  return [
+    message('u1', 'user', [
+      text(
+        'Give me a tour of the terminal crate: what it does, the main flow, the five most important files, and three things to know before changing it.',
+      ),
+    ]),
+    message('a1', 'assistant', [
+      reasoning(
+        [
+          "I have read the crate's entry point and the module that draws the transcript. Let me check how the page sends the palette before I answer.",
+          '',
+          'The person wants:',
+          '1. What the crate does, in two sentences.',
+          '2. The main flow from React to the grid, in five bullets or fewer.',
+          '3. A compact table of the five most important files.',
+          '4. Three things to know before changing it.',
+        ].join('\n'),
+      ),
+      tool('t1', 'read_file', { path: 'terminal/src/lib.rs' }, PARSER),
+      tool('t2', 'read_file', { path: 'terminal/src/blocks.rs' }, PARSER),
+      tool(
+        't3',
+        'read_file',
+        { path: 'src/components/terminal/terminal-roles.ts' },
+        PARSER,
+      ),
+      reasoning('I have what I need. A tight answer, under 350 words.'),
+      text(TOUR_ANSWER),
+    ]),
+  ]
+}
+
+/** A turn that edits code, then waits on the person before it runs the tests. */
+function working(): ThreadMessage[] {
+  return [
+    message('u1', 'user', [text('Fix the parser test and run it.')]),
+    message(
+      'a1',
+      'assistant',
+      [
+        reasoning(
+          'The test expects the empty last field. The guard trims every trailing comma, so it drops it.',
+        ),
+        tool('w1', 'read_file', { path: 'src/parser.rs' }, PARSER),
+        tool('w2', 'edit_file', { path: 'src/parser.rs' }, EDIT),
+        asking('w3', 'bash', { command: 'cargo test -p parser' }),
+      ],
+      true,
+    ),
+  ]
+}
 
 /** A run that has done some work and is writing up what it found. */
 function activity(): ThreadMessage[] {
@@ -266,6 +373,24 @@ export const TERMINAL_STORIES: TerminalStory[] = [
     messages: activity(),
     outbox: [],
     keys: ['Control+o'],
+  },
+  {
+    id: 'terminal-transcript-tour',
+    title: 'A finished answer with headings and a table',
+    claim:
+      "Thinking, tool calls, headings, lists and a table each read as their own kind of block, the way pi's terminal tells them apart, at the terminal's density.",
+    running: false,
+    messages: tour(),
+    outbox: [],
+  },
+  {
+    id: 'terminal-transcript-working',
+    title: 'An edit, then a command that waits on approval',
+    claim:
+      'Thinking, a read, an edit with its diff and a command that waits on the person each read as their own kind of block.',
+    running: true,
+    messages: working(),
+    outbox: [],
   },
   {
     id: 'terminal-program-streaming',

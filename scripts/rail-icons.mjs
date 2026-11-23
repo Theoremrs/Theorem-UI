@@ -111,6 +111,10 @@ export const CONTROLS = [
   { name: 'folderHome', source: 'control/source/streamline-folder-home-1.png' },
   { name: 'folderCheck', source: 'control/source/streamline-folder-check.png' },
   { name: 'folderEdit', source: 'control/source/streamline-folder-edit.png' },
+  // Owner's 2026-11-22 arrows for the agent terminal: its prompt pointer and a
+  // fold's mark, right while closed and down once opened.
+  { name: 'arrowRight', source: 'control/source/streamline-arrow-right-1.png' },
+  { name: 'arrowDown', source: 'control/source/streamline-arrow-down-1.png' },
   // Owner's 2026-11-15 set, replacing the Noun marks: grey at rest, coloured
   // when their control is chosen (styles.css).
   { name: 'settings', source: 'control/source/streamline-cog.png' },

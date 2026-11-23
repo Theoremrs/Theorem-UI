@@ -738,6 +738,17 @@ They are split into layers by `scripts/rail-icons.mjs` and painted by
 `.rail-mark` like the control marks above. The workbench places them from the
 frame (`terminal/crates/workbench-core/src/icons.rs`, laid over the grid by
 `components/workbench/icon-layer.tsx`).
+
+The agent terminal's prompt pointer and its fold marks are two arrows from the
+owner's "streamline-ultimate-colors--48x48-PNG(16).zip" of 2026-11-22, copied
+byte for byte and renamed the same way. The zip's third arrow, Arrow Left 1, has
+no place yet and is not in the repository. The terminal places them from its
+frame like the workbench's marks, each in the colour of the glyph it replaces.
+
+| Registry name | Draws | File | Streamline name | SHA-256 |
+|---|---|---|---|---|
+| ArrowRight | The agent terminal's prompt pointer (the person's prompts, the prompt line, words sent to a working run); a closed fold | `streamline/control/source/streamline-arrow-right-1.png` | Arrow Right 1 | `43611069872ac07cf310c6151e19587f6ab30f54525b2d540fb047e6d2b2467b` |
+| ArrowDown | An open fold in the agent terminal | `streamline/control/source/streamline-arrow-down-1.png` | Arrow Down 1 | `9bac77275fdbebc38272bb037a3afc1756a9792b7d2d6f416ec95e020ac435dd` |
 ## Noun marks replaced by Streamline (2026-11-15)
 
 The owner's downloads of 2026-11-15 ("streamline-ultimate-colors--48x48-PNG1-10" and

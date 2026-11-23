@@ -15,6 +15,7 @@ use ratatui::{
     symbols::border,
     text::{Line, Span},
 };
+use theorem_workbench_core::icons::Icon;
 use theorem_workbench_markdown::{MarkdownBlock, block_ranges, markdown_blocks};
 use unicode_width::UnicodeWidthStr;
 
@@ -23,12 +24,13 @@ use crate::{DiffLine, INDENT, Part, Token, palette, token_line};
 /// How much of what an agent does the transcript shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Activity {
-    /// Every thinking, tool call and diff open as it happens; nothing folds.
+    /// Every tool call's output and diff open as it happens; nothing folds.
     All,
-    /// One header line each; a finished turn's activity folds to its summary.
+    /// Each tool call on its block with its output folded, and the thinking in full.
     #[default]
     Headers,
-    /// Every turn's activity is its summary line; code the agent writes is its header.
+    /// Every turn's thinking and finished calls are one summary line; code the agent
+    /// writes is its header.
     Summary,
 }
 
@@ -216,6 +218,25 @@ fn chevron(open: bool) -> &'static str {
     if open { "▾" } else { "▸" }
 }
 
+/// The owner's Streamline arrow the page draws over a fold's mark: right while closed, down
+/// once open.
+pub(crate) fn fold_icon(open: bool) -> Icon {
+    if open { Icon::ArrowDown } else { Icon::ArrowRight }
+}
+
+/// The column of a header's fold mark, the last one on the line. The mark is written with a
+/// blank cell after it, so the two-cell icon drawn over it covers no text.
+pub(crate) fn fold_col(line: &Line) -> Option<u16> {
+    let at = line
+        .spans
+        .iter()
+        .rposition(|span| matches!(span.content.trim(), "▸" | "▾"))?;
+    let before: usize = line.spans[..at].iter().map(Span::width).sum();
+    let span = &line.spans[at];
+    let lead = span.content.len() - span.content.trim_start().len();
+    u16::try_from(before + lead).ok()
+}
+
 /// A quiet header: thinking, or a folded run of activity, with its open mark.
 pub(crate) fn quiet_header(text: &str, time: Option<&str>, open: bool) -> Line<'static> {
     let p = palette();
@@ -230,24 +251,83 @@ pub(crate) fn quiet_header(text: &str, time: Option<&str>, open: bool) -> Line<'
         ));
     }
     spans.push(Span::styled(
-        format!(" {}", chevron(open)),
+        format!(" {} ", chevron(open)),
         Style::new().fg(p.muted),
     ));
     Line::from(spans)
 }
 
-/// The prose of a thinking block, under its header.
-pub(crate) fn thought_lines(text: &str) -> Vec<Line<'static>> {
-    let style = Style::new()
-        .fg(palette().muted)
-        .add_modifier(Modifier::ITALIC);
+/// Columns a wrapped line's later rows hang under: past its own indent and a list
+/// marker or quote mark, so a wrapped item lines up with its first word.
+fn hang_of(text: &str) -> usize {
+    let lead = text.len() - text.trim_start().len();
+    let rest = &text[lead..];
+    let digits = rest.chars().take_while(char::is_ascii_digit).count();
+    let marker = if ["- ", "* ", "+ ", "> ", "• "].iter().any(|m| rest.starts_with(m)) {
+        2
+    } else if digits > 0 && (rest[digits..].starts_with(". ") || rest[digits..].starts_with(") ")) {
+        digits + 2
+    } else {
+        0
+    };
+    text[..lead].width() + marker
+}
+
+/// The spans of a line that fall in a byte range of its text, styles kept.
+fn slice(spans: &[Span<'static>], from: usize, to: usize) -> Vec<Span<'static>> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    for span in spans {
+        let len = span.content.len();
+        let (start, end) = (from.max(at), to.min(at + len));
+        if start < end {
+            out.push(Span::styled(span.content[start - at..end - at].to_owned(), span.style));
+        }
+        at += len;
+    }
+    out
+}
+
+/// A line wrapped to `cols` by textwrap, its later rows hung under its first word
+/// (`hang_of`), so wrapped prose and list items keep their indent.
+pub(crate) fn hung(line: Line<'static>, cols: usize) -> Vec<Line<'static>> {
+    let text: String = line.spans.iter().map(|span| span.content.as_ref()).collect();
+    if cols < 8 || text.width() <= cols {
+        return vec![line];
+    }
+    let hang = hang_of(&text).min(cols / 2);
+    let words = textwrap::core::break_words(
+        textwrap::WordSeparator::AsciiSpace.find_words(&text),
+        cols - hang,
+    );
+    let rows = textwrap::wrap_algorithms::wrap_first_fit(&words, &[cols as f64, (cols - hang) as f64]);
+    let base = text.as_ptr() as usize;
+    rows.iter()
+        .enumerate()
+        .filter_map(|(index, row)| {
+            let (first, last) = (row.first()?, row.last()?);
+            let from = if index == 0 { 0 } else { first.word.as_ptr() as usize - base };
+            let to = last.word.as_ptr() as usize - base + last.word.len();
+            let mut spans = slice(&line.spans, from, to);
+            if index > 0 {
+                spans.insert(0, Span::raw(" ".repeat(hang)));
+            }
+            Some(Line::from(spans).style(line.style))
+        })
+        .collect()
+}
+
+/// Thinking as it reads, inline and quiet: upright muted prose after `lead` (no italic,
+/// owner, 2026-11-22), wrapped with its indent kept.
+pub(crate) fn thought_inline(text: &str, lead: Span<'static>, width: usize) -> Vec<Line<'static>> {
+    let style = Style::new().fg(palette().muted);
+    let cols = width.saturating_sub(lead.content.width());
     text.lines()
-        .map(|row| {
-            Line::from(vec![
-                Span::raw(INDENT),
-                Span::raw("  "),
-                Span::styled(row.to_owned(), style),
-            ])
+        .filter(|row| !row.trim().is_empty())
+        .flat_map(|row| hung(Line::from(Span::styled(row.to_owned(), style)), cols))
+        .map(|mut row| {
+            row.spans.insert(0, lead.clone());
+            row
         })
         .collect()
 }
@@ -283,7 +363,7 @@ pub(crate) fn running_block(
     let p = palette();
     let set = border::ROUNDED;
     // No band behind it: the accent outline and the coloured text carry the
-    // state; only a diff is drawn on a ground (owner, 2026-11-22).
+    // state while it runs; a finished call takes its block.
     let edge = Style::new().fg(p.accent);
     let w = usize::from(width).saturating_sub(INDENT.len());
     if w < 12 {
@@ -369,7 +449,7 @@ pub(crate) fn diff_extra(added: usize, removed: usize, open: bool) -> Vec<Span<'
             format!("−{removed}"),
             Style::new().fg(p.diff_removed_mark()),
         ),
-        Span::styled(format!(" {}", chevron(open)), Style::new().fg(p.muted)),
+        Span::styled(format!(" {} ", chevron(open)), Style::new().fg(p.muted)),
     ]
 }
 

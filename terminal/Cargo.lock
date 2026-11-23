@@ -1989,6 +1989,7 @@ dependencies = [
  "ratzilla",
  "serde",
  "serde_json",
+ "textwrap",
  "theorem-workbench-changes",
  "theorem-workbench-composer",
  "theorem-workbench-core",

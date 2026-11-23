@@ -1,31 +1,51 @@
 /*
  * The gallery and the agent terminal are cell grids (Ratzilla's DOM backend)
- * in one monospaced face at one size, so their hierarchy comes from weight
- * and line pitch:
+ * in one monospaced face at one size, so their hierarchy comes from weight,
+ * and their density from line pitch and tracking rather than a smaller size
+ * (owner, 2026-11-22: as pi's transcript reads):
  *
- * - Rows sit at 1.5 of the text size (18.75px at 12.5px), inside the code
- *   recipe's 1.45-1.6 range. Ratzilla measures its cell from a probe `pre`,
- *   which this rule reaches too, so the grid and the cell height agree and
- *   box-drawing frames still join.
- * - BOLD renders semibold (600): the gallery title, every card title, the
- *   active filter and key glyphs.
- * - DIM renders light (300) at full opacity rather than half opacity: a
- *   quieter weight for labels and ordinals whose colour is already muted, so
- *   their contrast stays the muted role's.
- *
- * The agent terminal takes the same pitch and semibold; its DIM keeps half
- * opacity, since agent output uses it to mean secondary.
+ * - Rows sit at 1.25 of the text size (15.6px at 12.5px), near pi's pitch and
+ *   just clear of Paper Mono's 1.2em ascent-to-descent box, so rows never
+ *   touch. Ratzilla measures its cell from a probe `pre`, which this rule
+ *   reaches too, so the grid and the cell height agree.
+ * - Tracking: every cell is an inline-block one `ch` wide, so `letter-spacing`
+ *   moves nothing; the cell itself narrows by --cell-tracking. Ratzilla's
+ *   probe span carries the same `width: 1ch`, so the measured cell, the
+ *   columns that fit and the icon layer's positions narrow with it. Paper
+ *   Mono has no kerning (its GPOS holds only mark positioning, as a
+ *   monospaced face's fixed advance requires), and its widest letters leave
+ *   0.028em of side bearing between them at 400 and 0.023em at bold, so
+ *   -0.02em is as tight as it goes before WW touches.
+ * - BOLD renders 700, a step above the text, as pi's tool names and headings
+ *   are: the gallery title, card titles, the active filter, key glyphs, the
+ *   agent's call names and headings.
+ * - DIM in the gallery renders light (300) at full opacity rather than half
+ *   opacity: a quieter weight for labels and ordinals whose colour is already
+ *   muted, so their contrast stays the muted role's. The agent terminal's DIM
+ *   keeps half opacity, since agent output uses it to mean secondary.
  *
  * Paper Mono carries 100-800, so these are real weights, not
  * synthesised ones.
  */
+[data-artifact-cabinet],
+[data-terminal-grid] {
+  --cell-tracking: -0.02em;
+}
 [data-artifact-cabinet] pre,
 [data-terminal-grid] pre {
-  line-height: 1.5 !important;
+  line-height: 1.25 !important;
+}
+[data-artifact-cabinet] pre span[style*='width: 1ch'],
+[data-terminal-grid] pre span[style*='width: 1ch'] {
+  width: calc(1ch + var(--cell-tracking)) !important;
+}
+[data-artifact-cabinet] pre span[style*='width: 2ch'],
+[data-terminal-grid] pre span[style*='width: 2ch'] {
+  width: calc(2ch + 2 * var(--cell-tracking)) !important;
 }
 [data-artifact-cabinet] span[style*='font-weight: bold'],
 [data-terminal-grid] span[style*='font-weight: bold'] {
-  font-weight: 600 !important;
+  font-weight: 700 !important;
 }
 [data-artifact-cabinet] span[style*='opacity: 0.5'] {
   opacity: 1 !important;

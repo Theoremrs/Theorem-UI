@@ -15,11 +15,16 @@
 //   surface (SELECTED_STEP). Each keeps its source's hue and chroma, so a warm
 //   palette stays warm and a cool one cool, and the four are told apart by
 //   lightness alone, by the same amount on every palette.
-// - text: primary is the palette's bright; secondary and disabled keep the
-//   muted's hue and chroma and are placed in lightness where they just read on
-//   the lightest surface (the selected band) at SECONDARY / DISABLED contrast,
-//   never darker than the muted already is. Because the selected band is the
-//   lightest surface, they read at least that well on every darker one.
+// - text: primary, body, secondary and disabled keep the hue and chroma of the
+//   palette's bright, text and muted, and are placed in lightness where they
+//   just read on the lightest surface (the selected band) at their READ
+//   contrast, never darker than the palette has them. Because the selected band
+//   is the lightest surface, they read at least that well on every darker one.
+//   Primary and body sit where pi's do, about 0.95 and 0.90 of lightness
+//   (owner, 2026-11-22: beside pi our text read dull). Markdown headings are
+//   gold, as pi's are: the approval register (owner, 2026-11-22).
+// - lines (table borders, guides, the prompt box, the header's rule) keep the
+//   palette's line hue and are lifted to WCAG's 3:1 for a component's edge.
 // - registers (informational, success, approval, failure): the hues the
 //   palette's own state colours have, all four at one lightness and one chroma
 //   (REGISTER_CHROMA, gamut-clamped), the lightness where the weakest of them
@@ -29,10 +34,15 @@
 //   lightness step above the panel and one chroma, lowered until every code
 //   colour still reads on them; their gutter marks are the success and failure
 //   registers.
-// - no other band: a tool call's state, a running command, the person's own
-//   words and code are told by their text's colour on the canvas. The diff rows
-//   and the selected row are the only grounds drawn behind text (owner,
-//   2026-11-22).
+// - tool calls: the one ground besides the diff rows and the selected row. As
+//   pi draws its calls, a call's block is the canvas with its hue turned to the
+//   palette's brand mark and lifted one small step (CALL), at the saturation
+//   pi's has, so it changes hue rather than gaining colour or light; its target
+//   is in the brand mark, lifted to read at READ.call on it (owner, 2026-11-22:
+//   the brand mark over the terminal accent, so each palette's calls carry its
+//   own colour).
+// - no other band: a call's state, a running command, the person's own words
+//   and code are told by their text's colour on the canvas.
 // - brand: the palette's mark, lifted in lightness only if it does not read on
 //   the selected band. It colours the text of what is relevant, never a band.
 import { clampChroma, converter, formatHex, wcagContrast } from 'culori'
@@ -47,12 +57,20 @@ const oklch = converter('oklch')
 
 /** Lightness the selected band sits above the raised surface; the canvas's step below the panel is terminal-theme.ts's. */
 export const SELECTED_STEP = 0.06
-/** The contrast (WCAG 2) each register of text is placed at on the selected band, the lightest surface. */
+/**
+ * The contrast (WCAG 2) each register of text is placed at on the selected
+ * band, the lightest surface; a call's target is placed on its block. primary,
+ * body, register and call put the text where pi's is in lightness; line is
+ * WCAG's 3:1 for a component's edge.
+ */
 export const READ = {
-  primary: 7,
+  primary: 10,
+  body: 8.5,
   secondary: 5,
   disabled: 3.2,
-  register: 5.5,
+  register: 7,
+  call: 7.5,
+  line: 3,
   brand: 4.5,
 } as const
 /** Every register shares this chroma (where sRGB allows) and one lightness. */
@@ -63,6 +81,13 @@ export const DIFF_ROW = {
   chroma: 0.045,
   hue: { added: 146.3, removed: 26.8 },
 } as const
+/**
+ * A tool call's block: the canvas's lightness raised `step`, in the brand
+ * mark's hue, at a chroma of `saturation` times its lightness. pi's block is its
+ * canvas raised 0.03, at chroma 0.025 against lightness 0.303, the same
+ * saturation as the canvas under it: a turn of hue, not more colour or light.
+ */
+export const CALL = { step: 0.03, saturation: 0.025 / 0.303 } as const
 /** What the diff rows' text must still read at. */
 const ROW_TEXT = 4.5
 
@@ -100,6 +125,14 @@ const withL = (colour: Oklch, l: number, c = colour.c): Oklch => ({
   c,
 })
 
+/** `colour` lifted in lightness, keeping its hue and chroma, until it reads on `surface` at `ratio`. */
+const lift = (colour: string, surface: string, ratio: number) => {
+  const c = at(colour)
+  return hex(
+    withL(c, lowestReading((l) => [hex(withL(c, l))], surface, ratio, c.l)),
+  )
+}
+
 export type Ladder = {
   surfaces: {
     canvas: string
@@ -108,8 +141,17 @@ export type Ladder = {
     selected: string
     diffAddition: string
     diffDeletion: string
+    call: string
   }
-  text: { primary: string; body: string; secondary: string; disabled: string }
+  /** Table borders, guides, the prompt box and the header's rule. */
+  line: string
+  text: {
+    primary: string
+    body: string
+    secondary: string
+    disabled: string
+    call: string
+  }
   registers: {
     informational: string
     success: string
@@ -139,17 +181,9 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
   const disabled = text(READ.disabled)
   // The disabled text is never lighter than the secondary: the two are one hue and chroma
   // placed by contrast, secondary at the higher one.
-  const primary = hex(
-    withL(
-      at(chrome.bright),
-      lowestReading(
-        (l) => [hex(withL(at(chrome.bright), l))],
-        selected,
-        READ.primary,
-        at(chrome.bright).l,
-      ),
-    ),
-  )
+  const primary = lift(chrome.bright, selected, READ.primary)
+  const body = lift(chrome.text, selected, READ.body)
+  const line = lift(chrome.line, selected, READ.line)
 
   const hues = {
     informational: at(state.link).h!,
@@ -180,6 +214,16 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
     ),
   )
 
+  const callL = at(canvas).l + CALL.step
+  const call = hex({
+    mode: 'oklch',
+    l: callL,
+    c: CALL.saturation * callL,
+    h: mark.h,
+  })
+  // pi's call target is in its block's hue; this one too, lifted to read as brightly.
+  const callText = lift(brand, call, READ.call)
+
   const texts = [
     chrome.text,
     chrome.bright,
@@ -206,8 +250,10 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
       selected,
       diffAddition: row(DIFF_ROW.hue.added),
       diffDeletion: row(DIFF_ROW.hue.removed),
+      call,
     },
-    text: { primary, body: chrome.text, secondary, disabled },
+    line,
+    text: { primary, body, secondary, disabled, call: callText },
     registers,
     brand,
   }
@@ -219,17 +265,21 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
  */
 export function ladderPalette(roles: TerminalRoles) {
   const ladder = terminalLadder(roles)
-  const { surfaces, text, registers, brand } = ladder
+  const { surfaces, line, text, registers, brand } = ladder
   return {
     ...wasmPalette(roles),
     // Roles of the base palette that take the ladder's value.
+    ink: text.body,
     bright: text.primary,
+    heading: text.primary,
+    line,
     muted: text.secondary,
     disabled: text.disabled,
     success: registers.success,
     error: registers.failure,
     warning: registers.approval,
     approval: registers.approval,
+    // The transcript's Markdown headings.
     gold: registers.approval,
     link: registers.informational,
     mark: brand,
@@ -238,8 +288,10 @@ export function ladderPalette(roles: TerminalRoles) {
     // Roles the ladder adds.
     canvas: surfaces.canvas,
     selectedRow: surfaces.selected,
-    // A finished call is recessive: a secondary name, on no band.
-    completedInk: text.secondary,
+    // A finished call's name is the primary text, bold, on its block.
+    completedInk: text.primary,
+    call: surfaces.call,
+    callInk: text.call,
     info: registers.informational,
     textDisabled: text.disabled,
     diffAddedMark: registers.success,

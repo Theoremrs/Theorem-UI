@@ -15,7 +15,8 @@
 // dark profile, with a diagnostic, when repair cannot make it read.
 //
 // No role privileges a hue: headings are the bright text in bold, the prompt
-// and focus take the accent, and amber is the warning family only.
+// and focus take the accent, and amber is the warning family, which the agent
+// transcript's Markdown headings also take, as pi's are gold (owner, 2026-11-22).
 import { clampChroma, converter, formatHex, wcagContrast } from 'culori'
 import type { Oklab, Oklch } from 'culori'
 import { LINK, SLATE, SUCCESS, terminalTheme } from './terminal-theme'
@@ -347,7 +348,8 @@ export function wasmPalette(roles: TerminalRoles) {
     bright: chrome.bright,
     muted: chrome.muted,
     idle: chrome.idle,
-    // Compatibility: `sage` and `gold` callers read the accent and warning.
+    // Compatibility: `sage` callers read the accent. `gold` is the warning, the
+    // transcript's Markdown headings.
     sage: chrome.accent,
     gold: state.warning,
     error: state.error,

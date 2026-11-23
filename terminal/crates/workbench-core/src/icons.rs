@@ -57,11 +57,15 @@ pub enum Icon {
     /// A continuation.
     FileDouble,
     FileDouble2,
+    /// The agent terminal's prompt pointer, and a fold that is closed.
+    ArrowRight,
+    /// A fold that is open.
+    ArrowDown,
 }
 
 impl Icon {
     /// Every icon, in the order that gives each its sentinel.
-    pub const ALL: [Icon; 15] = [
+    pub const ALL: [Icon; 17] = [
         Icon::FolderEmpty,
         Icon::FolderFile,
         Icon::FolderHome,
@@ -77,6 +81,8 @@ impl Icon {
         Icon::FileModule,
         Icon::FileDouble,
         Icon::FileDouble2,
+        Icon::ArrowRight,
+        Icon::ArrowDown,
     ];
 
     /// The key the page knows it by (the serde name).

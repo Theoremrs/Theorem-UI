@@ -5,4 +5,4 @@
  * key in the page's `CONTROL_LAYERS` (the owner's Streamline marks, split
  * into themed layers by `scripts/rail-icons.mjs`).
  */
-export type Icon = "folderEmpty" | "folderFile" | "folderHome" | "folderCheck" | "folderEdit" | "fileText" | "fileCode" | "fileEmpty" | "fileCheck" | "fileEdit" | "fileAdd" | "imageFileEdit" | "fileModule" | "fileDouble" | "fileDouble2";
+export type Icon = "folderEmpty" | "folderFile" | "folderHome" | "folderCheck" | "folderEdit" | "fileText" | "fileCode" | "fileEmpty" | "fileCheck" | "fileEdit" | "fileAdd" | "imageFileEdit" | "fileModule" | "fileDouble" | "fileDouble2" | "arrowRight" | "arrowDown";
