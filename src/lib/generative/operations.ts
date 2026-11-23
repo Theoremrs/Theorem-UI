@@ -85,7 +85,7 @@ export const GENERATIVE_OPERATIONS = [
   {
     name: PRESENT,
     description:
-      'Paints an interface into your reply. Pass a tree whose root `_type` names a component (headings, text, facts, cards, rows, columns, tables, lists, steps, timelines, charts, alerts, tabs, forms, inputs, buttons, images, diagrams, markdown, views) with its properties; `children` nests components or a string. Or pass `a2ui`: A2UI messages in any catalog; unknown components are drawn from their properties. Use it when a layout says more than prose. For an answer to explore, use `View`: `cells` are Observable JavaScript cells, sandboxed with no network, with d3, Plot, Inputs, `data` and `invalidation`. What the reader selects in `views` becomes context for their next question: `views.linked(rows, {x, y, id})`, `views.graph({nodes, links})`, `views.tree(root)`, `views.timeline(events, {start, end})`, `const k = view(views.param(Inputs.range([0, 1]), "k"))`. Add a `caption` when it helps; credit data and adapted notebooks in `source`; release WebGL in `invalidation`. Nothing outside the reply is changed.',
+      'Paints an interface into your reply. Pass a tree whose root `_type` names a component (headings, text, facts, cards, rows, columns, tables, lists, steps, timelines, charts, alerts, tabs, forms, inputs, buttons, images, diagrams, markdown, views) with its properties; `children` nests components or a string. Or pass `a2ui`: A2UI messages in any catalog; unknown components are drawn from their properties. Use it when a layout says more than prose. For an answer to explore, use `View`: `cells` are Observable cells (no network) with d3, Plot, Inputs, `data` and `invalidation`; one cell defines each name, others change it via `mutable`. What the reader selects in `views` becomes context for their next question: `views.linked(rows, {x, y, id})`, `views.graph({nodes, links})`, `views.tree(root)`, `views.timeline(events, {start, end})`, `const k = view(views.param(Inputs.range([0, 1]), "k"))`. Add a `caption` when it helps; credit data and adapted notebooks in `source`; release WebGL in `invalidation`.',
     effect: 'presentation',
     inputSchema: PRESENT_SCHEMA,
   },
@@ -165,6 +165,38 @@ function postReceipt(request: PresentRequest, receipt: PresentReceipt) {
   )
 }
 
+/** The cells of each `View` a tree paints, in the order it paints them. */
+function viewsOf(tree: unknown): Array<ReadonlyArray<string>> {
+  const views: Array<ReadonlyArray<string>> = []
+  const walk = (value: unknown, depth: number) => {
+    if (depth > 64) return
+    if (Array.isArray(value)) return value.forEach((entry) => walk(entry, depth + 1))
+    const node = record(value)
+    if (node._type === 'View' && Array.isArray(node.cells))
+      views.push(node.cells.filter((cell): cell is string => typeof cell === 'string'))
+    walk(node.children, depth + 1)
+  }
+  walk(tree, 0)
+  return views
+}
+
+/**
+ * What will fail in the views a call paints, read from their cells before
+ * they run (notebooks/cells.ts, loaded only when a call has a view), so the
+ * agent hears it in the receipt and can present the view again, fixed.
+ */
+async function viewProblems(args: Record<string, unknown>): Promise<Array<string>> {
+  const views = viewsOf(args)
+  if (!views.length) return []
+  const { cellProblems } = await import('@/lib/notebooks/cells')
+  return views.flatMap((cells, index) => {
+    const problems = cellProblems(cells)
+    if (!problems.length) return []
+    const which = views.length > 1 ? ` ${index + 1}` : ''
+    return [`View${which} will not run as written. ${problems.join(' ')}`]
+  })
+}
+
 const RECEIPT_RETRIES = 6
 const receiptDelay = (failures: number) => Math.min(500 * 2 ** failures, 8_000)
 const receipts = new QueryClient()
@@ -194,6 +226,7 @@ export function servePresentRequests(
         // helps it fix its own output. Only a call with nothing to paint is
         // refused, with the reducer's warnings when it sent A2UI.
         const { painted, warnings } = presentation(request.args, inVocabulary)
+        warnings.push(...(await viewProblems(request.args)))
         const receipt: PresentReceipt = painted.length
           ? {
               outcome: 'applied',

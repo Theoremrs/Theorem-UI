@@ -1,11 +1,11 @@
 // SOURCING: @observablehq/notebook-kit's transpile (each cell's inputs,
-// outputs and body, as Notebook Kit compiles them) and serialize (the
+// outputs and body, as Notebook Kit compiles them, through cells.ts) and serialize (the
 // notebook as a Notebook Kit file, for Copy and Download), acorn and magic-string (a
 // cell's dynamic imports pointed at the frame's bundled modules), the hosted
 // App document and bridge (the frame), notebook-kit's inspector and highlight
 // styles and Inputs' stylesheet. No library builds a notebook into an
 // opaque frame that loads nothing.
-import { serialize, toCell, toNotebook, transpile } from '@observablehq/notebook-kit'
+import { serialize, toCell, toNotebook } from '@observablehq/notebook-kit'
 import highlightStyle from '@observablehq/notebook-kit/highlight.css?raw'
 import inspectorStyle from '@observablehq/notebook-kit/inspector.css?raw'
 import inputsStyle from '@observablehq/inputs/dist/index.css?raw'
@@ -18,6 +18,7 @@ import { bundleNotebookRuntime } from '@/lib/blocks/export'
 import { hostedAppDocument } from '@/lib/blocks/hosted-app'
 import { chartTheme } from '@/lib/blocks/sandbox/theme'
 import type { ThemeState } from '@/lib/blocks/sandbox/theme'
+import { transpileCell } from './cells'
 import type { ObservableCell, ObservableNotebook } from './forms'
 import { inlineCode, notebookPage, scriptJson } from './page'
 
@@ -43,26 +44,6 @@ function pointImports(body: string, imports: Set<string>): string {
   return out.toString()
 }
 
-/**
- * A cell compiled by Notebook Kit. JavaScript that does not parse is tried as
- * Observable JavaScript (`viewof x = ...`, `x = 2`), which Notebook Kit also
- * compiles, so a cell written in either dialect runs; when neither parses,
- * the JavaScript error is the one shown.
- */
-function transpileCell(cell: ObservableCell, index: number) {
-  const options = { resolveImport: (specifier: string) => specifier }
-  try {
-    return transpile(toCell({ id: index, value: cell.source, mode: cell.kind }), options)
-  } catch (error) {
-    if (cell.kind !== 'js') throw error
-    try {
-      return transpile(toCell({ id: index, value: cell.source, mode: 'ojs' }), options)
-    } catch {
-      throw error
-    }
-  }
-}
-
 /** One cell's definition, as the source of an object literal. */
 function compileCell(
   cell: ObservableCell,
@@ -71,7 +52,7 @@ function compileCell(
 ): string {
   const meta = { id: cell.id, kind: cell.kind }
   try {
-    const compiled = transpileCell(cell, index)
+    const compiled = transpileCell(cell.source, index, cell.kind)
     const definition = {
       ...meta,
       inputs: compiled.inputs ?? [],

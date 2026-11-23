@@ -108,6 +108,18 @@ describe('present requests', () => {
     expect(posted[0]).toMatchObject({ outcome: 'applied', result: { painted: 's1' } })
   })
 
+  test('a view whose cells will fail is painted, and the receipt says which cell and why', async () => {
+    const posted: Array<PresentReceipt> = []
+    const post = (_: PresentRequest, receipt: PresentReceipt) => {
+      posted.push(receipt)
+      return Promise.resolve()
+    }
+    const cells = ['viewof k = Inputs.range([0, 1], {label: html`k ${kk}`})', 'Plot.dotX(data, {x: (d) => d * k}).plot()']
+    await servePresentRequests([request({ _type: 'Card', children: [{ _type: 'View', cells }] })], post)
+    expect(posted[0]?.outcome).toBe('applied')
+    expect(JSON.stringify(posted[0]?.result)).toContain('Cell 1 reads `kk`, which no cell defines.')
+  })
+
   test('a call with nothing to paint is refused plainly', async () => {
     const posted: Array<PresentReceipt> = []
     const post = (_: PresentRequest, receipt: PresentReceipt) => {

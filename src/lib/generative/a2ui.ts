@@ -36,11 +36,15 @@ const scalar = (value: unknown): value is string | number =>
 
 /**
  * A component the vocabulary does not name, as the vocabulary draws it: its
- * label and value as one fact (or, when it fires an action, a button), each
+ * label and value (with its unit) as one fact (or, when it fires an action, a button), each
  * other plain property as a fact of its own, then its children.
  */
 function drawnFromProps(node: Node, children: unknown, surfaceId?: string): Node {
-  const { $type, _type, children: _, $key, label, value, action: raw, ...rest } = node
+  const { $type, _type, children: _, $key, label, value: rawValue, unit, action: raw, ...rest } = node
+  // A unit belongs to its value: "72%", "41 ms".
+  const value =
+    scalar(rawValue) && scalar(unit) ? `${rawValue}${/^[%°]/.test(String(unit)) ? '' : ' '}${unit}` : rawValue
+  if (!scalar(rawValue) && unit !== undefined) Object.assign(rest, { unit })
   const $action = node.$action ?? (surfaceId === undefined ? undefined : a2uiActionOf(raw, surfaceId))
   const facts: Array<Node> = []
   // An action the component fires stays live, as a button named by its label.
