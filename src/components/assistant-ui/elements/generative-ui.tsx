@@ -23,6 +23,12 @@ const MermaidDiagram = lazy(() =>
   import("./mermaid-diagram").then((mod) => ({ default: mod.MermaidDiagram })),
 );
 
+// A View runs Observable cells: Notebook Kit's compiler and the notebook
+// runtime load only when a reply carries one.
+const InteractiveView = lazy(() =>
+  import("./interactive-view").then((mod) => ({ default: mod.InteractiveView })),
+);
+
 const DiagramSkeleton = () => (
   <div
     data-slot="mermaid-skeleton"
@@ -132,6 +138,31 @@ export const styledGenerativeUILibrary: GenerativeUILibrary = {
       const graph = graphOf({ nodes });
       return graph ? <DependencyGraph data-aui="graph" graph={graph} /> : null;
     },
+  },
+  // Agent-written Observable cells, run in the sandboxed notebook frame: the
+  // person works the view without a model turn (interactive-views plan).
+  View: {
+    description:
+      "Live Observable cells the reader works. Each string in `cells` is one Observable JavaScript cell; `data` is any JSON the cells read as `data`.",
+    properties: z.object({
+      title: z.string().optional(),
+      cells: z.array(z.string()),
+      data: z.unknown().optional(),
+      caption: z.string().optional(),
+      source: z.string().optional(),
+      sourceUrl: z.string().optional(),
+    }),
+    render: (props) => (
+      <Suspense
+        fallback={
+          <p role="status" className="py-3 text-sm text-ink-muted">
+            Starting the view…
+          </p>
+        }
+      >
+        <InteractiveView {...props} />
+      </Suspense>
+    ),
   },
   Map: {
     ...defaultGenerativeUILibrary.Map!,

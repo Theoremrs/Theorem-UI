@@ -275,14 +275,19 @@ export async function bundleAppBridge(esbuild?: Bundler): Promise<string> {
 }
 
 /**
- * The Observable notebook runtime for a hosted notebook's frame, with every
- * module in the import map bundled in: a cell's `import("d3")` reaches the
- * same vendored build a block's would, and nothing else.
+ * The Observable notebook runtime for a hosted notebook's frame. `imports`
+ * names the import map's modules the cells import (`import("d3")`); only
+ * those are bundled beside the runtime and its builtins, so a notebook that
+ * imports nothing does not carry React or the editor's parsers. Without it,
+ * every module in the import map is bundled. A cell's import reaches the same
+ * vendored build a block's would, and nothing else.
  */
 export async function bundleNotebookRuntime(
   esbuild?: Bundler,
+  imports?: ReadonlyArray<string>,
 ): Promise<string> {
   const modules = Object.keys(importMap.imports)
+    .filter((specifier) => !imports || imports.includes(specifier))
     .map((specifier) => {
       const name = JSON.stringify(specifier)
       return `${name}: () => import(${name})`
