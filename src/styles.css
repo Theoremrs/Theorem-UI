@@ -45,6 +45,16 @@
   /* The ground a code block sits on, the editor's own where the palette
      follows one: GitHub's code ground in light. */
   --surface-code: #f6f8fa;
+  /* The code block's header and number gutter: a tint of its ground in the
+     palette's ink, so they read apart from the code without a rule. In light
+     the code is the paler step above the page, so the tint has to pass the
+     page's own tone to stay part of the block; dark needs half of it. */
+  --code-gutter-ink: 8%;
+  --surface-code-gutter: color-mix(
+    in oklab,
+    var(--ink) var(--code-gutter-ink),
+    var(--surface-code)
+  );
 
   /* shadcn / assistant-ui element contract */
   --background: var(--surface-neutral);
@@ -94,6 +104,7 @@
 
   /* The near-black of the rail, so code reads as an editor set into the sheet. */
   --surface-code: var(--surface-frame);
+  --code-gutter-ink: 4.5%;
 }
 
 /* Ember: the warm raised step in light, its near-black frame in dark. */
@@ -398,6 +409,7 @@
   --color-composer: var(--surface-composer);
   --color-artifact: var(--surface-artifact);
   --color-code: var(--surface-code);
+  --color-code-gutter: var(--surface-code-gutter);
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
   --color-ink-faint: var(--ink-faint);

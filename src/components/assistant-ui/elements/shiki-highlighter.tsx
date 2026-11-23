@@ -86,6 +86,10 @@ const rowData = ({ line, text }: Row, lineNumbers: boolean) => ({
   indent: indentOf(text),
 });
 
+/** The widest number's digits, which size the gutter. */
+const digitsOf = (lines: readonly GutterLine[]) =>
+  String(Math.max(1, ...lines.map((line) => line.number ?? 0))).length;
+
 const rowProps = (row: Row, lineNumbers: boolean) => {
   const { data, indent } = rowData(row, lineNumbers);
   return indent > 0
@@ -99,7 +103,10 @@ const PlainCode: FC<{
   lines: readonly GutterLine[];
   lineNumbers: boolean;
 }> = ({ code, lines, lineNumbers }) => (
-  <pre data-line-numbers={lineNumbers ? "" : undefined}>
+  <pre
+    data-line-numbers={lineNumbers ? "" : undefined}
+    style={{ "--digits": digitsOf(lines) } as CSSProperties}
+  >
     <code>
       {code.split("\n").map((text, index) => (
         <Fragment key={index}>
@@ -143,6 +150,7 @@ const createGutterTransformer = (
   name: "theorem:gutter",
   pre(node) {
     if (lineNumbers) node.properties["data-line-numbers"] = "";
+    node.properties.style = `${node.properties.style ?? ""};--digits:${digitsOf(lines)}`;
   },
   line(node, number) {
     const line = lines[number - 1];

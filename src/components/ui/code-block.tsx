@@ -1,4 +1,4 @@
-// SOURCING: assistant-ui's CodeBlock (https://www.assistant-ui.com/design/components/code-block, copied into components/ui as its docs direct; the owner's choice, 2026-11-23). Kept: the figure with a title header and a copy button that floats on hover without one, the focusable code region, the copy guard against a write settling after unmount, and maxCollapsedLines with its measured height and "Show all" toggle. Changed to the owner's editor screenshot: an opaque panel on the palette's code ground (--surface-code: Vitesse's own editor colours under Vitesse) at the artifact radius with the separator hairline, as wide as its longest row; the title as a short, tightly set path breadcrumb in sans type, its folders faint and its file muted; the app's copy marks; the line gutter, whitespace marks and diff bar come from the highlighter's data-line rows (appearance.css), so the source's CSS counter and lineNumbers prop give way to it.
+// SOURCING: assistant-ui's CodeBlock (https://www.assistant-ui.com/design/components/code-block, copied into components/ui as its docs direct; the owner's choice, 2026-11-23). Kept: the figure with a title header and a copy button that floats on hover without one, the focusable code region, the copy guard against a write settling after unmount, and maxCollapsedLines with its measured height and "Show all" toggle. Changed to the owner's editor screenshot: an opaque panel on the palette's code ground (--surface-code: Vitesse's own editor colours under Vitesse) with no outline, at the field radius rather than the composer's, as wide as its longest row; the header and the number gutter a tint of that ground rather than ruled off; the title as a short, tightly set path breadcrumb in sans type, its folders faint and its file muted; the app's copy marks; the line gutter, whitespace marks and diff bar come from the highlighter's data-line rows (appearance.css), so the source's CSS counter and lineNumbers prop give way to it.
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
@@ -69,9 +69,9 @@ function CopyButton({
       )}
     >
       {copied ? (
-        <Icon.Copied className="animate-in fade-in zoom-in-30 -spin-in-20 ease-lift size-3.5 duration-(--duration-lift)" />
+        <Icon.Copied className="animate-in fade-in zoom-in-30 -spin-in-20 ease-lift size-3 duration-(--duration-lift)" />
       ) : (
-        <Icon.Copy className="animate-in fade-in zoom-in-75 size-3.5" />
+        <Icon.Copy className="animate-in fade-in zoom-in-75 size-3" />
       )}
     </button>
   );
@@ -152,10 +152,17 @@ export function CodeBlock({
         line?.getBoundingClientRect().height ||
         Number.parseFloat(getComputedStyle(line ?? pre).lineHeight) ||
         Number.parseFloat(getComputedStyle(viewport).lineHeight);
-      const viewportStyle = getComputedStyle(viewport);
-      const verticalPadding =
-        (Number.parseFloat(viewportStyle.paddingBlockStart) || 0) +
-        (Number.parseFloat(viewportStyle.paddingBlockEnd) || 0);
+      // The pre carries the block's vertical padding, so its gutter tint
+      // runs to the panel's edges.
+      const verticalPadding = [viewport, pre]
+        .map((element) => getComputedStyle(element))
+        .reduce(
+          (sum, style) =>
+            sum +
+            (Number.parseFloat(style.paddingBlockStart) || 0) +
+            (Number.parseFloat(style.paddingBlockEnd) || 0),
+          0,
+        );
 
       setLineCount(nextLineCount);
       setCollapsedHeight(
@@ -179,13 +186,13 @@ export function CodeBlock({
     <figure
       data-code-block=""
       className={cn(
-        "aui-code-block not-prose group/code border-separator bg-code relative my-3 flex w-fit max-w-full min-w-0 flex-col overflow-hidden rounded-(--appearance-radius-artifact) border",
+        "aui-code-block not-prose group/code bg-code relative my-3 flex w-fit max-w-full min-w-0 flex-col overflow-hidden rounded-(--appearance-radius-field)",
         className,
       )}
       {...props}
     >
       {title ? (
-        <figcaption className="border-separator text-ink-faint flex h-6.5 shrink-0 items-center justify-between gap-3 border-b py-0 ps-3.5 pe-0.5 text-xs">
+        <figcaption className="bg-code-gutter text-ink-faint flex h-6.5 shrink-0 items-center justify-between gap-3 py-0 ps-3 pe-0.5 text-xs">
           {typeof title === "string" ? <Breadcrumb path={title} /> : title}
           <CopyButton getText={getText} onCopied={onCopied} />
         </figcaption>
@@ -205,7 +212,7 @@ export function CodeBlock({
           tabIndex={0}
           style={isCollapsed ? { maxHeight: collapsedHeight } : undefined}
           className={cn(
-            "aui-code-viewport focus-visible:outline-separator overflow-x-auto py-2.5 focus-visible:outline-1 focus-visible:-outline-offset-1",
+            "aui-code-viewport focus-visible:outline-separator overflow-x-auto focus-visible:outline-1 focus-visible:-outline-offset-1",
             // The block is as wide as its longest row, so without a header the
             // floating copy button needs room of its own at the row's end.
             !title && "pe-5",
