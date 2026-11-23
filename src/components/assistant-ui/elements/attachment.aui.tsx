@@ -1,3 +1,4 @@
+// SOURCING: assistant-ui's attachment element (r.assistant-ui.com registry, copied and adapted) over AttachmentPrimitive, ComposerPrimitive and MessagePrimitive; its preview dialog also opens a pasted text, in chat/pasted-text-dialog.
 'use client'
 
 import { useEffect, useRef, useState, isValidElement } from 'react'
@@ -25,6 +26,12 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { COMPOSER_TOOLTIP_DELAY } from '@/components/chat/composer-tools'
+import { pasteInComposer } from '@/components/chat/composer-editor'
+import { isPastedText } from '@/components/chat/pasted-text'
+import {
+  PastedTextDialog,
+  useFileText,
+} from '@/components/chat/pasted-text-dialog'
 import { useIsomorphicLayoutEffect } from '@/components/assistant-ui/utils/useIsomorphicLayoutEffect'
 import { useAttachmentSrc } from '@/hooks/use-attachment-src'
 import { popIn } from '@/lib/motion'
@@ -55,27 +62,42 @@ const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src, name }) => {
 type AttachmentPreviewDialogProps = PropsWithChildren<{
   src: string | undefined
   name: string
+  /** A pasted text's contents, previewed when there is no image. */
+  text?: string | undefined
+  /** Puts a pasted text back in the draft; see PastedTextDialog. */
+  onPasteInline?: ((text: string) => HTMLElement | null) | undefined
 }>
 
 const AttachmentPreviewDialog: FC<AttachmentPreviewDialogProps> = ({
   children,
   src,
   name,
+  text,
+  onPasteInline,
 }) => {
-  if (!src) return children
+  const trigger = isValidElement(children) ? (
+    children
+  ) : (
+    <button type="button">{children}</button>
+  )
+  if (!src)
+    return text === undefined ? (
+      children
+    ) : (
+      <PastedTextDialog
+        name={name}
+        text={text}
+        trigger={trigger}
+        onPasteInline={onPasteInline}
+      />
+    )
 
   return (
     <Dialog>
       <DialogTrigger
         nativeButton={false}
         className="aui-attachment-preview-trigger cursor-zoom-in"
-        render={
-          isValidElement(children) ? (
-            children
-          ) : (
-            <button type="button">{children}</button>
-          )
-        }
+        render={trigger}
       />
       <DialogContent className="aui-attachment-preview-dialog-content [&>button]:bg-foreground/60 [&>button]:hover:bg-foreground/80 [&_svg]:text-background p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0!">
         <DialogTitle className="aui-sr-only sr-only">
@@ -108,6 +130,18 @@ const AttachmentUI: FC = () => {
   const aui = useAui()
   const isComposer = aui.attachment.source !== 'message'
   const src = useAttachmentSrc()
+  const root = useRef<HTMLDivElement>(null)
+  // A long paste the composer took as a file previews as its text.
+  const pastedFile = useAuiState((s) =>
+    isPastedText(
+      s.attachment.name,
+      s.attachment.contentType ?? s.attachment.file?.type,
+    )
+      ? s.attachment.file
+      : undefined,
+  )
+  const text = useFileText(pastedFile)
+  const previewable = src !== undefined || text !== undefined
 
   const isImage = useAuiState((s) => s.attachment.type === 'image')
   const name = useAuiState((s) => s.attachment.name)
@@ -151,6 +185,7 @@ const AttachmentUI: FC = () => {
     <TooltipProvider>
       <Tooltip>
         <AttachmentPrimitive.Root
+          ref={root}
           className={cn(
             'aui-attachment-root relative',
             isComposer &&
@@ -160,19 +195,32 @@ const AttachmentUI: FC = () => {
               'aui-attachment-root-message only:*:first:size-24',
           )}
         >
-          <AttachmentPreviewDialog src={src} name={name}>
+          <AttachmentPreviewDialog
+            src={src}
+            name={name}
+            text={text}
+            onPasteInline={
+              isComposer
+                ? (pasted) => {
+                    const editor = pasteInComposer(root.current, pasted)
+                    if (editor) void aui.attachment.remove()
+                    return editor
+                  }
+                : undefined
+            }
+          >
             <TooltipTrigger
               render={
                 <div
                   className={cn(
                     'aui-attachment-tile bg-muted hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative size-14 overflow-hidden rounded-[calc(var(--composer-radius,1rem)-var(--composer-padding,8px))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-1 motion-reduce:transition-none dark:after:ring-white/10',
-                    src ? 'cursor-zoom-in' : 'cursor-default',
+                    previewable ? 'cursor-zoom-in' : 'cursor-default',
                     isError &&
                       'after:ring-destructive/60 dark:after:ring-destructive/60',
                   )}
-                  role={src ? 'button' : 'group'}
+                  role={previewable ? 'button' : 'group'}
                   tabIndex={0}
-                  aria-label={`${src ? `Preview ${name}` : `${typeLabel} attachment ${name}`}${
+                  aria-label={`${previewable ? `Preview ${name}` : `${typeLabel} attachment ${name}`}${
                     isError
                       ? ', upload failed'
                       : isUploading
@@ -214,13 +262,15 @@ const AttachmentUI: FC = () => {
   )
 }
 
+// Upstream widens the button's target by 6px, which on a 56px tile reaches
+// its center: a click meant to open the tile removed it. 2px keeps a 24px target.
 const AttachmentRemove: FC<{ name: string }> = ({ name }) => {
   return (
     <AttachmentPrimitive.Remove
       render={
         <TooltipIconButton
           tooltip={`Remove ${name}`}
-          className="aui-attachment-tile-remove absolute end-1 top-1 size-5 rounded-full bg-black/50! text-white after:absolute after:-inset-1.5 hover:bg-black/70! hover:text-white! motion-reduce:transition-none"
+          className="aui-attachment-tile-remove absolute end-1 top-1 size-5 rounded-full bg-black/50! text-white after:absolute after:-inset-0.5 hover:bg-black/70! hover:text-white! motion-reduce:transition-none"
           side="top"
         />
       }

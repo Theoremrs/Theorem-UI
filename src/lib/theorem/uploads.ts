@@ -73,6 +73,19 @@ export async function uploadBlock(
   }
 }
 
+/** A text upload's contents, such as a pasted text a sent message carries. */
+export function useUploadText(uploadId: string | undefined) {
+  const { data } = useQuery({
+    queryKey: ['theorem', 'upload-text', uploadId],
+    enabled: uploadId !== undefined,
+    // An upload's bytes never change.
+    staleTime: Number.POSITIVE_INFINITY,
+    queryFn: async () =>
+      (await readUpload(uploadContentPath(uploadId!))).text(),
+  })
+  return data
+}
+
 /** An image's address the platform can read: uploads as a blob:, the rest as written. */
 export function useImageUrl(src: string | undefined) {
   const upload = src !== undefined && isUploadPath(src)
