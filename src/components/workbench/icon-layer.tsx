@@ -40,7 +40,7 @@ const MARKS = Object.fromEntries(
 const cells = (count: number, unit: 'w' | 'h') =>
   `calc(var(--wb-cell-${unit}) * ${count})`
 
-/** Two cells wide and one high; the mark inside is the largest square that fits, undistorted. */
+/** Two cells wide and one high, with the mark centred in it. */
 const SLOT: CSSProperties = {
   position: 'absolute',
   display: 'flex',
@@ -50,9 +50,15 @@ const SLOT: CSSProperties = {
   height: 'var(--wb-cell-h)',
   pointerEvents: 'none',
 }
+/**
+ * A mark is a square 63% of the row high: the owner asked for the marks 30% smaller, then 10%
+ * smaller again (2026-11-23). A monospace cell is about half as wide as it is high, so the square
+ * stays inside its two-cell slot.
+ */
+const MARK = cells(0.63, 'h')
 const GLYPH = {
-  width: 'var(--wb-icon)',
-  height: 'var(--wb-icon)',
+  width: MARK,
+  height: MARK,
 } as CSSProperties
 /**
  * An arrow stands in for a text glyph (the agent terminal's prompt pointer and its folds), so it
@@ -108,10 +114,6 @@ export function IconLayer({
       const cell = JSON.parse(json) as { width: number; height: number }
       element.style.setProperty('--wb-cell-w', `${cell.width}px`)
       element.style.setProperty('--wb-cell-h', `${cell.height}px`)
-      element.style.setProperty(
-        '--wb-icon',
-        `${Math.min(cell.width * 2, cell.height)}px`,
-      )
       return true
     }
     const wait = () => {

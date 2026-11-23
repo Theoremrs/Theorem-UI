@@ -89,8 +89,6 @@ describe('the icon layer', () => {
     expect(layer().style.pointerEvents).toBe('none')
     expect(layer().style.getPropertyValue('--wb-cell-w')).toBe('8px')
     expect(layer().style.getPropertyValue('--wb-cell-h')).toBe('16px')
-    // The mark is the largest square in two cells by one: min(2 x 8, 16).
-    expect(layer().style.getPropertyValue('--wb-icon')).toBe('16px')
     const folder = slot(3, 5)
     expect(folder.dataset.icon).toBe('folderFile')
     expect(folder.getAttribute('aria-hidden')).toBe('true')
@@ -126,13 +124,14 @@ describe('the icon layer', () => {
     expect(slot(4, 1).style.color).toBe('')
   })
 
-  test("sizes an arrow to the text glyph it stands for and every other mark to the slot", async () => {
+  test("sizes an arrow to the text glyph it stands for and every other mark to 63% of the row", async () => {
     const store = createIconStore()
     store.set(icons([1, 1, 'arrowRight'], [4, 1, 'arrowDown'], [7, 1, 'fileText']))
     await render(<IconLayer store={store} handle={handle} />)
     const size = (x: number) => (slot(x, 1).querySelector('.rail-mark') as HTMLElement).style
     for (const x of [1, 4]) expect([size(x).width, size(x).height]).toEqual(['0.72em', '0.72em'])
-    expect([size(7).width, size(7).height]).toEqual(['var(--wb-icon)', 'var(--wb-icon)'])
+    const mark = 'calc(var(--wb-cell-h) * 0.63)'
+    expect([size(7).width, size(7).height]).toEqual([mark, mark])
   })
 
   test('follows the frame: a new list moves, adds and removes elements', async () => {
