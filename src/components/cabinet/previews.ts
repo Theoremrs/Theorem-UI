@@ -168,6 +168,16 @@ async function produce(
       }
     // An app is never run to make a thumbnail (§11): it keeps its sketch.
   }
+  return pixelPreview(source)
+}
+
+/**
+ * One source through the terminal crate's renderer, outside any card: what
+ * a composer attachment shows is drawn the way the gallery draws it.
+ */
+export async function pixelPreview(
+  source: PreviewSource,
+): Promise<PreviewState> {
   const response = await convert(source)
   if (!response.ok)
     return response.code === 'unsupported'

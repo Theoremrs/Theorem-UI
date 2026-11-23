@@ -22,7 +22,6 @@ export default [
     // keeps upstream's defensive checks so updates stay diffable.
     files: [
       'src/components/assistant-ui/elements/**',
-      'src/components/assistant-ui/utils/href.ts',
       'src/components/ui/**',
       'src/hooks/**',
       // TanStack Table's kitchen-sink-shadcn-base example, vendored.

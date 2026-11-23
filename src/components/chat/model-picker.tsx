@@ -1,5 +1,5 @@
 import { appearancePair } from '@/lib/appearance-policy'
-// SOURCING: coss ui Combobox over Base UI Combobox (input inside the popup, as coss's "With Input Inside Popup" example), ui/tooltip over Base UI Tooltip for the full name on hover and focus, ./model-mark (Lobe Icons' provider marks), ./effort-picker in the popup's footer, @tanstack/react-router Link (to settings), lib/theorem/models (catalog, stars, pick)
+// SOURCING: coss ui Combobox over Base UI Combobox (input inside the popup, as coss's "With Input Inside Popup" example), ./model-mark (Lobe Icons' provider marks), ./effort-picker in the popup's footer, @tanstack/react-router Link (to settings), lib/theorem/models (catalog, stars, pick)
 import { Link } from '@tanstack/react-router'
 import { useEffect, useMemo } from 'react'
 import {
@@ -15,16 +15,9 @@ import {
   ComboboxCollection,
 } from '@/components/coss/combobox'
 import { useMenuGlass } from '@/components/glass/menu-glass'
-import { COMPOSER_TOOLTIP_DELAY } from '@/components/chat/composer-tools'
 import { EffortPicker } from '@/components/chat/effort-picker'
 import { ModelMark } from '@/components/chat/model-mark'
 import { Icon } from '@/components/icons'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import {
   formatContext,
   modelStub,
@@ -144,27 +137,16 @@ export function ModelPicker() {
       itemToStringValue={(model) => `${model.name} ${model.ref}`}
       isItemEqualToValue={(a, b) => a.ref === b.ref}
     >
-      {/* The maker's mark alone: the full name is the tooltip and the
-          button's name, so hover, focus and a screen reader all get it. */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger
-            delay={COMPOSER_TOOLTIP_DELAY}
-            render={
-              <ComboboxTrigger
-                aria-label={`Model: ${label}`}
-                data-model-picker-trigger=""
-                {...appearancePair('secondary', 'composer')}
-                className="flex size-8 shrink-0 items-center justify-center rounded-md text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
-              />
-            }
-          >
-            <ModelMark vendor={vendor} />
-            <span className="sr-only">{label}</span>
-          </TooltipTrigger>
-          <TooltipContent side="top">{label}</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      {/* The maker's mark alone; the full name is the button's name. */}
+      <ComboboxTrigger
+        aria-label={`Model: ${label}`}
+        data-model-picker-trigger=""
+        {...appearancePair('secondary', 'composer')}
+        className="flex size-8 shrink-0 items-center justify-center rounded-md text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
+      >
+        <ModelMark vendor={vendor} />
+        <span className="sr-only">{label}</span>
+      </ComboboxTrigger>
       <ComboboxPopup
         side="top"
         align="end"

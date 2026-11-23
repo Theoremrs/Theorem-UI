@@ -1,4 +1,4 @@
-// SOURCING: the Base UI dialog (components/ui/dialog) that assistant-ui's attachment element (elements/attachment.aui) previews with; this is that preview's text form, which the element opens from its own tile and a sent message opens from the element's received-files row (elements/message-attachment).
+// SOURCING: the Base UI dialog (components/ui/dialog) that assistant-ui's attachment element (elements/attachment.aui) previews with; this is that preview's text form, for a pasted text or any file of words, opened from the element's tile in the composer and in a sent message (chat/stored-attachment).
 import { useEffect, useRef, useState } from 'react'
 import type { FC, ReactElement } from 'react'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ import { count, pastedTitle, textSize } from './pasted-text'
 /** The dialog lays out no more of a pasted text than this at once. */
 const SHOWN_CHARS = 100_000
 
-/** A pasted text the composer still holds as a file, read once it is there. */
+/** A file's words, read once it is there. */
 export function useFileText(file: Blob | undefined) {
   const [read, setRead] = useState<{ file: Blob; text: string }>()
   useEffect(() => {
@@ -33,8 +33,8 @@ export function useFileText(file: Blob | undefined) {
 }
 
 /**
- * A pasted text, whole. A draft's can put the text back in the draft, where
- * the paste would have gone.
+ * A file's words, whole. A pasted text in a draft can go back in the draft,
+ * where the paste would have gone.
  */
 export const PastedTextDialog: FC<{
   name: string

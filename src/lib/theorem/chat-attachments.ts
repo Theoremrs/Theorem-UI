@@ -1,28 +1,28 @@
-// SOURCING: @assistant-ui/react AttachmentAdapter (the composer's upload contract, including its submission, cancel and return-to-draft states), over Theorem's project uploads route in lib/theorem/imports.
+// SOURCING: @assistant-ui/react AttachmentAdapter (the composer's upload contract, including its submission, cancel and return-to-draft states), over Theorem's project uploads route in lib/theorem/imports; the accepted kinds and declared types are attachment-kinds'.
 import type { AttachmentAdapter } from '@assistant-ui/react'
 import { describeError } from './client'
 import type { Theorem } from './client'
+import { ATTACHMENT_ACCEPT, asUpload } from './attachment-kinds'
 import { uploadFile } from './imports'
-import { MEDIA_ACCEPT } from './uploads'
-
-/** What Theorem's chat intake takes. It checks each by its magic bytes as well. */
-const ACCEPT = `${MEDIA_ACCEPT},text/plain,text/markdown,text/html,text/csv,application/json,.md,.csv,.txt`
 
 /** Files go up when the message is sent, into the project of the thread they join. */
 export function chatAttachments(
   projectOfThread: () => Promise<string>,
 ): AttachmentAdapter {
   return {
-    accept: ACCEPT,
-    add: ({ file }) =>
-      Promise.resolve({
+    accept: ATTACHMENT_ACCEPT,
+    add: ({ file: picked }) => {
+      // Declared as Theorem takes it: a .ts file is text, not a video stream.
+      const file = asUpload(picked)
+      return Promise.resolve({
         id: crypto.randomUUID(),
         type: file.type.startsWith('image/') ? 'image' : 'document',
         name: file.name,
         contentType: file.type,
         file,
         status: { type: 'requires-action', reason: 'composer-send' },
-      }),
+      })
+    },
     remove: () => Promise.resolve(),
     send: async (attachment) => {
       const { uploadId } = await uploadFile(

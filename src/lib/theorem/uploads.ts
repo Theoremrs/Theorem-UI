@@ -73,15 +73,14 @@ export async function uploadBlock(
   }
 }
 
-/** A text upload's contents, such as a pasted text a sent message carries. */
-export function useUploadText(uploadId: string | undefined) {
+/** An upload's bytes, such as a file a sent message carries. */
+export function useUploadBlob(uploadId: string | undefined) {
   const { data } = useQuery({
-    queryKey: ['theorem', 'upload-text', uploadId],
+    queryKey: ['theorem', 'upload-blob', uploadId],
     enabled: uploadId !== undefined,
     // An upload's bytes never change.
     staleTime: Number.POSITIVE_INFINITY,
-    queryFn: async () =>
-      (await readUpload(uploadContentPath(uploadId!))).text(),
+    queryFn: () => readUpload(uploadContentPath(uploadId!)),
   })
   return data
 }

@@ -1,4 +1,4 @@
-// SOURCING: assistant-ui's attachment element (r.assistant-ui.com registry, copied and adapted) over AttachmentPrimitive, ComposerPrimitive and MessagePrimitive; its preview dialog also opens a pasted text, in chat/pasted-text-dialog.
+// SOURCING: assistant-ui's attachment element (r.assistant-ui.com registry, copied and adapted) over AttachmentPrimitive, ComposerPrimitive and MessagePrimitive; its tile shows the file as the gallery draws it (chat/attachment-card), and its preview dialog also opens words (chat/pasted-text-dialog) and a PDF, video or audio file (chat/file-preview-dialog).
 'use client'
 
 import { useEffect, useRef, useState, isValidElement } from 'react'
@@ -12,22 +12,21 @@ import {
   useAui,
 } from '@assistant-ui/react'
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import {
   Dialog,
   DialogTitle,
   DialogContent,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
-import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
-import { COMPOSER_TOOLTIP_DELAY } from '@/components/chat/composer-tools'
+import { Button } from '@/components/ui/button'
 import { pasteInComposer } from '@/components/chat/composer-editor'
 import { isPastedText } from '@/components/chat/pasted-text'
+import { AttachmentFace } from '@/components/chat/attachment-card'
+import { fileKind, isTextual } from '@/lib/theorem/attachment-kinds'
+import type { FileKind } from '@/lib/theorem/attachment-kinds'
+import {
+  FilePreviewDialog,
+  opensAsMedia,
+} from '@/components/chat/file-preview-dialog'
 import {
   PastedTextDialog,
   useFileText,
@@ -62,16 +61,22 @@ const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src, name }) => {
 type AttachmentPreviewDialogProps = PropsWithChildren<{
   src: string | undefined
   name: string
-  /** A pasted text's contents, previewed when there is no image. */
+  type: string
+  kind: FileKind
+  file: Blob | undefined
+  /** A file's words, previewed when there is no image. */
   text?: string | undefined
   /** Puts a pasted text back in the draft; see PastedTextDialog. */
   onPasteInline?: ((text: string) => HTMLElement | null) | undefined
 }>
 
-const AttachmentPreviewDialog: FC<AttachmentPreviewDialogProps> = ({
+export const AttachmentPreviewDialog: FC<AttachmentPreviewDialogProps> = ({
   children,
   src,
   name,
+  type,
+  kind,
+  file,
   text,
   onPasteInline,
 }) => {
@@ -80,17 +85,28 @@ const AttachmentPreviewDialog: FC<AttachmentPreviewDialogProps> = ({
   ) : (
     <button type="button">{children}</button>
   )
-  if (!src)
-    return text === undefined ? (
-      children
-    ) : (
-      <PastedTextDialog
-        name={name}
-        text={text}
-        trigger={trigger}
-        onPasteInline={onPasteInline}
-      />
-    )
+  if (!src) {
+    if (text !== undefined)
+      return (
+        <PastedTextDialog
+          name={name}
+          text={text}
+          trigger={trigger}
+          onPasteInline={onPasteInline}
+        />
+      )
+    if (file && opensAsMedia(kind))
+      return (
+        <FilePreviewDialog
+          name={name}
+          type={type}
+          kind={kind}
+          file={file}
+          trigger={trigger}
+        />
+      )
+    return children
+  }
 
   return (
     <Dialog>
@@ -111,40 +127,28 @@ const AttachmentPreviewDialog: FC<AttachmentPreviewDialogProps> = ({
   )
 }
 
-const AttachmentThumb: FC<{ src: string | undefined }> = ({ src }) => {
-  return (
-    <Avatar className="aui-attachment-tile-avatar h-full w-full rounded-none after:hidden">
-      <AvatarImage
-        src={src}
-        alt=""
-        className="aui-attachment-tile-image rounded-none object-cover"
-      />
-      <AvatarFallback>
-        <Icon.File className="aui-attachment-tile-fallback-icon text-muted-foreground/80 size-6" />
-      </AvatarFallback>
-    </Avatar>
-  )
-}
+/** The tile a file stands in, in the composer and in a sent message. */
+export const ATTACHMENT_TILE =
+  'aui-attachment-tile bg-muted hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative block h-28 w-22 overflow-hidden rounded-[calc(var(--composer-radius,1rem)-var(--composer-padding,8px))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-1 motion-reduce:transition-none dark:after:ring-white/10'
 
 const AttachmentUI: FC = () => {
   const aui = useAui()
   const isComposer = aui.attachment.source !== 'message'
   const src = useAttachmentSrc()
   const root = useRef<HTMLDivElement>(null)
-  // A long paste the composer took as a file previews as its text.
-  const pastedFile = useAuiState((s) =>
-    isPastedText(
-      s.attachment.name,
-      s.attachment.contentType ?? s.attachment.file?.type,
-    )
-      ? s.attachment.file
-      : undefined,
-  )
-  const text = useFileText(pastedFile)
-  const previewable = src !== undefined || text !== undefined
-
-  const isImage = useAuiState((s) => s.attachment.type === 'image')
   const name = useAuiState((s) => s.attachment.name)
+  const file = useAuiState((s) => s.attachment.file)
+  const type = useAuiState(
+    (s) => s.attachment.contentType ?? s.attachment.file?.type ?? '',
+  )
+  const kind = fileKind(name, type)
+  // A file of words, a long paste among them, previews as its text.
+  const text = useFileText(isTextual(kind) ? file : undefined)
+  const previewable =
+    src !== undefined ||
+    text !== undefined ||
+    (file !== undefined && opensAsMedia(kind))
+
   const typeLabel = useAuiState((s) => {
     const type = s.attachment.type
     switch (type) {
@@ -182,96 +186,87 @@ const AttachmentUI: FC = () => {
   )
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <AttachmentPrimitive.Root
-          ref={root}
-          className={cn(
-            'aui-attachment-root relative',
-            isComposer &&
-              'animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none',
-            isImage &&
-              !isComposer &&
-              'aui-attachment-root-message only:*:first:size-24',
-          )}
-        >
-          <AttachmentPreviewDialog
-            src={src}
-            name={name}
-            text={text}
-            onPasteInline={
-              isComposer
-                ? (pasted) => {
-                    const editor = pasteInComposer(root.current, pasted)
-                    if (editor) void aui.attachment.remove()
-                    return editor
-                  }
-                : undefined
-            }
-          >
-            <TooltipTrigger
-              render={
-                <div
-                  className={cn(
-                    'aui-attachment-tile bg-muted hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative size-14 overflow-hidden rounded-[calc(var(--composer-radius,1rem)-var(--composer-padding,8px))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-1 motion-reduce:transition-none dark:after:ring-white/10',
-                    previewable ? 'cursor-zoom-in' : 'cursor-default',
-                    isError &&
-                      'after:ring-destructive/60 dark:after:ring-destructive/60',
-                  )}
-                  role={previewable ? 'button' : 'group'}
-                  tabIndex={0}
-                  aria-label={`${previewable ? `Preview ${name}` : `${typeLabel} attachment ${name}`}${
-                    isError
-                      ? ', upload failed'
-                      : isUploading
-                        ? ', uploading'
-                        : ''
-                  }`}
-                />
+    <AttachmentPrimitive.Root
+      ref={root}
+      className={cn(
+        'aui-attachment-root group/attachment relative shrink-0',
+        isComposer &&
+          'animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none',
+      )}
+    >
+      <AttachmentPreviewDialog
+        src={src}
+        name={name}
+        type={type}
+        kind={kind}
+        file={file}
+        text={text}
+        onPasteInline={
+          isComposer && isPastedText(name, type)
+            ? (pasted) => {
+                const editor = pasteInComposer(root.current, pasted)
+                if (editor) void aui.attachment.remove()
+                return editor
               }
-            >
-              <AttachmentThumb src={src} />
-              {isUploading && (
-                <div
-                  aria-hidden="true"
-                  className="aui-attachment-tile-uploading bg-background/60 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
-                >
-                  <Icon.Refresh className="text-muted-foreground size-4 animate-spin" />
-                </div>
-              )}
-              {isError && (
-                <div
-                  aria-hidden="true"
-                  className="aui-attachment-tile-error bg-background/70 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
-                >
-                  <Icon.Close className="text-destructive size-4" />
-                </div>
-              )}
-            </TooltipTrigger>
-          </AttachmentPreviewDialog>
-          {isComposer && <AttachmentRemove name={name} />}
-        </AttachmentPrimitive.Root>
-        <TooltipContent side="top">
-          <AttachmentPrimitive.Name />
-          {errorMessage && (
-            <p className="aui-attachment-error-message">{errorMessage}</p>
+            : undefined
+        }
+      >
+        <div
+          className={cn(
+            ATTACHMENT_TILE,
+            previewable ? 'cursor-zoom-in' : 'cursor-default',
+            isError &&
+              'after:ring-destructive/60 dark:after:ring-destructive/60',
           )}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          role={previewable ? 'button' : 'group'}
+          tabIndex={0}
+          aria-label={`${previewable ? `Preview ${name}` : `${typeLabel} attachment ${name}`}${
+            isError ? ', upload failed' : isUploading ? ', uploading' : ''
+          }`}
+        >
+          <AttachmentFace
+            name={name}
+            type={type}
+            file={file}
+            text={text}
+            status={errorMessage}
+          />
+          {isUploading && (
+            <div
+              aria-hidden="true"
+              className="aui-attachment-tile-uploading bg-background/60 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
+            >
+              <Icon.Refresh className="text-muted-foreground size-4 animate-spin" />
+            </div>
+          )}
+          {isError && (
+            <div
+              aria-hidden="true"
+              className="aui-attachment-tile-error bg-background/70 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
+            >
+              <Icon.Close className="text-destructive size-4" />
+            </div>
+          )}
+        </div>
+      </AttachmentPreviewDialog>
+      {isComposer && <AttachmentRemove name={name} />}
+    </AttachmentPrimitive.Root>
   )
 }
 
-// Upstream widens the button's target by 6px, which on a 56px tile reaches
-// its center: a click meant to open the tile removed it. 2px keeps a 24px target.
+// Upstream widens the button's target by 6px, which on its 56px tile reached
+// the center: a click meant to open the tile removed it. 2px keeps a 24px target.
+// It shows while the pointer is over the tile or it has focus; a touch screen,
+// with no hover, always shows it.
 const AttachmentRemove: FC<{ name: string }> = ({ name }) => {
   return (
     <AttachmentPrimitive.Remove
       render={
-        <TooltipIconButton
-          tooltip={`Remove ${name}`}
-          className="aui-attachment-tile-remove absolute end-1 top-1 size-5 rounded-full bg-black/50! text-white after:absolute after:-inset-0.5 hover:bg-black/70! hover:text-white! motion-reduce:transition-none"
-          side="top"
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Remove ${name}`}
+          className="aui-attachment-tile-remove absolute end-1 top-1 size-5 rounded-full bg-black/50! p-0 text-white transition-opacity group-focus-within/attachment:opacity-100 group-hover/attachment:opacity-100 after:absolute after:-inset-0.5 hover:bg-black/70! hover:text-white! motion-reduce:transition-none [@media(hover:hover)]:opacity-0"
         />
       }
     >
@@ -333,10 +328,7 @@ export const ComposerAddAttachment: FC = () => {
     <ComposerPrimitive.AddAttachment
       onClick={() => setPicking(true)}
       render={
-        <TooltipIconButton
-          tooltip="Add Attachment"
-          side="bottom"
-          delay={COMPOSER_TOOLTIP_DELAY}
+        <Button
           variant="ghost"
           size="icon"
           className="aui-composer-add-attachment text-ink-muted hover:bg-hover hover:text-ink size-8 rounded-md p-2 motion-reduce:transition-none"

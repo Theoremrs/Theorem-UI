@@ -1,4 +1,4 @@
-// SOURCING: coss ui Menu over Base UI Menu (MenuRadioGroup / MenuRadioItem for the one choice, MenuLinkItem rendered as a router Link for the settings page, as organize/organized-panel), ui/tooltip over Base UI Tooltip, assistant-ui for the open conversation, lib/theorem/response-styles (the catalog, the selection and the pick held for a conversation that does not exist yet) and lib/theorem/organization (the project it is in)
+// SOURCING: coss ui Menu over Base UI Menu (MenuRadioGroup / MenuRadioItem for the one choice, MenuLinkItem rendered as a router Link for the settings page, as organize/organized-panel), assistant-ui for the open conversation, lib/theorem/response-styles (the catalog, the selection and the pick held for a conversation that does not exist yet) and lib/theorem/organization (the project it is in)
 import { useAuiState } from '@assistant-ui/react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -16,15 +16,8 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from '@/components/coss/menu'
-import { COMPOSER_TOOLTIP_DELAY } from '@/components/chat/composer-tools'
 import { Icon } from '@/components/icons'
 import { useShell } from '@/components/shell/shell-state'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { describeError } from '@/lib/theorem/client'
 import {
   primaryProjectId,
@@ -150,24 +143,14 @@ export function StylePicker() {
 
   return (
     <Menu>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger
-            delay={COMPOSER_TOOLTIP_DELAY}
-            render={
-              <MenuTrigger
-                aria-label="Response style"
-                disabled={catalog.isPlaceholderData}
-                className="flex h-8 min-w-0 items-center gap-1 rounded-md px-2 text-sm text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-disabled:opacity-60 data-popup-open:bg-hover data-popup-open:text-ink"
-              />
-            }
-          >
-            <span className="max-w-32 truncate">{effective.name}</span>
-            <Icon.UpDown className="size-3.5 shrink-0" />
-          </TooltipTrigger>
-          <TooltipContent side="top">Response style</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <MenuTrigger
+        aria-label="Response style"
+        disabled={catalog.isPlaceholderData}
+        className="flex h-8 min-w-0 items-center gap-1 rounded-md px-2 text-sm text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-disabled:opacity-60 data-popup-open:bg-hover data-popup-open:text-ink"
+      >
+        <span className="max-w-32 truncate">{effective.name}</span>
+        <Icon.UpDown className="size-3.5 shrink-0" />
+      </MenuTrigger>
       <MenuPopup side="top" align="end" className="w-72">
         <MenuGroup>
           <MenuGroupLabel>Response style</MenuGroupLabel>

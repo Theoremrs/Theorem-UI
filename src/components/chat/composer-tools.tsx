@@ -23,9 +23,6 @@ import { searchTools, useToolCatalog } from '@/lib/theorem/tools'
 import type { NativeTool, ToolCatalogState } from '@/lib/theorem/tools'
 import { cn } from '@/lib/utils'
 
-/** The composer's buttons are passed on the way to typing, so their tooltips wait for a resting pointer. */
-export const COMPOSER_TOOLTIP_DELAY = 700
-
 type WebSearchState = { on: boolean; toggle: () => void }
 
 /**

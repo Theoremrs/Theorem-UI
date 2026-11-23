@@ -50,7 +50,6 @@ import {
 import { ProgramPart } from '@/components/chat/program-part'
 import { CompletionFooter } from '@/components/chat/run-footer'
 import { UserMarkdown } from '@/components/chat/user-markdown'
-import { NoteImage } from '@/components/notes/kinds/embed-block'
 import { ReviewAnswerCard } from '@/components/review/review-card'
 import { PlanToolCall } from '@/components/chat/plan-graph'
 import { useRevealFile } from '@/components/ide/follow'
@@ -81,10 +80,7 @@ import type {
   ApprovalOutcome,
   TheoremApproval,
 } from '@/lib/theorem/approval'
-import { uploadContentPath, useUploadText } from '@/lib/theorem/uploads'
-import { isPastedText, textSize } from '@/components/chat/pasted-text'
-import { PastedTextDialog } from '@/components/chat/pasted-text-dialog'
-import { MessageAttachments } from '@/components/assistant-ui/elements/message-attachment'
+import { StoredAttachment } from '@/components/chat/stored-attachment'
 import { DRAFT_PLAN } from '@/lib/theorem/plans'
 import { cn, humanize } from '@/lib/utils'
 import { appearancePair } from '@/lib/appearance-policy'
@@ -937,54 +933,15 @@ const ATTACHMENT_STATES: Partial<Record<string, string>> = {
   refused: 'refused',
 }
 
-/** A pasted text a stored message carries, read from its upload: the element's received-file row, opening the text. */
-const StoredPastedText: FC<{ uploadId: string; name: string }> = ({
-  uploadId,
-  name,
-}) => {
-  const text = useUploadText(uploadId)
-  const [open, setOpen] = useState(false)
-  return (
-    <>
-      <MessageAttachments
-        className="mt-2 whitespace-normal"
-        attachments={[
-          {
-            id: uploadId,
-            name,
-            size: text === undefined ? '' : textSize(text),
-            kind: 'document',
-          },
-        ]}
-        onOpen={() => setOpen(true)}
-      />
-      <PastedTextDialog
-        name={name}
-        text={text}
-        open={open}
-        onOpenChange={setOpen}
-      />
-    </>
-  )
-}
-
 const AttachmentPart: DataMessagePartComponent = ({ data }) => {
   const part = object(data)
   const uploadId = str(part.uploadId)
-  const name = str(part.name)
-  if (
-    uploadId &&
-    name &&
-    !ATTACHMENT_STATES[str(part.state) ?? 'ready'] &&
-    isPastedText(name, str(part.mediaType))
-  )
-    return <StoredPastedText uploadId={uploadId} name={name} />
-  if (uploadId && str(part.mediaType)?.startsWith('image/'))
+  if (uploadId && !ATTACHMENT_STATES[str(part.state) ?? 'ready'])
     return (
-      <NoteImage
-        src={uploadContentPath(uploadId)}
-        alt={str(part.name) ?? 'Attachment'}
-        className="me-1.5 mt-2 inline-block max-h-40 rounded-md border border-separator"
+      <StoredAttachment
+        uploadId={uploadId}
+        name={str(part.name) ?? 'Attachment'}
+        mediaType={str(part.mediaType)}
       />
     )
   return (

@@ -1,4 +1,4 @@
-// SOURCING: coss ui Menu over Base UI Menu (the WAI-ARIA menu-button pattern: arrow keys, typeahead, Escape back to the button; MenuCheckboxItem for the modes, so opening the menu changes nothing until an item is chosen; MenuSub, MenuSubTrigger and MenuSubPopup over Base UI's SubmenuRoot for Connectors and Skills, which open on hover or the right arrow; Manage tools is a link to the connections settings); Skills lists Plan and then the skills Theorem serves (lib/theorem/catalog, Theorem's native skill registry), and a pick writes assistant-ui's defaultDirectiveFormatter `:skill[title]{name=id}` into the draft through the editor's insertInComposer, as a / tool pick writes `:tool[name]`, so the runtime sends its id in the turn's structured skill selection and Theorem loads it before execution, ui/tooltip over Base UI Tooltip; the Web, Plan and Code mode state from ./composer-tools and the connections roster from ./composer-connections, which opens anchored to this button; Connectors lists the roster's MCP servers as switches over lib/theorem/tool-selection; Code mode opens the workbench docked beside or under the conversation through the shell store (components/workbench); MenuCheckboxItem's switch variant keeps every row on one start edge; Base UI Toggle for the marks that say a mode is on
+// SOURCING: coss ui Menu over Base UI Menu (the WAI-ARIA menu-button pattern: arrow keys, typeahead, Escape back to the button; MenuCheckboxItem for the modes, so opening the menu changes nothing until an item is chosen; MenuSub, MenuSubTrigger and MenuSubPopup over Base UI's SubmenuRoot for Connectors and Skills, which open on hover or the right arrow; Manage tools is a link to the connections settings); Skills lists Plan and then the skills Theorem serves (lib/theorem/catalog, Theorem's native skill registry), and a pick writes assistant-ui's defaultDirectiveFormatter `:skill[title]{name=id}` into the draft through the editor's insertInComposer, as a / tool pick writes `:tool[name]`, so the runtime sends its id in the turn's structured skill selection and Theorem loads it before execution; the Web, Plan and Code mode state from ./composer-tools and the connections roster from ./composer-connections, which opens anchored to this button; Connectors lists the roster's MCP servers as switches over lib/theorem/tool-selection; Code mode opens the workbench docked beside or under the conversation through the shell store (components/workbench); MenuCheckboxItem's switch variant keeps every row on one start edge; Base UI Toggle for the marks that say a mode is on
 import { defaultDirectiveFormatter, useAuiState } from '@assistant-ui/react'
 import { Toggle } from '@base-ui/react/toggle'
 import { useRef, useState } from 'react'
@@ -10,7 +10,6 @@ import {
 } from '@/components/chat/composer-connections'
 import { insertInComposer } from '@/components/chat/composer-editor'
 import {
-  COMPOSER_TOOLTIP_DELAY,
   useCodeMode,
   usePlanning,
   useWebSearch,
@@ -33,12 +32,6 @@ import {
 import { MenuGlass } from '@/components/glass/menu-glass'
 import { Icon } from '@/components/icons'
 import { useShell } from '@/components/shell/shell-state'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { skillOrigin, useCatalogEntries } from '@/lib/theorem/catalog'
 import type { SkillEntry } from '@/lib/theorem/catalog'
 import { useConnectionTools } from '@/lib/theorem/connections'
@@ -169,25 +162,13 @@ export function ComposerPlus() {
       {/* Its popups are panes of the composer's glass (glass/menu-glass). */}
       <MenuGlass surface="composer">
         <Menu onOpenChangeComplete={afterClose}>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger
-                delay={COMPOSER_TOOLTIP_DELAY}
-                render={
-                  <MenuTrigger
-                    ref={anchor}
-                    aria-label="More options"
-                    className="flex size-8 items-center justify-center rounded-md text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
-                  />
-                }
-              >
-                <Icon.Add className="size-4" />
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                Web search, connectors, skills and code mode
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <MenuTrigger
+            ref={anchor}
+            aria-label="More options"
+            className="flex size-8 items-center justify-center rounded-md text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
+          >
+            <Icon.Add className="size-4" />
+          </MenuTrigger>
           <MenuPopup
             side="top"
             align="start"
@@ -392,7 +373,7 @@ export function ComposerPlus() {
 /**
  * A mode that is on shows as its mark beside the + button, in the accent with
  * nothing around it; pressing the mark turns the mode off (owner, 2026-11-17).
- * Its name is in the tooltip and the label.
+ * Its name is in the label.
  */
 function ModeChip({
   label,
@@ -406,24 +387,14 @@ function ModeChip({
   off: () => void
 }) {
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger
-          delay={COMPOSER_TOOLTIP_DELAY}
-          render={
-            <Toggle
-              pressed
-              onPressedChange={off}
-              aria-label={`${label} is on. Turn off ${name}`}
-              data-composer-chip={label.toLowerCase()}
-              className="flex size-8 items-center justify-center rounded-md outline-none focus-visible:outline-2 focus-visible:outline-focus"
-            />
-          }
-        >
-          {icon}
-        </TooltipTrigger>
-        <TooltipContent side="top">{`${label} is on. Press to turn it off`}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Toggle
+      pressed
+      onPressedChange={off}
+      aria-label={`${label} is on. Turn off ${name}`}
+      data-composer-chip={label.toLowerCase()}
+      className="flex size-8 items-center justify-center rounded-md outline-none focus-visible:outline-2 focus-visible:outline-focus"
+    >
+      {icon}
+    </Toggle>
   )
 }

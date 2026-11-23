@@ -75,6 +75,11 @@ export const CONTROLS = [
     name: 'fileText',
     source: 'control/source/streamline-common-file-text.png',
   },
+  // An attached file the composer has no picture of yet.
+  {
+    name: 'officeFileText',
+    source: 'control/source/streamline-office-file-text.png',
+  },
   { name: 'fileCode', source: 'control/source/streamline-file-code.png' },
   {
     name: 'fileCheck',
