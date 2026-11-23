@@ -602,16 +602,19 @@ function Editor({
         aui.composer.addAttachment(file).catch(() => undefined)
       return
     }
-    // A long paste goes in as an attachment, unless it is pasted into a code
-    // block, which takes what is pasted into it as code.
+    // A long paste into the message goes in as an attachment. A field of its
+    // own (a link's address, a code block's language) and a code block, which
+    // takes what is pasted into it as code, keep their paste.
     const view = viewRef.current
     const text = event.clipboardData.getData('text/plain')
     const composer = aui.composer.getState()
+    const target = event.target as Element
     if (
       !view ||
       isDisabled ||
       !isLongPaste(text) ||
-      (event.target as Element).closest('.cm-content') ||
+      !view.dom.contains(target) ||
+      target.closest('input, textarea, select, .cm-content') ||
       !takesPastedText(composer.attachmentAccept)
     )
       return

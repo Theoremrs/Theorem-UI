@@ -76,10 +76,22 @@ function Sent({ name, mediaType }: { name: string; mediaType: string }) {
   )
 }
 
-const answer = (body: BodyInit, type: string): Record<string, FakeAnswer> => ({
+/** An upload as Theorem answers it, with its length, as the server sends it. */
+const content = (body: string | Uint8Array<ArrayBuffer>, type: string) =>
+  new Response(body, {
+    headers: {
+      'content-type': type,
+      'content-length': String(new Blob([body]).size),
+    },
+  })
+
+const answer = (
+  body: string | Uint8Array<ArrayBuffer>,
+  type: string,
+): Record<string, FakeAnswer> => ({
   'GET /api/chat/v1/uploads/:uploadId/content': ({ uploadId }) =>
     uploadId?.startsWith('upload-')
-      ? new Response(body, { headers: { 'content-type': type } })
+      ? content(body, type)
       : new Response(null, { status: 404 }),
 })
 
@@ -133,4 +145,74 @@ test('a sent image opens as an image, and a Word file stands without a preview',
   const doc = await tile(word.container)
   await waitFor(() => doc.textContent.includes('DOCX · 2 bytes'))
   expect(doc.getAttribute('role')).toBe('group')
+})
+
+test('a long sent text draws its card from its beginning, and is read whole only once opened', async () => {
+  const long = Array.from(
+    { length: 2000 },
+    (_, row) => `row ${row + 1}, a line of a long log`,
+  ).join('\n')
+  let reads = 0
+  restore = installFakeTheorem({
+    'GET /api/chat/v1/uploads/:uploadId/content': () => {
+      reads += 1
+      // In parts, as the network brings it.
+      const bytes = new TextEncoder().encode(long)
+      let at = 0
+      const body = new ReadableStream<Uint8Array>({
+        pull(stream) {
+          if (at >= bytes.length) return stream.close()
+          stream.enqueue(bytes.slice(at, (at += 4096)))
+        },
+      })
+      return new Response(body, {
+        headers: {
+          'content-type': 'text/plain',
+          'content-length': String(bytes.length),
+        },
+      })
+    },
+  })
+  const { container } = await render(
+    <Sent name="server.log" mediaType="text/plain" />,
+  )
+  const card = await tile(container)
+  // Its size from the answer's length; its lines are not counted from a part.
+  await waitFor(() => card.textContent.includes('KB'))
+  expect(card.textContent).not.toContain('lines')
+  expect(reads).toBe(1)
+  await click(card)
+  const body = await waitFor(() =>
+    document.querySelector('.aui-pasted-text-body')?.textContent === long
+      ? document.querySelector('.aui-pasted-text-body')
+      : null,
+  )
+  expect(body.textContent).toBe(long)
+  expect(reads).toBe(2)
+  await waitFor(() => card.textContent.includes('2,000 lines'))
+})
+
+test('a sent file that cannot be read says so where it would be, and can be read again', async () => {
+  let up = false
+  restore = installFakeTheorem({
+    'GET /api/chat/v1/uploads/:uploadId/content': () =>
+      up ? content(PASTED, 'text/plain') : new Response(null, { status: 503 }),
+  })
+  const { container } = await render(
+    <Sent name="notes.txt" mediaType="text/plain" />,
+  )
+  const card = await tile(container)
+  await waitFor(() => card.textContent.includes('The file answered 503'))
+  await click(card)
+  const alert = await waitFor(() =>
+    document.querySelector('.aui-pasted-text-dialog [role="alert"]'),
+  )
+  expect(alert.textContent).toContain('The file answered 503')
+  up = true
+  await click(buttonNamed(alert, 'Try again')!)
+  await waitFor(
+    () =>
+      document.querySelector('.aui-pasted-text-body')?.textContent === PASTED,
+  )
+  expect(card.textContent).toContain('TXT · 90 lines')
 })

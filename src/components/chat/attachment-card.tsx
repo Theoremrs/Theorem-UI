@@ -18,9 +18,11 @@ export const AttachmentFace: FC<{
   file: Blob | undefined
   /** The file's words, once read; the facts count its lines. */
   text?: string | undefined
+  /** The whole file's size, where `file` is only its beginning. */
+  size?: number | undefined
   /** Said in place of the facts, such as why an upload failed. */
   status?: string | undefined
-}> = ({ name, type, file, text, status }) => {
+}> = ({ name, type, file, text, size, status }) => {
   const picture = useFilePicture(file, name, type)
   return (
     <span className="aui-attachment-face flex size-full flex-col">
@@ -45,7 +47,7 @@ export const AttachmentFace: FC<{
               : 'text-ink-muted truncate text-[0.6875rem]'
           }
         >
-          {status ?? factLine(name, type, file, text)}
+          {status ?? factLine(name, type, file, text, size ?? file?.size)}
         </span>
       </span>
     </span>

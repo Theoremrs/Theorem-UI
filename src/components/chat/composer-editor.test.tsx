@@ -195,9 +195,7 @@ test('the input has a name, a role and its placeholder for assistive technology'
   expect(editor.getAttribute('role')).toBe('textbox')
   expect(editor.getAttribute('aria-multiline')).toBe('true')
   expect(editor.getAttribute('contenteditable')).toBe('true')
-  expect(editor.getAttribute('aria-placeholder')).toBe(
-    'Write a message…',
-  )
+  expect(editor.getAttribute('aria-placeholder')).toBe('Write a message…')
   // Crepe's block handle, slash menu and top bar are switched off, not hidden.
   expect(container.querySelector('.milkdown-block-handle')).toBeNull()
   expect(container.querySelector('.milkdown-slash-menu')).toBeNull()
@@ -291,6 +289,18 @@ test('a long pasted text becomes an attachment, and the draft stays as it was', 
   expect(composer.getState().attachments[1]!.name).toBe('Pasted text 2.txt')
 })
 
+test("a long paste into a field of the editor's own, such as a link's address, stays in that field", async () => {
+  const { container } = await render(<Harness text="" />)
+  const editor = await editorOf(container)
+  // Where the editor's link tooltip puts its address field: beside the text.
+  const field = document.createElement('input')
+  editor.parentElement!.append(field)
+  const paste = await pasteText(field, LONG)
+  expect(paste.defaultPrevented).toBe(false)
+  expect(composer.getState().attachments).toHaveLength(0)
+  field.remove()
+})
+
 test('a short pasted text goes in the draft', async () => {
   const { container } = await render(<Harness text="" />)
   const editor = await editorOf(container)
@@ -321,7 +331,9 @@ test('Paste inline puts a pasted text back in the draft and drops its attachment
     document.querySelector('.aui-pasted-text-body'),
   )
   expect(body.textContent).toBe(LONG)
-  expect(document.querySelector('.aui-pasted-text-dialog')?.textContent).toContain(
+  expect(
+    document.querySelector('.aui-pasted-text-dialog')?.textContent,
+  ).toContain(
     `${PASTED_TEXT_MIN_LINES} lines · ${LONG.length.toLocaleString()} characters`,
   )
   await click(await waitFor(() => buttonNamed(document, 'Paste inline')))
@@ -361,30 +373,35 @@ test('Ctrl+Enter in an empty editor reaches the form, and a writer can clear the
   expect(composer.getState().text).toBe('')
 })
 
-test.each([true, false])('Shift+Enter inserts a break with isRunning=%s', async (isRunning) => {
-  const sent: AppendMessage[] = []
-  const { container } = await render(
-    <Harness text="Keep writing" sent={sent} isRunning={isRunning} bare />,
-  )
-  const editor = await editorOf(container)
-  await waitFor(() => editor.textContent === 'Keep writing')
-  let submits = 0
-  editor.closest('form')!.addEventListener('submit', () => submits++)
-  await act(async () => {
-    editor.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'Enter',
-        shiftKey: true,
-        bubbles: true,
-        cancelable: true,
-      }),
+test.each([true, false])(
+  'Shift+Enter inserts a break with isRunning=%s',
+  async (isRunning) => {
+    const sent: AppendMessage[] = []
+    const { container } = await render(
+      <Harness text="Keep writing" sent={sent} isRunning={isRunning} bare />,
     )
-  })
-  expect(submits).toBe(0)
-  expect(sent).toHaveLength(0)
-  expect(editor.querySelectorAll('br:not(.ProseMirror-trailingBreak)')).toHaveLength(1)
-  expect(composer.getState().text).toContain('Keep writing')
-})
+    const editor = await editorOf(container)
+    await waitFor(() => editor.textContent === 'Keep writing')
+    let submits = 0
+    editor.closest('form')!.addEventListener('submit', () => submits++)
+    await act(async () => {
+      editor.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      )
+    })
+    expect(submits).toBe(0)
+    expect(sent).toHaveLength(0)
+    expect(
+      editor.querySelectorAll('br:not(.ProseMirror-trailingBreak)'),
+    ).toHaveLength(1)
+    expect(composer.getState().text).toContain('Keep writing')
+  },
+)
 
 for (const modifiers of [
   { ctrlKey: true },

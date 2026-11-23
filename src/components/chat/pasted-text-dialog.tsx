@@ -1,6 +1,6 @@
 // SOURCING: the Base UI dialog (components/ui/dialog) that assistant-ui's attachment element (elements/attachment.aui) previews with; this is that preview's text form, for a pasted text or any file of words, opened from the element's tile in the composer and in a sent message (chat/stored-attachment).
 import { useEffect, useRef, useState } from 'react'
-import type { FC, ReactElement } from 'react'
+import type { FC, ReactElement, ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -49,7 +49,9 @@ export const PastedTextDialog: FC<{
    * the element that takes the cursor once the dialog has let go of the page.
    */
   onPasteInline?: ((text: string) => HTMLElement | null) | undefined
-}> = ({ name, text, trigger, open, onOpenChange, onPasteInline }) => {
+  /** Shown in place of the text until it has been read, such as a failed read. */
+  status?: ReactNode
+}> = ({ name, text, trigger, open, onOpenChange, onPasteInline, status }) => {
   // Set while the dialog closes for the text to go back in the draft.
   const inlining = useRef(false)
   // The draft's editor once the text is back in it, focused as the dialog unmounts.
@@ -79,7 +81,11 @@ export const PastedTextDialog: FC<{
         {text !== undefined && (
           <DialogDescription>{textSize(text)}</DialogDescription>
         )}
-        <pre className="aui-pasted-text-body bg-muted text-ink min-h-0 flex-1 overflow-auto rounded-md p-3 font-mono text-xs leading-5 wrap-break-word whitespace-pre-wrap">
+        {text === undefined && status}
+        <pre
+          hidden={text === undefined && status !== undefined}
+          className="aui-pasted-text-body bg-muted text-ink min-h-0 flex-1 overflow-auto rounded-md p-3 font-mono text-xs leading-5 wrap-break-word whitespace-pre-wrap"
+        >
           {text?.slice(0, SHOWN_CHARS)}
           {text !== undefined && text.length > SHOWN_CHARS && (
             <span className="text-ink-faint">

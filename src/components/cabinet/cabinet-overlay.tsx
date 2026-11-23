@@ -105,7 +105,10 @@ export function PreviewCanvas({
     }
     if (state.mode === 'pixel') {
       const { width: w, height: h } = state.meta
-      const scale = Math.max(1, Math.floor(Math.min(W / w, H / h)))
+      // Whole pixels where the drawing fits; a drawing wider than the box
+      // (a small card at 1x) shrinks to fit rather than being cut off.
+      const fit = Math.min(W / w, H / h)
+      const scale = fit >= 1 ? Math.floor(fit) : fit
       const art = new ImageData(w, h)
       const rgb = roles.illustration.map((c) => [
         parseInt(c.slice(1, 3), 16),
@@ -123,8 +126,8 @@ export function PreviewCanvas({
         tile,
         Math.floor((W - w * scale) / 2),
         Math.floor((H - h * scale) / 2),
-        w * scale,
-        h * scale,
+        Math.round(w * scale),
+        Math.round(h * scale),
       )
     } else if ('image' in state) {
       const { image } = state

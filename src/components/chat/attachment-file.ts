@@ -19,16 +19,20 @@ export function byteSize(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
-/** The card's fact line: format, then lines for words or bytes otherwise. */
+/**
+ * The card's fact line: format, then lines for words or bytes otherwise.
+ * `size` is the whole file's, where `file` is only its beginning.
+ */
 export function factLine(
   name: string,
   type: string,
   file: Blob | undefined,
   text: string | undefined,
+  size: number | undefined = file?.size,
 ): string {
   const parts = [formatLabel(name, type)]
   if (text !== undefined) parts.push(count(lineCount(text), 'line'))
-  else if (file) parts.push(byteSize(file.size))
+  else if (size !== undefined) parts.push(byteSize(size))
   return parts.join(' · ')
 }
 
@@ -45,9 +49,10 @@ async function pdfText(file: Blob): Promise<string> {
   const task = pdfjs.getDocument({
     data: new Uint8Array(await file.arrayBuffer()),
   })
-  const doc = await task.promise
   let text = ''
   try {
+    // Inside the try, so a file pdf.js cannot open still has its task torn down.
+    const doc = await task.promise
     for (let n = 1; n <= Math.min(doc.numPages, 3); n++) {
       const content = await (await doc.getPage(n)).getTextContent()
       for (const item of content.items)
@@ -60,6 +65,9 @@ async function pdfText(file: Blob): Promise<string> {
   }
   return text.slice(0, TEXT_LIMIT)
 }
+
+/** How long a video's still waits for the video to seek. */
+const SEEK_WAIT_MS = 5_000
 
 /** A still from a video, a tenth of the way in, as an image the renderer reads. */
 async function videoFrame(file: Blob): Promise<Blob> {
@@ -75,8 +83,20 @@ async function videoFrame(file: Blob): Promise<Blob> {
       video.onerror = () => reject(new Error('unsupported: video'))
     })
     await new Promise<void>((resolve, reject) => {
-      video.onseeked = () => resolve()
-      video.onerror = () => reject(new Error('unsupported: video'))
+      // A video with nothing seekable may never say it has seeked; give up
+      // after a while so the video and its address are let go.
+      const timer = setTimeout(
+        () => reject(new Error('failed: seek')),
+        SEEK_WAIT_MS,
+      )
+      video.onseeked = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      video.onerror = () => {
+        clearTimeout(timer)
+        reject(new Error('unsupported: video'))
+      }
       video.currentTime = Math.min(1, (video.duration || 0) / 10)
     })
     const canvas = document.createElement('canvas')

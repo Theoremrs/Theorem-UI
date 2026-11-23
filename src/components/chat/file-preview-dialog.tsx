@@ -1,6 +1,6 @@
 // SOURCING: the Base UI dialog (components/ui/dialog) that assistant-ui's attachment element previews with; the workspace PDF viewer (handlers/pdf PdfAttachment, react-pdf), loaded with the first PDF opened; the platform's video and audio elements. An attachment's preview when it is neither an image nor words.
 import { lazy, Suspense } from 'react'
-import type { FC, ReactElement } from 'react'
+import type { FC, ReactElement, ReactNode } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -50,21 +50,36 @@ export const FilePreviewDialog: FC<{
   name: string
   type: string
   kind: FileKind
-  file: Blob
+  /** The file, once it is here. */
+  file: Blob | undefined
+  /** The whole file's size, known before the file is. */
+  size?: number | undefined
+  /** Shown in place of the file until it is here, such as a failed read. */
+  status?: ReactNode
   /** The control that opens it; without one, `open` and `onOpenChange` do. */
   trigger?: ReactElement
   open?: boolean
   onOpenChange?: (open: boolean) => void
-}> = ({ name, type, kind, file, trigger, open, onOpenChange }) => (
+}> = ({
+  name,
+  type,
+  kind,
+  file,
+  size,
+  status,
+  trigger,
+  open,
+  onOpenChange,
+}) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
     {trigger && <DialogTrigger nativeButton={false} render={trigger} />}
     <DialogContent className="aui-file-preview-dialog flex max-h-[90dvh] flex-col sm:max-w-3xl">
       <DialogTitle className="truncate pe-8">{name}</DialogTitle>
       <DialogDescription>
-        {factLine(name, type, file, undefined)}
+        {factLine(name, type, file, undefined, size ?? file?.size)}
       </DialogDescription>
       {/* Mounted only while open, so a closed dialog holds no player. */}
-      <Media kind={kind} file={file} />
+      {file ? <Media kind={kind} file={file} /> : status}
     </DialogContent>
   </Dialog>
 )
