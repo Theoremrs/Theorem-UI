@@ -9,7 +9,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { converter, wcagContrast } from 'culori'
-import { modeTokens, modes } from './palettes'
+import { modeEditor, modeTokens, modes } from './palettes'
 import { workspaceOf } from '../src/components/terminal/terminal-theme'
 import { terminalRoles } from '../src/components/terminal/terminal-roles'
 import {
@@ -57,7 +57,10 @@ const themes: Record<string, unknown> = {}
 
 for (const [name, selector] of THEMES) {
   const mode = modes.find((m) => m.selector === selector)!
-  const roles = terminalRoles(workspaceOf((token) => modeTokens(mode)[token]!))
+  const roles = terminalRoles(
+    workspaceOf((token) => modeTokens(mode)[token]!),
+    modeEditor(mode),
+  )
   const ladder = terminalLadder(roles)
   const laddered = ladderPalette(roles)
   const { surfaces } = ladder
@@ -95,22 +98,20 @@ for (const [name, selector] of THEMES) {
     selected: surfaces.selected,
     diffAddition: surfaces.diffAddition,
     diffDeletion: surfaces.diffDeletion,
-    approvalRow: surfaces.approvalRow,
-    failureRow: surfaces.failureRow,
   }
   // Where each text role is drawn: body and primary everywhere; secondary on the three ordinary grounds and on the
   // selected band; disabled on the grounds a time or a line number sits on, and on the band; registers and brand
-  // on the grounds and the band; a diff mark on its own row; a waiting or failed tool call's glyph and name on its row.
+  // on the grounds and the band; a diff mark on its own row.
   const roleSurfaces: Record<string, string[]> = {
-    primary: ['canvas', 'panel', 'raised', 'selected', 'approvalRow', 'failureRow'],
+    primary: ['canvas', 'panel', 'raised', 'selected'],
     body: ['canvas', 'panel', 'raised', 'selected', 'diffAddition', 'diffDeletion'],
     secondary: ['canvas', 'panel', 'raised', 'selected'],
     disabled: ['canvas', 'panel', 'raised', 'selected'],
     brand: ['canvas', 'panel', 'raised', 'selected'],
     informational: ['canvas', 'panel', 'raised', 'selected'],
     success: ['canvas', 'panel', 'raised', 'selected', 'diffAddition'],
-    approval: ['canvas', 'panel', 'raised', 'selected', 'approvalRow'],
-    failure: ['canvas', 'panel', 'raised', 'selected', 'diffDeletion', 'failureRow'],
+    approval: ['canvas', 'panel', 'raised', 'selected'],
+    failure: ['canvas', 'panel', 'raised', 'selected', 'diffDeletion'],
   }
   const textColours: Record<string, string> = {
     primary: ladder.text.primary,
@@ -156,10 +157,6 @@ for (const [name, selector] of THEMES) {
   themes[name] = {
     selector,
     surfaces: steps,
-    decisionRows: {
-      approval: surfaces.approvalRow,
-      failure: surfaces.failureRow,
-    },
     diffRows: {
       addition: surfaces.diffAddition,
       deletion: surfaces.diffDeletion,
@@ -186,10 +183,6 @@ for (const [name, selector] of THEMES) {
         [
           'canvas',
           'selectedRow',
-          'completedRow',
-          'runningRow',
-          'pendingRow',
-          'failedRow',
           'completedInk',
           'info',
           'textDisabled',

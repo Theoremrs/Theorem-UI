@@ -1640,11 +1640,7 @@ mod tests {
         // The marks of a diff's lines are the code colours Theo drew them in.
         assert_eq!(theme.diff_added_mark, Style::new().fg(p.syntax_tag));
         assert_eq!(theme.diff_removed_mark, Style::new().fg(p.syntax_keyword));
-        // The transcript's roles resolve to the raised ground and the bright name it drew.
-        assert_eq!(p.completed_row(), p.raised);
-        assert_eq!(p.running_row(), p.raised);
-        assert_eq!(p.pending_row(), p.raised);
-        assert_eq!(p.failed_row(), p.raised);
+        // The transcript's roles resolve to the bright name it drew.
         assert_eq!(p.completed_ink(), p.bright);
         assert_eq!(p.text_disabled(), p.muted);
         assert_eq!(p.diff_added_mark(), p.syntax_tag);
@@ -1654,7 +1650,7 @@ mod tests {
     #[test]
     fn a_page_that_sends_the_semantic_roles_changes_them_and_nothing_else() {
         let sent: Palette = serde_json::from_str(
-            r##"{"canvas":"#101820","selectedRow":"#34445a","completedRow":"#101820",
+            r##"{"canvas":"#101820","selectedRow":"#34445a",
                  "textDisabled":"#7a828a","info":"#58a6ff"}"##,
         )
         .expect("the roles parse beside the legacy keys");
@@ -1667,8 +1663,6 @@ mod tests {
             theme.selected_region,
             Style::new().bg(Color::Rgb(0x34, 0x44, 0x5a))
         );
-        assert_eq!(sent.completed_row(), Color::Rgb(0x10, 0x18, 0x20));
-        assert_eq!(sent.running_row(), base.raised);
         assert_eq!(theme.text_disabled.fg, Some(Color::Rgb(0x7a, 0x82, 0x8a)));
         assert_eq!(theme.gutter, theme.text_disabled);
         assert_eq!(theme.muted, theme_of(&base).muted);

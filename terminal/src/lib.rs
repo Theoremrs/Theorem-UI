@@ -153,18 +153,6 @@ struct Palette {
     /// The band behind a selected row; none draws no band.
     #[serde(deserialize_with = "optional_colour")]
     selected_row: Option<Color>,
-    /// A completed tool call's row ground.
-    #[serde(deserialize_with = "optional_colour")]
-    completed_row: Option<Color>,
-    /// A running operation's block.
-    #[serde(deserialize_with = "optional_colour")]
-    running_row: Option<Color>,
-    /// A tool call that waits on the person's decision.
-    #[serde(deserialize_with = "optional_colour")]
-    pending_row: Option<Color>,
-    /// A tool call that failed.
-    #[serde(deserialize_with = "optional_colour")]
-    failed_row: Option<Color>,
     /// The name of a completed tool call.
     #[serde(deserialize_with = "optional_colour")]
     completed_ink: Option<Color>,
@@ -185,18 +173,6 @@ impl Palette {
     /// Where Theo's transcript and composer sit: the panels' own ground unless the page sends a canvas.
     fn canvas(&self) -> Color {
         self.canvas.unwrap_or(self.bg)
-    }
-    fn completed_row(&self) -> Color {
-        self.completed_row.unwrap_or(self.raised)
-    }
-    fn running_row(&self) -> Color {
-        self.running_row.unwrap_or(self.raised)
-    }
-    fn pending_row(&self) -> Color {
-        self.pending_row.unwrap_or(self.raised)
-    }
-    fn failed_row(&self) -> Color {
-        self.failed_row.unwrap_or(self.raised)
     }
     fn completed_ink(&self) -> Color {
         self.completed_ink.unwrap_or(self.bright)
@@ -268,10 +244,6 @@ const SLATE: Palette = Palette {
     syntax_comment: Color::Rgb(0x8e, 0x98, 0xa2), // #8b949e, lifted to read on the raised slate
     canvas: None,
     selected_row: None,
-    completed_row: None,
-    running_row: None,
-    pending_row: None,
-    failed_row: None,
     completed_ink: None,
     info: None,
     text_disabled: None,
@@ -352,8 +324,9 @@ impl StyleSheet for Markdown {
             _ => Style::new().fg(palette().heading),
         }
     }
+    // Inline code is told by its colour alone, on no band (owner, 2026-11-22).
     fn code(&self) -> Style {
-        Style::new().fg(palette().sage).bg(palette().raised)
+        Style::new().fg(palette().sage)
     }
     fn link(&self) -> Style {
         Style::new().fg(palette().link).underlined()
@@ -911,15 +884,10 @@ impl Built {
         }
     }
 
-    /// A code block with no fences, on the raised surface.
+    /// A code block with no fences: its syntax colours on the canvas, indented, on no
+    /// band; only a diff's rows are drawn on a ground (owner, 2026-11-22).
     fn code(&mut self, code: &[Vec<Token>]) {
-        let raised = palette().raised;
-        self.filled(
-            blocks::code_block(code)
-                .into_iter()
-                .map(|line| (line, Some(raised)))
-                .collect(),
-        );
+        self.lines.extend(blocks::code_block(code));
     }
 }
 
@@ -1304,9 +1272,8 @@ impl Session {
                 )
             });
         let p = palette();
-        // The person's own words sit on a ground of their own: the panel's, a step above the
-        // canvas the conversation is on, or the raised surface where the two are one.
-        let own_ground = if p.canvas() != p.bg { p.bg } else { p.raised };
+        // The person's own words are told by the accent prompt and their bright ink, on the
+        // canvas with no band of their own (owner, 2026-11-22).
         for (index, message) in self.snapshot.messages.iter().enumerate() {
             starts.push(out.lines.len());
             if message.role == "user" {
@@ -1326,24 +1293,18 @@ impl Session {
                     } else {
                         Span::raw(INDENT)
                     };
-                    rows.push((
-                        Line::from(vec![
-                            lead,
-                            Span::styled(row.to_owned(), Style::new().fg(p.bright)),
-                        ]),
-                        Some(own_ground),
-                    ));
+                    rows.push(Line::from(vec![
+                        lead,
+                        Span::styled(row.to_owned(), Style::new().fg(p.bright)),
+                    ]));
                 }
                 for name in &message.attachments {
-                    rows.push((
-                        Line::from(vec![
-                            Span::raw(INDENT),
-                            Span::styled(format!("@{name}"), Style::new().fg(p.link)),
-                        ]),
-                        Some(own_ground),
-                    ));
+                    rows.push(Line::from(vec![
+                        Span::raw(INDENT),
+                        Span::styled(format!("@{name}"), Style::new().fg(p.link)),
+                    ]));
                 }
-                out.filled(rows);
+                out.lines.extend(rows);
                 out.lines.push(Line::default());
                 continue;
             }
@@ -2307,17 +2268,17 @@ fn tool_row_extra(
     width: u16,
     extra: Vec<Span<'static>>,
 ) -> (Line<'static>, (u16, u16)) {
-    // A row's state is a register (the glyph) on a ground (the row): a finished or
-    // interrupted call sits on the completed ground, one that waits on a decision on the
-    // pending ground, one that failed on the failed ground, and a running one is the
-    // accent on the running block.
+    // A row's state is its text's colour, on no band of its own: only a diff is drawn
+    // on a ground (owner, 2026-11-22). The glyph is the register; a finished call's name
+    // recedes, and one that failed, waits on a decision or was interrupted takes its
+    // register in its name as well.
     let p = palette();
-    let (glyph, color, ground, name_ink) = match status {
-        "complete" => ("✓", p.success, p.completed_row(), p.completed_ink()),
-        "error" => ("✗", p.error, p.failed_row(), p.bright),
-        "approval" => ("?", p.approval, p.pending_row(), p.bright),
-        "interrupted" => ("⊘", p.warning, p.completed_row(), p.bright),
-        _ => ("◌", p.accent, p.running_row(), p.bright),
+    let (glyph, color, name_ink) = match status {
+        "complete" => ("✓", p.success, p.completed_ink()),
+        "error" => ("✗", p.error, p.error),
+        "approval" => ("?", p.approval, p.approval),
+        "interrupted" => ("⊘", p.warning, p.warning),
+        _ => ("◌", p.accent, p.bright),
     };
     let lead = format!("{INDENT}{glyph} ");
     let extra_cols: usize = extra.iter().map(|span| span.content.chars().count()).sum();
@@ -2353,7 +2314,7 @@ fn tool_row_extra(
         u16::try_from(from).unwrap_or(u16::MAX),
         u16::try_from(to).unwrap_or(u16::MAX),
     );
-    (Line::from(spans).style(Style::new().bg(ground)), cols)
+    (Line::from(spans), cols)
 }
 
 /// The terminal's tabs, one session each, and what spans them: focus, the
