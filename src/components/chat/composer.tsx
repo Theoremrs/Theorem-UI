@@ -16,7 +16,6 @@ import {
   ComposerAttachments,
 } from '@/components/assistant-ui/elements/attachment.aui'
 import { ComposerVoice } from '@/components/assistant-ui/elements/composer-voice'
-import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { ComposerQuotePreview } from '@/components/assistant-ui/elements/quote.aui'
 import { ComposerContextUsage } from '@/components/chat/context-usage'
 import { ComposerEditor } from '@/components/chat/composer-editor'
@@ -26,10 +25,7 @@ import {
   useComposerReferences,
 } from '@/components/chat/composer-references'
 import { ComposerPlus } from '@/components/chat/composer-plus'
-import {
-  COMPOSER_TOOLTIP_DELAY,
-  ComposerToolTrigger,
-} from '@/components/chat/composer-tools'
+import { ComposerToolTrigger } from '@/components/chat/composer-tools'
 import { ModelPicker } from '@/components/chat/model-picker'
 import {
   RunInputStatus,
@@ -262,10 +258,7 @@ export const ComposerSettings: FC = () => (
       <AuiIf condition={(s) => s.composer.dictation == null}>
         <ComposerPrimitive.Dictate
           render={
-            <TooltipIconButton
-              tooltip="Voice input"
-              delay={COMPOSER_TOOLTIP_DELAY}
-              side="top"
+            <Button
               type="button"
               variant="ghost"
               size="icon"
@@ -280,10 +273,7 @@ export const ComposerSettings: FC = () => (
       <AuiIf condition={(s) => s.composer.dictation != null}>
         <ComposerPrimitive.StopDictation
           render={
-            <TooltipIconButton
-              tooltip="Stop dictation"
-              delay={COMPOSER_TOOLTIP_DELAY}
-              side="top"
+            <Button
               type="button"
               variant="ghost"
               size="icon"
@@ -333,16 +323,7 @@ export const ComposerPrimaryActions: FC<{
         }
       >
         <Magnet>
-          <TooltipIconButton
-            tooltip={
-              review
-                ? 'Send feedback'
-                : running
-                  ? 'Send to current response (Enter)'
-                  : 'Enter to send · Shift+Enter for a new line'
-            }
-            delay={COMPOSER_TOOLTIP_DELAY}
-            side="top"
+          <Button
             type="submit"
             disabled={sendDisabled}
             variant="default"
@@ -362,17 +343,14 @@ export const ComposerPrimaryActions: FC<{
             aria-keyshortcuts="Enter Control+Enter Meta+Enter"
           >
             <Icon.Send className="aui-composer-send-icon size-5" />
-          </TooltipIconButton>
+          </Button>
         </Magnet>
       </AuiIf>
       <AuiIf condition={shouldShowComposerResume}>
         <Magnet>
           <ComposerPrimitive.Resume
             render={
-              <TooltipIconButton
-                tooltip="Resume generating"
-                delay={COMPOSER_TOOLTIP_DELAY}
-                side="top"
+              <Button
                 type="button"
                 variant="default"
                 size="icon"

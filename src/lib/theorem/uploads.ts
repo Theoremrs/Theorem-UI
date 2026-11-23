@@ -20,10 +20,59 @@ export const isUploadPath = (url: string) =>
 export const MEDIA_ACCEPT =
   'image/png,image/jpeg,image/webp,image/gif,application/pdf,audio/*,video/mp4,video/webm,video/quicktime'
 
-export async function readUpload(path: string): Promise<Blob> {
-  const response = await theorem().fetch(path)
+export async function readUpload(
+  path: string,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const response = await theorem().fetch(path, { signal })
   if (!response.ok) throw new Error(`The file answered ${response.status}`)
   return response.blob()
+}
+
+/** An upload's first bytes. */
+export type UploadHead = {
+  head: Blob
+  /** Whether the head is the whole file. */
+  whole: boolean
+}
+
+/**
+ * Reads an upload no further than `limit` bytes, then lets the rest of the
+ * response go, so a card that needs a file's beginning does not fetch all of it.
+ */
+export async function readUploadHead(
+  path: string,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<UploadHead> {
+  const response = await theorem().fetch(path, { signal })
+  if (!response.ok) throw new Error(`The file answered ${response.status}`)
+  const type = response.headers.get('content-type') ?? ''
+  const reader = response.body?.getReader()
+  const chunks: BlobPart[] = []
+  let read = 0
+  let ended = !reader
+  if (!reader) {
+    const blob = await response.blob()
+    chunks.push(blob)
+    read = blob.size
+  }
+  while (reader && !ended && read < limit) {
+    const { done, value } = await reader.read()
+    if (done) ended = true
+    else {
+      chunks.push(value)
+      read += value.byteLength
+    }
+  }
+  // Exactly at the limit, one more read tells a file that ends there from a
+  // longer one. Past it, the file is longer than a card keeps, however soon
+  // it ends: the card has its beginning and nothing more.
+  if (reader && !ended && read === limit) ended = (await reader.read()).done
+  const whole = ended && read <= limit
+  if (reader && !ended) void reader.cancel()
+  const head = new Blob(chunks, { type })
+  return { head: whole ? head : head.slice(0, limit, type), whole }
 }
 
 /**
@@ -71,6 +120,48 @@ export async function uploadBlock(
         ? imageBlock(uploadContentPath(uploadId), file.name)
         : fileBlock(embed),
   }
+}
+
+/** An upload's first `limit` bytes, such as a sent file's card draws from. */
+export function useUploadHead(uploadId: string, limit: number) {
+  return useQuery({
+    queryKey: ['theorem', 'upload-head', uploadId, limit],
+    // An upload's bytes never change.
+    staleTime: Number.POSITIVE_INFINITY,
+    queryFn: ({ signal }) =>
+      readUploadHead(uploadContentPath(uploadId), limit, signal),
+  })
+}
+
+/**
+ * An upload's size, from its record, once `enabled`: what a card that read
+ * only the beginning of a file says. The answer's own length does not come
+ * through the proxy, which drops it with the encoding it described.
+ */
+export function useUploadSize(uploadId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['theorem', 'upload-size', uploadId],
+    enabled,
+    // An upload's bytes never change.
+    staleTime: Number.POSITIVE_INFINITY,
+    queryFn: async () =>
+      (
+        await theoremJson<{ byteLen?: number }>(
+          `${BASE}/${encodeURIComponent(uploadId)}`,
+        )
+      ).byteLen ?? null,
+  })
+}
+
+/** An upload's bytes, whole, once `enabled`: a sent file opened to be read. */
+export function useUploadBlob(uploadId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['theorem', 'upload-blob', uploadId],
+    enabled,
+    // An upload's bytes never change.
+    staleTime: Number.POSITIVE_INFINITY,
+    queryFn: ({ signal }) => readUpload(uploadContentPath(uploadId), signal),
+  })
 }
 
 /** An image's address the platform can read: uploads as a blob:, the rest as written. */

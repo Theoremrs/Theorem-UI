@@ -75,11 +75,20 @@ function Pages({ count }: { count: number }) {
 
 export function PdfPanel(file: FileViewProps) {
   const pdf = usePdf(file)
-  const [count, setCount] = useState<number>()
   if (!pdf.source) return <FileMessage>{pdf.message}</FileMessage>
+  return <PdfDocument source={pdf.source} />
+}
+
+/** A PDF the page already holds, such as a chat attachment, drawn as a workspace file is. */
+export const PdfAttachment = ({ file }: { file: Blob }) => (
+  <PdfDocument source={file} />
+)
+
+function PdfDocument({ source }: { source: { data: Uint8Array } | Blob }) {
+  const [count, setCount] = useState<number>()
   return (
     <Document
-      file={pdf.source}
+      file={source}
       suspense={false}
       loading={<FileMessage>Loading…</FileMessage>}
       error={<FileMessage>{NOT_A_PDF}</FileMessage>}

@@ -43,6 +43,7 @@ import { Canvas } from '@/components/canvas/canvas'
 import { FaceBench, FaceBook } from '@/components/face/face-bench'
 import { FaceStage } from '@/components/face/face-stage'
 import { TheoFaceInverse } from '@/components/face/terminal-face-story'
+import { CommandTerminalLiveStory } from '@/components/terminal/command-terminal-story'
 import { speechAdapter } from '@/lib/speech/adapter'
 import { theFace } from '@/lib/face/store'
 import { useMicLevel } from '@/lib/speech/dictation'
@@ -1364,6 +1365,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'review-card': ReviewCardStory,
   'shell-compare': ShellCompareStory,
   'populated-shell': PopulatedShellStory,
+  'command-live': CommandTerminalLiveStory,
   'project-home': ProjectHomeStory,
   'session-graph': SessionGraphStory,
   'shell-navigation': ShellNavigationStory,

@@ -73,14 +73,17 @@ const hit = (a: Area, cell: [number, number], min: number): CSSProperties => {
  * A preview painted on its rectangle. Pixel art is drawn at the largest whole
  * device-pixel scale that fits, centred on a black matte, never smoothed.
  */
-function PreviewCanvas({
+export function PreviewCanvas({
   state,
   width,
   height,
+  bare = false,
 }: {
   state: PreviewState | undefined
   width: number
   height: number
+  /** Leaves the matte (index 0) clear, so the drawing stands on its surface. */
+  bare?: boolean
 }) {
   const ref = useRef<HTMLCanvasElement>(null)
   // Pᵗ = T(P⁰): the indices stay; the colours follow the terminal's roles.
@@ -93,12 +96,19 @@ function PreviewCanvas({
     const H = Math.max(1, Math.round(height * dpr))
     canvas.width = W
     canvas.height = H
-    const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = roles.chrome.deep
-    ctx.fillRect(0, 0, W, H)
+    // No 2D context (a canvas-less test page) leaves the box empty.
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    if (!bare) {
+      ctx.fillStyle = roles.chrome.deep
+      ctx.fillRect(0, 0, W, H)
+    }
     if (state.mode === 'pixel') {
       const { width: w, height: h } = state.meta
-      const scale = Math.max(1, Math.floor(Math.min(W / w, H / h)))
+      // Whole pixels where the drawing fits; a drawing wider than the box
+      // (a small card at 1x) shrinks to fit rather than being cut off.
+      const fit = Math.min(W / w, H / h)
+      const scale = fit >= 1 ? Math.floor(fit) : fit
       const art = new ImageData(w, h)
       const rgb = roles.illustration.map((c) => [
         parseInt(c.slice(1, 3), 16),
@@ -107,7 +117,7 @@ function PreviewCanvas({
       ])
       state.indices.forEach((ix, i) => {
         const [r, g, b] = rgb[ix] ?? [0, 0, 0]
-        art.data.set([r!, g!, b!, 255], i * 4)
+        art.data.set([r!, g!, b!, bare && !ix ? 0 : 255], i * 4)
       })
       const tile = new OffscreenCanvas(w, h)
       tile.getContext('2d')!.putImageData(art, 0, 0)
@@ -116,8 +126,8 @@ function PreviewCanvas({
         tile,
         Math.floor((W - w * scale) / 2),
         Math.floor((H - h * scale) / 2),
-        w * scale,
-        h * scale,
+        Math.round(w * scale),
+        Math.round(h * scale),
       )
     } else if ('image' in state) {
       const { image } = state
@@ -141,7 +151,7 @@ function PreviewCanvas({
         ctx.fillText(lines[i]!.slice(0, 200), pad, y, W - pad * 2)
       }
     }
-  }, [state, width, height, roles])
+  }, [state, width, height, bare, roles])
   if (state?.status !== 'ready') return null
   return (
     <canvas

@@ -44,6 +44,9 @@ import searchTint from './search-tint.svg'
 import fileTextLine from './fileText-line.svg'
 import fileTextTint from './fileText-tint.svg'
 import fileTextPaper from './fileText-paper.svg'
+import officeFileTextLine from './officeFileText-line.svg'
+import officeFileTextTint from './officeFileText-tint.svg'
+import officeFileTextPaper from './officeFileText-paper.svg'
 import fileCodeLine from './fileCode-line.svg'
 import fileCodeTint from './fileCode-tint.svg'
 import fileCodePaper from './fileCode-paper.svg'
@@ -146,6 +149,7 @@ export const CONTROL_LAYERS = {
   approval: { line: approvalLine, accent: approvalAccent, tint: approvalTint, paper: approvalPaper },
   search: { line: searchLine, accent: searchAccent, tint: searchTint },
   fileText: { line: fileTextLine, tint: fileTextTint, paper: fileTextPaper },
+  officeFileText: { line: officeFileTextLine, tint: officeFileTextTint, paper: officeFileTextPaper },
   fileCode: { line: fileCodeLine, tint: fileCodeTint, paper: fileCodePaper },
   fileCheck: { line: fileCheckLine, accent: fileCheckAccent, tint: fileCheckTint, paper: fileCheckPaper },
   fileModule: { line: fileModuleLine, tint: fileModuleTint, paper: fileModulePaper },

@@ -1,4 +1,4 @@
-// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), @tanstack/react-router CatchBoundary per part, coss ui Collapsible (base-ui) for the activity line's details, shadcn Trace (ReUI, Base UI build) for the reply's tool calls folded into one summary row, and the installed ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, the terminal's openOf/pathOf and Follow's useRevealFile for the file a tool card opens in the IDE, scene-part.tsx for the theorem-scene part, the CRM's context-manifest-part.tsx for the theorem-context_manifest part (the saved records a reply was given) and record-change-proposal-part.tsx for proposed record changes and their outcomes
+// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), terminal/command-terminal (the agent terminal's Ratzilla view) for a call that runs a command, in the reply where it ran, @tanstack/react-router CatchBoundary per part, coss ui Collapsible (base-ui) for the activity line's details, shadcn Trace (ReUI, Base UI build) for the reply's tool calls folded into one summary row, and the installed ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, the terminal's openOf/pathOf and Follow's useRevealFile for the file a tool card opens in the IDE, scene-part.tsx for the theorem-scene part, the CRM's context-manifest-part.tsx for the theorem-context_manifest part (the saved records a reply was given) and record-change-proposal-part.tsx for proposed record changes and their outcomes
 //
 // Theorem message parts that are not text or tool calls arrive as data parts
 // named `theorem-<type>` (see @theoremharness/sdk/assistant-ui). This file
@@ -50,11 +50,15 @@ import {
 import { ProgramPart } from '@/components/chat/program-part'
 import { CompletionFooter } from '@/components/chat/run-footer'
 import { UserMarkdown } from '@/components/chat/user-markdown'
-import { NoteImage } from '@/components/notes/kinds/embed-block'
 import { ReviewAnswerCard } from '@/components/review/review-card'
 import { PlanToolCall } from '@/components/chat/plan-graph'
 import { useRevealFile } from '@/components/ide/follow'
 import { openOf, pathOf } from '@/components/terminal/terminal-code'
+import {
+  CommandTerminal,
+  readCommand,
+  readHostCommand,
+} from '@/components/terminal/command-terminal'
 import type { Open } from '@/components/terminal/terminal-code'
 import { readScene, SCENE_PART } from '@/components/chat/scene-model'
 import { SceneInReply } from '@/components/chat/scene-part'
@@ -81,7 +85,7 @@ import type {
   ApprovalOutcome,
   TheoremApproval,
 } from '@/lib/theorem/approval'
-import { uploadContentPath } from '@/lib/theorem/uploads'
+import { StoredAttachment } from '@/components/chat/stored-attachment'
 import { DRAFT_PLAN } from '@/lib/theorem/plans'
 import { cn, humanize } from '@/lib/utils'
 import { appearancePair } from '@/lib/appearance-policy'
@@ -255,7 +259,7 @@ function callCategory(name: string): string {
 
 type DataPartLike = { type: string; name?: string; data?: unknown }
 
-/** The reply's host calls, less the artifact calls: their card is the reply's. */
+/** The reply's host calls, less the artifact calls and the commands: their card and their terminal are the reply's. */
 function hostCalls(
   content: readonly DataPartLike[],
   running: boolean,
@@ -264,7 +268,7 @@ function hostCalls(
     if (part.type !== 'data' || part.name !== 'theorem-host_call') return []
     const call = object(part.data)
     const name = str(call.name) ?? 'host call'
-    if (ARTIFACT_TOOLS.has(name)) return []
+    if (ARTIFACT_TOOLS.has(name) || readHostCommand(call)) return []
     return [{ name, state: hostCallState(str(call.state), running) }]
   })
 }
@@ -309,8 +313,9 @@ export function toolCallEntries(
 
 /**
  * A host function called by the native agent's program. An artifact call is
- * drawn here, by the artifact card that carries its result; every other call
- * is a row of the tool-calls section under the activity line.
+ * drawn here, by the artifact card that carries its result, and a command in
+ * its terminal, printing as it runs; every other call is a row of the
+ * tool-calls section under the activity line.
  */
 const HostCallPart: DataMessagePartComponent = ({ data }) => {
   const call = object(data)
@@ -322,8 +327,10 @@ const HostCallPart: DataMessagePartComponent = ({ data }) => {
       (part) => part.type === 'data' && part.name === ARTIFACT_PART,
     ),
   )
-  if (!ARTIFACT_TOOLS.has(name)) return null
   const state = hostCallState(str(call.state), running)
+  const command = readHostCommand(call)
+  if (command) return <CommandTerminal {...command} state={state} />
+  if (!ARTIFACT_TOOLS.has(name)) return null
   if (state === 'running') return <ArtifactPendingCard toolName={name} />
   if (state === 'failed' && !produced)
     return <ArtifactToolFailed toolName={name} />
@@ -414,11 +421,13 @@ function approvalSubtitle({ toolName, risk }: TheoremApproval) {
   return elevated ? `${humanize(toolName)} · ${risk} risk` : humanize(toolName)
 }
 
-/** Pending Theorem approvals, artifacts and plans render standalone so they are never folded into a tool group. */
+/** Pending Theorem approvals, artifacts, plans and commands render standalone so they are never folded into a tool group. */
 export function isStandaloneToolCall(part: {
   type: string
   toolName?: string
   artifact?: unknown
+  args?: unknown
+  result?: unknown
 }) {
   if (part.type !== 'tool-call') return false
   if (
@@ -426,6 +435,7 @@ export function isStandaloneToolCall(part: {
     (ARTIFACT_TOOLS.has(part.toolName) || part.toolName === DRAFT_PLAN)
   )
     return true
+  if (readCommand(part.args, part.result)) return true
   const approval = readApproval(part)
   return approval !== undefined && approvalOutcome(approval) === 'awaiting'
 }
@@ -542,13 +552,38 @@ function OpenInIde({ open }: { open: Open }) {
   )
 }
 
-/** ToolFallback slot: artifact tools, plans, Theorem approvals, then the generic tool card. */
+/** A tool call's state in the chat's words, as the tool card reads it. */
+const CALL_STATES = {
+  running: 'running',
+  waiting: 'awaiting',
+  cancelled: 'interrupted',
+  failed: 'failed',
+  done: 'done',
+} as const satisfies Record<
+  NonNullable<ReturnType<typeof toolState>>,
+  CallState
+>
+
+export const toolCallState = (
+  status: Parameters<typeof toolState>[0],
+  isError?: boolean,
+): CallState => CALL_STATES[toolState(status, isError) ?? 'running']
+
+/** ToolFallback slot: artifact tools, plans, Theorem approvals, commands, then the generic tool card. */
 export const TheoremToolCall: ToolCallMessagePartComponent = (props) => {
   if (ARTIFACT_TOOLS.has(props.toolName)) return <ArtifactToolCall {...props} />
   if (props.toolName === DRAFT_PLAN) return <PlanToolCall {...props} />
   const approval = readApproval(props)
   if (approval && props.result === undefined)
     return <TheoremApprovalCard approval={approval} argsText={props.argsText} />
+  const command = readCommand(props.args, props.result)
+  if (command)
+    return (
+      <CommandTerminal
+        {...command}
+        state={toolCallState(props.status, props.isError)}
+      />
+    )
   const open = openOf(pathOf(props.args), props.args, props.result)
   return <ToolFallback {...props} aside={open && <OpenInIde open={open} />} />
 }
@@ -937,12 +972,12 @@ const ATTACHMENT_STATES: Partial<Record<string, string>> = {
 const AttachmentPart: DataMessagePartComponent = ({ data }) => {
   const part = object(data)
   const uploadId = str(part.uploadId)
-  if (uploadId && str(part.mediaType)?.startsWith('image/'))
+  if (uploadId && !ATTACHMENT_STATES[str(part.state) ?? 'ready'])
     return (
-      <NoteImage
-        src={uploadContentPath(uploadId)}
-        alt={str(part.name) ?? 'Attachment'}
-        className="me-1.5 mt-2 inline-block max-h-40 rounded-md border border-separator"
+      <StoredAttachment
+        uploadId={uploadId}
+        name={str(part.name) ?? 'Attachment'}
+        mediaType={str(part.mediaType)}
       />
     )
   return (
