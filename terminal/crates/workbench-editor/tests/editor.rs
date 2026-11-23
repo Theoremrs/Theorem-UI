@@ -114,6 +114,18 @@ impl Panel for Recorder {
     }
 }
 
+/// The Default preset with Tools taking its share of the window. The preset opens Tools at
+/// its narrowest, 40 columns whatever the window; a dragged splitter drops that pin the
+/// same way. These tests size the panel by the window.
+fn dock() -> Dock {
+    let (dock, regions) = Dock::from_preset(DockConfig::default(), Preset::Default);
+    let mut doc = dock.document();
+    doc.groups.get_mut(&regions.tools).expect("tools").pinned_px = None;
+    Dock::restore(doc, DockConfig::default(), |_| true)
+        .expect("the preset restores")
+        .0
+}
+
 fn model_with(caps: &[&'static str], drafts: &Drafts, refs: Option<Refs>) -> Model {
     let mut factories = PanelFactories::new();
     theorem_workbench_panels::register(&mut factories);
@@ -126,13 +138,12 @@ fn model_with(caps: &[&'static str], drafts: &Drafts, refs: Option<Refs>) -> Mod
         .expect("the editor's actions register beside the built-in ones");
     let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
     assert!(issues.is_empty(), "{issues:?}");
-    let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
     let mut m = Model::new(
         registry,
         factories,
         keys,
         Capabilities::of(caps.iter().copied()),
-        dock,
+        dock(),
     );
     update(
         &mut m,
@@ -3690,8 +3701,9 @@ fn the_tab_and_the_binding_give_a_host_a_documents_path_and_whether_it_is_unsave
 
 // ---- R39: text a person must read is not cut at the pane edge ---------------
 
-/// The default width of the editor in the preset, a narrow 24 columns and a wide 120.
-const PANE_WIDTHS: [Option<u16>; 3] = [None, Some(24), Some(120)];
+/// The width the rig's window gives the editor, a narrow 24 columns, the 40 the Default
+/// preset opens Tools at and a wide 120.
+const PANE_WIDTHS: [Option<u16>; 4] = [None, Some(24), Some(40), Some(120)];
 
 /// `rig` with the editor's body `width` cells wide: the window is widened until the
 /// dock gives the pane that much.

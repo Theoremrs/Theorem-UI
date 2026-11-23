@@ -73,6 +73,18 @@ pub struct Rig {
     pub reveals: Rc<RefCell<Vec<(u32, u32)>>>,
 }
 
+/// The Default preset with Tools taking its share of the window. The preset opens Tools at
+/// its narrowest, 40 columns whatever the window; a dragged splitter drops that pin the
+/// same way. These tests size the panel by the window.
+fn dock() -> Dock {
+    let (dock, regions) = Dock::from_preset(DockConfig::default(), Preset::Default);
+    let mut doc = dock.document();
+    doc.groups.get_mut(&regions.tools).expect("tools").pinned_px = None;
+    Dock::restore(doc, DockConfig::default(), |_| true)
+        .expect("the preset restores")
+        .0
+}
+
 fn model(
     caps: &[&'static str],
     opened: &Opened,
@@ -112,13 +124,12 @@ fn model(
     factories.register_opener("document", |t| {
         matches!(t, OpenTarget::File { .. } | OpenTarget::FileAt { .. })
     });
-    let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
     let mut m = Model::new(
         registry,
         factories,
         keys,
         Capabilities::of(caps.iter().copied()),
-        dock,
+        dock(),
     );
     update(
         &mut m,
