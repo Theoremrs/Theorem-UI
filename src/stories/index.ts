@@ -297,12 +297,6 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 900, height: 600 },
   },
   {
-    id: 'response-style-picker',
-    title: 'Composer with the response style picker',
-    lane: 'original',
-    viewport: { width: 760, height: 320 },
-  },
-  {
     id: 'response-details',
     title: 'Response details for a reply',
     lane: 'original',

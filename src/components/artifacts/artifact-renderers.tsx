@@ -1,14 +1,18 @@
-// SOURCING: react-markdown + remark-gfm + @tailwindcss/typography (documents), the TanStack Highlight SyntaxHighlighter (code), the installed beautiful-mermaid MermaidDiagram (diagrams), notebook-artifact (Observable and marimo notebooks in the hosted frame), OpenUI's Renderer over theorem-artifacts (openui/renderer)
+// SOURCING: react-markdown + remark-gfm + @tailwindcss/typography (documents), the TanStack Highlight SyntaxHighlighter (code), the installed beautiful-mermaid MermaidDiagram (diagrams), assistant-ui's flow-graph element (graphs), notebook-artifact (Observable and marimo notebooks in the hosted frame), OpenUI's Renderer over theorem-artifacts (openui/renderer)
 //
 // The renderers this build mounts. Which one shows an artifact at a distance
 // is the registry's answer (artifact-registry: contributions + resolve); a
 // representation with no mounted renderer gets the Theorem card, which says
 // what the artifact is and shows its fallbackText.
-import { createElement, isValidElement } from 'react'
+import { createElement, isValidElement, useMemo } from 'react'
 import type { FC, ReactElement, ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import {
+  DependencyGraph,
+  readGraph,
+} from '@/components/assistant-ui/elements/dependency-graph'
 import { MermaidDiagram } from '@/components/assistant-ui/elements/mermaid-diagram'
 import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highlighter'
 import { DocumentApp } from '@/components/blocks/document-app'
@@ -17,6 +21,7 @@ import type { Distance } from '@/lib/artifacts/contributions'
 import { useArtifactMessageId } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 import { AppPreview } from './app-revision-frame'
+import { DocumentCard } from './document-card'
 import { AppRevision } from './app-history'
 import {
   MarimoNotebookView,
@@ -102,13 +107,32 @@ const DiagramArtifact: FC<RendererProps> = ({ artifact }) => (
   <MermaidDiagram code={artifact.content} className="rounded-lg bg-raised" />
 )
 
-/** A short opening of a long document, for the conversation. */
-const DocumentExcerpt: FC<RendererProps> = ({ artifact }) => (
-  <div className="max-h-64 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
-    <MarkdownDocument content={artifact.content} className="text-sm" />
-  </div>
+/**
+ * In the reply a diagram is the drawing alone, on the conversation's own
+ * ground and in line with its text: no card, title or fill around it.
+ */
+const DiagramReply: FC<RendererProps> = ({ artifact }) => (
+  <MermaidDiagram
+    code={artifact.content}
+    className="my-3 rounded-none bg-transparent p-0 [&_svg]:mx-0"
+  />
 )
 
+/** A DAG the agent wrote as nodes, drawn as it is, with nothing around it. */
+const GraphArtifact: FC<RendererProps> = ({ artifact }) => {
+  const graph = useMemo(() => readGraph(artifact.content), [artifact.content])
+  return graph ? (
+    <DependencyGraph
+      aria-label={artifact.title}
+      graph={graph}
+      className="my-3"
+    />
+  ) : (
+    <TheoremCard artifact={artifact} reason="The graph could not be read" />
+  )
+}
+
+/** A short opening of a long document, for the conversation. */
 const CodeExcerpt: FC<RendererProps> = ({ artifact }) => (
   <div className="max-h-64 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
     <CodeArtifact artifact={artifact} latest />
@@ -182,11 +206,13 @@ const SceneArtifact: FC<RendererProps> = ({ artifact }) => {
 
 mountRenderers(
   {
-    'theorem-document.excerpt': DocumentExcerpt,
+    'theorem-document.reply': DocumentCard,
     'theorem-document': DocumentArtifact,
     'theorem-code.excerpt': CodeExcerpt,
     'theorem-code': CodeArtifact,
+    'theorem-diagram.reply': DiagramReply,
     'theorem-diagram': DiagramArtifact,
+    'theorem-graph': GraphArtifact,
     'theorem-app.preview': AppPreviewArtifact,
     'theorem-app': AppArtifact,
     'theorem-observable': ObservableArtifact,
@@ -195,7 +221,11 @@ mountRenderers(
     'theorem-scene.reply': SceneReplyArtifact,
     'theorem-scene': SceneArtifact,
   },
-  { bare: ['theorem-scene.reply'], fills: ['theorem-scene'] },
+  {
+    bare: ['theorem-scene.reply', 'theorem-diagram.reply', 'theorem-graph'],
+    cards: ['theorem-document.reply'],
+    fills: ['theorem-scene'],
+  },
 )
 
 /** The Theorem card: what the artifact is, its summary, and why no renderer showed it. */

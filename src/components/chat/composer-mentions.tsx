@@ -458,7 +458,6 @@ export function ComposerMentionTrigger() {
             : 'No matching records or documents'
       }
       loadingLabel="Loading…"
-      className="w-md"
     />
   )
 }

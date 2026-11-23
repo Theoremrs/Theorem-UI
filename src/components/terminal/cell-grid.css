@@ -16,7 +16,7 @@
  * The agent terminal takes the same pitch and semibold; its DIM keeps half
  * opacity, since agent output uses it to mean secondary.
  *
- * JetBrains Mono Variable carries 100-800, so these are real weights, not
+ * Paper Mono carries 100-800, so these are real weights, not
  * synthesised ones.
  */
 [data-artifact-cabinet] pre,

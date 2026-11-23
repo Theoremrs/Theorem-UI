@@ -4,14 +4,14 @@ import { cleanup, render, waitFor } from '../../../../test/blocks/render'
 
 afterEach(cleanup)
 
-test('frames numbered code under chrome titled by its language, with copy', async () => {
+test('frames numbered code under a chrome row titled by its language, with copy and no window lights', async () => {
   const { container } = await render(
     <GlassCodeBlock code={'const a = 1\nconst b = 2'} language="typescript" />,
   )
   await waitFor(() => container.querySelector('.th-keyword'))
   const frame = container.querySelector('figure[data-glass-code]')!
   expect(frame.querySelector('figcaption')?.textContent).toBe('typescript')
-  expect(frame.querySelectorAll('span.rounded-full')).toHaveLength(3)
+  expect(frame.querySelectorAll('span.rounded-full')).toHaveLength(0)
   expect(frame.querySelector('button[aria-label="Copy code"]')).not.toBeNull()
   const block = frame.querySelector('.aui-code-block')!
   expect(block.getAttribute('data-code-surface')).toBe('glass')

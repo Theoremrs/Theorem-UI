@@ -209,7 +209,7 @@ export const TERMINAL_STORIES: TerminalStory[] = [
     id: 'terminal-code',
     title: 'Highlighted code and diffs',
     claim:
-      "Fenced code in an answer draws in Stone dark's code colours (GitHub Dark). A diff keeps each line's syntax, tints its removed and added rows, and brightens the words a changed line swapped.",
+      "Fenced code in an answer draws in the palette's dark code colours (GitHub Dark, Vitesse Dark in Vitesse). A diff keeps each line's syntax, tints its removed and added rows, and brightens the words a changed line swapped.",
     running: false,
     messages: [
       message('u1', 'user', [text('Show me the fix')]),

@@ -3,7 +3,15 @@
 import { Component, lazy, Suspense, type ReactNode } from "react";
 import type { GenerativeUILibrary } from "@assistant-ui/generative-ui/react";
 import { defaultGenerativeUILibrary } from "@assistant-ui/generative-ui/react";
+import { z } from "zod";
+import {
+  DependencyGraph,
+  GraphNodeSchema,
+  graphOf,
+} from "./dependency-graph";
 import { GenerativeMarkdown } from "./generative-markdown";
+import { cn } from "@/lib/utils";
+import { bareDrawing } from "./surfaces";
 import { GeoMap, type GeoMapPlace } from "./geo-map";
 import { evidenceChartDefinition } from "./evidence-chart";
 
@@ -20,7 +28,10 @@ const DiagramSkeleton = () => (
     data-slot="mermaid-skeleton"
     aria-label="Rendering diagram"
     aria-busy="true"
-    className="aui-mermaid-skeleton bg-muted flex h-32 animate-pulse items-center justify-center gap-3 rounded-b-lg p-4"
+    className={cn(
+      "aui-mermaid-skeleton bg-muted flex h-32 animate-pulse items-center justify-center gap-3 rounded-b-lg p-4",
+      bareDrawing,
+    )}
   >
     <div className="bg-muted-foreground/20 h-8 w-20 rounded-md" />
     <div className="bg-muted-foreground/20 h-px w-10" />
@@ -95,7 +106,10 @@ export const styledGenerativeUILibrary: GenerativeUILibrary = {
       <figure data-aui="diagram">
         <DiagramBoundary code={typeof code === "string" ? code : ""}>
           <Suspense fallback={<DiagramSkeleton />}>
-            <MermaidDiagram code={typeof code === "string" ? code : ""} />
+            <MermaidDiagram
+              code={typeof code === "string" ? code : ""}
+              className={bareDrawing}
+            />
           </Suspense>
         </DiagramBoundary>
         {typeof title === "string" || typeof title === "number" ? (
@@ -103,6 +117,21 @@ export const styledGenerativeUILibrary: GenerativeUILibrary = {
         ) : null}
       </figure>
     ),
+  },
+  // The agent picks the drawing: Diagram for Mermaid source, Graph for a DAG
+  // of nodes, laid out by assistant-ui's flow-graph element.
+  Graph: {
+    description:
+      "A DAG of nodes and what each depends on, such as the steps of a plan, drawn left to right. For a dependency graph, use it rather than Diagram.",
+    properties: z.object({
+      nodes: z
+        .array(GraphNodeSchema)
+        .describe("The nodes; each names the ids it follows in dependsOn."),
+    }),
+    render: ({ nodes }) => {
+      const graph = graphOf({ nodes });
+      return graph ? <DependencyGraph data-aui="graph" graph={graph} /> : null;
+    },
   },
   Map: {
     ...defaultGenerativeUILibrary.Map!,

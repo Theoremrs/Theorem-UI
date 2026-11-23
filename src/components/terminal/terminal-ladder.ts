@@ -29,20 +29,23 @@
 //   lightness step above the panel and one chroma, lowered until every code
 //   colour still reads on them; their gutter marks are the success and failure
 //   registers.
-// - decision rows: a tool call that waits on the person, and one that failed,
-//   sit on a ground tinted the same way from the approval and failure hues, so
-//   neither is mistaken for the running block or for a selected row.
+// - no other band: a tool call's state, a running command, the person's own
+//   words and code are told by their text's colour on the canvas. The diff rows
+//   and the selected row are the only grounds drawn behind text (owner,
+//   2026-11-22).
 // - brand: the palette's mark, lifted in lightness only if it does not read on
 //   the selected band. It colours the text of what is relevant, never a band.
 import { clampChroma, converter, formatHex, wcagContrast } from 'culori'
 import type { Oklch } from 'culori'
 import { wasmPalette } from './terminal-roles'
 import type { TerminalRoles } from './terminal-roles'
+import { CANVAS_STEP, canvasOf } from './terminal-theme'
+
+export { CANVAS_STEP }
 
 const oklch = converter('oklch')
 
-/** Lightness the canvas sits below the panel, and the selected band above the raised surface. */
-export const CANVAS_STEP = -0.06
+/** Lightness the selected band sits above the raised surface; the canvas's step below the panel is terminal-theme.ts's. */
 export const SELECTED_STEP = 0.06
 /** The contrast (WCAG 2) each register of text is placed at on the selected band, the lightest surface. */
 export const READ = {
@@ -105,9 +108,6 @@ export type Ladder = {
     selected: string
     diffAddition: string
     diffDeletion: string
-    /** A tool call waiting on the person's decision, and one that failed. */
-    approvalRow: string
-    failureRow: string
   }
   text: { primary: string; body: string; secondary: string; disabled: string }
   registers: {
@@ -124,7 +124,7 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
   const { chrome, state, syntax } = roles
   const panel = at(chrome.bg)
   const raised = at(chrome.raised)
-  const canvas = hex(withL(panel, panel.l + CANVAS_STEP))
+  const canvas = canvasOf(chrome.bg)
   const selected = hex(withL(raised, raised.l + SELECTED_STEP))
 
   const muted = at(chrome.muted)
@@ -176,12 +176,7 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
   const brand = hex(
     withL(
       mark,
-      lowestReading(
-        (l) => [hex(withL(mark, l))],
-        selected,
-        READ.brand,
-        mark.l,
-      ),
+      lowestReading((l) => [hex(withL(mark, l))], selected, READ.brand, mark.l),
     ),
   )
 
@@ -211,8 +206,6 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
       selected,
       diffAddition: row(DIFF_ROW.hue.added),
       diffDeletion: row(DIFF_ROW.hue.removed),
-      approvalRow: row(hues.approval),
-      failureRow: row(hues.failure),
     },
     text: { primary, body: chrome.text, secondary, disabled },
     registers,
@@ -245,12 +238,7 @@ export function ladderPalette(roles: TerminalRoles) {
     // Roles the ladder adds.
     canvas: surfaces.canvas,
     selectedRow: surfaces.selected,
-    // A finished call is recessive: no block and a secondary name. The running one is the
-    // neutral block. One that waits on a decision, or failed, is on its own tinted ground.
-    completedRow: surfaces.canvas,
-    runningRow: surfaces.raised,
-    pendingRow: surfaces.approvalRow,
-    failedRow: surfaces.failureRow,
+    // A finished call is recessive: a secondary name, on no band.
     completedInk: text.secondary,
     info: registers.informational,
     textDisabled: text.disabled,

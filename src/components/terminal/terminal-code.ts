@@ -3,7 +3,7 @@
 // Code the agent writes, highlighted for the terminal. The terminal draws
 // markdown itself (tui-markdown, highlighting off); fenced code is lifted out
 // here and handed over as lines of classed tokens, which the crate colours in
-// Stone dark's code theme.
+// the palette's dark code theme (terminal-editor.ts).
 import { createHighlighter, renderTokens } from '@tanstack/highlight/core'
 import type { HighlightRenderNode } from '@tanstack/highlight/core'
 import { c } from '@tanstack/highlight/languages/c'

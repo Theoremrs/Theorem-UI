@@ -4,6 +4,7 @@ import { Popover } from '@base-ui/react/popover'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import type { RefObject } from 'react'
+import { menuSearch } from '@/components/assistant-ui/elements/surfaces'
 import { EffectBadge } from '@/components/connections/parts'
 import { matching } from '@/components/connections/search'
 import { Checkbox } from '@/components/coss/checkbox'
@@ -151,7 +152,7 @@ export function ComposerConnections({
         <Popover.Positioner
           className="z-50"
           anchor={anchor}
-          side="top"
+          side="bottom"
           align="start"
           sideOffset={6}
           collisionPadding={8}
@@ -161,7 +162,7 @@ export function ComposerConnections({
             finalFocus={anchor}
             ref={glassRef}
             className={cn(
-              'w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-separator bg-raised text-ink shadow-lg outline-none',
+              'w-56 max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-separator bg-raised text-ink shadow-lg outline-none',
               glassClass,
             )}
           >
@@ -255,6 +256,7 @@ function Roster({
             placeholder="Search connections and tools"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            className={menuSearch}
           />
         </div>
       )}

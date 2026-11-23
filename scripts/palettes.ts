@@ -1,6 +1,7 @@
 // SOURCING: culori (Okhsl, OKLCH, sRGB gamut tests, alpha blending and hex
 // output). The rules that place each colour are the palettes' own; each mode's
-// terminal colours come from src/components/terminal/terminal-theme.ts.
+// terminal colours come from src/components/terminal/terminal-theme.ts, drawn
+// as the palette's dark editor (terminal-editor.ts).
 // Vitesse's neutrals and accent hues are Anthony Fu's Vitesse (MIT): the dark
 // side as franmc01's JetBrains theme "Vitesse Dark Theme" 0.0.1 gives them
 // (vitesse.dark.theme.json and the vitesse.dark.xml editor scheme), the light
@@ -37,6 +38,7 @@ import {
   terminalTheme,
   workspaceOf,
 } from '../src/components/terminal/terminal-theme'
+import { editorFor } from '../src/components/terminal/terminal-editor'
 
 type Family = 'redwood' | 'teal' | 'ochre' | 'error' | 'focus' | 'action' | 'insight'
 type Tier = 'strong' | 'ink' | 'container' | 'graph' | 'focus'
@@ -656,6 +658,12 @@ export function appearanceTokens(mode: (typeof modes)[number], calm = false) {
   return tokens
 }
 
+/** The dark editor a mode's terminal is drawn as: its palette's (terminal-editor.ts). */
+export function modeEditor(mode: Mode) {
+  const palette = /data-palette='([\w-]+)'/.exec(mode.selector)?.[1]
+  return editorFor(palette ?? 'github-sharp')
+}
+
 export function palettesCss() {
   const calmModes = modes.slice(0, 2).map((mode) => ({
     ...mode,
@@ -673,10 +681,13 @@ export function palettesCss() {
     // Popovers are the raised surface, where a mode gives them no grey of their own.
     if (!('popover' in mode.neutrals))
       lines.push('  --popover: var(--surface-raised);')
-    // The terminal, related to this mode as pi's slate is to GitHub Sharp's.
-    // The page works it out again when a person's own colours change.
+    // The terminal, related to this mode as pi's slate is to GitHub Sharp's,
+    // drawn as the palette's dark editor. The page works it out again when a
+    // person's own colours change.
     for (const [name, value] of Object.entries(
-      terminalCss(terminalTheme(workspaceOf((token) => tokens[token]!))),
+      terminalCss(
+        terminalTheme(workspaceOf((token) => tokens[token]!), modeEditor(mode)),
+      ),
     ))
       lines.push(`  ${name}: ${value};`)
     return `${mode.selector} {\n${lines.join('\n')}\n}\n`

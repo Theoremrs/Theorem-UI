@@ -12,11 +12,10 @@
 // and scroll, and this host lays inert pictures and semantic controls exactly
 // over what Ratatui drew. It replaces the outputs drawer: one collection
 // browser.
-import { useParams } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { useShell } from '@/components/shell/shell-state'
 import { loadWasm } from '@/components/terminal/terminal-screen'
 import { useOrganization } from '@/lib/theorem/organization'
+import { useGalleryProject } from './gallery-project'
 import type { CabinetHandle } from '@/terminal-wasm/theorem_terminal'
 import { CabinetOverlay, cellOf, useScrollGestures } from './cabinet-overlay'
 import type { Geometry } from './cabinet-overlay'
@@ -146,10 +145,8 @@ export function Cabinet({
  * it says so.
  */
 export function CabinetView({ expanded = false }: { expanded?: boolean }) {
-  const activeProject = useShell((s) => s.projectId)
-  const { projectId: routeProject } = useParams({ strict: false })
   const { data: organization } = useOrganization()
-  const projectId = routeProject ?? activeProject
+  const projectId = useGalleryProject()
   const project = organization?.projects.find((p) => p.projectId === projectId)
   return projectId ? (
     <Cabinet

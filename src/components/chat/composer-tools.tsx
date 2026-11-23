@@ -21,7 +21,6 @@ import { Icon } from '@/components/icons'
 import { useShell } from '@/components/shell/shell-state'
 import { searchTools, useToolCatalog } from '@/lib/theorem/tools'
 import type { NativeTool, ToolCatalogState } from '@/lib/theorem/tools'
-import { cn } from '@/lib/utils'
 
 /** The composer's buttons are passed on the way to typing, so their tooltips wait for a resting pointer. */
 export const COMPOSER_TOOLTIP_DELAY = 700
@@ -153,12 +152,13 @@ const tagOf = (item: TriggerItem) =>
     ? TAGS[item.metadata.effect]
     : undefined
 
-const EMPTY: Readonly<Record<ToolCatalogState['status'], string>> = {
-  loading: 'Loading tools…',
-  ready: 'No matching tools',
+/** Why the list holds no tools, when Theorem could not list them. */
+const CATALOG_NOTE: Partial<Record<ToolCatalogState['status'], string>> = {
   'not-served': 'This Theorem does not list its tools yet.',
   failed: 'Tools could not be loaded.',
 }
+
+const NO_TOOLS = 'No matching tools'
 
 const NO_COMMANDS = 'No matching commands'
 
@@ -352,15 +352,15 @@ export function ComposerToolTrigger() {
             else setOutputDialog(item.id)
           },
         }}
-        // Until the tools are listed the note says why, so the list's own
-        // line (an empty list stays open only while they load) answers only
-        // for the commands.
-        note={status === 'ready' ? undefined : EMPTY[status]}
+        // When Theorem cannot list its tools the note says why, so the
+        // list's own line answers only for the commands. While they load
+        // the commands show alone.
+        note={CATALOG_NOTE[status]}
         itemTag={tagOf}
-        emptyItemsLabel={status === 'ready' ? EMPTY.ready : NO_COMMANDS}
+        emptyItemsLabel={status === 'ready' ? NO_TOOLS : NO_COMMANDS}
         loadingLabel={NO_COMMANDS}
         surfaceRef={glass.attach}
-        className={cn('w-md', glass.className)}
+        className={glass.className}
       />
       {outputDialog && (
         <OutputSettingsDialog

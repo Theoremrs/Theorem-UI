@@ -189,9 +189,9 @@ export function ComposerPlus() {
             </Tooltip>
           </TooltipProvider>
           <MenuPopup
-            side="top"
+            side="bottom"
             align="start"
-            className="composer-menu w-60"
+            className="composer-menu w-42"
             // An item that opens something else hands focus to it, not back here.
             finalFocus={() => next.current === undefined}
           >
@@ -210,7 +210,7 @@ export function ComposerPlus() {
                 <Icon.Plugins />
                 Connectors
               </MenuSubTrigger>
-              <MenuSubPopup className="composer-menu w-64">
+              <MenuSubPopup className="composer-menu w-45">
                 <MenuGroup>
                   <MenuGroupLabel>MCP servers</MenuGroupLabel>
                   {served &&
@@ -235,7 +235,9 @@ export function ComposerPlus() {
                       >
                         <span className="flex min-w-0 items-center gap-2">
                           <Icon.Plugin />
-                          <span className="truncate">{group.label}</span>
+                          <span className="min-w-0 break-words">
+                            {group.label}
+                          </span>
                         </span>
                       </MenuCheckboxItem>
                     ))}
@@ -264,7 +266,7 @@ export function ComposerPlus() {
                 <Icon.SkillControl />
                 Skills
               </MenuSubTrigger>
-              <MenuSubPopup className="composer-menu max-h-80 w-64 overflow-y-auto">
+              <MenuSubPopup className="composer-menu max-h-80 w-45 overflow-y-auto">
                 <MenuCheckboxItem
                   variant="switch"
                   checked={plan}
@@ -301,7 +303,7 @@ export function ComposerPlus() {
                             }
                           >
                             <Icon.SkillControl />
-                            <span className="min-w-0 flex-1 truncate">
+                            <span className="min-w-0 flex-1 break-words">
                               {skill.name}
                             </span>
                             {skillOrigin(skill) && (

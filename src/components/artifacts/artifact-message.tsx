@@ -9,13 +9,7 @@
 // its answer; expanding it does not open a second runtime in the dock.
 import { appearancePair } from '@/lib/appearance-policy'
 import { useAuiState } from '@assistant-ui/react'
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-} from 'react'
+import { useCallback, useContext, useEffect, useRef } from 'react'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { followArtifact } from '@/components/ide/follow'
@@ -24,19 +18,13 @@ import { recordLaunch } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import { kindLabel, useThreadArtifacts } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
-import { isBare, isLive, representationOf } from './artifact-registry'
+import { isBare, isCard, isLive, representationOf } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
 import { ArtifactActions } from './artifact-actions'
 import { focusInlineArtifact, InlineArtifact } from './inline-artifact'
 import { OpenLatestContext } from './app-history'
-import { useArtifactView } from './artifact-view'
+import { ArtifactPlacement, useArtifactView } from './artifact-view'
 import { OPENS_WHOLE, thingProps } from '@/lib/face/things'
-
-/**
- * Where a conversation's artifacts open: in the dock's panels beside it, or
- * in the message itself when the conversation has no dock beside it.
- */
-export const ArtifactPlacement = createContext<'panel' | 'inline'>('panel')
 
 export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
   const artifacts = useThreadArtifacts()
@@ -48,8 +36,9 @@ export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
     (s) => s.openId !== undefined && s.openId === artifact.artifactId,
   )
   // A bare artifact is already whole in the reply: the working turn's does
-  // not also open in the panel.
+  // not also open in the panel. A card renderer draws the reply's card itself.
   const bare = isBare(artifact, 'preview')
+  const card = isCard(artifact, 'preview')
   const { cardRef, launch } = useArtifactLaunch(
     artifact,
     !inline && !liveInline && !bare,
@@ -59,9 +48,10 @@ export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
   const position = versions.findIndex((v) => v.revision === artifact.revision)
   const newest = versions.at(-1) ?? artifact
   const latest = position === versions.length - 1 && newest.partId === artifact.partId
-  if (bare)
+  if (bare || card)
     return (
       <div
+        ref={cardRef}
         data-slot="theorem-artifact-bare"
         data-artifact-id={artifact.artifactId}
         {...thingProps('artifact', artifact.artifactId, {

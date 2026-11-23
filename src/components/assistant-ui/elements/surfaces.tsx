@@ -7,6 +7,16 @@ import { useIsomorphicLayoutEffect } from "../utils/useIsomorphicLayoutEffect";
 
 export const paper = "bg-background border border-border/60 dark:bg-popover";
 
+// Theorem: a diagram drawn on the reply's own ground, in line with its text,
+// with the Mermaid element's box, fill and inset taken off.
+export const bareDrawing = "rounded-none bg-transparent p-0 [&_svg]:mx-0";
+
+// Theorem: a search field on a menu's own ground, as coss's CommandInput draws
+// it: no fill, border, ring or focus outline of its own (the caret shows where
+// typing goes), the menu's hairline under it.
+export const menuSearch =
+  "border-transparent! bg-transparent! shadow-none before:hidden has-focus-visible:ring-0 [&_input]:outline-none!";
+
 export const floating = "bg-background border border-border/60 dark:bg-popover";
 
 export const field =

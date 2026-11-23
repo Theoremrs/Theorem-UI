@@ -50,8 +50,18 @@ export const TEXT_RECIPES = {
     tracking: 'normal',
     scale: 'content',
   },
+  // What the person writes, in Manrope: their sent turn at 16px on a 26px
+  // line, which carries the x-height of 17px Plex beside it (8.6 vs 8.8px).
+  'prose.human': {
+    family: 'human',
+    size: 1,
+    lineHeight: 26 / 16,
+    weight: 400,
+    tracking: 'normal',
+    scale: 'content',
+  },
   'composer.content': {
-    family: 'text',
+    family: 'human',
     size: 1,
     lineHeight: 1.5,
     weight: 400,
@@ -92,20 +102,21 @@ export const TEXT_RECIPES = {
     tracking: '0.01em',
     scale: 'ui',
   },
+  // Paper Mono at 14px carries the x-height JetBrains Mono had at 13px.
   code: {
     family: 'mono',
-    size: 0.8125,
-    lineHeight: 20 / 13,
+    size: 0.875,
+    lineHeight: 21 / 14,
     weight: 400,
     tracking: 'normal',
     scale: 'code',
   },
-  // Headings sit clearly above 17px prose in size and weight.
+  // Headings sit clearly above 17px prose in size and at a semibold weight.
   'heading.small': {
     family: 'text',
     size: 19 / 16,
     lineHeight: 26 / 19,
-    weight: 650,
+    weight: 600,
     tracking: 'normal',
     scale: 'content',
   },
@@ -113,7 +124,7 @@ export const TEXT_RECIPES = {
     family: 'text',
     size: 22 / 16,
     lineHeight: 30 / 22,
-    weight: 650,
+    weight: 600,
     tracking: 'normal',
     scale: 'content',
   },
@@ -121,7 +132,7 @@ export const TEXT_RECIPES = {
     family: 'text',
     size: 26 / 16,
     lineHeight: 34 / 26,
-    weight: 650,
+    weight: 600,
     tracking: 'normal',
     scale: 'content',
   },

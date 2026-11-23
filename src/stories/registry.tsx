@@ -131,7 +131,6 @@ import { SCENE_STORY_RENDERS } from './scene-stories'
 import type { ArtifactStory } from './fixtures/artifacts'
 import {
   ResponseDetailsStory,
-  ResponseStylePickerStory,
   ResponseStylesSettingsStory,
 } from './response-styles-stories'
 import { documentFixtures } from './fixtures/notes'
@@ -1388,7 +1387,6 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'note-kinds': NoteKindsStory,
   'canvas-note-types': CanvasNoteTypesStory,
   'program-note': ProgramNoteStory,
-  'response-style-picker': ResponseStylePickerStory,
   'response-details': ResponseDetailsStory,
   'response-styles-settings': ResponseStylesSettingsStory,
   'cpu-gpu-tradeoff': () => <NotebookStory id="cpu-gpu-tradeoff" />,

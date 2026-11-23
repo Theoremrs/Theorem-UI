@@ -99,7 +99,7 @@ export function EffortPicker() {
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <MenuPopup side="top" align="end" className="w-52">
+      <MenuPopup side="bottom" align="end" className="w-36">
         <MenuGroup>
           <MenuGroupLabel>Reasoning effort</MenuGroupLabel>
           <MenuRadioGroup

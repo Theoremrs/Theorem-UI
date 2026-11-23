@@ -101,15 +101,16 @@ async function sourceEvidence() {
 
 const RECIPE_REFERENCE = {
   prose: { size: 17 / 16, lineHeight: 27 / 17, weight: 400, family: 'IBM Plex Sans', scale: 'content' },
-  'composer.content': { size: 1, lineHeight: 1.5, weight: 400, family: 'IBM Plex Sans', scale: 'content' },
+  'prose.human': { size: 1, lineHeight: 26 / 16, weight: 400, family: 'Manrope', scale: 'content' },
+  'composer.content': { size: 1, lineHeight: 1.5, weight: 400, family: 'Manrope', scale: 'content' },
   'ui.label': { size: 0.875, lineHeight: 20 / 14, weight: 400, family: 'IBM Plex Sans', scale: 'ui', tracking: 0.01 },
   'ui.section': { size: 0.875, lineHeight: 20 / 14, weight: 500, family: 'IBM Plex Sans', scale: 'ui', tracking: 0.01 },
   'ui.group': { size: 0.9375, lineHeight: 20 / 15, weight: 600, family: 'IBM Plex Sans', scale: 'ui' },
   metadata: { size: 0.75, lineHeight: 1.5, weight: 400, family: 'IBM Plex Sans', scale: 'ui', tracking: 0.01 },
-  code: { size: 0.8125, lineHeight: 20 / 13, weight: 400, family: 'JetBrains Mono', scale: 'code' },
-  'heading.small': { size: 19 / 16, lineHeight: 26 / 19, weight: 650, family: 'IBM Plex Sans', scale: 'content' },
-  'heading.medium': { size: 22 / 16, lineHeight: 30 / 22, weight: 650, family: 'IBM Plex Sans', scale: 'content' },
-  'heading.large': { size: 26 / 16, lineHeight: 34 / 26, weight: 650, family: 'IBM Plex Sans', scale: 'content' },
+  code: { size: 0.875, lineHeight: 21 / 14, weight: 400, family: 'Paper Mono', scale: 'code' },
+  'heading.small': { size: 19 / 16, lineHeight: 26 / 19, weight: 600, family: 'IBM Plex Sans', scale: 'content' },
+  'heading.medium': { size: 22 / 16, lineHeight: 30 / 22, weight: 600, family: 'IBM Plex Sans', scale: 'content' },
+  'heading.large': { size: 26 / 16, lineHeight: 34 / 26, weight: 600, family: 'IBM Plex Sans', scale: 'content' },
 }
 
 function auditRecipes(recipes, environment) {
@@ -328,7 +329,8 @@ if (!engine) {
     Object.assign(environment, meta)
     measurements.document = meta.document
     const assetResults = await Promise.all(FONT_ASSET_EVIDENCE.map(async (asset) => {
-      const file = resolve(ROOT, 'node_modules', asset.package, asset.asset)
+      // A vendored face names its path; a package face its package and file.
+      const file = asset.path ? resolve(ROOT, asset.path) : resolve(ROOT, 'node_modules', asset.package, asset.asset)
       try {
         const actual = createHash('sha256').update(await readFile(file)).digest('hex')
         return { ...asset, actualSha256: actual, status: actual === asset.sha256 ? 'pass' : 'fail' }
@@ -719,9 +721,9 @@ for (const oracle of ORACLES) {
     const expectedFilesPass = measurements.fonts?.expectedAssets?.length === FONT_ASSET_EVIDENCE.length && measurements.fonts.expectedAssets.every((asset) => asset.status === 'pass')
     const actual = measurements.fonts?.actualFaceEvidence
     const primaryFace = actual?.prose?.fonts?.some((font) => font.isCustomFont && font.glyphCount > 0 && /IBM Plex Sans/i.test(font.familyName ?? font.postScriptName ?? ''))
-    const codeFace = actual?.code?.fonts?.some((font) => font.isCustomFont && font.glyphCount > 0 && /JetBrains Mono/i.test(font.familyName ?? font.postScriptName ?? ''))
+    const codeFace = actual?.code?.fonts?.some((font) => font.isCustomFont && font.glyphCount > 0 && /Paper Mono/i.test(font.familyName ?? font.postScriptName ?? ''))
     const primaryLoaded = measurements.fonts?.faces?.some((face) => /IBM Plex Sans/i.test(face.family) && face.style === 'normal' && /100\s+700/.test(face.weight))
-    const codeLoaded = measurements.fonts?.faces?.some((face) => /JetBrains Mono/i.test(face.family) && face.style === 'normal' && /100\s+800/.test(face.weight))
+    const codeLoaded = measurements.fonts?.faces?.some((face) => /Paper Mono/i.test(face.family) && face.style === 'normal' && /100\s+800/.test(face.weight))
     const enoughText = Boolean(measurements.recipes.some((recipe) => recipe.recipe === 'prose' && recipe.text) && measurements.recipes.some((recipe) => recipe.recipe === 'code' && recipe.text))
     const fixtureHasCode = measurements.fixtureRoots?.some((id)=>['F04','F05','F08'].includes(id)) && enoughText
     const status = browserFailure || !actual?.prose?.fonts ? 'not-measurable' : expectedFilesPass && primaryFace && primaryLoaded && (!fixtureHasCode || codeFace && codeLoaded) ? 'pass' : 'not-measurable'

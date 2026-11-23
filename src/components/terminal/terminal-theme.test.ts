@@ -1,22 +1,28 @@
-// SOURCING: culori (a dependency) for OKLCH, WCAG contrast, CIEDE2000 and the sRGB gamut; @tanstack/highlight's githubDarkTheme for the code colours; scripts/palettes.ts for every built-in mode's tokens and for custom ones made the way a palette is.
+// SOURCING: culori (a dependency) for OKLCH, WCAG contrast, CIEDE2000 and the sRGB gamut; terminal-editor.ts's editors for the code colours; scripts/palettes.ts for every built-in mode's tokens and for custom ones made the way a palette is.
 //
 // The terminal's colours, worked out from each workspace, keep pi's slate's
 // relationships to GitHub Sharp and DESIGN.md's rules: text at 4.5:1 on the
-// surface it is drawn on, and diff tints at GitHub Dark's diff hues.
+// surface it is drawn on, and diff tints at GitHub Dark's diff hues. In a
+// dark workspace the conversation sits on its editor's ground, below the main
+// screen, and Vitesse's sits on Vitesse Dark's in both modes.
 import { describe, expect, test } from 'bun:test'
-import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
 import { converter, differenceCiede2000, inGamut, wcagContrast } from 'culori'
-import { modeTokens, modes } from '../../../scripts/palettes'
+import { modeEditor, modeTokens, modes } from '../../../scripts/palettes'
 import {
   GITHUB_SHARP,
   LINK,
   SLATE,
   SUCCESS,
+  codeColours,
   measure,
   terminalTheme,
   workspaceOf,
 } from './terminal-theme'
-import type { TerminalTheme } from './terminal-theme'
+import type { TerminalTheme, Workspace } from './terminal-theme'
+import { GITHUB_DARK, VITESSE_DARK } from './terminal-editor'
+import type { TerminalEditor } from './terminal-editor'
+import { terminalRoles } from './terminal-roles'
+import { terminalLadder } from './terminal-ladder'
 
 const oklch = converter('oklch')
 const deltaE = differenceCiede2000()
@@ -41,11 +47,31 @@ const darker = (m: Mode, by: number): Mode => ({
   ),
 })
 
-const WORKSPACES = {
-  'GitHub Sharp': workspace(mode(':root')),
-  'GitHub Sharp dark': workspace(mode('.dark')),
-  Stone: workspace(mode("[data-palette='stone']")),
-  'Stone dark': workspace(mode(".dark[data-palette='stone']")),
+/** Every built-in mode, by name, with the dark editor its terminal is drawn as. */
+const BUILT_IN = {
+  'GitHub Sharp': ':root',
+  'GitHub Sharp dark': '.dark',
+  Ember: "[data-palette='ember']",
+  'Ember dark': ".dark[data-palette='ember']",
+  Stone: "[data-palette='stone']",
+  'Stone dark': ".dark[data-palette='stone']",
+  Vitesse: "[data-palette='vitesse']",
+  'Vitesse dark': ".dark[data-palette='vitesse']",
+} as const
+const EDITORS: Record<string, TerminalEditor> = Object.fromEntries(
+  Object.entries(BUILT_IN).map(([name, selector]) => [
+    name,
+    modeEditor(mode(selector)),
+  ]),
+)
+
+const WORKSPACES: Record<string, Workspace> = {
+  ...(Object.fromEntries(
+    Object.entries(BUILT_IN).map(([name, selector]) => [
+      name,
+      workspace(mode(selector)),
+    ]),
+  ) as Record<keyof typeof BUILT_IN, Workspace>),
   // A person's own colours, made the way a palette is.
   'plum dark': workspace({
     ...mode('.dark'),
@@ -67,12 +93,17 @@ const WORKSPACES = {
     saturation: 0,
   }),
 }
-const THEMES = Object.entries(WORKSPACES).map(
-  ([name, w]) => [name, terminalTheme(w)] as [string, TerminalTheme],
+const editorOf = (name: string) => EDITORS[name] ?? GITHUB_DARK
+const themeOf = (name: string) =>
+  terminalTheme(WORKSPACES[name]!, editorOf(name))
+const THEMES = Object.keys(WORKSPACES).map(
+  (name) =>
+    [name, themeOf(name), editorOf(name)] as [
+      string,
+      TerminalTheme,
+      TerminalEditor,
+    ],
 )
-
-const CODE = [...new Set(Object.values(githubDarkTheme.tokens))]
-const COMMENT = githubDarkTheme.tokens.comment
 const below = (fgs: string[], bgs: string[]) =>
   bgs.flatMap((bg) =>
     fgs
@@ -93,24 +124,27 @@ const hueGap = (c: number, a = 0, b = 0) =>
   2 * c * Math.sin((apart(a, b) * Math.PI) / 360)
 
 test("GitHub Sharp gives back pi's slate", () => {
-  expect(terminalTheme(WORKSPACES['GitHub Sharp'])).toEqual(SLATE)
+  expect(themeOf('GitHub Sharp')).toEqual(SLATE)
 })
 
 test('GITHUB_SHARP is GitHub Sharp as measure reads it', () => {
-  const light = measure(WORKSPACES['GitHub Sharp'])
-  const dark = measure(WORKSPACES['GitHub Sharp dark'])
+  const light = measure(WORKSPACES['GitHub Sharp']!)
+  const dark = measure(WORKSPACES['GitHub Sharp dark']!)
   expect(light.tint.c).toBeCloseTo(GITHUB_SHARP.tint.c, 6)
   expect(light.tint.h).toBeCloseTo(GITHUB_SHARP.tint.h, 2)
   expect(light.anchor).toBeCloseTo(GITHUB_SHARP.anchor.light, 5)
   expect(dark.anchor).toBeCloseTo(GITHUB_SHARP.anchor.dark, 5)
 })
 
-describe.each(THEMES)('in %s', (_, theme) => {
+describe.each(THEMES)('in %s', (_, theme, editor) => {
   test('every text colour reads at 4.5:1 on each surface it is drawn on', () => {
     const { ink, bright, muted, sage, gold, error } = theme
     const chrome = [ink, bright, muted, sage, gold, error]
     expect(below(chrome, [theme.bg, theme.raised])).toEqual([])
-    const code = [...CODE, ink]
+    // The code colours the crate draws: the editor's syntax roles.
+    const drawn = codeColours(editor, theme.bg, theme.raised)
+    const COMMENT = drawn.comment
+    const code = [...drawn.code, ink]
     expect(below(code, [theme.bg, theme.removedLine, theme.addedLine])).toEqual(
       [],
     )
@@ -174,7 +208,7 @@ test('on the slate the mark is burnt orange', () => {
 })
 
 test('a neutral workspace gives a neutral terminal', () => {
-  const theme = terminalTheme(WORKSPACES['pure grey, darker'])
+  const theme = themeOf('pure grey, darker')
   for (const name of [
     'bg',
     'raised',
@@ -194,8 +228,40 @@ test("a tinted workspace's terminal takes its hue, turned as the slate's is from
     'plum dark',
     'red dark',
   ] as const) {
-    const { tint } = measure(WORKSPACES[name])
-    const { c, h } = lch(terminalTheme(WORKSPACES[name]).bg)
+    const { tint } = measure(WORKSPACES[name]!)
+    const { c, h } = lch(themeOf(name).bg)
     expect(hueGap(c, h, tint.h + turn)).toBeLessThanOrEqual(ROUNDING)
+  }
+})
+
+/** The canvas the conversation sits on, as the terminal draws it. */
+const canvasOf = (name: string) =>
+  terminalLadder(terminalRoles(WORKSPACES[name]!, editorOf(name))).surfaces
+    .canvas
+
+test("in a dark workspace the conversation sits on its editor's ground, below the main screen", () => {
+  for (const name of [
+    'GitHub Sharp dark',
+    'Ember dark',
+    'Stone dark',
+    'Vitesse dark',
+    'plum dark',
+    'red dark',
+  ]) {
+    const canvas = lch(canvasOf(name))
+    // Rounded to hex twice: the background, then the canvas laid from it.
+    expect(Math.abs(canvas.l - lch(editorOf(name).ground).l)).toBeLessThan(
+      2 * ROUNDING,
+    )
+    expect(lch(WORKSPACES[name]!['sheet-from']).l - canvas.l).toBeGreaterThan(
+      0.07,
+    )
+  }
+})
+
+test("Vitesse's conversation sits on Vitesse Dark's ground in both modes", () => {
+  for (const name of ['Vitesse', 'Vitesse dark']) {
+    expect(editorOf(name)).toBe(VITESSE_DARK)
+    expect(canvasOf(name)).toBe(VITESSE_DARK.ground)
   }
 })
