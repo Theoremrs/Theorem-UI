@@ -1,4 +1,4 @@
-// SOURCING: culori (OKLCH, WCAG contrast, gamut clamping, hex output) and @tanstack/highlight's githubDarkTheme for the code colours the terminal draws. No library derives one palette from another by preserved relationships; the rules here are the terminal's own, measured from pi's slate in GitHub Sharp.
+// SOURCING: culori (OKLCH, WCAG contrast, gamut clamping, hex output) and lib/code-colours' GitHub Dark for the code colours the terminal draws. No library derives one palette from another by preserved relationships; the rules here are the terminal's own, measured from pi's slate in GitHub Sharp.
 //
 // The terminal's colours as a function of the workspace around it. pi's slate
 // was set in GitHub Sharp; each colour keeps the relationship it has there,
@@ -37,7 +37,6 @@
 //   text would fall below 4.5:1. Changed words that need more distance take
 //   it in lightness first, as far as their text allows, then in chroma, so
 //   they stay off the edge of sRGB, where a red reads as an alarm.
-import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
 import {
   clampChroma,
   converter,
@@ -47,6 +46,7 @@ import {
   wcagContrast,
 } from 'culori'
 import type { Oklch } from 'culori'
+import { GITHUB_DARK } from '@/lib/code-colours'
 
 const oklch = converter('oklch')
 const oklab = converter('oklab')
@@ -143,10 +143,10 @@ export const SUCCESS = '#7ee787'
 export const LINK = '#58a6ff'
 
 /** The code colours the crate draws: one per token class, with plain text in the ink. */
-const CODE = [...new Set(Object.values(githubDarkTheme.tokens))].filter(
-  (colour) => colour !== githubDarkTheme.tokens.token,
+const CODE = [...new Set(Object.values(GITHUB_DARK))].filter(
+  (colour) => colour !== GITHUB_DARK.token,
 )
-const COMMENT = githubDarkTheme.tokens.comment
+const COMMENT = GITHUB_DARK.comment
 const READABLE = 4.5
 
 function at(colour: string): Oklch {

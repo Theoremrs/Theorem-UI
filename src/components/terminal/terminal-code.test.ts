@@ -21,7 +21,13 @@ test('an answer splits into its prose and its highlighted code, in order', () =>
     lines: [
       [
         { t: 'const', c: 'keyword' },
-        { t: ' ready = count > ' },
+        { t: ' ' },
+        { t: 'ready', c: 'number' },
+        { t: ' ' },
+        { t: '=', c: 'keyword' },
+        { t: ' count ' },
+        { t: '>', c: 'keyword' },
+        { t: ' ' },
         { t: '0', c: 'number' },
       ],
     ],
@@ -39,12 +45,12 @@ test('a fence still streaming runs to the end of what has arrived', () => {
   })
 })
 
-test("TanStack's diff grammar classes whole lines; an unknown language is plain", () => {
+test("Shiki's diff grammar classes whole lines in GitHub Dark's colours; an unknown language is plain", () => {
   const lines = highlightLines('@@ -1 +1 @@\n-old\n+new\n same', 'diff')
   expect(lines.map((line) => line.map((token) => token.c))).toEqual([
-    ['meta'],
+    ['function'],
     ['deleted'],
-    ['inserted'],
+    ['tag'],
     [undefined],
   ])
   expect(highlightLines('one\ntwo', 'nonesuch')).toEqual([

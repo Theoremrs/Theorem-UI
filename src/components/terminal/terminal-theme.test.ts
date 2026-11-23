@@ -1,10 +1,10 @@
-// SOURCING: culori (a dependency) for OKLCH, WCAG contrast, CIEDE2000 and the sRGB gamut; @tanstack/highlight's githubDarkTheme for the code colours; scripts/palettes.ts for every built-in mode's tokens and for custom ones made the way a palette is.
+// SOURCING: culori (a dependency) for OKLCH, WCAG contrast, CIEDE2000 and the sRGB gamut; lib/code-colours' GitHub Dark for the code colours; scripts/palettes.ts for every built-in mode's tokens and for custom ones made the way a palette is.
 //
 // The terminal's colours, worked out from each workspace, keep pi's slate's
 // relationships to GitHub Sharp and DESIGN.md's rules: text at 4.5:1 on the
 // surface it is drawn on, and diff tints at GitHub Dark's diff hues.
 import { describe, expect, test } from 'bun:test'
-import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
+import { GITHUB_DARK } from '@/lib/code-colours'
 import { converter, differenceCiede2000, inGamut, wcagContrast } from 'culori'
 import { modeTokens, modes } from '../../../scripts/palettes'
 import {
@@ -71,8 +71,8 @@ const THEMES = Object.entries(WORKSPACES).map(
   ([name, w]) => [name, terminalTheme(w)] as [string, TerminalTheme],
 )
 
-const CODE = [...new Set(Object.values(githubDarkTheme.tokens))]
-const COMMENT = githubDarkTheme.tokens.comment
+const CODE = [...new Set(Object.values(GITHUB_DARK))]
+const COMMENT = GITHUB_DARK.comment
 const below = (fgs: string[], bgs: string[]) =>
   bgs.flatMap((bg) =>
     fgs

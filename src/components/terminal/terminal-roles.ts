@@ -1,6 +1,6 @@
 // SOURCING: culori (OKLab/OKLCH conversion, gamut clamping, WCAG contrast,
 // hex output); terminal-theme.ts's terminalTheme, the one projection of the
-// workspace into terminal colours; @tanstack/highlight's githubDarkTheme for
+// workspace into terminal colours; lib/code-colours' GitHub Dark for
 // the code colours the terminal draws; terminal/src/preview/palette.rs's
 // REFERENCE, the illustration palette P⁰ every pixel preview is indexed in.
 //
@@ -16,9 +16,9 @@
 //
 // No role privileges a hue: headings are the bright text in bold, the prompt
 // and focus take the accent, and amber is the warning family only.
-import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
 import { clampChroma, converter, formatHex, wcagContrast } from 'culori'
 import type { Oklab, Oklch } from 'culori'
+import { GITHUB_DARK } from '@/lib/code-colours'
 import { LINK, SLATE, SUCCESS, terminalTheme } from './terminal-theme'
 import type { TerminalTheme, Workspace } from './terminal-theme'
 
@@ -45,16 +45,16 @@ export const ILLUSTRATION_REFERENCE = [
   '#4385be', '#1a4f8c', '#c4b9e0', '#8b7ec8', '#4f3685', '#f4a4c2', '#ce5d97', '#87285e',
 ] as const // prettier-ignore
 
-/** The syntax roles, one per class TanStack Highlight's github-dark emits. */
+/** The syntax roles, one per colour GitHub Dark gives a highlight class. */
 const SYNTAX_SOURCE = {
-  keyword: githubDarkTheme.tokens.keyword,
-  string: githubDarkTheme.tokens.string,
-  number: githubDarkTheme.tokens.number,
-  function: githubDarkTheme.tokens.function,
-  variable: githubDarkTheme.tokens.variable,
-  type: githubDarkTheme.tokens.type,
-  tag: githubDarkTheme.tokens.tag,
-  comment: githubDarkTheme.tokens.comment,
+  keyword: GITHUB_DARK.keyword,
+  string: GITHUB_DARK.string,
+  number: GITHUB_DARK.number,
+  function: GITHUB_DARK.function,
+  variable: GITHUB_DARK.variable,
+  type: GITHUB_DARK.type,
+  tag: GITHUB_DARK.tag,
+  comment: GITHUB_DARK.comment,
 } as const
 export type SyntaxRole = keyof typeof SYNTAX_SOURCE
 
