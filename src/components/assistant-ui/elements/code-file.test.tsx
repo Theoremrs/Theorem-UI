@@ -40,3 +40,20 @@ test('a block without numbers leaves the gutter empty', async () => {
   expect(container.querySelector('pre[data-line-numbers]')).toBeNull()
   expect(container.querySelector('.line[data-line]')).toBeNull()
 })
+
+test('TypeScript keeps its highlighting after an arrow, which `v`-flag patterns lose on JavaScriptCore', async () => {
+  const { container } = await render(
+    <CodeFile
+      code="export const header = (line: string): string[] => fields(line, { strict: true })"
+      language="ts"
+    />,
+  )
+  await waitFor(() => container.querySelector('pre.shiki'))
+  const colourOf = (text: string) =>
+    [...container.querySelectorAll<HTMLElement>('.line span')].find(
+      (span) => span.textContent === text,
+    )?.style.color
+  expect(colourOf('fields')).toBeTruthy()
+  expect(colourOf('true')).toBeTruthy()
+  expect(colourOf('fields')).not.toBe(colourOf('line'))
+})
