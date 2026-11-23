@@ -1,9 +1,10 @@
-// SOURCING: @assistant-ui/react's ThreadMessage parts as the runtime holds them, data parts named per @theoremharness/sdk/assistant-ui (`theorem-user_input`, `theorem-program`, `theorem-host_call`, `theorem-progress`), the chat's delegation part reader (working-runs readDelegation) and plainObjective, and the chat's own readApproval / approvalOutcome, run-input's inputReceipt and client's describeError and terminal-code's argsDiff for the code a write or edit carries while it streams; the reading follows components/terminal/terminal-transcript.ts without its terminal-only highlighting, and adds the stable ids and run state the workbench needs
+// SOURCING: @assistant-ui/react's ThreadMessage parts as the runtime holds them, data parts named per @theoremharness/sdk/assistant-ui (`theorem-user_input`, `theorem-program`, `theorem-host_call`, `theorem-progress`, and a present call's `theorem-client_operation`, whose views view-reference's presentedViewSources reads), the chat's delegation part reader (working-runs readDelegation) and plainObjective, and the chat's own readApproval / approvalOutcome, run-input's inputReceipt and client's describeError and terminal-code's argsDiff for the code a write or edit carries while it streams; the reading follows components/terminal/terminal-transcript.ts without its terminal-only highlighting, and adds the stable ids and run state the workbench needs
 
 import type { ThreadMessage } from '@assistant-ui/react'
 import { approvalOutcome, readApproval } from '@/lib/theorem/approval'
 import type { ApprovalOutcome, TheoremApproval } from '@/lib/theorem/approval'
 import { describeError } from '@/lib/theorem/client'
+import { presentedViewSources } from '@/lib/generative/view-reference'
 import { plainObjective } from '@/lib/theorem/delegations'
 import { DELEGATION_PART, readDelegation } from '@/lib/theorem/working-runs'
 import { inputReceipt } from '@/lib/theorem/run-input'
@@ -166,6 +167,13 @@ export function transcriptOf(
             ]
           : []
       }
+      if (part.type === 'data' && part.name === 'theorem-client_operation')
+        return presentedViewSources(part.data).map((source) => ({
+          type: 'program',
+          source,
+          language: 'javascript',
+          streaming: false,
+        }))
       if (part.type === 'data' && part.name === 'theorem-program') {
         const program = record(part.data)
         const source = text(program.source)

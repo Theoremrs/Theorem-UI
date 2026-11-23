@@ -9,8 +9,10 @@ import type { ObservableNotebook } from './forms'
 import {
   notebookCellsScript,
   observableDocument,
+  observablePage,
   observableSource,
 } from './observable-document'
+import type { ObservableRun, SavedView } from './observable-document'
 
 declare global {
   interface Window {
@@ -32,15 +34,27 @@ async function loadRuntime() {
 }
 
 /** Runs a notebook's cells script the way its frame does. */
-async function run(notebook: ObservableNotebook) {
+async function run(notebook: ObservableNotebook | ObservableRun, saved?: SavedView) {
   await loadRuntime()
   document.body.innerHTML = '<main></main>'
-  ;(0, eval)(notebookCellsScript(notebook))
+  ;(0, eval)(notebookCellsScript(notebook, saved))
   return document.querySelector('main')!
+}
+
+type Selected = { label: string; ids?: Array<string>; state?: Record<string, unknown> } | null
+
+/** What the views report to the page's bridge (`theorem.select`), newest last. */
+function selections() {
+  const seen: Array<Selected> = []
+  ;(window as { theorem?: unknown }).theorem = {
+    select: async (selection: Selected) => void seen.push(selection),
+  }
+  return seen
 }
 
 afterEach(() => {
   document.body.innerHTML = ''
+  delete (window as { theorem?: unknown }).theorem
 })
 
 test('the sandbox import map carries the d3 bundle and the notebook runtime', () => {
@@ -117,7 +131,7 @@ test('the document carries what it runs, its theme baked in for the first paint'
   const html = await observableDocument(
     { form: 'observable', title: 'Doc', cells: [{ id: 'a', kind: 'js', source: '1' }] },
     LIGHT,
-    esbuild,
+    { esbuild },
   )
   expect(html).not.toContain('Content-Security-Policy')
   expect(html).toContain('--redwood:rgb(10, 20, 30)')
@@ -129,7 +143,7 @@ test('the frame puts no policy over the notebook, so d3 builds its row readers f
   const html = await observableDocument(
     { form: 'observable', title: 'Rows', cells: [] },
     LIGHT,
-    esbuild,
+    { esbuild },
   )
   expect(html).not.toMatch(/http-equiv="Content-Security-Policy"/)
 })
@@ -148,4 +162,108 @@ test('a downloaded notebook carries its data and the theme it was drawn in, so i
   expect(kit).toContain('const theme =')
   expect(kit).toContain('rgb(10, 20, 30)')
   expect(kit.indexOf('const theme =')).toBeLessThan(kit.indexOf('theme.series[0]'))
+})
+
+test('a reply view reads an array as its data, and views.linked draws its records as a linked table', async () => {
+  const main = await run({
+    title: 'Linked',
+    cells: [{ id: 'v', kind: 'js', source: 'views.linked(data, {x: "a", y: "b", id: "id", label: "name"})' }],
+    data: [
+      { id: 'p', name: 'Pine', a: 1, b: 2 },
+      { id: 'q', name: 'Quill', a: 3, b: 5 },
+      { id: 'r', name: 'Rook', a: 4, b: 1 },
+    ],
+  })
+  const cell = main.querySelector('[data-cell-id="v"]')!
+  await waitFor(() => cell.querySelectorAll('tbody tr').length === 3)
+  expect(cell.querySelector('svg')).not.toBeNull()
+  expect(cell.textContent).toContain('Quill')
+})
+
+test('views.graph selects a node and its neighbours, and reports their ids to the page', async () => {
+  const seen = selections()
+  const main = await run({
+    title: 'Graph',
+    cells: [{ id: 'g', kind: 'js', source: 'views.graph(data)' }],
+    data: {
+      nodes: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }, { id: 'c', label: 'Gamma' }, { id: 'd' }],
+      links: [{ source: 'a', target: 'b' }, { source: 'c', target: 'a' }],
+    },
+  })
+  const cell = main.querySelector('[data-cell-id="g"]')!
+  await waitFor(() => cell.querySelectorAll('.tv-node').length === 4)
+  const alpha = [...cell.querySelectorAll<SVGGElement>('.tv-node')].find(
+    (node) => node.getAttribute('aria-label') === 'Alpha',
+  )!
+  alpha.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await waitFor(() => seen.length > 0)
+  const last = seen.at(-1)!
+  expect(last!.label).toBe('Alpha and 2 neighbours')
+  expect(new Set(last!.ids)).toEqual(new Set(['a', 'b', 'c']))
+  expect(last!.state).toEqual({ graph1: 'a' })
+  expect(alpha.getAttribute('aria-pressed')).toBe('true')
+})
+
+test('views.param marks a moved parameter, reports it, and a saved view starts from it', async () => {
+  const seen = selections()
+  const source = 'const k = view(views.param(Inputs.range([0, 10], {value: 2, step: 1}), "k"))'
+  const main = await run({ title: 'Param', cells: [{ id: 'k', kind: 'js', source }] })
+  const cell = main.querySelector('[data-cell-id="k"]')!
+  await waitFor(() => cell.querySelector('input[type="range"]') !== null)
+  const marker = cell.querySelector<HTMLElement>('.tv-moved')!
+  expect(marker.hidden).toBe(true)
+  const range = cell.querySelector<HTMLInputElement>('input[type="range"]')!
+  range.value = '7'
+  range.dispatchEvent(new Event('input', { bubbles: true }))
+  await waitFor(() => seen.length > 0)
+  expect(marker.hidden).toBe(false)
+  expect(marker.textContent).toBe('moved from 2')
+  expect(seen.at(-1)!.state).toEqual({ params: { k: 7 } })
+
+  const reopened = await run({ title: 'Param', cells: [{ id: 'k', kind: 'js', source }] }, { params: { k: 7 } })
+  const restored = reopened.querySelector('[data-cell-id="k"]')!
+  await waitFor(() => restored.querySelector('input[type="range"]') !== null)
+  expect(restored.querySelector<HTMLInputElement>('input[type="range"]')!.valueAsNumber).toBe(7)
+  expect(restored.querySelector<HTMLElement>('.tv-moved')!.hidden).toBe(false)
+})
+
+test('a cell that throws reports a page error naming the cell, so the reply can offer Fix', async () => {
+  const errors: Array<string> = []
+  const listen = (event: ErrorEvent) => errors.push(event.message)
+  window.addEventListener('error', listen)
+  try {
+    await run({ title: 'Throws', cells: [{ id: 'bad', kind: 'js', source: 'data.missing.field' }] })
+    await waitFor(() => errors.length > 0)
+    expect(errors[0]).toMatch(/^Cell bad: /)
+  } finally {
+    window.removeEventListener('error', listen)
+  }
+})
+
+test('a page carries only the modules its cells import', async () => {
+  const bare = await observablePage({ title: 'Bare', cells: [{ id: 'a', kind: 'js', source: '1 + 1' }] }, LIGHT, { esbuild })
+  const withD3 = await observablePage(
+    { title: 'D3', cells: [{ id: 'a', kind: 'js', source: 'import * as d3 from "d3"' }] },
+    LIGHT,
+    { esbuild },
+  )
+  expect(withD3.length).toBeGreaterThan(bare.length)
+  expect(bare).not.toContain('"d3"')
+})
+
+test('a cell in Observable JavaScript runs too: viewof and bare assignments', async () => {
+  const main = await run({
+    title: 'Dialect',
+    cells: [
+      { id: 'base', kind: 'js', source: 'base = 10' },
+      { id: 'k', kind: 'js', source: 'viewof k = views.param(Inputs.range([0, 10], {value: 3, step: 1}), "k")' },
+      { id: 'sum', kind: 'js', source: '`sum ${base + k}`' },
+    ],
+  })
+  const sum = main.querySelector('[data-cell-id="sum"]')!
+  await waitFor(() => sum.textContent.includes('sum 13'))
+  const range = main.querySelector<HTMLInputElement>('[data-cell-id="k"] input[type="range"]')!
+  range.value = '5'
+  range.dispatchEvent(new Event('input', { bubbles: true }))
+  await waitFor(() => sum.textContent.includes('sum 15'))
 })
