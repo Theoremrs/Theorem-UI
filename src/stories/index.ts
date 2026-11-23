@@ -337,6 +337,18 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 900, height: 700 },
   },
   {
+    id: 'present-view',
+    title: 'A reply with an interactive view, its cells editable under it',
+    lane: 'original',
+    viewport: { width: 1100, height: 900 },
+  },
+  {
+    id: 'view-cells',
+    title: 'A view\'s cells in the terminal, edited and run again',
+    lane: 'original',
+    viewport: { width: 900, height: 700 },
+  },
+  {
     id: 'face-feel',
     title: 'Tuning how Theo moves',
     lane: 'original',

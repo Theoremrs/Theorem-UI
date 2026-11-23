@@ -68,3 +68,37 @@
   visibility: hidden;
   transition: visibility 0s var(--duration-glide);
 }
+
+/*
+ * The prompt's pointer, the row's second cell after the margin, is the line's
+ * one disclosure mark, in a view's cells (cells-terminal) and in a command
+ * that has something under it (command-terminal's data-opens). It points
+ * right while closed and turns down to what it opens, the same glyph a
+ * quarter turn, gliding without overshoot.
+ */
+:is([data-slot='cells-terminal'], [data-slot='command-terminal'][data-opens])
+  [data-terminal-grid]
+  > div
+  > pre:first-child
+  > span:nth-child(2) {
+  transition: rotate var(--duration-snap) var(--ease-glide);
+}
+:is(
+    [data-slot='cells-terminal'],
+    [data-slot='command-terminal'][data-opens]
+  )[data-state='open']
+  [data-terminal-grid]
+  > div
+  > pre:first-child
+  > span:nth-child(2) {
+  rotate: 90deg;
+}
+@media (prefers-reduced-motion: reduce) {
+  :is([data-slot='cells-terminal'], [data-slot='command-terminal'])
+    [data-terminal-grid]
+    > div
+    > pre:first-child
+    > span:nth-child(2) {
+    transition: none;
+  }
+}

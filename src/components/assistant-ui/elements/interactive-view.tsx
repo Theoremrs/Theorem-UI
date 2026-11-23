@@ -5,13 +5,16 @@
 // message reference (as scene-part asks about an entity); apps'
 // createAppDocument and save-as-page's dialog to keep the view as an App and
 // reopen it from Pages; coss's toast for the outcome once the menu has
-// closed (as thread-menu says a refusal). No library hosts an agent-written
-// Observable notebook inside a chat reply.
+// closed (as thread-menu says a refusal); the terminal's CellsTerminal
+// (terminal/src/cells.rs) for the cells, which the person edits and runs
+// again. No library hosts an agent-written Observable notebook inside a chat
+// reply.
 //
 // A view the agent writes into its reply: Observable cells with d3, Plot,
 // Inputs and the reusable `views`, run in the sandboxed frame. It stands in
-// the answer as the notebook alone, with a caption when the agent gives one;
-// its cells are shown in the terminal. The person works it without a model
+// the answer as the notebook alone, with a caption when the agent gives one,
+// and its cells under it in a terminal the person edits: Mod+Enter runs the
+// edited cells in place of the agent's until the agent writes new ones. The person works it without a model
 // turn, and what they select is put beside the composer as context for the
 // next question. Saving it as an App and expanding it are in the reply's
 // More menu (view-actions.ts); expanding keeps the running frame.
@@ -25,6 +28,7 @@ import {
   useComposerReferences,
 } from '@/components/chat/composer-references'
 import { toastManager } from '@/components/coss/toast'
+import { CellsTerminal } from '@/components/terminal/cells-terminal'
 import { Button } from '@/components/ui/button'
 import type { AppSelection, FrameError } from '@/lib/blocks/sandbox/protocol'
 import { resolvedTheme } from '@/lib/blocks/sandbox/theme'
@@ -66,16 +70,25 @@ function savedOf(selection?: AppSelection): SavedView | undefined {
   }
 }
 
-/** The message Fix sends: the agent wrote the cells, so it is asked to mend them. */
-const repairRequest = (title: string, error: FrameError) =>
-  `The interactive view "${title}" failed: ${error.message}. Fix its cells and show it again.`
+/** The message Fix sends: the agent wrote the cells, so it is asked to mend them, as the person last ran them. */
+const repairRequest = (title: string, error: FrameError, edited?: readonly string[]) =>
+  `The interactive view "${title}" failed: ${error.message}. Fix its cells and show it again.` +
+  (edited
+    ? `\n\nI edited the cells to:\n\n\`\`\`js\n${edited.join('\n\n// %%\n')}\n\`\`\``
+    : '')
 
 export function InteractiveView(props: InteractiveViewProps) {
   const title = props.title?.trim() || props.caption?.trim() || 'Interactive view'
-  const cells = useMemo(
+  const written = useMemo(
     () => (Array.isArray(props.cells) ? props.cells.filter((cell) => typeof cell === 'string') : []),
     [props.cells],
   )
+  const writtenRevision = useMemo(() => viewRevision(written, props.data), [written, props.data])
+  // The cells the person ran from the terminal, for the agent's cells they edited; new cells
+  // from the agent run as written.
+  const [ran, setRan] = useState<{ over: string; cells: string[] }>()
+  const edited = ran?.over === writtenRevision ? ran.cells : undefined
+  const cells = edited ?? written
   const revision = useMemo(() => viewRevision(cells, props.data), [cells, props.data])
   // One notebook per definition: a new revision builds a new page.
   const notebook = useMemo(
@@ -114,6 +127,11 @@ export function InteractiveView(props: InteractiveViewProps) {
   const [failure, setFailure] = useState<FrameError>()
   const onError = useCallback((error: FrameError) => setFailure((seen) => seen ?? error), [])
   useEffect(() => setFailure(undefined), [revision])
+  const [built, setBuilt] = useState<unknown>()
+  const onRun = useCallback(
+    (next: string[]) => setRan({ over: writtenRevision, cells: next }),
+    [writtenRevision],
+  )
 
   const [expanded, setExpanded] = useState(false)
   useEffect(() => {
@@ -190,6 +208,7 @@ export function InteractiveView(props: InteractiveViewProps) {
             loading="Starting the view…"
             onSelection={onSelection}
             onError={onError}
+            onBuilt={setBuilt}
           />
         ) : (
           <p className="py-3 text-sm text-ink-muted">This view has no cells.</p>
@@ -199,7 +218,7 @@ export function InteractiveView(props: InteractiveViewProps) {
             failure={failure}
             onFix={() => {
               setFailure(undefined)
-              return repairRequest(title, failure)
+              return repairRequest(title, failure, edited)
             }}
           />
         )}
@@ -221,6 +240,15 @@ export function InteractiveView(props: InteractiveViewProps) {
                 credit
               ))}
           </figcaption>
+        )}
+        {written.length > 0 && (
+          <CellsTerminal
+            className="mt-2"
+            title={title}
+            cells={cells}
+            status={failure ? 'error' : built === notebook ? 'idle' : 'running'}
+            onRun={onRun}
+          />
         )}
       </figure>
       {saving && (

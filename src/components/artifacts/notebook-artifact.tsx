@@ -128,7 +128,8 @@ function usePage(build: (theme: ThemeState) => Promise<string>, key: unknown) {
 
 /**
  * A notebook's frame: its document, the deny-all host, the page's theme
- * followed in. `onError` hears what its cells throw and nothing catches.
+ * followed in. `onError` hears what its cells throw and nothing catches;
+ * `onBuilt` hears when the page for `buildKey` is built.
  */
 export function NotebookFrame({
   build,
@@ -137,6 +138,7 @@ export function NotebookFrame({
   loading,
   onSelection,
   onError,
+  onBuilt,
 }: {
   build: (theme: ThemeState) => Promise<string>
   buildKey: unknown
@@ -144,8 +146,13 @@ export function NotebookFrame({
   loading: string
   onSelection: (selection: AppSelection) => void
   onError?: (error: FrameError) => void
+  onBuilt?: (key: unknown) => void
 }) {
   const page = usePage(build, buildKey)
+  const built = Boolean(page.src || page.error)
+  useEffect(() => {
+    if (built) onBuilt?.(buildKey)
+  }, [built, buildKey, onBuilt])
   const host = useMemo(
     () => notebookHost(onSelection, onError),
     [onSelection, onError],

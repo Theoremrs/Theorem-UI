@@ -51,6 +51,7 @@ use wasm_bindgen::prelude::*;
 mod blocks;
 mod cabinet;
 mod cabinet_panel;
+mod cells;
 mod command;
 pub mod preview;
 mod theo;
@@ -2829,8 +2830,9 @@ struct Screen {
     /// its own on top of the grid.
     cursor: web_sys::Element,
     cursor_style: String,
-    /// The workbench's hidden input field, found once; it follows the caret.
+    /// The hidden input field beside the grid, found once by its label; it follows the caret.
     field: Option<web_sys::HtmlElement>,
+    field_label: String,
     field_style: String,
 }
 
@@ -2866,8 +2868,19 @@ impl Screen {
             cursor,
             cursor_style: String::new(),
             field: None,
+            field_label: format!(
+                "{} input",
+                theorem_workbench_core::panels::WORKBENCH_LABEL
+            ),
             field_style: String::new(),
         })
+    }
+
+    /// A screen whose hidden input field, beside the grid, is the textarea labelled `label`.
+    fn with_field(parent_id: &str, label: &str) -> Result<Self, JsValue> {
+        let mut screen = Self::new(parent_id)?;
+        screen.field_label = label.to_owned();
+        Ok(screen)
     }
 
     fn send_resize(&self) {
@@ -2975,8 +2988,8 @@ impl Screen {
                 .and_then(|wrapper| {
                     wrapper
                         .query_selector(&format!(
-                            "textarea[aria-label='{} input']",
-                            theorem_workbench_core::panels::WORKBENCH_LABEL
+                            "textarea[aria-label='{}']",
+                            self.field_label.replace('\'', "\\'")
                         ))
                         .ok()
                         .flatten()
