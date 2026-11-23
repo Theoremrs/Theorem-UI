@@ -681,8 +681,8 @@
   overflow-wrap: anywhere;
 }
 .aui-shiki pre[data-line-numbers] {
-  --numbers: calc(var(--digits, 3) * 1ch + 1rem);
-  --gutter: calc(var(--numbers) + 0.625rem);
+  --numbers: calc(var(--digits, 3) * 1ch + 0.75rem);
+  --gutter: calc(var(--numbers) + 0.5rem);
   --bar: calc(var(--numbers) - 2px);
 }
 /* In a code block the pre holds the vertical padding, so the gutter's tint
@@ -714,7 +714,7 @@
   content: attr(data-line);
   position: absolute;
   inset-inline-start: 0;
-  inline-size: calc(var(--numbers) - 0.4375rem);
+  inline-size: calc(var(--numbers) - 0.3125rem);
   text-align: end;
   text-indent: 0;
   color: var(--ink-faint);
