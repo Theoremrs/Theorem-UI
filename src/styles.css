@@ -923,37 +923,6 @@
   --glass-edge-focus: rgb(255 255 255 / 0.12);
 }
 
-/* The glass code block (glass-code-block.tsx): the frosted glass above, at a
-   code block's strength: thin enough that the Life field moves through it
-   as soft blots, as it does through the side panel. The tint is the sheet's
-   bottom colour, not the warmer code surface, so the block reads top to
-   bottom as its lower edge does over the field (owner's review,
-   2026-11-16); the frame is a hairline lit
-   from the top and fading down, as the framecn source draws it, dark ink in
-   light where a white rim would vanish. */
-:root {
-  --glass-code-tint: color-mix(in oklab, var(--sheet-to) 50%, transparent);
-  --glass-code-blur: 4px;
-  --glass-code-rim: rgb(0 0 0 / 0.12);
-  --glass-code-rim-low: rgb(0 0 0 / 0.05);
-  --glass-code-inner: rgb(255 255 255 / 0.7);
-  --glass-code-line: rgb(0 0 0 / 0.06);
-  --glass-code-shadow:
-    0 1px 2px rgb(var(--shadow-tint) / 0.06),
-    0 14px 36px -14px rgb(var(--shadow-tint) / 0.22);
-}
-
-.dark {
-  --glass-code-tint: color-mix(in oklab, var(--sheet-to) 55%, transparent);
-  --glass-code-blur: 5px;
-  --glass-code-rim: rgb(255 255 255 / 0.18);
-  --glass-code-rim-low: rgb(255 255 255 / 0);
-  --glass-code-inner: rgb(255 255 255 / 0.06);
-  --glass-code-line: rgb(255 255 255 / 0.06);
-  --glass-code-shadow:
-    0 1px 2px rgb(0 0 0 / 0.3), 0 18px 40px -16px rgb(0 0 0 / 0.55);
-}
-
 @utility surface-glass {
   position: relative;
   isolation: isolate;

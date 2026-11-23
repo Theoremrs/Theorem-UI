@@ -490,6 +490,12 @@ export const STORIES: readonly StoryMeta[] = [
     evidenceDir: 'theo-face-inverse',
   },
   {
+    id: 'code-blocks',
+    title: 'Code blocks: a diff, a named file, a command and plain text',
+    lane: 'original',
+    viewport: { width: 900, height: 900 },
+  },
+  {
     id: 'tool-pills',
     title: 'Tool calls: done, failed and running',
     lane: 'original',

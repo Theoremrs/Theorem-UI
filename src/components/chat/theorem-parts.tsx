@@ -20,7 +20,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { FC, ReactNode } from 'react'
 import { ApprovalCard } from '@/components/assistant-ui/elements/approval-card'
 import type { ApprovalState } from '@/components/assistant-ui/elements/approval-card'
-import { GlassCodeBlock } from '@/components/assistant-ui/elements/glass-code-block'
+import { CodeFile } from '@/components/assistant-ui/elements/code-file'
 import {
   Collapsible,
   CollapsiblePanel,
@@ -590,15 +590,14 @@ export const TheoremToolCall: ToolCallMessagePartComponent = (props) => {
 
 /* ---------------------------------------------------------------- activity */
 
-/** What a call returned, as the reply's own code block: its glass, copy and palette. */
+/** What a call returned, as the reply's own code block: its header, copy and palette. */
 const ToolOutput: FC<{ text: string }> = ({ text }) => (
-  <GlassCodeBlock
+  <CodeFile
     code={text}
-    language="text"
     title="output"
     lineNumbers={false}
-    frameClassName="my-0"
-    className="aui-code-wrap [&_pre]:max-h-60 [&_pre]:overflow-y-auto [&_pre]:break-words [&_pre]:whitespace-pre-wrap"
+    className="my-0"
+    viewportClassName="max-h-60 overflow-y-auto"
   />
 )
 

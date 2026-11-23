@@ -654,52 +654,106 @@
   border-block-end: 0;
 }
 
-.aui-code-block :is(pre, code),
+.aui-shiki :is(pre, code),
 .aui-user-markdown :is(pre, code) {
   font: var(--recipe-code);
   letter-spacing: normal;
 }
 
-.aui-code-block :is(pre, pre *)::selection {
+.aui-shiki :is(pre, pre *)::selection {
   color: var(--ink);
   background-color: var(--surface-selected);
 }
-/* The line-number column, as the owner's CodeBlock draws it: right-aligned
-   in at least two characters, a 1.5rem gutter, in the faint ink. */
-.aui-code-block pre.th-code--line-numbers .th-line::before {
-  min-inline-size: 2ch;
-  inline-size: auto;
-  padding-inline-end: 1.5rem;
+
+/* Code rows as the owner's editor screenshot draws them: numbers right-aligned
+   in a gutter in the faint ink, a bar beside each row a diff added or removed,
+   faint dots for whitespace, and a long row wrapping under its own
+   indentation (the highlighter sets --indent) with no number of its own. */
+.aui-shiki pre {
+  --gutter: 0.875rem;
+  --bar: 0.375rem;
+  margin: 0;
+  background: transparent !important;
+  tab-size: 4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.aui-shiki pre[data-line-numbers] {
+  --gutter: calc(3ch + 1.75rem);
+  --bar: calc(3ch + 1.125rem);
+}
+.aui-shiki code {
+  display: block;
+  background: transparent;
+}
+.aui-shiki .line {
+  position: relative;
+  display: inline-block;
+  inline-size: 100%;
+  min-block-size: 1lh;
+  vertical-align: top;
+  padding-inline: calc(var(--gutter) + var(--indent, 0ch)) 0.875rem;
+  text-indent: calc(-1 * var(--indent, 0ch));
+}
+.aui-shiki pre[data-line-numbers] .line[data-line]::before {
+  content: attr(data-line);
+  position: absolute;
+  inset-inline-start: 0;
+  inline-size: calc(3ch + 0.75rem);
+  text-align: end;
+  text-indent: 0;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.aui-shiki .line[data-change='add'],
+.aui-shiki .line[data-change='remove'] {
+  --change: var(--success);
+  background: color-mix(in oklab, var(--change) 7%, transparent);
+}
+.aui-shiki .line[data-change='remove'] {
+  --change: var(--error-ink);
+}
+.aui-shiki .line:is([data-change='add'], [data-change='remove'])::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--bar);
+  inline-size: 2px;
+  border-radius: 1px;
+  background: var(--change);
+}
+.aui-shiki .line[data-change='hunk'] {
   color: var(--ink-faint);
 }
-.aui-code-block .th-line.highlighted {
+.aui-shiki .line.highlighted {
   box-shadow: inset 2px 0 var(--line-control);
 }
-/* The glass block's body, as the framecn source sets it: a narrow number
-   column and a little air between lines. */
-.aui-code-block[data-code-surface='glass'] .th-line {
-  padding-block: 2px;
+.aui-shiki :is(.space, .tab) {
+  position: relative;
 }
-.aui-code-block[data-code-surface='glass'] pre.th-code--line-numbers .th-line::before {
-  padding-inline-end: 1rem;
+.aui-shiki :is(.space, .tab)::before {
+  position: absolute;
+  inset-inline-start: 0;
+  inline-size: 1ch;
+  text-align: center;
+  text-indent: 0;
+  color: var(--ink-faint);
+  opacity: 0.5;
+  pointer-events: none;
 }
-/* A block that wraps its lines lets each line wrap inside the pre. */
-.aui-code-block.aui-code-wrap .th-line {
-  inline-size: auto;
-  min-inline-size: 0;
-  display: block;
+.aui-shiki .space::before {
+  content: '\00b7';
+}
+.aui-shiki .tab::before {
+  content: '\2192';
 }
 
 /* Code stays inside the prose column, as tables do, and scrolls sideways in
    its own region. */
 .appearance-assistant-prose
   .aui-md
-  > :is(
-    .aui-code-block,
-    .aui-glass-code,
-    .aui-md-pre,
-    .aui-code-header-root
-  ) {
+  > :is(.aui-code-block, .aui-md-pre, .aui-code-header-root) {
   inline-size: 100%;
   max-inline-size: 100%;
 }

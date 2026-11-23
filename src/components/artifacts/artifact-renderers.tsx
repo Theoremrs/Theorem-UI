@@ -1,4 +1,4 @@
-// SOURCING: react-markdown + remark-gfm + @tailwindcss/typography (documents), the TanStack Highlight SyntaxHighlighter (code), the installed beautiful-mermaid MermaidDiagram (diagrams), notebook-artifact (Observable and marimo notebooks in the hosted frame), OpenUI's Renderer over theorem-artifacts (openui/renderer)
+// SOURCING: react-markdown + remark-gfm + @tailwindcss/typography (documents), the Shiki code block (CodeFile, code), the installed beautiful-mermaid MermaidDiagram (diagrams), notebook-artifact (Observable and marimo notebooks in the hosted frame), OpenUI's Renderer over theorem-artifacts (openui/renderer)
 //
 // The renderers this build mounts. Which one shows an artifact at a distance
 // is the registry's answer (artifact-registry: contributions + resolve); a
@@ -10,7 +10,7 @@ import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { MermaidDiagram } from '@/components/assistant-ui/elements/mermaid-diagram'
-import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highlighter'
+import { CodeFile } from '@/components/assistant-ui/elements/code-file'
 import { DocumentApp } from '@/components/blocks/document-app'
 import { cn } from '@/lib/utils'
 import type { Distance } from '@/lib/artifacts/contributions'
@@ -31,9 +31,6 @@ import {
   representationOf,
 } from './artifact-registry'
 import type { RendererProps } from './artifact-registry'
-
-const codeSurface =
-  '[&_pre]:rounded-lg! [&_pre]:border! [&_pre]:border-separator! [&_pre]:bg-raised!'
 
 /** A fenced block inside a document: the child of <pre> is <code class="language-x">. */
 function fencedCode(
@@ -60,11 +57,7 @@ const documentComponents: Components = {
         </div>
       )
     return (
-      <SyntaxHighlighter
-        className={cn('not-prose my-4', codeSurface)}
-        language={block.language}
-        code={block.code}
-      />
+      <CodeFile className="my-4" language={block.language} code={block.code} />
     )
   },
 }
@@ -91,8 +84,8 @@ const DocumentArtifact: FC<RendererProps> = ({ artifact }) => (
 )
 
 const CodeArtifact: FC<RendererProps> = ({ artifact }) => (
-  <SyntaxHighlighter
-    className={cn('[&_pre]:text-[13px]', codeSurface)}
+  <CodeFile
+    className="my-0"
     language={artifact.language ?? 'text'}
     code={artifact.content}
   />

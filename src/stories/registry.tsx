@@ -125,6 +125,7 @@ import {
   activityMessages,
   appCheckMessages,
   toolPillMessages,
+  codeBlockMessages,
 } from './fixtures/activity'
 import type { ActivityState } from './fixtures/activity'
 import { ARTIFACT_STORIES } from './fixtures/artifacts'
@@ -1348,6 +1349,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
     activityMessages('approval', 'high'),
   ),
   'tool-pills': threadStory('working', toolPillMessages()),
+  'code-blocks': threadStory('finished', codeBlockMessages()),
   'tool-calls-check': threadStory('finished', appCheckMessages()),
   'plan-card': PlanCardStory,
   'plan-card-under-way': PlanCardUnderWayStory,

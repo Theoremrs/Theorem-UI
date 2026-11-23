@@ -197,8 +197,8 @@ try {
         const transcript = await measure(
           page,
           'content',
-          '.aui-code-block pre.th-code',
-          '.th-line > .th-token',
+          '.aui-shiki pre',
+          '.line > span:not(.space, .tab)',
           '.aui-md-inline-code',
         )
         const editor = await measure(
