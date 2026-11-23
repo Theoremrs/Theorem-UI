@@ -81,7 +81,10 @@ import type {
   ApprovalOutcome,
   TheoremApproval,
 } from '@/lib/theorem/approval'
-import { uploadContentPath } from '@/lib/theorem/uploads'
+import { uploadContentPath, useUploadText } from '@/lib/theorem/uploads'
+import { isPastedText, textSize } from '@/components/chat/pasted-text'
+import { PastedTextDialog } from '@/components/chat/pasted-text-dialog'
+import { MessageAttachments } from '@/components/assistant-ui/elements/message-attachment'
 import { DRAFT_PLAN } from '@/lib/theorem/plans'
 import { cn, humanize } from '@/lib/utils'
 import { appearancePair } from '@/lib/appearance-policy'
@@ -934,9 +937,48 @@ const ATTACHMENT_STATES: Partial<Record<string, string>> = {
   refused: 'refused',
 }
 
+/** A pasted text a stored message carries, read from its upload: the element's received-file row, opening the text. */
+const StoredPastedText: FC<{ uploadId: string; name: string }> = ({
+  uploadId,
+  name,
+}) => {
+  const text = useUploadText(uploadId)
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <MessageAttachments
+        className="mt-2 whitespace-normal"
+        attachments={[
+          {
+            id: uploadId,
+            name,
+            size: text === undefined ? '' : textSize(text),
+            kind: 'document',
+          },
+        ]}
+        onOpen={() => setOpen(true)}
+      />
+      <PastedTextDialog
+        name={name}
+        text={text}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  )
+}
+
 const AttachmentPart: DataMessagePartComponent = ({ data }) => {
   const part = object(data)
   const uploadId = str(part.uploadId)
+  const name = str(part.name)
+  if (
+    uploadId &&
+    name &&
+    !ATTACHMENT_STATES[str(part.state) ?? 'ready'] &&
+    isPastedText(name, str(part.mediaType))
+  )
+    return <StoredPastedText uploadId={uploadId} name={name} />
   if (uploadId && str(part.mediaType)?.startsWith('image/'))
     return (
       <NoteImage
