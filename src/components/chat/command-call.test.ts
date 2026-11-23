@@ -59,6 +59,30 @@ describe('a call that runs a command', () => {
     })
   })
 
+  test('reads what it printed from the text entries of the content a result carries', () => {
+    expect(
+      readCommand(
+        { command: 'echo hello' },
+        {
+          content: [
+            { type: 'text', text: 'hello' },
+            { type: 'image', data: '' },
+          ],
+        },
+      )?.stdout,
+    ).toBe('hello')
+  })
+
+  test('keeps only an exit code a terminal could end with', () => {
+    const exit = (code: unknown) =>
+      readCommand({ command: 'x' }, { stdout: 'ok', exitCode: code })?.exitCode
+    expect(exit(2)).toBe(2)
+    expect(exit(-1)).toBe(-1)
+    expect(exit(0.5)).toBeUndefined()
+    expect(exit(3e10)).toBeUndefined()
+    expect(exit(Number.NaN)).toBeUndefined()
+  })
+
   test('a call without a command is not one', () => {
     expect(readCommand({ query: 'tile cache' }, { hits: 3 })).toBeUndefined()
     expect(readCommand({ command: '' }, undefined)).toBeUndefined()
@@ -159,22 +183,37 @@ describe('the output under a command', () => {
     expect(printedAnything({ stdout: '\r\n\n', stderr: '' })).toBe(false)
   })
 
+  const printed = { printed: true }
+
   test('shows while the command works and when it went wrong, and closes once it ended well', () => {
-    expect(outputShows('running', true)).toBe(true)
-    expect(outputShows('awaiting', true)).toBe(true)
-    expect(outputShows('failed', true)).toBe(true)
-    expect(outputShows('interrupted', true)).toBe(true)
-    expect(outputShows('done', true)).toBe(false)
+    expect(outputShows('running', printed)).toBe(true)
+    expect(outputShows('awaiting', printed)).toBe(true)
+    expect(outputShows('failed', printed)).toBe(true)
+    expect(outputShows('interrupted', printed)).toBe(true)
+    expect(outputShows('done', printed)).toBe(false)
+    expect(outputShows('done', { printed: true, exitCode: 0 })).toBe(false)
+  })
+
+  test('stays open for a command that ended with an exit code other than 0', () => {
+    expect(outputShows('done', { printed: true, exitCode: 1 })).toBe(true)
+    expect(outputShows('done', { printed: true, exitCode: 1 }, false)).toBe(
+      false,
+    )
   })
 
   test('keeps to what the reader chose', () => {
-    expect(outputShows('done', true, true)).toBe(true)
-    expect(outputShows('running', true, false)).toBe(false)
+    expect(outputShows('done', printed, true)).toBe(true)
+    expect(outputShows('running', printed, false)).toBe(false)
+  })
+
+  test('opens a command too long for its line only when the reader opens it', () => {
+    expect(outputShows('running', { printed: false, cut: true })).toBe(false)
+    expect(outputShows('done', { printed: false, cut: true }, true)).toBe(true)
   })
 
   test('is never open with nothing to show', () => {
-    expect(outputShows('failed', false)).toBe(false)
-    expect(outputShows('done', false, true)).toBe(false)
+    expect(outputShows('failed', { printed: false })).toBe(false)
+    expect(outputShows('done', { printed: false }, true)).toBe(false)
   })
 
   test('makes room for the chevron that opens it, and for the time once it has run', () => {
@@ -187,8 +226,8 @@ describe('the output under a command', () => {
     }
     // The command's line, then " ▸".
     expect(terminalColumns(run)).toBe(2 + 29 + 1 + 1 + 2 + 2)
-    // And "4m 12s " before the ending, so the terminal does not widen as it counts.
-    expect(terminalColumns(run, true)).toBe(2 + 29 + 1 + 7 + 1 + 2 + 2)
+    // And "10m 10s " before the ending, so the terminal does not widen as it counts.
+    expect(terminalColumns(run, true)).toBe(2 + 29 + 1 + 8 + 1 + 2 + 2)
   })
 })
 

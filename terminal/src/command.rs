@@ -17,7 +17,7 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Margin, Rect},
     style::{Color, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Widget},
 };
 use serde::Deserialize;
@@ -57,7 +57,8 @@ struct Run {
     /// running, awaiting, complete, error or interrupted.
     status: String,
     exit_code: Option<i32>,
-    /// Whether the page shows the output under the command.
+    /// Whether the page shows what is under the command's line: the rest of a
+    /// command too long for it, and the output.
     open: bool,
     /// The person asked for less motion: the command holds still while it runs.
     still: bool,
@@ -77,6 +78,8 @@ impl Run {
 
     /// The bytes a terminal would have read: standard output, then standard
     /// error in the error colour, each line ended as a terminal ends one.
+    /// Nothing follows standard error, so the colour is left on, and more of
+    /// either stream, while nothing printed after it, only adds bytes.
     fn bytes(&self) -> Vec<u8> {
         let crlf = |text: &str| {
             text.replace("\r\n", "\n")
@@ -91,21 +94,39 @@ impl Run {
             }
             out.push_str("\x1b[31m");
             out.push_str(&stderr);
-            out.push_str("\x1b[0m");
         }
         out.into_bytes()
     }
+}
 
-    /// The rows its output takes at `cols` columns, wrapped lines counted.
-    fn output_rows(&self, cols: u16) -> u16 {
-        let bytes = self.bytes();
-        if bytes.is_empty() || cols == 0 {
-            return 0;
+/// The last row on view with anything on it, or the cursor's row when that is
+/// lower: a program that moved the cursor back up still printed the rows under it.
+fn last_row(screen: &VtScreen) -> u16 {
+    let written = screen
+        .vt()
+        .rows(0, screen.size().1)
+        .enumerate()
+        .filter(|(_, text)| !text.trim_end().is_empty())
+        .last()
+        .map_or(0, |(row, _)| u16::try_from(row).unwrap_or(u16::MAX));
+    screen.cursor_position().0.max(written)
+}
+
+/// `text` in rows, the first `first` columns wide and the rest `rest`.
+fn wrap(text: &str, first: usize, rest: usize) -> Vec<String> {
+    let mut rows = vec![String::new()];
+    let mut used = 0;
+    for c in text.chars() {
+        let w = c.width().unwrap_or(0);
+        let room = if rows.len() == 1 { first } else { rest };
+        if used > 0 && used + w > room {
+            rows.push(String::new());
+            used = 0;
         }
-        let mut screen = VtScreen::new(MEASURE_ROWS, cols);
-        screen.feed(&bytes);
-        screen.cursor_position().0 + 1
+        rows.last_mut().expect("one row at least").push(c);
+        used += w;
     }
+    rows
 }
 
 /// The process panes' colours (workbench.rs) on the panel's own ground.
@@ -239,15 +260,22 @@ fn ending(run: &Run, p: &Palette) -> Vec<Span<'static>> {
 /// One command's terminal.
 struct CommandView {
     run: Run,
+    /// The run's output as a terminal reads it (`Run::bytes`), as the screens have it.
+    bytes: Vec<u8>,
     /// The output read at the size it was last drawn at.
     screen: Option<((u16, u16), VtScreen)>,
     /// What the last frame drew from; a frame that matches it is skipped.
     drawn_for: Option<(Rect, Palette)>,
-    /// The rows the page last heard the command wants.
-    reported: u16,
+    /// The rows the page last heard the command wants, and whether its command
+    /// is longer than its line.
+    reported: (u16, bool),
     on_rows: Option<js_sys::Function>,
-    /// The output changed since it was last read.
+    /// The output changed other than by adding to it, so the screen reads it again.
     stale: bool,
+    /// The output grew since the last frame.
+    grew: bool,
+    /// The output read at a width on a screen tall enough to count its rows.
+    measure: Option<(u16, VtScreen)>,
     /// The rows the output takes at a width, kept until the output changes.
     measured: Option<(u16, u16)>,
     /// When this view first saw the command run, and how long it ran once it
@@ -269,11 +297,14 @@ impl CommandView {
     fn new(on_rows: Option<js_sys::Function>, on_scrolled: Option<js_sys::Function>) -> Self {
         Self {
             run: Run::default(),
+            bytes: Vec::new(),
             screen: None,
             drawn_for: None,
-            reported: 0,
+            reported: (0, false),
             on_rows,
             stale: false,
+            grew: false,
+            measure: None,
             measured: None,
             began: None,
             took: None,
@@ -289,13 +320,36 @@ impl CommandView {
         self.time(&run, now());
         if run != self.run {
             if run.stdout != self.run.stdout || run.stderr != self.run.stderr {
-                self.stale = true;
-                self.measured = None;
+                self.take_output(run.bytes());
             }
             self.run = run;
             self.drawn_for = None;
         }
         Ok(())
+    }
+
+    /// Takes the output's new bytes. Where they only add to what the screens
+    /// read, the screens read on with what they add, which keeps a reader
+    /// scrolled back on their lines however much old scrollback drops off;
+    /// otherwise the screens read the output again from its start.
+    fn take_output(&mut self, bytes: Vec<u8>) {
+        match bytes.strip_prefix(self.bytes.as_slice()) {
+            Some(added) if !self.stale => {
+                if let Some((_, screen)) = &mut self.screen {
+                    screen.feed(added);
+                }
+                if let Some((_, screen)) = &mut self.measure {
+                    screen.feed(added);
+                }
+            }
+            _ => {
+                self.stale = true;
+                self.measure = None;
+            }
+        }
+        self.measured = None;
+        self.bytes = bytes;
+        self.grew = true;
     }
 
     /// Times the run from the first state that says it is running to the
@@ -316,20 +370,36 @@ impl CommandView {
         self.took
     }
 
-    /// The rows the command wants at `width` columns: its own line, and its
-    /// output up to the fold. The page shows the output or not; the rows are
-    /// the same either way, so opening reveals what is already drawn.
-    fn wanted_rows(&mut self, width: u16) -> u16 {
+    /// The rows the command wants at `width` columns, and whether its command
+    /// is longer than its line: its own rows (one, or all the command takes
+    /// while what is under it shows), and its output up to the fold. The page
+    /// shows the output or not; its rows are the same either way, so opening
+    /// reveals what is already drawn.
+    fn wanted(&mut self, width: u16) -> (u16, bool) {
         let inner = width.saturating_sub(2);
-        let rows = match self.measured {
-            Some((at, rows)) if at == inner => rows,
-            _ => {
-                let rows = self.run.output_rows(inner);
-                self.measured = Some((inner, rows));
-                rows
-            }
-        };
-        1 + rows.min(FOLD)
+        let (head, _, cut) = self.command_layout(inner, now());
+        let head = u16::try_from(head.len()).unwrap_or(u16::MAX);
+        (head.saturating_add(self.output_rows(inner).min(FOLD)), cut)
+    }
+
+    /// The rows the output takes at `cols` columns, wrapped lines counted.
+    fn output_rows(&mut self, cols: u16) -> u16 {
+        if self.bytes.is_empty() || cols == 0 {
+            return 0;
+        }
+        if let Some((at, rows)) = self.measured
+            && at == cols
+        {
+            return rows;
+        }
+        if self.measure.as_ref().is_none_or(|(at, _)| *at != cols) {
+            let mut screen = VtScreen::new(MEASURE_ROWS, cols);
+            screen.feed(&self.bytes);
+            self.measure = Some((cols, screen));
+        }
+        let rows = last_row(&self.measure.as_ref().expect("read above").1) + 1;
+        self.measured = Some((cols, rows));
+        rows
     }
 
     /// The output read at `size`, kept until the output or the size changes. A
@@ -338,7 +408,7 @@ impl CommandView {
     fn screen_at(&mut self, size: (u16, u16)) -> &VtScreen {
         if self.stale || self.screen.as_ref().is_none_or(|(at, _)| *at != size) {
             let mut screen = VtScreen::new(size.0, size.1);
-            screen.feed(&self.run.bytes());
+            screen.feed(&self.bytes);
             if let Some((at, before)) = self.screen.take() {
                 let mut back = before.scrollback_offset();
                 if back > 0 && at == size {
@@ -354,9 +424,12 @@ impl CommandView {
         &self.screen.as_ref().expect("read above").1
     }
 
-    /// The command on the prompt's line; at the right, the time it has taken,
-    /// how it ended, and the chevron that says whether its output shows.
-    fn command_row(&self, width: u16, at: f64) -> Line<'static> {
+    /// The command's rows at `width`, the line's end (the time it has taken,
+    /// how it ended, and the chevron that says whether what is under it shows),
+    /// and whether the command is longer than its line has room for. Cut, it
+    /// ends in an ellipsis; while what is under it shows, it goes on in rows of
+    /// its own under where it starts, so the whole command can be read.
+    fn command_layout(&self, width: u16, at: f64) -> (Vec<String>, Vec<Span<'static>>, bool) {
         let p = palette();
         let run = &self.run;
         let mut end = Vec::new();
@@ -367,20 +440,45 @@ impl CommandView {
             ));
         }
         end.extend(ending(run, &p));
-        if run.has_output() {
+        let width = usize::from(width);
+        let room = |end: &[Span]| {
+            let end_cols: usize = end.iter().map(|span| span.content.width()).sum();
+            width.saturating_sub(PROMPT.width() + end_cols + 1)
+        };
+        let command = escaped(&run.command.replace('\n', " "));
+        if run.has_output() || command.width() > room(&end) {
             let chevron = if run.open { " ▾" } else { " ▸" };
             end.push(Span::styled(chevron, Style::new().fg(p.muted)));
         }
+        let room = room(&end);
+        let cut = command.width() > room;
+        let rows = match (cut, run.open) {
+            (false, _) => vec![command],
+            (true, true) => wrap(&command, room, width.saturating_sub(PROMPT.width())),
+            (true, false) => vec![fit(&command, room)],
+        };
+        (rows, end, cut)
+    }
+
+    /// The command on the prompt's line with the line's end at the right, and
+    /// the rest of a command too long for it on the rows under it.
+    fn command_rows(&self, width: u16, at: f64) -> Vec<Line<'static>> {
+        let p = palette();
+        let (rows, end, _) = self.command_layout(width, at);
         let end_cols: usize = end.iter().map(|span| span.content.width()).sum();
-        let width = usize::from(width);
-        let room = width.saturating_sub(PROMPT.width() + end_cols + 1);
-        let command = fit(&escaped(&run.command.replace('\n', " ")), room);
-        let fill = width.saturating_sub(PROMPT.width() + command.width() + end_cols);
-        let mut spans = vec![Span::styled(PROMPT, Style::new().fg(p.accent))];
-        spans.extend(command_spans(command, run, &p, at));
-        spans.push(Span::raw(" ".repeat(fill)));
-        spans.extend(end);
-        Line::from(spans)
+        let mut rows = rows.into_iter();
+        let command = rows.next().unwrap_or_default();
+        let fill = usize::from(width).saturating_sub(PROMPT.width() + command.width() + end_cols);
+        let mut line = vec![Span::styled(PROMPT, Style::new().fg(p.accent))];
+        line.extend(command_spans(command, &self.run, &p, at));
+        line.push(Span::raw(" ".repeat(fill)));
+        line.extend(end);
+        let under = rows.map(|row| {
+            let mut spans = vec![Span::raw(" ".repeat(PROMPT.width()))];
+            spans.extend(command_spans(row, &self.run, &p, at));
+            Line::from(spans)
+        });
+        std::iter::once(Line::from(line)).chain(under).collect()
     }
 
     /// Scrolls the output; positive is towards newer. True when it moved.
@@ -401,6 +499,18 @@ impl CommandView {
         moved
     }
 
+    /// Whether the output can scroll `lines`' way (positive is towards newer):
+    /// back while older rows are above the view, on while newer are below it.
+    fn can_scroll(&self, lines: i32) -> bool {
+        self.screen
+            .as_ref()
+            .is_some_and(|(_, screen)| match lines.signum() {
+                -1 => screen.scrollback_offset() < screen.scrollback_len(),
+                1 => screen.scrollback_offset() > 0,
+                _ => false,
+            })
+    }
+
     fn draw(&mut self, frame: &mut Frame) {
         self.draw_at(frame, now());
     }
@@ -410,17 +520,19 @@ impl CommandView {
         let area = frame.area();
         frame.render_widget(Block::new().style(Style::new().bg(p.bg).fg(p.ink)), area);
         let inner = area.inner(Margin::new(1, 0));
+        let command = self.command_rows(inner.width, at);
+        let command_rows = u16::try_from(command.len()).unwrap_or(u16::MAX);
         let [head, body] =
-            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(inner);
-        frame.render_widget(self.command_row(head.width, at), head);
+            Layout::vertical([Constraint::Length(command_rows), Constraint::Fill(1)]).areas(inner);
+        frame.render_widget(Text::from(command), head);
         if body.width > 0 && body.height > 0 {
             // vt100 0.16 panics when a line wraps on a one-row screen, so the output is read
-            // on two rows at least, and the rows shown are the ones that end at its cursor.
+            // on two rows at least, and the rows shown end at the last one it wrote.
             let rows = body.height.max(2);
             let colours = vt_palette(&p);
-            let grew = self.stale;
+            let grew = std::mem::take(&mut self.grew);
             let screen = self.screen_at((rows, body.width));
-            let start = screen.cursor_position().0.min(rows - body.height);
+            let start = last_row(screen).min(rows - body.height);
             // Older output is out of view above, or newer below once the reader scrolled back.
             let above = start > 0 || screen.scrollback_len() > screen.scrollback_offset();
             let below = screen.scrollback_offset() > 0;
@@ -463,16 +575,21 @@ impl CommandView {
         self.report(area.width);
     }
 
-    /// The rows the command wants at `width`, told to the page when they change.
+    /// The rows the command wants at `width`, told to the page with whether its
+    /// command is longer than its line when either changes.
     fn report(&mut self, width: u16) -> u16 {
-        let wanted = self.wanted_rows(width);
+        let wanted = self.wanted(width);
         if wanted != self.reported {
             self.reported = wanted;
             if let Some(on_rows) = &self.on_rows {
-                let _ = on_rows.call1(&JsValue::NULL, &JsValue::from(wanted));
+                let _ = on_rows.call2(
+                    &JsValue::NULL,
+                    &JsValue::from(wanted.0),
+                    &JsValue::from(wanted.1),
+                );
             }
         }
-        wanted
+        wanted.0
     }
 
     /// Whether to hold the last frame while the output wants more rows than
@@ -534,12 +651,19 @@ impl CommandHandle {
     pub fn scroll(&self, lines: i32) -> bool {
         self.view.borrow_mut().scroll(lines)
     }
+
+    /// Whether the output can scroll `lines`' way (positive is towards newer),
+    /// so the page keeps a drag over it, before it has moved a row, only then.
+    pub fn can_scroll(&self, lines: i32) -> bool {
+        self.view.borrow().can_scroll(lines)
+    }
 }
 
 /// Mounts one command's terminal into the element with `parent_id`, which it
 /// fills. `on_rows` hears how many rows the command wants (its line, and its
-/// output up to the fold) whenever that changes, so the page can size the
-/// element. `on_scrolled` hears how many rows new output moved the newest
+/// output up to the fold) and whether the command is longer than its line,
+/// whenever either changes, so the page can size the element and let the
+/// reader open a cut command to read all of it. `on_scrolled` hears how many rows new output moved the newest
 /// output up, in the frame that draws it, so the page can slide them in. Both
 /// are called from the frame, so they must not call back in. Frames run while
 /// the handle lives and the element is on the page, so the page keeps the
@@ -613,28 +737,28 @@ mod tests {
         }));
         assert_eq!(
             view.run.bytes(),
-            b"one\r\ntwo\r\n\x1b[31mbad\x1b[0m".to_vec()
+            b"one\r\ntwo\r\n\x1b[31mbad".to_vec()
         );
     }
 
     #[test]
     fn the_command_wants_its_line_and_its_output_up_to_the_fold() {
         let mut none = run(serde_json::json!({"command": "true", "status": "complete"}));
-        assert_eq!(none.wanted_rows(40), 1);
+        assert_eq!(none.wanted(40).0, 1);
         let mut two =
             run(serde_json::json!({"command": "ls", "stdout": "a\nb", "status": "complete"}));
-        assert_eq!(two.wanted_rows(40), 3);
+        assert_eq!(two.wanted(40).0, 3);
         // Twelve columns inside a margin of one each side: a 15-letter line takes two rows.
         let mut wrapped = run(
             serde_json::json!({"command": "x", "stdout": "abcdefghijklmno", "status": "complete"}),
         );
-        assert_eq!(wrapped.wanted_rows(14), 3);
+        assert_eq!(wrapped.wanted(14).0, 3);
         let mut long = run(serde_json::json!({
             "command": "seq 20",
             "stdout": (1..=20).map(|n| n.to_string()).collect::<Vec<_>>().join("\n"),
             "status": "complete",
         }));
-        assert_eq!(long.wanted_rows(40), 1 + FOLD);
+        assert_eq!(long.wanted(40).0, 1 + FOLD);
     }
 
     #[test]
@@ -676,8 +800,108 @@ mod tests {
         }));
         let row = rows(&drawn(&mut view, 24, 1)).remove(0);
         assert!(row.contains('…'), "{row}");
-        assert!(row.ends_with('✓'), "{row}");
+        assert!(row.ends_with("✓ ▸"), "a cut command opens: {row}");
         assert_eq!(row.width(), 23);
+        assert_eq!(view.wanted(24), (1, true));
+    }
+
+    #[test]
+    fn a_long_command_shows_whole_while_what_is_under_it_shows() {
+        // 52 columns of command; 22 inside the margins, the prompt's 2 and "✓ ▾" leave 16.
+        let mut view = run(serde_json::json!({
+            "command": "cargo test --workspace --all-features -- --nocapture",
+            "status": "complete",
+            "open": true,
+        }));
+        assert_eq!(view.wanted(24), (3, true));
+        assert_eq!(
+            rows(&drawn(&mut view, 24, 3)),
+            [
+                format!(" {PROMPT}cargo test --wor ✓ ▾"),
+                "   kspace --all-feature".to_owned(),
+                "   s -- --nocapture".to_owned(),
+            ]
+        );
+
+        let mut printed = run(serde_json::json!({
+            "command": "cargo test --workspace --all-features -- --nocapture",
+            "stdout": "ok",
+            "status": "complete",
+            "open": true,
+        }));
+        assert_eq!(printed.wanted(24), (4, true));
+        assert_eq!(rows(&drawn(&mut printed, 24, 4))[3], " ok", "the output follows the command");
+    }
+
+    #[test]
+    fn rows_a_program_wrote_under_its_cursor_still_count() {
+        // The cursor goes home after the second line, and back up after "result".
+        let mut home = run(serde_json::json!({
+            "command": "x",
+            "stdout": "one\ntwo\x1b[H",
+            "status": "complete",
+        }));
+        assert_eq!(home.wanted(40).0, 3);
+        let mut up = run(serde_json::json!({
+            "command": "x",
+            "stdout": "header\nresult\x1b[A",
+            "status": "complete",
+        }));
+        assert_eq!(
+            rows(&drawn(&mut up, 20, 2))[1],
+            " result",
+            "one row of output shows the last it wrote"
+        );
+    }
+
+    #[test]
+    fn new_output_is_read_on_where_it_only_adds() {
+        let state = |stdout: &str, stderr: &str| {
+            serde_json::json!({
+                "command": "cargo build",
+                "stdout": stdout,
+                "stderr": stderr,
+                "status": "running",
+            })
+            .to_string()
+        };
+        let mut view = CommandView::new(None, None);
+        view.set_state(&state("", "Compiling a")).unwrap();
+        drawn(&mut view, 30, 4);
+        view.set_state(&state("", "Compiling a\nCompiling b")).unwrap();
+        assert!(!view.stale, "more standard error reads on");
+        assert_eq!(
+            &rows(&drawn(&mut view, 30, 4))[1..3],
+            [" Compiling a", " Compiling b"]
+        );
+        view.set_state(&state("done", "Compiling a\nCompiling b")).unwrap();
+        assert!(
+            view.stale,
+            "standard output ahead of standard error is read again"
+        );
+        assert_eq!(
+            &rows(&drawn(&mut view, 30, 4))[1..4],
+            [" done", " Compiling a", " Compiling b"]
+        );
+    }
+
+    #[test]
+    fn a_reader_scrolled_back_keeps_their_lines_once_the_scrollback_is_full() {
+        let state = |to| {
+            serde_json::json!({"command": "seq", "stdout": seq(to), "status": "running"})
+                .to_string()
+        };
+        let mut view = CommandView::new(None, None);
+        view.set_state(&state(2100)).unwrap();
+        assert_eq!(&rows(&drawn(&mut view, 20, 4))[1..], [" 2098", " 2099", " 2100"]);
+        view.scroll(-2);
+        assert_eq!(&rows(&drawn(&mut view, 20, 4))[1..], [" 2096", " 2097", " 2098"]);
+        view.set_state(&state(2105)).unwrap();
+        assert_eq!(
+            &rows(&drawn(&mut view, 20, 4))[1..],
+            [" 2096", " 2097", " 2098"],
+            "old lines dropping off the scrollback do not move the reader"
+        );
     }
 
     #[test]
@@ -689,11 +913,15 @@ mod tests {
         }));
         let shown = rows(&drawn(&mut view, 20, 4));
         assert_eq!(&shown[1..], [" 8", " 9", " 10"]);
+        assert!(view.can_scroll(-1) && !view.can_scroll(1));
         assert!(view.scroll(-2));
         let shown = rows(&drawn(&mut view, 20, 4));
         assert_eq!(&shown[1..], [" 6", " 7", " 8"]);
+        assert!(view.can_scroll(1));
         assert!(view.scroll(5));
         assert!(!view.scroll(1), "the newest output is the end");
+        view.scroll(-100);
+        assert!(!view.can_scroll(-1), "the first line is the start");
     }
 
     #[test]
