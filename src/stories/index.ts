@@ -337,6 +337,12 @@ export const STORIES: readonly StoryMeta[] = [
     threadId: 'thread-app-gallery',
   },
   {
+    id: 'command-live',
+    title: 'A command\'s terminal as it runs, a line at a time, then closing when it ends well',
+    lane: 'original',
+    viewport: { width: 900, height: 700 },
+  },
+  {
     id: 'face-feel',
     title: 'Tuning how Theo moves',
     lane: 'original',

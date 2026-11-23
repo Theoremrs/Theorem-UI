@@ -31,3 +31,40 @@
   opacity: 1 !important;
   font-weight: 300;
 }
+
+/*
+ * A command's output rows. When new output moves them up, command-terminal's
+ * slide draws them a row lower (--slide) and lets them rise into place. The
+ * offset moves on the grid's element, which stays, and the rows take it as
+ * they are: Ratzilla rebuilds its rows on any resize on the page.
+ */
+@property --slide {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+[data-slot='command-terminal'] [data-terminal-grid] {
+  transition: --slide calc(var(--duration-glide) / 2) var(--ease-glide);
+}
+[data-slot='command-terminal'] [data-terminal-grid][data-sliding] {
+  transition: none;
+}
+[data-slot='command-terminal']
+  [data-terminal-grid]
+  > div
+  > pre:not(:first-child) {
+  transform: translateY(var(--slide));
+}
+
+/*
+ * Closed to its line, the terminal clips its output rows from sight; once the
+ * close has played they leave the accessibility tree as well, and opening
+ * brings them back at once.
+ */
+[data-slot='command-terminal'][data-state='closed']
+  [data-terminal-grid]
+  > div
+  > pre:not(:first-child) {
+  visibility: hidden;
+  transition: visibility 0s var(--duration-glide);
+}
