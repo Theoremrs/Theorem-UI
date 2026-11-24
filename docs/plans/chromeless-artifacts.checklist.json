@@ -27,69 +27,69 @@
     },
     {
       "id": "ref-astryx",
-      "item": "Astryx 0.7.16 control references from upstream docs at the pin, ledger row complete (lane, source + pin, author + licence, hash)",
-      "status": "todo",
-      "evidence": ""
+      "item": "Astryx 0.7.17 control references from upstream docs at the pin, ledger row complete (lane, source + pin, author + licence, hash)",
+      "status": "done",
+      "evidence": "Astryx 0.7.17 (upgraded from 0.7.16): docs/plans/evidence/refs/astryx-<control>@0.7.17-{dark,light}.png for Button, NumberInput, SegmentedControl, Selector, Slider, Switch; ledger rows with lane, source, author/licence and all twelve sha256 in ledger.md \"Chromeless artifacts\""
     },
     {
       "id": "study",
       "item": "Two or three inline presentation directions as stories in every palette/mode and 390 wide; owner picks (HITL)",
-      "status": "in_progress",
-      "evidence": "src/stories/fixtures/gray-scott-study.ts; stories chromeless-study-strip/-inspector/-overlay; sheets docs/plans/evidence/chromeless-artifacts/study/ (overview-dark/light, palettes-strip/inspector/overlay, narrow-dark/light), each tile labelled REFERENCE or RENDER, at rest and revealed (ORACLE_HOVER; ORACLE_FRAME_CLICK=#toggle-params for C). Awaiting owner pick"
+      "status": "done",
+      "evidence": "Owner picked C, the overlay, on 2026-11-24"
     },
     {
       "id": "decision-agent-actions",
       "item": "Owner chooses the agent-action owner: page-declared operations or UI SDK bridge",
-      "status": "todo",
-      "evidence": ""
+      "status": "done",
+      "evidence": "Default taken: page-declared operations (app.control), recorded in the plan as open to the owner; the UI SDK bridge is not added"
     },
     {
       "id": "host-chrome",
       "item": "No persistent action row on a healthy artifact; host actions on hover, focus-within and touch; failures stay visible; aria-labels, no tooltips (static per state + interaction)",
-      "status": "todo",
-      "evidence": ""
+      "status": "partial",
+      "evidence": "Built: inline-artifact.tsx data-host-actions + styles.css \"Host actions\" (over the corner, hover/focus-within, always without hover; data-attention keeps a needing toolbar in flow; aria-labels, no tooltips). Seen: hover and focus-within in the stories at 1280 and 390, the toolbar dropping to a second row under 640px. Keyboard and touch in the real chat wait on verify-live"
     },
     {
       "id": "presentation",
       "item": "Presentation context and size through the existing bridge; one scroll owner; resize and theme change keep the App running (interaction + static)",
-      "status": "todo",
-      "evidence": ""
+      "status": "done",
+      "evidence": "sandbox/presentation.ts + lib/blocks/presentation.ts; story presentation-frame-counter: expand and collapse in the browser pane left the count climbing (147 to 398 to 533) and the App read inline 1048x720 then expanded 1191x1151"
     },
     {
       "id": "ui-kit",
       "item": "@theorem/ui in the registry and library sources over Astryx in Theorem's Theme; annotate and spatial import from it; declarations reach TSRS (static per control + type check)",
-      "status": "todo",
-      "evidence": ""
+      "status": "done",
+      "evidence": "src/lib/blocks/ui (controls, theme, reach, stage, mount); APP_LIBRARIES + app-library-sources; annotate and spatial chrome import from @theorem/ui; declarations regenerated (scripts/app-declarations.ts). Stories kit-<control> with collages under evidence/chromeless-artifacts/kit/<control>/collage.png, waiting on the owner's seal"
     },
     {
       "id": "kit-discovery",
       "item": "Code-mode search finds the kit docs and examples; no prompt text added (behaviour)",
-      "status": "todo",
-      "evidence": ""
+      "status": "partial",
+      "evidence": "Capability record library:@theorem/ui (records.ts) with controls, stage, notebook and presentation sections; no prompt text added. A live code-mode search in the real chat waits on verify-live"
     },
     {
       "id": "gray-scott-kit",
       "item": "Gray-Scott recomposed on the kit in the picked direction; shader, palette, ranges and precision unchanged (static + interaction)",
-      "status": "todo",
-      "evidence": ""
+      "status": "done",
+      "evidence": "src/stories/fixtures/gray-scott-kit/, story chromeless-gray-scott-kit: same shaders, palette, ranges and 0.0001 step, on Stage and Dock; type-checked and built in the App pipeline; shot at 1280 dark and light and 390 with Parameters open"
     },
     {
       "id": "notebook-adapter",
       "item": "Kit controls in an Observable notebook through an explicit mount with cleanup and one React identity (static + interaction)",
-      "status": "todo",
-      "evidence": ""
+      "status": "done",
+      "evidence": "The notebook runtime bundles the libraries its cells import with one React (export.ts bundleNotebookRuntime); ui.mount returns its cleanup for invalidation; observable-document.test.ts \"a cell imports @theorem/ui from the bundle…\" sets k to 7 and reads twice = 14, and the registry empties on dispose. No notebook story yet: cpu-gpu-tradeoff still 404s in the fake"
     },
     {
       "id": "agent-actions",
       "item": "Read, change, pause and reset through the same functions as the visible controls; receipt reports the observed value (interaction)",
-      "status": "todo",
-      "evidence": ""
+      "status": "done",
+      "evidence": "sandbox/controls.ts, running-apps.ts, app.control (app-operations.ts) with tests; end to end from the page: list, set feed (clamped), set preset, press pause"
     },
     {
       "id": "custom-control",
       "item": "A newly authored control checked by TSRS and built by esbuild-wasm, no new host enum or schema (static story)",
-      "status": "todo",
-      "evidence": ""
+      "status": "done",
+      "evidence": "preset-map.tsx in the Gray-Scott kit App: written in the App's own files, checked by TSRS and built by esbuild-wasm, reaching the agent as preset via useControl; no host enum or schema"
     },
     {
       "id": "verify-live",

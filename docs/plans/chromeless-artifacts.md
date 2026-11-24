@@ -20,9 +20,10 @@ item, with what was built, what was checked, and what was not.
   byte for byte as the story fixture `src/stories/fixtures/gray-scott.html`
   (sha256 `f67fbe96…` without its trailing newline).
 - What is already here and is reused, not rebuilt:
-  - Astryx 0.7.16 (`@astryxdesign/core`, `theme-neutral`) with Theorem's token
-    adapter `src/lib/blocks/annotate/theme.tsx` + `theme.css`, and the
-    controls `src/lib/blocks/spatial/chrome.tsx` already composes from it.
+  - Astryx (`@astryxdesign/core`, `theme-neutral`, now 0.7.17) with Theorem's
+    token adapter, moved from `annotate/` to `src/lib/blocks/ui/theme.tsx` +
+    `theme.css` so the kit owns it, and the controls
+    `src/lib/blocks/spatial/chrome.tsx` already composes from it.
   - The App library registry `src/lib/blocks/app-libraries.ts` +
     `app-library-sources.ts` (`@theorem/annotate`, `@theorem/runtime`,
     `@theorem/spatial`), the TSRS checker worker and esbuild-wasm builder.
@@ -68,17 +69,21 @@ Made here:
 - **The simulation keeps its own palette.** Only the surroundings follow the
   host.
 
-Waiting on the owner:
+Made by the owner:
 
-1. **Study pick** (HITL). Two or three inline presentation directions for the
-   Gray–Scott reply, each a story in every palette and mode and at 390 wide,
-   reference and render labelled. Nothing past the study spreads until one is
-   picked.
-2. **Agent-action owner.** Theorem's page-declared operations (receipts,
-   permissions, accepted/started/pending/completed already exist) versus the
-   UI SDK bridge (`snapshot`/`query`/`act`). Recommendation: page-declared
-   operations, because they already carry Theorem's receipt and permission
-   path; add UI SDK only where a control needs a behaviour Astryx lacks.
+1. **Study pick: C, the overlay** (2026-11-24). The picture alone; Pause,
+   Reset and Parameters float over it and Parameters opens the rest. Host
+   actions sit over the frame's top corner, shown on hover and focus within
+   and always on a screen without hover. The kit's `Stage` and `Dock` are C.
+
+Taken as the default, open to the owner:
+
+2. **Agent-action owner: page-declared operations.** `app.control` is a
+   client operation like `app.check`: it lists a running App's named
+   controls, reads one, sets one or presses one, through the function the
+   visible control calls, and its receipt reports the value it then reads.
+   The UI SDK bridge (`snapshot`/`query`/`act`) is not added; it remains the
+   route for a behaviour Astryx lacks.
 
 ## Work orders
 
@@ -89,7 +94,7 @@ reference, captured in the same container.
 | Order | Obligation | Oracle |
 | --- | --- | --- |
 | ref-before | Gray–Scott inline and the CPU/GPU notebook in four palettes × two modes and at 390 wide, committed under `evidence/chromeless-artifacts/before/` with hashes in the ledger | static |
-| ref-astryx | Astryx 0.7.16 Slider, NumberInput, Button, Selector, Switch, SegmentedControl from the upstream docs at the pin, under `evidence/refs/astryx-<control>@0.7.16.png`; ledger lane "verbatim (package bound, not ported)" | static reference |
+| ref-astryx | Astryx 0.7.17 Slider, NumberInput, Button, Selector, Switch, SegmentedControl from the upstream docs at the pin, under `evidence/refs/astryx-<control>@0.7.17-<mode>.png`; ledger lane "verbatim (package bound, not ported)" | static reference |
 | study | Two or three inline directions as stories, labelled reference vs render, every palette/mode and 390 wide; the owner picks | HITL |
 | host-chrome | A healthy artifact shows no persistent action row. Open, Expand, Ask, Source, Stop and revision actions appear on hover, on focus-within and on touch; a failure stays visible without them; every action has an aria-label and no tooltip | static per state + interaction (hover, Tab into the frame, tap) |
 | presentation | The App receives its presentation (inline, panel, expanded) and available size through the existing bridge; one scroll owner; a resize or theme change does not restart it (a frame-counter story keeps counting) | interaction + static |
@@ -122,6 +127,34 @@ touch screen. Each is shot at rest and revealed (`ORACLE_HOVER`, and for C
 `ORACLE_FRAME_CLICK=#toggle-params`), in every palette and mode and 390 wide.
 The controls are still native inputs on host tokens; the kit replaces them.
 
-## Opening segment
+## What was built on C
 
-ref-before, then the study. Everything after waits on the pick.
+- **Host actions** (`inline-artifact.tsx`, `styles.css` "Host actions"): the
+  icon row and the App's toolbar float side by side over the frame's top
+  corner; under 640px the toolbar drops to a second row. A toolbar that needs
+  the person (`data-attention`: a failure, a stopped App) stays in the flow.
+- **Presentation** (`sandbox/presentation.ts`, `lib/blocks/presentation.ts`):
+  `theorem.presentation.now()` / `onChange()`, `data-theorem-presentation`
+  on the App's root and `--theorem-available-*`, sent over the bridge on
+  inline, panel and expanded without reloading the frame.
+- **`@theorem/ui`** (`src/lib/blocks/ui/`): Astryx's controls inside
+  `Theme`, each taking `control` to name it for the agent; `Stage`, `Dock`,
+  `DockRow`, `useControl` and `mount`. Served through `APP_LIBRARIES` to Apps
+  and to notebooks (the notebook runtime bundles the libraries its cells
+  import, with one React); declarations regenerated for the App checker; a
+  capability record `library:@theorem/ui` with sections on controls, Stage,
+  notebooks and presentation, found by code-mode search.
+- **Agent actions** (`sandbox/controls.ts`, `running-apps.ts`, `app.control`
+  in `app-operations.ts`): `theorem.controls.register`, `controls.list` and
+  `controls.act` over the bridge; a notebook cell's controls leave with the
+  cell.
+- **Gray–Scott on the kit** (`src/stories/fixtures/gray-scott-kit/`, story
+  `chromeless-gray-scott-kit`): the fixture's shaders, palette, ranges and
+  0.0001 step, recomposed on Stage and Dock; Space pauses; a taller stage
+  when narrow so the panel has room.
+- **Custom control**: the feed–kill preset map (`preset-map.tsx`), written in
+  the App's own files, checked and built in the existing pipeline, reaching
+  the agent as `preset` through `useControl`.
+- **Kit stories** `kit-<control>`: each control drawing its Astryx
+  reference's example as an App, collaged under
+  `evidence/chromeless-artifacts/kit/<control>/`.
