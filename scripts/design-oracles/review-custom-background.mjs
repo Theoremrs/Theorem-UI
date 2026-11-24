@@ -111,7 +111,7 @@ try {
       for (const ink of ['ink', 'secondary', 'link', 'faintTop', 'faintBottom'])
         assert(
           wcagContrast(paint[ink], paint[background]) >= 4.5,
-          `${ink} on ${background}: ${paint[background]}`,
+          `${ink} ${paint[ink]} on ${background} ${paint[background]} (${dark ? 'dark' : 'light'})`,
         )
     checks.push({ mode: dark ? 'dark' : 'light', passed: true, paint })
     await page.screenshot({
