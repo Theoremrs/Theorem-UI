@@ -163,6 +163,32 @@ function computeWithoutPaint(runtime: Scheduled) {
   if (runtime._computing) runtime._computing = runtime._computeSoon()
 }
 
+/** An element's content-box width, which a ResizeObserver entry reports as `contentRect.width`. */
+function contentWidth(element: Element): number {
+  const { paddingLeft, paddingRight } = getComputedStyle(element)
+  return element.clientWidth - parseFloat(paddingLeft) - parseFloat(paddingRight)
+}
+
+/**
+ * `width` as Notebook Kit defines it, which follows a ResizeObserver on the
+ * notebook's root, except that its first value is read from layout. The
+ * observer reports only in a rendering update, and Chromium gives a frame it
+ * throttles none: the check's frame, hidden off screen, and a reply in a tab
+ * nobody is looking at. A chart sized by `width` would never draw there,
+ * though the same notebook draws it on screen.
+ */
+const widthOf = (root: Element) => () =>
+  library.Generators().observe<number>((notify) => {
+    let width = contentWidth(root)
+    notify(width)
+    const observer = new ResizeObserver(([entry]) => {
+      const next = entry!.contentRect.width
+      if (next !== width) notify((width = next))
+    })
+    observer.observe(root)
+    return () => observer.disconnect()
+  })
+
 /** Defines the notebook's cells into `root`, in order. */
 export function start(
   cells: Array<NotebookCell>,
@@ -176,6 +202,7 @@ export function start(
   const root = options.root ?? document.querySelector('main') ?? document.body
   const notebook = new NotebookRuntime({
     ...library,
+    width: widthOf(root),
     theme,
     data: () => options.data ?? {},
     saved: () => options.saved ?? {},
