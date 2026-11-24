@@ -23,8 +23,8 @@ const passageBody: RetainedPassage = {
     textBytes: 4096,
     coverage: { status: 'complete' },
   },
-  span: { startByte: 210, endByte: 280 },
-  excerpt: 'The exact retained passage.',
+  span: { startByte: 210, endByte: 235 },
+  excerpt: 'The exact retained café.',
 }
 
 // The SDK client builds request URLs from the page origin, as every other
@@ -130,6 +130,8 @@ describe('openRetainedPassage', () => {
       { source: passageBody.source, span: passageBody.span },
       { ...passageBody, span: { startByte: 'x', endByte: 280 } },
       { ...passageBody, span: { startByte: 210, endByte: 5000 } },
+      // Same number of JavaScript characters, but one fewer UTF-8 byte.
+      { ...passageBody, excerpt: 'The exact retained cafe.' },
       {
         ...passageBody,
         source: {

@@ -80,7 +80,9 @@ function parsePassage(value: unknown): RetainedPassage | undefined {
     !natural(span.startByte) ||
     !natural(span.endByte) ||
     span.startByte >= span.endByte ||
-    span.endByte > source.textBytes
+    span.endByte > source.textBytes ||
+    new TextEncoder().encode(excerpt).byteLength !==
+      span.endByte - span.startByte
   )
     return undefined
   return value as unknown as RetainedPassage
