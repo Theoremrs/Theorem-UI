@@ -80,17 +80,24 @@ function definedBy(compiled: Compiled): Array<string> {
 /** The name a reader would write for a runtime name. */
 const written = (name: string) => name.replace(/^viewof\$/, 'viewof ').replace(/^mutable\$/, 'mutable ')
 
+/** A cell as a notebook holds it: its source, and Markdown or JavaScript. */
+type CellSource = string | { source: string; kind?: 'js' | 'md' }
+
 /**
- * What will fail when a view's cells run, found without running them: a cell
- * that parses in neither dialect, a name two cells define, and a name a cell
- * reads that no cell, builtin or browser global defines. Each line names the
- * cell by its place in `cells`, so the agent can fix its own view.
+ * What will fail when a view's or a notebook's cells run, found without
+ * running them: a cell that parses in neither dialect, a name two cells
+ * define, and a name a cell reads that no cell, builtin or browser global
+ * defines. A bare string is a JavaScript cell. Each line names the cell by
+ * its place in `cells`, so the agent can fix its own view.
  */
-export function cellProblems(cells: ReadonlyArray<string>): Array<string> {
+export function cellProblems(given: ReadonlyArray<CellSource>): Array<string> {
   const problems: Array<string> = []
-  const compiled: Array<Compiled | undefined> = cells.map((source, index) => {
+  const cells = given.map((cell) => (typeof cell === 'string' ? cell : cell.source))
+  const compiled: Array<Compiled | undefined> = given.map((cell, index) => {
     try {
-      return transpileCell(source, index)
+      return typeof cell === 'string'
+        ? transpileCell(cell, index)
+        : transpileCell(cell.source, index, cell.kind ?? 'js')
     } catch (error) {
       problems.push(`Cell ${index + 1} does not parse: ${error instanceof Error ? error.message : String(error)}`)
       return undefined

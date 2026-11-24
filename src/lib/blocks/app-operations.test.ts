@@ -21,6 +21,7 @@ import {
   serveAppRequests,
 } from './app-operations'
 import type { AppOperationHost, AppReceipt, AppRequest } from './app-operations'
+import type { ObservableNotebook } from '@/lib/notebooks/forms'
 
 const CLEAN: AppInspection = {
   built: true,
@@ -36,6 +37,7 @@ function host(overrides: Partial<AppOperationHost> = {}) {
   const inspected: Array<{ html: string; runMs?: number; picture?: boolean }> =
     []
   const loaded: Array<string> = []
+  const notebooks: Array<ObservableNotebook> = []
   const value: AppOperationHost = {
     inspect: async (html, options) => {
       inspected.push({ html, ...options })
@@ -45,9 +47,13 @@ function host(overrides: Partial<AppOperationHost> = {}) {
       loaded.push(documentId)
       return { html: '<p>Saved</p>', revision: { position: 7 } }
     },
+    notebookPage: async (notebook) => {
+      notebooks.push(notebook)
+      return `<title>${notebook.title}</title>`
+    },
     ...overrides,
   }
-  return { host: value, inspected, loaded }
+  return { host: value, inspected, loaded, notebooks }
 }
 
 const request = (
@@ -222,6 +228,7 @@ describe('answering a check', () => {
     const [check] = APP_OPERATIONS
     expect(Object.keys(check.inputSchema.properties)).toEqual([
       'html',
+      'artifact',
       'documentId',
       'runMs',
       'picture',
@@ -232,6 +239,60 @@ describe('answering a check', () => {
     expect(
       new TextEncoder().encode(check.description).length,
     ).toBeLessThanOrEqual(1024)
+  })
+
+  const rainfall = {
+    form: 'observable',
+    title: 'Rainfall by month',
+    cells: [
+      { id: 'intro', kind: 'md', source: 'Rain in ${unit}, by month.' },
+      { id: 'chart', kind: 'js', source: 'Plot.barY(data.rows, {x: "month", y: "mm"}).plot()' },
+    ],
+    data: { rows: [{ month: 'Jan', mm: 80 }] },
+  }
+
+  test('a notebook is read cell by cell, then its page is run as an App is', async () => {
+    const page = host()
+    const answer = await answerAppRequest(
+      request({ artifact: rainfall, runMs: 0 }),
+      page.host,
+    )
+    expect(page.notebooks.map((notebook) => notebook.title)).toEqual(['Rainfall by month'])
+    expect(page.inspected).toEqual([{ html: '<title>Rainfall by month</title>', runMs: 0 }])
+    // The Markdown cell is read as Markdown, and the name it reads is undefined.
+    expect(answer).toEqual({
+      outcome: 'applied',
+      result: {
+        ...CLEAN,
+        problems: [{ kind: 'build', message: 'Cell 1 reads `unit`, which no cell defines.' }],
+      },
+    })
+  })
+
+  test('an App given as an artifact is checked as its html', async () => {
+    const page = host()
+    await answerAppRequest(
+      request({ artifact: { form: 'html-app', title: 'List', html: '<p>Milk</p>' } }),
+      page.host,
+    )
+    expect(page.inspected).toEqual([{ html: '<p>Milk</p>' }])
+  })
+
+  test('a form this page does not run first says what checks it instead', async () => {
+    const page = host()
+    const marimo = await answerAppRequest(
+      request({ artifact: { form: 'marimo', title: 'Fit', source: 'import marimo', runtime: 'pyodide' } }),
+      page.host,
+    )
+    expect(marimo.outcome).toBe('rejected')
+    expect(marimo.reason).toContain('marimo')
+    const broken = await answerAppRequest(
+      request({ artifact: { form: 'observable', title: 'Empty' } }),
+      page.host,
+    )
+    expect(broken.outcome).toBe('rejected')
+    expect(broken.reason).toContain('cells')
+    expect(page.inspected).toEqual([])
   })
 
   test('a published App is checked as it is saved, and says which revision', async () => {

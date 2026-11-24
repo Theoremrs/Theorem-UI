@@ -10,6 +10,8 @@
 import type { ThreadMessage } from '@assistant-ui/react'
 import { MutationObserver, QueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
+import { ObservableForm } from '@/lib/notebooks/forms'
+import type { ObservableNotebook } from '@/lib/notebooks/forms'
 import { appDocumentFor } from '@/lib/theorem/apps'
 import { hasStatus, mutate, theorem } from '@/lib/theorem/client'
 import { MAX_RUN_MS, inspectApp } from './app-inspect'
@@ -38,7 +40,7 @@ export const APP_OPERATIONS = [
     // One operation for both, since a send admits sixteen and Kit, the face,
     // the workbench and the present one take the rest (client-surface.ts).
     description:
-      "Builds and checks an App in the person's browser and returns what is wrong with it. Pass `html`, a complete App document exactly as it would be published, to check a draft, or `documentId` to check a published App as saved now. The result says whether it built, lists build, type and runtime problems by file, line and column, and gives what the App showed: its text, and `outline`, each thing on the page by role, name and state with the source place that made it. `picture: true` adds an image of the App as drawn, if you read images. Nothing is changed or shown to the person: the App runs hidden for a moment with empty state and an empty in-memory database. Pass `library` instead to read the TypeScript declarations an App is checked against: window.theorem, @theorem/runtime, @theorem/spatial, @theorem/annotate. It lists the files, returns index.d.ts or `file`, and a `digest` of the whole API. Read what you use instead of guessing its shape.",
+      "Builds and checks an App in the person's browser and returns what is wrong with it. Pass `html`, a complete App document exactly as it would be published, or `artifact`, another form as write_app takes it, to check a draft, or `documentId` to check a published App as saved now. The result says whether it built, lists build, type and runtime problems by file, line and column, and gives what the App showed: its text, and `outline`, each thing on the page by role, name and state with the source place that made it. `picture: true` adds an image of the App as drawn, if you read images. Nothing is changed or shown to the person: the App runs hidden for a moment with empty state and an empty in-memory database. Pass `library` instead to read the TypeScript declarations an App is checked against: window.theorem, @theorem/runtime, @theorem/spatial, @theorem/annotate. It lists the files, returns index.d.ts or `file`, and a `digest` of the whole API. Read what you use instead of guessing its shape.",
     effect: 'read',
     inputSchema: {
       type: 'object',
@@ -49,6 +51,11 @@ export const APP_OPERATIONS = [
           minLength: 1,
           maxLength: MAX_HTML,
           description: 'A complete App document to check as a draft.',
+        },
+        artifact: {
+          type: 'object',
+          description:
+            'An artifact in another form, as write_app takes it, to check as a draft.',
         },
         documentId: {
           type: 'string',
@@ -226,17 +233,73 @@ export interface AppAnswer {
     | AppLibraryRead
 }
 
-/** What answering needs of the page: the check, and an App's saved source. */
+/**
+ * What answering needs of the page: the check, an App's saved source, and an
+ * Observable notebook's page, which is checked as an App is.
+ */
 export interface AppOperationHost {
   inspect: typeof inspectApp
   load: (
     documentId: string,
   ) => Promise<{ html: string; revision: { position: unknown } }>
+  notebookPage: (notebook: ObservableNotebook) => Promise<string>
 }
 
 const pageHost: AppOperationHost = {
   inspect: inspectApp,
   load: (documentId) => appDocumentFor(documentId).load(),
+  // Loaded only when a notebook is checked: the notebook runtime is large.
+  notebookPage: async (notebook) => {
+    const [{ observablePage }, { resolvedTheme }] = await Promise.all([
+      import('@/lib/notebooks/observable-document'),
+      import('@/lib/blocks/sandbox/theme'),
+    ])
+    return observablePage(notebook, resolvedTheme())
+  },
+}
+
+/**
+ * Why a form is not checked here, by form: what checks it instead, so the
+ * agent knows the save is not the last word on it.
+ */
+const UNCHECKED: Record<string, string> = {
+  marimo:
+    'This page does not run a marimo notebook before the person starts it; its outputs are recorded when it runs.',
+  openui:
+    'This page does not run an OpenUI program before it is shown; the host checks its components when it is saved.',
+}
+
+/**
+ * Checks an artifact in another form as write_app takes it. An Observable
+ * notebook is read cell by cell before it runs (notebooks/cells.ts), then its
+ * page is built and run as an App is, so a cell that throws is found too.
+ */
+async function checkArtifact(
+  artifact: Record<string, unknown>,
+  options: Parameters<typeof inspectApp>[1],
+  host: AppOperationHost,
+): Promise<AppAnswer> {
+  const form = typeof artifact.form === 'string' ? artifact.form : undefined
+  if (form === 'html-app' && typeof artifact.html === 'string' && artifact.html)
+    return { outcome: 'applied', result: await host.inspect(artifact.html, options) }
+  if (form && Object.hasOwn(UNCHECKED, form))
+    return { outcome: 'rejected', reason: UNCHECKED[form] }
+  const parsed = ObservableForm.safeParse(artifact)
+  if (!parsed.success)
+    return {
+      outcome: 'rejected',
+      reason: `This page checks an App, as html or as form html-app, and an Observable notebook, as form observable with title and cells: ${parsed.error.issues.map((issue) => `${issue.path.join('.') || 'artifact'}: ${issue.message}`).join('; ')}`,
+    }
+  const { cellProblems } = await import('@/lib/notebooks/cells')
+  const read = cellProblems(parsed.data.cells).map((message) => ({
+    kind: 'build' as const,
+    message,
+  }))
+  const ran = await host.inspect(await host.notebookPage(parsed.data), options)
+  return {
+    outcome: 'applied',
+    result: { ...ran, problems: [...read, ...ran.problems] },
+  }
 }
 
 const failure = (error: unknown) =>
@@ -276,6 +339,8 @@ export async function answerAppRequest(
   try {
     if (typeof html === 'string' && html)
       return { outcome: 'applied', result: await host.inspect(html, options) }
+    if (Object.keys(record(request.args.artifact)).length)
+      return await checkArtifact(record(request.args.artifact), options, host)
     if (typeof documentId === 'string' && documentId) {
       const saved = await host.load(documentId)
       return {
@@ -291,7 +356,8 @@ export async function answerAppRequest(
   }
   return {
     outcome: 'rejected',
-    reason: 'Pass html to check a draft, or documentId to check a saved App.',
+    reason:
+      'Pass html or artifact to check a draft, or documentId to check a saved App.',
   }
 }
 
