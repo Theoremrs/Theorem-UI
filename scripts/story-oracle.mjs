@@ -36,6 +36,19 @@ if (!ENGINE) throw new Error(`ORACLE_BROWSER is ${process.env.ORACLE_BROWSER}; u
  */
 const VIEWPORT = /^(\d+)x(\d+)$/.exec(process.env.ORACLE_VIEWPORT ?? '')
 const SCALE = Number(process.env.ORACLE_SCALE) || undefined
+/**
+ * ORACLE_SCHEME=light shows a story in light mode (dark otherwise), and ORACLE_PALETTE=<palette> in that
+ * palette, as the person's saved appearance would. With ORACLE_RENDER_DIR, one render per theme.
+ */
+const SCHEME = process.env.ORACLE_SCHEME === 'light' ? 'light' : 'dark'
+const PALETTE = process.env.ORACLE_PALETTE
+/**
+ * A state to shoot instead of the story at rest: ORACLE_FRAME_CLICK=<selector> clicks that element inside the
+ * story's first frame (an App's own control), then ORACLE_HOVER=<selector> rests the pointer on that element of
+ * the page (what shows on hover).
+ */
+const FRAME_CLICK = process.env.ORACLE_FRAME_CLICK
+const HOVER = process.env.ORACLE_HOVER
 /** The engine's own version string, read once the browser is launched; `interact` prints it for `matrix`. */
 let engineVersion = ''
 /** Pixelmatch's per-pixel threshold, the declared tolerance. */
@@ -62,10 +75,19 @@ async function withPage(story, run, { reducedMotion = 'reduce', deviceScaleFacto
       viewport: VIEWPORT
         ? { width: Number(VIEWPORT[1]), height: Number(VIEWPORT[2]) }
         : { width: Math.max(story.viewport.width, 1280), height: story.viewport.height },
-      colorScheme: 'dark',
+      colorScheme: SCHEME,
       reducedMotion,
       deviceScaleFactor: SCALE ?? deviceScaleFactor,
     })
+    if (PALETTE)
+      await context.addInitScript((palette) => {
+        // Init scripts run in every frame too; a sandboxed App frame has no storage.
+        if (window !== window.top) return
+        localStorage.setItem(
+          'theorem-ui:appearance',
+          JSON.stringify({ version: 1, state: { preset: 'calm', overrides: { palette } } }),
+        )
+      }, PALETTE)
     const page = await context.newPage()
     const failures = []
     page.on('pageerror', (error) => failures.push(String(error).slice(0, 400)))
@@ -94,13 +116,17 @@ async function withPage(story, run, { reducedMotion = 'reduce', deviceScaleFacto
         () =>
           [...document.querySelectorAll('video, audio')].every((m) => m.readyState >= 2) &&
           ![...document.querySelectorAll('[data-story] *')].some(
-            (el) => !el.children.length && el.textContent === 'Loading…',
+            // "Loading…", and a viewer's own ("Loading App…").
+            (el) => !el.children.length && /^Loading( \w+)?…$/.test(el.textContent ?? ''),
           ),
         null,
         { timeout: 20_000 },
       )
       .catch(() => console.error(`${story.id}: media or viewers still loading`))
     await page.waitForTimeout(600)
+    if (FRAME_CLICK) await page.frameLocator('iframe').first().locator(FRAME_CLICK).click()
+    if (HOVER) await page.locator(HOVER).first().hover()
+    if (FRAME_CLICK || HOVER) await page.waitForTimeout(300)
     const result = await run(page)
     if (failures.length) console.error(`${story.id}: page errors\n${failures.join('\n')}`)
     return result

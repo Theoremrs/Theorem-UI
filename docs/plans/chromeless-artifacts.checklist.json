@@ -1,0 +1,101 @@
+{
+  "spec": "docs/plans/chromeless-artifacts.md",
+  "items": [
+    {
+      "id": "fixture",
+      "item": "The Gray-Scott App the model wrote kept byte for byte as a story fixture, served as a theorem.app document with its real content digest",
+      "status": "done",
+      "evidence": "src/stories/fixtures/gray-scott.html; story chromeless-gray-scott; src/stories/fixtures/notes.ts documentSnapshot now records sha256 of the canonical bytes"
+    },
+    {
+      "id": "oracle-themes",
+      "item": "The story oracle shoots a story in any palette and mode",
+      "status": "done",
+      "evidence": "scripts/story-oracle.mjs ORACLE_SCHEME, ORACLE_PALETTE"
+    },
+    {
+      "id": "oracle-states",
+      "item": "The story oracle shoots a scripted state: a hover on the page and a click inside the App frame",
+      "status": "done",
+      "evidence": "scripts/story-oracle.mjs ORACLE_HOVER, ORACLE_FRAME_CLICK"
+    },
+    {
+      "id": "ref-before",
+      "item": "Before references: Gray-Scott inline and the CPU/GPU notebook, four palettes x two modes and 390 wide, committed with hashes in the ledger",
+      "status": "partial",
+      "evidence": "Gray-Scott: docs/plans/evidence/chromeless-artifacts/before/ (4 palettes x 2 modes + 390 wide), hashes in ledger.md 'Chromeless artifacts'. Notebook: not captured. Story cpu-gpu-tradeoff has failed since 8a0d0874 (the notebook reads its document's live state; the fake never serves the notebook document, 404 on /api/documents/v2/documents/cpu-gpu-tradeoff). Seeding it needs the notebook source with its artifactForm attribute; done with notebook-adapter"
+    },
+    {
+      "id": "ref-astryx",
+      "item": "Astryx 0.7.16 control references from upstream docs at the pin, ledger row complete (lane, source + pin, author + licence, hash)",
+      "status": "todo",
+      "evidence": ""
+    },
+    {
+      "id": "study",
+      "item": "Two or three inline presentation directions as stories in every palette/mode and 390 wide; owner picks (HITL)",
+      "status": "in_progress",
+      "evidence": "src/stories/fixtures/gray-scott-study.ts; stories chromeless-study-strip/-inspector/-overlay; sheets docs/plans/evidence/chromeless-artifacts/study/ (overview-dark/light, palettes-strip/inspector/overlay, narrow-dark/light), each tile labelled REFERENCE or RENDER, at rest and revealed (ORACLE_HOVER; ORACLE_FRAME_CLICK=#toggle-params for C). Awaiting owner pick"
+    },
+    {
+      "id": "decision-agent-actions",
+      "item": "Owner chooses the agent-action owner: page-declared operations or UI SDK bridge",
+      "status": "todo",
+      "evidence": ""
+    },
+    {
+      "id": "host-chrome",
+      "item": "No persistent action row on a healthy artifact; host actions on hover, focus-within and touch; failures stay visible; aria-labels, no tooltips (static per state + interaction)",
+      "status": "todo",
+      "evidence": ""
+    },
+    {
+      "id": "presentation",
+      "item": "Presentation context and size through the existing bridge; one scroll owner; resize and theme change keep the App running (interaction + static)",
+      "status": "todo",
+      "evidence": ""
+    },
+    {
+      "id": "ui-kit",
+      "item": "@theorem/ui in the registry and library sources over Astryx in Theorem's Theme; annotate and spatial import from it; declarations reach TSRS (static per control + type check)",
+      "status": "todo",
+      "evidence": ""
+    },
+    {
+      "id": "kit-discovery",
+      "item": "Code-mode search finds the kit docs and examples; no prompt text added (behaviour)",
+      "status": "todo",
+      "evidence": ""
+    },
+    {
+      "id": "gray-scott-kit",
+      "item": "Gray-Scott recomposed on the kit in the picked direction; shader, palette, ranges and precision unchanged (static + interaction)",
+      "status": "todo",
+      "evidence": ""
+    },
+    {
+      "id": "notebook-adapter",
+      "item": "Kit controls in an Observable notebook through an explicit mount with cleanup and one React identity (static + interaction)",
+      "status": "todo",
+      "evidence": ""
+    },
+    {
+      "id": "agent-actions",
+      "item": "Read, change, pause and reset through the same functions as the visible controls; receipt reports the observed value (interaction)",
+      "status": "todo",
+      "evidence": ""
+    },
+    {
+      "id": "custom-control",
+      "item": "A newly authored control checked by TSRS and built by esbuild-wasm, no new host enum or schema (static story)",
+      "status": "todo",
+      "evidence": ""
+    },
+    {
+      "id": "verify-live",
+      "item": "Real e2e chat: varied questions and models; desktop/narrow, light/dark, keyboard/touch host actions, expand, reopen saved revision, unmount cleanup; owner opens the collages",
+      "status": "todo",
+      "evidence": ""
+    }
+  ]
+}

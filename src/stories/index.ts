@@ -369,6 +369,30 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 1440, height: 900 },
   },
   {
+    id: 'chromeless-gray-scott',
+    title: 'Chromeless artifacts: the Gray–Scott App in a reply, as the model wrote it',
+    lane: 'original',
+    viewport: { width: 1280, height: 1100 },
+  },
+  {
+    id: 'chromeless-study-strip',
+    title: 'Chromeless artifacts study A: the picture, a caption, one strip of controls; host actions over the corner',
+    lane: 'original',
+    viewport: { width: 1280, height: 1100 },
+  },
+  {
+    id: 'chromeless-study-inspector',
+    title: 'Chromeless artifacts study B: an inspector beside the picture; host actions beneath',
+    lane: 'original',
+    viewport: { width: 1280, height: 1100 },
+  },
+  {
+    id: 'chromeless-study-overlay',
+    title: 'Chromeless artifacts study C: the picture alone, controls over it on demand; host actions over the corner',
+    lane: 'original',
+    viewport: { width: 1280, height: 1100 },
+  },
+  {
     id: 'cpu-gpu-tradeoff',
     title: 'CPU or GPU: the tradeoff notebook',
     lane: 'original',

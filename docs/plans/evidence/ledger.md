@@ -73,3 +73,19 @@ Reference hashes (sha256):
 
 Fidelity seals are made by a person who has opened the collage. None has been made yet.
 | Projects sidebar (`src/components/organize/organized-panel.tsx`), project home (`src/components/projects/project-home.tsx`), session graph (`src/components/projects/session-graph.tsx`) | original, drawn to the owner's written notes and `THEOREM-PROJECTS-SIDEBAR-AND-SESSION-GRAPH-SPEC.md` (supplied in chat 2026-11-14, not committed) | no upstream code; React Flow 12 and elkjs as libraries; the Linear, Claude and Twenty sidebars and Claude's project page on Mobbin as references only, nothing copied | this repo | none committed. `projects-sidebar-graph/sidebar-before-after.jpg` (the base commit's story render beside this change), `projects-sidebar-graph/project-home.jpg`, `projects-sidebar-graph/session-graph.jpg`, `projects-sidebar-graph/project-home-phone.jpg`, `projects-sidebar-graph/mrtree-vs-layered.png` (ELK's layered and mrtree layouts of the session-graph story fixture, boxes and routes as returned), `projects-sidebar-graph/canvas-session-graph-routes.jpg` (the session graph on Canvas with edges on ELK's routes) |
+
+## Chromeless artifacts (`docs/plans/chromeless-artifacts.md`)
+
+- Handoff `Theorem_Chromeless_Artifact_UI_Handoff_2026-11-24.md`, supplied by the owner on 2026-11-24: `6333037d12beba106ed3f391492913c1232adb9a59fc8e9feda1b287c7521594`. Not committed; its first slice is the plan's scope.
+- Gray–Scott App fixture `src/stories/fixtures/gray-scott.html`: written by Qwen4 Max in the e2e chat on 2026-11-24 and kept byte for byte; sha256 `f67fbe96ac8db96e821141e44504196d76cc8af3636db22ed9db762042740709` without its trailing newline. Model output, not a third-party source.
+- Before references, `chromeless-artifacts/before/<palette>-<mode>/chromeless-gray-scott.png` and `narrow-<mode>/` (390 wide), shot by `scripts/story-oracle.mjs` in headless Chromium on 2026-11-24 (sha256):
+  - `github-sharp-dark` `e804cb02a12d2b8f5ee3421617734dcc360c9254538eb9338a15ef4c65363729`, `github-sharp-light` `f8e0b2c2e4bad15c8228d315584df99675a2e64e14a4762731cd00677623c153`
+  - `ember-dark` `d01d9b060bdfbb32818d1efe4c5968e7dbbb8ca687c9b4bcd0b4feccd40a4371`, `ember-light` `f8c4db79604bb6d97843414e661558cc07f00ba5f6a572d9df48c13c12ab4a5f`
+  - `stone-dark` `a38c16a90670b8a92f70255a88c90a0b2a4ec946921ca63e87ce603e8da092d9`, `stone-light` `16dea0c37cc633869d07e51c5616a8776aa5206c7743bfe4e52c5e3d924c7a86`
+  - `vitesse-dark` `58f8de3d26a17e6996abd23b83d2453ff436c1e19adcd55b826eb31273d4a34a`, `vitesse-light` `fdf6083541413d97c77d4e9fe17b912d546ecd76c48f7b714a150a81727ec764`
+  - `narrow-dark` `40610ed07529e8f79ba4d1f84c338ac226f156afed139e9e8cc25adf2876736b`, `narrow-light` `1f82815c3f7bc9b94644b6f0635512cc180e48ff0bbe66a8cf446a4036dd4add`
+
+| Component | Lane | Source | Author, license | Reference |
+| --- | --- | --- | --- | --- |
+| Theorem UI kit controls (`@theorem/ui`, planned) | verbatim (package bound, not ported): Astryx components imported from the installed package inside Theorem's existing `Theme` adapter | [github.com/meta/astryx](https://github.com/meta/astryx) `packages/core`, `packages/themes/neutral`; npm `@astryxdesign/core` and `@astryxdesign/theme-neutral` 0.7.16 | Meta Open Source, MIT (package.json `license`) | pending: `refs/astryx-<control>@0.7.16.png` from the upstream docs at the pin (work order ref-astryx) |
+| Chromeless study A/B/C (`src/stories/fixtures/gray-scott-study.ts`, stories `chromeless-study-*`) | original, three layouts drawn on the hosted App's `--theorem-*` variables around the fixture's unchanged script | no upstream code | this repo | the before references above; the study is the candidate the owner picks from |
