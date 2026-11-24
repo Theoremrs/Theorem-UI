@@ -269,6 +269,11 @@ export async function* tailRun(
   abortSignal: AbortSignal,
 ): AsyncGenerator<ChatModelRunResult, void> {
   const parts = new Map<string, Theorem.StoredPart>()
+  // The saved assistant message's durable id, from the run's own PERSISTED
+  // event. Before it arrives the reply has no savable message name: the
+  // assistant-ui local id is synthetic, and the retained-passage opener
+  // must not be aimed at it.
+  let assistantMessageId: string | undefined
   for (let attempt = 0; ; attempt++) {
     let interrupted = false
     let status: RunStatus | undefined
@@ -292,7 +297,26 @@ export async function* tailRun(
             yield {
               content: contentOf(parts),
               metadata: {
-                custom: { theoremRunId: runId, theoremCursor: event.seq },
+                custom: {
+                  theoremRunId: runId,
+                  theoremCursor: event.seq,
+                  ...(assistantMessageId ? { theoremMessageId: assistantMessageId } : {}),
+                },
+              },
+            }
+          }
+        }
+        if (event.sourceEventType === 'CHAT.MESSAGE.PERSISTED') {
+          const saved = event.payload as { messageId?: unknown; role?: unknown }
+          if (saved.role === 'assistant' && typeof saved.messageId === 'string') {
+            assistantMessageId = saved.messageId
+            // A metadata step: assistant-ui merges it into the running
+            // message without touching the parts, so the reply gains its
+            // durable name without reflow.
+            yield {
+              content: contentOf(parts),
+              metadata: {
+                custom: { theoremRunId: runId, theoremMessageId: assistantMessageId },
               },
             }
           }
