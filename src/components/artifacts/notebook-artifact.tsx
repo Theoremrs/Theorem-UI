@@ -7,7 +7,8 @@
 // path an HTML App's selection takes to the next turn), and artifact-host's
 // react-query reads of the host description and the recorded outputs, and the
 // App document owners an HTML App runs with (document-app's replica and pinned
-// state, app-artifacts' run store, saved-artifact's head). No library hosts an
+// state, app-artifacts' run store, saved-artifact's head), and view-instances'
+// receipt store, which an inline view reports to. No library hosts an
 // Observable or marimo notebook in Theorem's sandbox.
 //
 // A notebook artifact shows what it computed. Observable cells run in the
@@ -20,10 +21,13 @@
 // document's state collections, its runs are kept against the revision
 // running, and what its views are left at is saved for the next view to start
 // from. An older revision is what its message pinned, and what changes in it
-// stays in its frame.
+// stays in its frame. How the head's open view builds, starts and settles is
+// reported as an inline view's is, so a check of the document can say what the
+// person sees apart from what its own hidden run saw.
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -73,6 +77,11 @@ import {
   useRetainedOutputs,
 } from '@/lib/theorem/artifact-host'
 import type { ArtifactInteraction } from '@/lib/theorem/artifact-host'
+import {
+  documentViewKey,
+  notebookRevision,
+  useViewInstances,
+} from '@/lib/generative/view-instances'
 import { describeError } from '@/lib/theorem/client'
 import { cn } from '@/lib/utils'
 import { useOpenLatest } from './app-history'
@@ -253,6 +262,55 @@ function usePageSelection(page: unknown) {
     [page],
   )
   return [held && held.page === page ? held.selection : undefined, select] as const
+}
+
+/** How many open views report for each document, so the last to close forgets it. */
+const openViews = new Map<string, number>()
+
+/**
+ * What an open view of a saved notebook's head tells the receipt store: the
+ * revision it runs, when its page built and started, and how each cell first
+ * settled. Views of one document report to one instance; the first to see a
+ * cell settle says how. Undefined handlers for a view that does not report.
+ */
+function useOpenViewReport(
+  documentId: string | undefined,
+  notebook: ObservableNotebook,
+) {
+  const key = documentId && documentViewKey(documentId)
+  const revision = useMemo(() => notebookRevision(notebook), [notebook])
+  const { mount, advance, settle, error, unbuilt, forget } =
+    useViewInstances.getState()
+  // Mounted before the frame's own effects can report on it.
+  useLayoutEffect(() => {
+    if (!key) return
+    mount(
+      key,
+      revision,
+      notebook.cells.map((cell) => cell.id),
+      notebook.cells.map((cell) => cell.source),
+    )
+    openViews.set(key, (openViews.get(key) ?? 0) + 1)
+    return () => {
+      const left = (openViews.get(key) ?? 1) - 1
+      if (left > 0) return void openViews.set(key, left)
+      openViews.delete(key)
+      forget(key)
+    }
+  }, [key, revision, notebook, mount, forget])
+  return useMemo(
+    () =>
+      key
+        ? {
+            onStatus: (status: CellStatus) => settle(key, revision, status),
+            onError: (frame: FrameError) => error(key, revision, frame.message),
+            onBuildError: (message: string) => unbuilt(key, revision, message),
+            onStage: (stage: 'compiled' | 'mounted') =>
+              advance(key, revision, stage),
+          }
+        : {},
+    [key, revision, settle, error, unbuilt, advance],
+  )
 }
 
 /** Whether the person pointed at something in the notebook. */
@@ -624,6 +682,12 @@ export function ObservableNotebookView({
     [setSelection, keep],
   )
   const cellIds = useMemo(() => notebook.cells.map((cell) => cell.id), [notebook])
+  // Only the head reports: an older revision is not what a check of the
+  // document runs, and a notebook with no document has none to check.
+  const report = useOpenViewReport(
+    pinned ? undefined : artifact.documentId,
+    notebook,
+  )
   return (
     <NotebookSurface
       artifact={artifact}
@@ -641,6 +705,7 @@ export function ObservableNotebookView({
           title={notebook.title}
           loading="Starting the notebook…"
           onSelection={onSelection}
+          {...report}
         />
       ) : (
         <Starting>Starting the notebook…</Starting>

@@ -62,14 +62,15 @@ export const APP_OPERATIONS = [
           type: 'string',
           minLength: 1,
           maxLength: 200,
-          description: 'A published App, checked as it is saved now.',
+          description:
+            'A published App, checked as it is saved now. For a notebook, `visible` is added when the person has that revision open: what their open view shows, apart from the hidden run.',
         },
         runMs: {
           type: 'integer',
           minimum: 0,
           maximum: MAX_RUN_MS,
           description:
-            'How long to run the App and listen for errors. 0 builds and checks types without running it. Default 1500.',
+            'How long to run the App and listen for errors. 0 builds and checks types without running it. Default 1500; for a notebook, the run ends once every cell settles, at most 5000. `started` says whether the page ran; a notebook\'s `cells` say which showed a value, failed, or were still `pending` when the run ended, which is not seen yet rather than failed.',
         },
         picture: {
           type: 'boolean',
@@ -230,6 +231,8 @@ export interface AppAnswer {
     | (AppInspection & {
         /** The saved revision that was checked, when a published App was. */
         revision?: string
+        /** What the open view of that revision shows on the page, when one is open. */
+        visible?: unknown
       })
     | AppLibraryRead
 }
@@ -249,6 +252,8 @@ export interface AppOperationHost {
     }
   >
   notebookPage: (notebook: ObservableNotebook) => Promise<string>
+  /** What a view of the saved notebook open on the page shows, when one is open on `notebook`. */
+  visible: (documentId: string, notebook: ObservableNotebook) => Promise<unknown>
 }
 
 const pageHost: AppOperationHost = {
@@ -261,6 +266,15 @@ const pageHost: AppOperationHost = {
       import('@/lib/blocks/sandbox/theme'),
     ])
     return observablePage(notebook, resolvedTheme())
+  },
+  visible: async (documentId, notebook) => {
+    const { currentReceipt, documentViewKey, notebookRevision, useViewInstances } =
+      await import('@/lib/generative/view-instances')
+    const key = documentViewKey(documentId)
+    const view = useViewInstances.getState().byKey[key]
+    return view && view.revision === notebookRevision(notebook)
+      ? currentReceipt(key, view)
+      : undefined
   },
 }
 
@@ -301,7 +315,10 @@ async function checkArtifact(
     kind: 'build' as const,
     message,
   }))
-  const ran = await host.inspect(await host.notebookPage(parsed.data), options)
+  const ran = await host.inspect(await host.notebookPage(parsed.data), {
+    ...options,
+    cells: parsed.data.cells.map((cell) => cell.id),
+  })
   return {
     outcome: 'applied',
     result: { ...ran, problems: [...read, ...ran.problems] },
@@ -357,10 +374,18 @@ export async function answerAppRequest(
           reason: saved.unreadable ?? `The saved ${saved.form} could not be read.`,
         }
       const checked = await checkArtifact(saved.publication, options, host)
+      const visible =
+        checked.result && saved.publication.form === 'observable'
+          ? await host.visible(documentId, saved.publication)
+          : undefined
       return checked.result
         ? {
             ...checked,
-            result: { ...checked.result, revision: String(saved.revision.position) },
+            result: {
+              ...checked.result,
+              revision: String(saved.revision.position),
+              ...(visible !== undefined && { visible }),
+            },
           }
         : checked
     }

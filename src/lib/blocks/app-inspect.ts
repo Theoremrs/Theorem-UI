@@ -22,15 +22,37 @@ import {
   call,
 } from './sandbox/protocol'
 import type {
+  CellStatus,
   FrameError,
   PageAttributes,
   SandboxMethods,
 } from './sandbox/protocol'
 
-/** What a check of an App found. Everything in it is JSON. */
+/** How a notebook's cells stood when its run ended, by id. */
+export interface CellOutcomes {
+  /** Cells that showed a value. */
+  ready: Array<string>
+  /** Cells that failed; their errors are in the problems. */
+  failed: Array<string>
+  /**
+   * Cells that had not settled when the run ended: not failed and not shown,
+   * only not seen yet. A longer run may see them settle.
+   */
+  pending: Array<string>
+}
+
+/**
+ * What a check of an App found. Everything in it is JSON. Each fact is its
+ * own: a page that built may not have started, and one that started may not
+ * have shown everything by the time the run ended.
+ */
 export interface AppInspection {
   /** Whether the App's page could be made: false when its source does not build. */
   built: boolean
+  /** Whether the page started: it ran and connected to Theorem. False when it was not run. */
+  started: boolean
+  /** For a notebook, how each of its cells stood when the run ended. */
+  cells?: CellOutcomes
   /** The App's source files, when it is built from source. */
   files: Array<string>
   /** Build, type and runtime problems, in that order. */
@@ -58,8 +80,17 @@ export interface AppInspection {
 }
 
 export interface InspectOptions {
-  /** How long to run the App and listen for what it throws. Zero does not run it. */
+  /**
+   * How long to run the App and listen for what it throws. Zero does not run
+   * it. A notebook's run ends sooner when every cell has settled.
+   */
   runMs?: number
+  /**
+   * The ids of the cells a notebook page runs. The run lasts until each has
+   * shown a value or failed, up to `runMs` (MAX_RUN_MS unless given), and the
+   * inspection says how each stood.
+   */
+  cells?: ReadonlyArray<string>
   /** Also draw what the App showed, for a reader that can see. */
   picture?: boolean
 }
@@ -157,13 +188,25 @@ async function run(
   page: string,
   runMs: number,
   pictured: boolean,
+  cells: ReadonlyArray<string> | undefined,
 ): Promise<{
   problems: Array<AppProblem>
+  started: boolean
+  cells?: CellOutcomes
   ranMs: number
   rendered?: AppInspection['rendered']
   picture?: AppPicture
 }> {
   const problems: Array<AppProblem> = []
+  // How each cell first settled, and the moment every one has.
+  const settled = new Map<string, CellStatus['stage']>()
+  let allSettled = () => {}
+  const everySettled = new Promise<void>((resolve) => (allSettled = resolve))
+  const onStatus = ({ cell, stage }: CellStatus) => {
+    if (!cells?.includes(cell) || settled.has(cell)) return
+    settled.set(cell, stage)
+    if (settled.size === cells.length) allSettled()
+  }
   let snapshot: string | undefined
   // What the App's root and body carried when it was last looked at.
   let carried: PageAttributes | undefined
@@ -203,12 +246,14 @@ async function run(
     onResize: (tall: number) => {
       height = Math.max(tall, FRAME_HEIGHT)
     },
+    onStatus,
   })
   frame.src = url
   document.body.append(frame)
   const started = performance.now()
+  let connected = false
   try {
-    const connected = await Promise.race([
+    connected = await Promise.race([
       connection.connected.then(
         () => true,
         () => false,
@@ -221,7 +266,9 @@ async function run(
         message: 'The App did not start: its page never connected to Theorem.',
       })
     else {
-      await wait(runMs)
+      await (cells?.length
+        ? Promise.race([everySettled, wait(runMs)])
+        : wait(runMs))
       // What the App shows at the end of its run. An App that keeps changing
       // (a clock, an animation) never settles into a snapshot of its own, and
       // one that changed late would leave an older one.
@@ -245,8 +292,18 @@ async function run(
     frame.remove()
     URL.revokeObjectURL(url)
   }
+  const where = (stage?: CellStatus['stage']) =>
+    (cells ?? []).filter((cell) => settled.get(cell) === stage)
   return {
     problems,
+    started: connected,
+    ...(cells && {
+      cells: {
+        ready: where('ready'),
+        failed: where('failed'),
+        pending: where(undefined),
+      },
+    }),
     ranMs: Math.round(performance.now() - started),
     rendered:
       snapshot === undefined ? undefined : renderedOf(snapshot, outline),
@@ -268,12 +325,16 @@ export async function inspectApp(
   options: InspectOptions = {},
 ): Promise<AppInspection> {
   const runMs = Math.min(
-    Math.max(options.runMs ?? DEFAULT_RUN_MS, 0),
+    Math.max(
+      options.runMs ?? (options.cells ? MAX_RUN_MS : DEFAULT_RUN_MS),
+      0,
+    ),
     MAX_RUN_MS,
   )
   const found: Array<AppProblem> = []
   const inspection: AppInspection = {
     built: false,
+    started: false,
     files: [],
     problems: [],
     omitted: 0,
@@ -328,8 +389,16 @@ export async function inspectApp(
   }
 
   if (runMs > 0) {
-    const ran = await run(html, page, runMs, options.picture === true)
+    const ran = await run(
+      html,
+      page,
+      runMs,
+      options.picture === true,
+      options.cells,
+    )
     found.push(...ran.problems)
+    inspection.started = ran.started
+    if (ran.cells) inspection.cells = ran.cells
     inspection.ranMs = ran.ranMs
     inspection.rendered = ran.rendered
     if (ran.picture) inspection.picture = ran.picture

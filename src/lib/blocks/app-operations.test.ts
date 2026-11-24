@@ -25,6 +25,7 @@ import type { ObservableNotebook } from '@/lib/notebooks/forms'
 
 const CLEAN: AppInspection = {
   built: true,
+  started: true,
   files: ['main.tsx'],
   problems: [],
   omitted: 0,
@@ -34,10 +35,15 @@ const CLEAN: AppInspection = {
 }
 
 function host(overrides: Partial<AppOperationHost> = {}) {
-  const inspected: Array<{ html: string; runMs?: number; picture?: boolean }> =
-    []
+  const inspected: Array<{
+    html: string
+    runMs?: number
+    picture?: boolean
+    cells?: ReadonlyArray<string>
+  }> = []
   const loaded: Array<string> = []
   const notebooks: Array<ObservableNotebook> = []
+  const asked: Array<string> = []
   const value: AppOperationHost = {
     inspect: async (html, options) => {
       inspected.push({ html, ...options })
@@ -52,9 +58,13 @@ function host(overrides: Partial<AppOperationHost> = {}) {
       notebooks.push(notebook)
       return `<title>${notebook.title}</title>`
     },
+    visible: async (documentId) => {
+      asked.push(documentId)
+      return undefined
+    },
     ...overrides,
   }
-  return { host: value, inspected, loaded, notebooks }
+  return { host: value, inspected, loaded, notebooks, asked }
 }
 
 const request = (
@@ -259,7 +269,9 @@ describe('answering a check', () => {
       page.host,
     )
     expect(page.notebooks.map((notebook) => notebook.title)).toEqual(['Rainfall by month'])
-    expect(page.inspected).toEqual([{ html: '<title>Rainfall by month</title>', runMs: 0 }])
+    expect(page.inspected).toEqual([
+      { html: '<title>Rainfall by month</title>', runMs: 0, cells: ['intro', 'chart'] },
+    ])
     // The Markdown cell is read as Markdown, and the name it reads is undefined.
     expect(answer).toEqual({
       outcome: 'applied',
@@ -319,7 +331,11 @@ describe('answering a check', () => {
     const answer = await answerAppRequest(request({ documentId: 'notebook-document' }), page.host)
     // Its page is built from the publication, not its saved JSON read as HTML.
     expect(page.notebooks.map((notebook) => notebook.title)).toEqual(['Rainfall by month'])
-    expect(page.inspected).toEqual([{ html: '<title>Rainfall by month</title>' }])
+    expect(page.inspected).toEqual([
+      { html: '<title>Rainfall by month</title>', cells: ['intro', 'chart'] },
+    ])
+    // Nobody has it open, so there is no open view to report.
+    expect(page.asked).toEqual(['notebook-document'])
     expect(answer).toEqual({
       outcome: 'applied',
       result: {
@@ -327,6 +343,32 @@ describe('answering a check', () => {
         problems: [{ kind: 'build', message: 'Cell 1 reads `unit`, which no cell defines.' }],
         revision: '12',
       },
+    })
+  })
+
+  test('a saved notebook someone has open adds what their view shows, apart from the check', async () => {
+    const shown = {
+      revision: 'r1',
+      stage: 'mounted',
+      cells: [{ id: 'chart', stage: 'ready', shows: 'figure' }],
+    }
+    const page = host({
+      load: async () => ({
+        html: JSON.stringify(rainfall),
+        form: 'observable',
+        publication: rainfall as ObservableNotebook,
+        revision: { position: 12 },
+      }),
+      visible: async (documentId, notebook) =>
+        documentId === 'notebook-document' && notebook.title === 'Rainfall by month'
+          ? shown
+          : undefined,
+    })
+    const answer = await answerAppRequest(request({ documentId: 'notebook-document' }), page.host)
+    // The hidden run's own facts stay its own beside it.
+    expect(answer).toMatchObject({
+      outcome: 'applied',
+      result: { visible: shown, started: true, revision: '12' },
     })
   })
 

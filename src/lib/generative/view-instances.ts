@@ -9,6 +9,7 @@
 // view: presenting it again revises it, or the paint it stands in, in place.
 import { create } from 'zustand'
 import type { AppSelection, CellStatus } from '@/lib/blocks/sandbox/protocol'
+import { viewRevision } from './view-reference'
 
 /**
  * Where a view stands. Before every cell settles: `accepted` (the reply drew
@@ -59,6 +60,8 @@ type ViewInstancesState = {
   error: (key: string, revision: string, message: string) => void
   unbuilt: (key: string, revision: string, message: string) => void
   select: (key: string, revision: string, selection: AppSelection) => void
+  /** No view shows the instance any more, so nothing reports for it. */
+  forget: (key: string) => void
   /** How each mounted instance is saved, by key. */
   savers: Readonly<Record<string, ViewSaver>>
   offerSave: (key: string, save: ViewSaver) => () => void
@@ -114,6 +117,12 @@ export const useViewInstances = create<ViewInstancesState>()((set) => {
       ),
     unbuilt: (key, revision, message) => update(key, revision, (view) => ({ ...view, unbuilt: message })),
     select: (key, revision, selection) => update(key, revision, (view) => ({ ...view, selection })),
+    forget: (key) =>
+      set((s) => {
+        if (!(key in s.byKey)) return s
+        const { [key]: _gone, ...byKey } = s.byKey
+        return { byKey }
+      }),
     savers: {},
     offerSave: (key, save) => {
       set((s) => ({ savers: { ...s.savers, [key]: save } }))
@@ -126,6 +135,22 @@ export const useViewInstances = create<ViewInstancesState>()((set) => {
     },
   }
 })
+
+/**
+ * The instance a saved notebook's open view reports under: one per document,
+ * so every view of its head reports to the one receipt the check reads.
+ */
+export const documentViewKey = (documentId: string) => `document:${documentId}`
+
+/** The revision a notebook's view reports as: its cells' sources and data, as an inline view's is. */
+export const notebookRevision = (notebook: {
+  cells: ReadonlyArray<{ source: string }>
+  data?: unknown
+}) =>
+  viewRevision(
+    notebook.cells.map((cell) => cell.source),
+    notebook.data,
+  )
 
 export function stageOf(view: ViewInstance): ViewStage {
   if (view.unbuilt) return 'failed'

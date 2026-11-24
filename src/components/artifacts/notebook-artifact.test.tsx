@@ -10,6 +10,7 @@ import * as hosted from '@/lib/blocks/hosted-app'
 import { fromBase64 } from '@/lib/blocks/state'
 import { call } from '@/lib/blocks/sandbox/protocol'
 import type { PageMethods } from '@/lib/blocks/sandbox/protocol'
+import { documentViewKey, useViewInstances } from '@/lib/generative/view-instances'
 import type { NotebookForm, RetainedOutputs } from '@/lib/notebooks/forms'
 import { BROWSER_RUN_HOSTS } from '@/lib/notebooks/marimo'
 import { encodeNote } from '@/lib/theorem/note-canonical'
@@ -406,6 +407,61 @@ test('an older revision runs as its message pinned it, and keeps what changes in
     )
     await act(() => new Promise((resolve) => setTimeout(resolve, 600)))
     expect(head.writes).toHaveLength(0)
+  } finally {
+    close()
+    capture.restore()
+  }
+}, 20_000)
+
+test('an open view of the newest revision reports how its cells settle, under its document, until it closes', async () => {
+  const head = await savedHead('rents-open', RENTS_HEAD)
+  serve({ documents: [head] })
+  const key = documentViewKey('rents-open')
+  const view = () => useViewInstances.getState().byKey[key]
+  const capture = captureDocuments()
+  let close = () => {}
+  try {
+    const { container } = await render(
+      <ArtifactView artifact={rents('rents-open')} distance="thing" latest />,
+    )
+    const frame = await connectAppFrame(container)
+    close = frame.close
+    // The head's cells, not the ones the message carried.
+    await waitFor(() => view()?.cells.length === 3)
+    expect(view()?.cells).toEqual(['rent', 'share', 'yearly'])
+    await act(() =>
+      call<PageMethods, 'frame.status'>(frame.rpc, 'frame.status', {
+        cell: 'yearly',
+        stage: 'ready',
+        shows: '14400',
+      }),
+    )
+    expect(view()?.settled).toEqual({ yearly: 'ready' })
+    expect(view()?.shows).toEqual({ yearly: '14400' })
+  } finally {
+    close()
+    capture.restore()
+  }
+  await cleanup()
+  // Nobody has it open, so nothing is reported as shown.
+  expect(view()).toBeUndefined()
+}, 20_000)
+
+test('an older revision reports nothing as its document\'s open view', async () => {
+  const head = await savedHead('rents-old-open', RENTS_HEAD)
+  serve({ documents: [head] })
+  const capture = captureDocuments()
+  let close = () => {}
+  try {
+    const { container } = await render(
+      <ArtifactView artifact={rents('rents-old-open')} distance="thing" latest={false} />,
+    )
+    const frame = await connectAppFrame(container)
+    close = frame.close
+    await act(() =>
+      call<PageMethods, 'frame.status'>(frame.rpc, 'frame.status', { cell: 'share', stage: 'ready' }),
+    )
+    expect(useViewInstances.getState().byKey[documentViewKey('rents-old-open')]).toBeUndefined()
   } finally {
     close()
     capture.restore()
