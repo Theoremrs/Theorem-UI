@@ -34,7 +34,7 @@ export const importMap = {
     "/vendor/@observablehq/notebook-kit@2.7.1/es2022/dist/src/runtime/stdlib/highlight.mjs": "sha384-mZOKFf4lbrRBq8FYHSQU2k9RmNE7X7DLspRaJsIcJyo+k5grRxTjR8UiUQ7ILjUu",
     "/vendor/@observablehq/notebook-kit@2.7.1/es2022/dist/src/runtime/stdlib/inputs.mjs": "sha384-JmmHEofItOlUDnyziEUTGCBkRbmEG1SBmx9+9NRIudHHKOpQWkhQeH1LaZLBJuyP",
     "/vendor/@observablehq/notebook-kit@2.7.1/es2022/dist/src/runtime/stdlib/md.mjs": "sha384-RcGzv4zByA0YNxSSsvliVO2KK3iyvbQEEYYcYvho9U3Gqz4Ay8UFYqwFe2GM61i2",
-    "/vendor/@observablehq/notebook-kit@2.7.1/es2022/runtime.mjs": "sha384-Ifs2G9r701UahmhHjBuSbSawS8HbjQ/JYf8wbgnC2oaNtTfogfy8khg9O8KpAeuY",
+    "/vendor/@observablehq/notebook-kit@2.7.1/es2022/runtime.mjs": "sha384-e2OEpxkPwxRM51c0kXc11QPNPgB1hDLVND2UQVnzqlBXu7jyi/h5pbqCjlf3QyGM",
     "/vendor/@observablehq/plot@0.6.19/X-ZGQzQDcuOS4w/es2022/plot.mjs": "sha384-lqPb/wtJgFK8fYVOlRtKoNg7vrB5ByR154mRQPrB2ab3/rmtvzDBvVCdi1qQOpOT",
     "/vendor/@observablehq/runtime@6.1.0/es2022/runtime.mjs": "sha384-iK3ILD2naTUlWweU17ZYcKkB9dbb5ghd8TPnGa93qUA9Lot7HZmwHC/20bXugCK4",
     "/vendor/@sindresorhus/slugify@2.2.1/es2022/slugify.mjs": "sha384-lwG8R/I2S83USMpUyYahUc42WNuqFB0q8kA4FIvxbAXv65kab9IJDhHNPWFcvOI5",

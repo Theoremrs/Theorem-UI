@@ -15,11 +15,12 @@ import {
   observeHeight,
   observeSnapshots,
 } from './display'
-import { MAX_FRAME_ERRORS, call, rpcOver, serve } from './protocol'
+import { CELL_STATUS_EVENT, MAX_CELL_ERROR, MAX_CELL_SHOWS, MAX_CELL_STATUSES, MAX_FRAME_ERRORS, call, rpcOver, serve } from './protocol'
 import type {
   ArtifactObservation,
   CapabilityInvokeParams,
   CapabilityQueryParams,
+  CellStatus,
   DossierContext,
   DossierState,
   FrameError,
@@ -218,6 +219,23 @@ window.addEventListener('error', (event) => {
 })
 window.addEventListener('unhandledrejection', (event) => {
   report(thrown(event.reason))
+})
+
+// How a notebook's cells first settle (notebook.ts), so the page can say
+// when the first outputs are on screen and which cells failed.
+let statuses = 0
+window.addEventListener(CELL_STATUS_EVENT, (event) => {
+  if (statuses++ >= MAX_CELL_STATUSES) return
+  const { cell, stage, error, shows } = (event as CustomEvent<CellStatus>).detail
+  const status: CellStatus = {
+    cell: cell.slice(0, 200),
+    stage,
+    ...(error !== undefined && { error: error.slice(0, MAX_CELL_ERROR) }),
+    ...(shows !== undefined && { shows: shows.slice(0, MAX_CELL_SHOWS) }),
+  }
+  void context
+    .then(({ cells }) => call<PageMethods, 'frame.status'>(cells.rpc, 'frame.status', status))
+    .catch(() => {})
 })
 
 const context_ = async () => (await context).cells

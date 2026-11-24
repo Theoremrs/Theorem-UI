@@ -2,6 +2,8 @@ import { afterEach, expect, test } from 'bun:test'
 import type * as D3Array from 'd3-array'
 import * as esbuild from 'esbuild-wasm'
 import { bundleNotebookRuntime } from '@/lib/blocks/export'
+import { CELL_STATUS_EVENT } from '@/lib/blocks/sandbox/protocol'
+import type { CellStatus } from '@/lib/blocks/sandbox/protocol'
 import { THEME_EVENT, applyTheme } from '@/lib/blocks/sandbox/theme'
 import { importMap } from '@/lib/blocks/vendor/manifest'
 import { waitFor } from '../../../test/blocks/render'
@@ -16,7 +18,7 @@ import type { ObservableRun, SavedView } from './observable-document'
 
 declare global {
   interface Window {
-    __theoremImport?: (specifier: string) => Promise<unknown>
+    __theoremImport?: (specifier: string, remote?: string) => Promise<unknown>
     __theoremNotebook?: unknown
   }
 }
@@ -62,16 +64,31 @@ test('the sandbox import map carries the d3 bundle and the notebook runtime', ()
   expect(importMap.imports['@observablehq/notebook-kit/runtime']).toBeDefined()
 })
 
-test('d3 resolves inside the sandbox runtime, from the bundle and not the network', async () => {
+test('d3 resolves inside the sandbox runtime, from the bundle', async () => {
   await run({ form: 'observable', title: 'Empty', cells: [] })
   const d3 = (await window.__theoremImport!('d3')) as typeof D3Array & {
     scaleLinear: () => { domain: (d: number[]) => { range: (r: number[]) => (x: number) => number } }
   }
   expect(d3.scaleLinear().domain([0, 10]).range([0, 100])(5)).toBe(50)
   expect(d3.max([3, 9, 4])).toBe(9)
-  await expect(window.__theoremImport!('lodash')).rejects.toThrow(
-    /not in the sandbox's import map/,
-  )
+})
+
+test('a module the bundle does not hold is imported from where notebook-kit resolves it', async () => {
+  const script = notebookCellsScript({
+    form: 'observable',
+    title: 'Imports',
+    cells: [
+      { id: 'npm', kind: 'js', source: 'import _ from "lodash"' },
+      { id: 'scoped', kind: 'js', source: 'import {tableFromIPC} from "npm:apache-arrow"' },
+      { id: 'url', kind: 'js', source: 'const m = import("https://esm.sh/canvas-confetti@1")' },
+    ],
+  })
+  expect(script).toContain('__theoremImport("lodash", "https://cdn.jsdelivr.net/npm/lodash/+esm")')
+  expect(script).toContain('"https://cdn.jsdelivr.net/npm/apache-arrow@17.0.0/+esm"')
+  expect(script).toContain('__theoremImport("https://esm.sh/canvas-confetti@1", "https://esm.sh/canvas-confetti@1")')
+  await run({ form: 'observable', title: 'Empty', cells: [] })
+  const module = (await window.__theoremImport!('seven', 'data:text/javascript,export default 7')) as { default: number }
+  expect(module.default).toBe(7)
 })
 
 test('cells run reactively: an import in one cell feeds an expression in the next', async () => {
@@ -198,9 +215,9 @@ test('views.graph selects a node and its neighbours, and reports their ids to th
   alpha.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   await waitFor(() => seen.length > 0)
   const last = seen.at(-1)!
-  expect(last!.label).toBe('Alpha and 2 neighbours')
-  expect(new Set(last!.ids)).toEqual(new Set(['a', 'b', 'c']))
-  expect(last!.state).toEqual({ graph1: 'a' })
+  expect(last.label).toBe('Alpha and 2 neighbours')
+  expect(new Set(last.ids)).toEqual(new Set(['a', 'b', 'c']))
+  expect(last.state).toEqual({ graph1: 'a' })
   expect(alpha.getAttribute('aria-pressed')).toBe('true')
 })
 
@@ -212,11 +229,13 @@ test('views.param marks a moved parameter, reports it, and a saved view starts f
   await waitFor(() => cell.querySelector('input[type="range"]') !== null)
   const marker = cell.querySelector<HTMLElement>('.tv-moved')!
   expect(marker.hidden).toBe(true)
+  expect(getComputedStyle(marker).display).toBe('none')
   const range = cell.querySelector<HTMLInputElement>('input[type="range"]')!
   range.value = '7'
   range.dispatchEvent(new Event('input', { bubbles: true }))
   await waitFor(() => seen.length > 0)
   expect(marker.hidden).toBe(false)
+  expect(getComputedStyle(marker).display).not.toBe('none')
   expect(marker.textContent).toBe('moved from 2')
   expect(seen.at(-1)!.state).toEqual({ params: { k: 7 } })
 
@@ -237,6 +256,87 @@ test('a cell that throws reports a page error naming the cell, so the reply can 
     expect(errors[0]).toMatch(/^Cell bad: /)
   } finally {
     window.removeEventListener('error', listen)
+  }
+})
+
+test('a ready cell says what it shows: an empty array, each name it defines, a chart with no marks', async () => {
+  const statuses: Array<CellStatus> = []
+  const listen = (event: Event) => statuses.push((event as CustomEvent<CellStatus>).detail)
+  window.addEventListener(CELL_STATUS_EVENT, listen)
+  try {
+    await run({
+      title: 'Shows',
+      cells: [
+        { id: 'rows', kind: 'js', source: '[]' },
+        { id: 'window', kind: 'js', source: 'const start = 2005\nconst picked = []' },
+        {
+          id: 'chart',
+          kind: 'js',
+          source: [
+            'const figure = document.createElement("figure")',
+            'for (const [label, marks] of [["line", 0], ["x-axis tick", 3]]) {',
+            '  const group = figure.appendChild(document.createElement("div"))',
+            '  group.setAttribute("aria-label", label)',
+            '  for (let i = 0; i < marks; i++) group.append(document.createElement("span"))',
+            '}',
+            'display(figure)',
+            'figure',
+          ].join('\n'),
+        },
+      ],
+    })
+    await waitFor(() => statuses.length === 3)
+    const shows = Object.fromEntries(statuses.map((status) => [status.cell, status.shows]))
+    expect(shows.rows).toMatch(/^Array\(0\)/)
+    expect(shows.window).toMatch(/^start = 2005; picked = Array\(0\)/)
+    expect(shows.chart).toBe('figure = <figure> line ×0, x-axis tick ×3')
+  } finally {
+    window.removeEventListener(CELL_STATUS_EVENT, listen)
+  }
+})
+
+test('a name view() defines shows the value of the input the cell shows', async () => {
+  const statuses: Array<CellStatus> = []
+  const listen = (event: Event) => statuses.push((event as CustomEvent<CellStatus>).detail)
+  window.addEventListener(CELL_STATUS_EVENT, listen)
+  try {
+    await run({
+      title: 'Viewed',
+      cells: [{ id: 'k', kind: 'js', source: 'const k = view(Inputs.range([0, 10], {value: 3, step: 1}))' }],
+    })
+    await waitFor(() => statuses.length === 1)
+    expect(statuses[0]).toEqual({ cell: 'k', stage: 'ready', shows: 'k = 3' })
+  } finally {
+    window.removeEventListener(CELL_STATUS_EVENT, listen)
+  }
+})
+
+test('each cell tells the page once how it first settled, a failure with its error', async () => {
+  const statuses: Array<CellStatus> = []
+  const listen = (event: Event) => statuses.push((event as CustomEvent<CellStatus>).detail)
+  const quiet = (event: ErrorEvent) => event.preventDefault()
+  window.addEventListener(CELL_STATUS_EVENT, listen)
+  window.addEventListener('error', quiet)
+  try {
+    await run({
+      title: 'Settles',
+      cells: [
+        { id: 'n', kind: 'js', source: 'n = 3' },
+        { id: 'tripled', kind: 'js', source: 'n * 3' },
+        { id: 'bad', kind: 'js', source: 'broken = data.missing.field' },
+        { id: 'heir', kind: 'js', source: 'broken + 1' },
+      ],
+    })
+    await waitFor(() => statuses.length === 4)
+    const by = Object.fromEntries(statuses.map((status) => [status.cell, status]))
+    expect(by.n).toEqual({ cell: 'n', stage: 'ready', shows: '3' })
+    expect(by.tripled).toEqual({ cell: 'tripled', stage: 'ready', shows: '9' })
+    expect(by.bad?.stage).toBe('failed')
+    expect(by.bad?.error).toBeTruthy()
+    expect(by.heir).toEqual({ cell: 'heir', stage: 'failed', error: by.bad!.error })
+  } finally {
+    window.removeEventListener(CELL_STATUS_EVENT, listen)
+    window.removeEventListener('error', quiet)
   }
 })
 

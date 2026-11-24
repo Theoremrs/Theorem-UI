@@ -12,6 +12,7 @@ import { styledGenerativeUILibrary } from '@/components/assistant-ui/elements/ge
 import { a2uiActionMessage, openUrlOf, presentation } from '@/lib/generative/a2ui'
 import type { GenerativeUIAction } from '@assistant-ui/generative-ui/react'
 import { inVocabulary, PRESENT } from '@/lib/generative/operations'
+import { reviseViews } from '@/lib/generative/view-instances'
 import { CatchBoundary } from '@tanstack/react-router'
 import type {
   AssistantState,
@@ -389,18 +390,26 @@ export function appCheckProblems(data: unknown): string | undefined {
  * what Kit's operations did. A `ui.present` call is the exception: the tree
  * or A2UI surfaces it carries are the reply's interface, drawn from the
  * styled vocabulary, with any component it does not name drawn from its
- * properties.
+ * properties. A View the reply presents again under the same `id` is drawn
+ * once, where it first appeared, as its latest definition (reviseViews).
  */
 const ClientOperationPart: DataMessagePartComponent = ({ data }) => {
   const call = object(data)
-  const args = object(call.args)
   const aui = useAui()
-  const running = useAuiState((s) => s.message.status?.type === 'running')
+  const parts = useAuiState((s) => s.message.parts)
+  const args = useMemo(() => {
+    const presented = parts.flatMap((part) =>
+      part.type === 'data' &&
+      part.name === 'theorem-client_operation' &&
+      str(object(part.data).operation) === PRESENT
+        ? [object(part.data)]
+        : [],
+    )
+    const index = presented.findIndex((other) => other === call || other.requestRef === call.requestRef)
+    return index < 0 ? object(call.args) : (reviseViews(presented.map((other) => object(other.args)))[index] ?? {})
+  }, [parts, call])
   const trees = useMemo(() => presentation(args, inVocabulary).trees, [args])
-  if (str(call.operation) !== PRESENT) return null
-  const state = str(call.state) ?? 'pending'
-  // While the call streams, the tree is partial; the renderer tolerates that.
-  const status = state === 'pending' && running ? 'streaming' : 'done'
+  if (str(call.operation) !== PRESENT || !trees.length) return null
   // An A2UI surface's actions go to the agent that wrote it; `openUrl` opens
   // a web address.
   const dispatch = (action: GenerativeUIAction) => {
@@ -413,7 +422,10 @@ const ClientOperationPart: DataMessagePartComponent = ({ data }) => {
     <div data-slot="theorem-present" className="aui-p-present my-2 flex flex-col gap-3">
       {trees.map(({ key, tree }) => (
         <Fragment key={key}>
-          {renderGenerativeUI(tree, styledGenerativeUILibrary, { status, dispatch })}
+          {/* The part arrives once Theorem has admitted the call, so its tree is
+              whole while the call waits on its receipt, and a View must mount
+              to answer it. */}
+          {renderGenerativeUI(tree, styledGenerativeUILibrary, { status: 'done', dispatch })}
         </Fragment>
       ))}
     </div>

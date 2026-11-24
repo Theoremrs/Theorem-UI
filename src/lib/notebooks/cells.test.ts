@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { FRAME_BUILTINS, cellProblems, transpileCell } from './cells'
+import { FRAME_BUILTINS, blockingCells, cellProblems, transpileCell } from './cells'
 
 describe('a view read before it runs', () => {
   test('a cell that assigns another cell\'s value is told about mutable, not about its first line', () => {
@@ -31,6 +31,26 @@ describe('a view read before it runs', () => {
     expect(problems[0]).toContain('Cell 1 binds `k` to the input element')
     expect(cellProblems(['viewof k = Inputs.range([1, 100])', 'rate = Math.sqrt(k)'])).toEqual([])
     expect(cellProblems(['const k = view(Inputs.range([1, 100]))', 'Math.sqrt(k)'])).toEqual([])
+  })
+
+  test('an input view() shows in a cell `name = ...`, which displays its value instead, is named', () => {
+    const problems = cellProblems(['k = view(Inputs.range([1, 100], {value: 20}))', 'Math.sqrt(k)'])
+    expect(problems).toEqual([
+      "Cell 1 shows `k`'s value in place of its input, as a cell `k = ...` displays what it defines: write `const k = view(Inputs...)` or `viewof k = Inputs...`.",
+    ])
+    expect(cellProblems(['const k = view(Inputs.range([1, 100], {value: 20}))', 'Math.sqrt(k)'])).toEqual([])
+  })
+
+  test('the pending cell the others wait on is named with every cell waiting on it', () => {
+    const cells = [
+      'const countries = view(Inputs.checkbox(["A", "B"], {value: ["A"]}))',
+      'const span = view(Inputs.range([2005, 2023], {value: [2005, 2023]}))',
+      'filtered = countries.map((c) => [c, span])',
+      'Plot.lineY(filtered).plot()',
+      'const later = new Promise(() => {})',
+    ]
+    expect([...blockingCells(cells, [1, 2, 3, 4])]).toEqual([[1, [2, 3]]])
+    expect([...blockingCells(cells, [4])]).toEqual([])
   })
 
   test('a name two cells define is reported once', () => {

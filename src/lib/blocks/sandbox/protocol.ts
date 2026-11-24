@@ -138,6 +138,31 @@ export interface FrameError {
 /** The most uncaught errors one load of a frame reports. */
 export const MAX_FRAME_ERRORS = 20
 
+/** How one notebook cell first settled: its value shown, or its failure shown. */
+export interface CellStatus {
+  cell: string
+  stage: 'ready' | 'failed'
+  /** Why a failed cell failed, as its inspector shows it. */
+  error?: string
+  /**
+   * What a ready cell shows: its value as the inspector shows it collapsed,
+   * each name it defines with its value, or an element's labelled parts.
+   */
+  shows?: string
+}
+
+/** The longest failure a cell status carries. */
+export const MAX_CELL_ERROR = 2000
+
+/** The longest description of what a cell shows. */
+export const MAX_CELL_SHOWS = 300
+
+/** The event a notebook's runtime dispatches in its frame as each cell first settles. */
+export const CELL_STATUS_EVENT = 'theorem:cell-status'
+
+/** The most cell statuses one load of a frame reports. */
+export const MAX_CELL_STATUSES = 200
+
 /** Methods the page serves; the sandbox calls them, and the page checks each call. */
 export interface PageMethods {
   'files.read': {
@@ -173,6 +198,8 @@ export interface PageMethods {
   'frame.selection': { params: AppSelection; result: null }
   /** The frame's code threw and nothing caught it. */
   'frame.error': { params: FrameError; result: null }
+  /** A notebook cell first showed its value or its failure. */
+  'frame.status': { params: CellStatus; result: null }
   /** `fills`: the page is laid out by its viewport and has no height of its own. */
   'frame.resize': { params: { height: number; fills?: boolean }; result: null }
   /** A static copy of the frame, for where a live frame would cost too much. */

@@ -182,16 +182,18 @@ export function observeSnapshots(
  *
  * A page laid out by its viewport (100vh, or height: 100% down from the root)
  * has no height of its own, and `fills` says so: the page then gives it one.
- * Such a page either exactly fills the frame it loaded in, or outgrows every
- * frame it is given (62vh + 38vh under a caption is always the caption
- * taller), so it is known by growing when nothing but its frame changed.
- * Its root and body do not resize as its content arrives, so content changes
- * are measured too.
+ * Such a page either has a box exactly the frame it loaded in, whether its
+ * content fits that box or overflows it (a 100vh grid whose side column needs
+ * more than the first frame squeezes the rest of the grid to nothing), or
+ * outgrows every frame it is given (62vh + 38vh under a caption, in a body
+ * with margins, is always the caption and the margins taller), so it is known
+ * by growing when nothing but its frame changed. Its root and body do not
+ * resize as its content arrives, so content changes are measured too.
  *
- * A page that exactly fills its frame goes on being measured: laid out by its
- * viewport, it is as tall as any frame the host gives it, so resizing the
- * frame changes nothing it reports. A page that measures any other height
- * only happened to fit its first frame, and goes back to its content height.
+ * A page that fills its frame goes on being measured: laid out by its
+ * viewport, its box is any frame the host gives it, so resizing the frame
+ * changes nothing it reports. A page whose box is any other height only
+ * happened to fit its first frame, and goes back to its content height.
  */
 export function observeHeight(
   report: (height: number, fills?: boolean) => void,
@@ -204,15 +206,20 @@ export function observeHeight(
   const measure = (resized = false) => {
     if (!following) return
     const root = document.documentElement
-    const height = Math.ceil(
-      root.scrollHeight > window.innerHeight
-        ? root.scrollHeight
-        : root.getBoundingClientRect().height,
-    )
+    const box = root.getBoundingClientRect().height
+    const overflows = root.scrollHeight > window.innerHeight
+    const height = Math.ceil(overflows ? root.scrollHeight : box)
+    // Its box is its frame: laid out by the viewport, not by its content.
+    const framed = Math.round(box) === window.innerHeight
     if (filling) {
-      if (height === window.innerHeight) return
+      if (framed) return
       filling = false
       report((last = height))
+      return
+    }
+    if (framed && overflows && window.innerHeight === initial) {
+      filling = true
+      report((last = height), true)
       return
     }
     if (resized && window.innerHeight === last) {

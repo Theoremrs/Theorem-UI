@@ -114,6 +114,15 @@ export function cellProblems(cells: ReadonlyArray<string>): Array<string> {
         `Cell ${index + 1} binds \`${name}\` to the input element, so cells that read \`${name}\` get the element, not its value: write \`viewof ${name} = Inputs...\` or \`const ${name} = view(Inputs...)\`.`,
       )
   })
+  // A cell `name = ...` displays what it defines, so the input `view()`
+  // showed is replaced by its value as soon as it has one.
+  compiled.forEach((cell, index) => {
+    const name = /^\s*([A-Za-z_$][\w$]*)\s*=\s*view\(/.exec(cells[index] ?? '')?.[1]
+    if (cell && name && definedBy(cell).includes(name))
+      problems.push(
+        `Cell ${index + 1} shows \`${name}\`'s value in place of its input, as a cell \`${name} = ...\` displays what it defines: write \`const ${name} = view(Inputs...)\` or \`viewof ${name} = Inputs...\`.`,
+      )
+  })
   compiled.forEach((cell, index) => {
     if (!cell) return
     for (const name of new Set(cell.inputs ?? []))
@@ -121,4 +130,40 @@ export function cellProblems(cells: ReadonlyArray<string>): Array<string> {
         problems.push(`Cell ${index + 1} reads \`${written(name)}\`, which no cell defines.`)
   })
   return problems
+}
+
+/**
+ * Each pending cell that waits on no other pending cell, with the pending
+ * cells that wait on it, directly or through others: where a view that stays
+ * `mounted` while its page draws is stuck, such as an input that was given a
+ * value it does not take and so gives none. `pending` and the answer are
+ * indexes into `cells`; a root nothing waits on is left out.
+ */
+export function blockingCells(cells: ReadonlyArray<string>, pending: ReadonlyArray<number>): Map<number, Array<number>> {
+  const compiled = cells.map((source, index) => {
+    try {
+      return transpileCell(source, index)
+    } catch {
+      return undefined
+    }
+  })
+  const waiting = new Set(pending)
+  const definer = new Map<string, number>()
+  compiled.forEach((cell, index) => cell && definedBy(cell).forEach((name) => definer.set(name, index)))
+  const waitsOn = (index: number) =>
+    new Set(
+      (compiled[index]?.inputs ?? []).flatMap((name) => {
+        const at = definer.get(name)
+        return at !== undefined && at !== index && waiting.has(at) ? [at] : []
+      }),
+    )
+  const reaches = (from: number, to: number, seen = new Set<number>()): boolean =>
+    [...waitsOn(from)].some((next) => next === to || (!seen.has(next) && (seen.add(next), reaches(next, to, seen))))
+  const blocking = new Map<number, Array<number>>()
+  for (const root of pending) {
+    if (waitsOn(root).size) continue
+    const waiters = pending.filter((other) => other !== root && reaches(other, root))
+    if (waiters.length) blocking.set(root, waiters)
+  }
+  return blocking
 }

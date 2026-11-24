@@ -1,5 +1,5 @@
 // SOURCING: the notebook artifact's frame (NotebookFrame: the hosted App
-// frame over BlockFrame, sandbox "allow-scripts" and no network, with the
+// frame over BlockFrame, sandbox "allow-scripts" on an origin of its own, with the
 // page's theme followed in) running @observablehq/notebook-kit cells through
 // observable-document; composer-references' store for the selection, as a
 // message reference (as scene-part asks about an entity); apps'
@@ -14,10 +14,12 @@
 // its cells are shown in the terminal. The person works it without a model
 // turn, and what they select is put beside the composer as context for the
 // next question. Saving it as an App and expanding it are in the reply's
-// More menu (view-actions.ts); expanding keeps the running frame.
+// More menu (view-actions.ts); expanding keeps the running frame. How its
+// cells settle is kept by instance (view-instances.ts) for the receipt the
+// agent reads.
 import { useAui, useAuiState } from '@assistant-ui/react'
 import { useRouter } from '@tanstack/react-router'
-import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useState } from 'react'
 import { NotebookFrame } from '@/components/artifacts/notebook-artifact'
 import { SaveAppAsPageDialog } from '@/components/artifacts/save-as-page'
 import {
@@ -26,7 +28,7 @@ import {
 } from '@/components/chat/composer-references'
 import { toastManager } from '@/components/coss/toast'
 import { Button } from '@/components/ui/button'
-import type { AppSelection, FrameError } from '@/lib/blocks/sandbox/protocol'
+import type { AppSelection, CellStatus, FrameError } from '@/lib/blocks/sandbox/protocol'
 import { resolvedTheme } from '@/lib/blocks/sandbox/theme'
 import type { ThemeState } from '@/lib/blocks/sandbox/theme'
 import {
@@ -34,6 +36,7 @@ import {
   viewReference,
   viewRevision,
 } from '@/lib/generative/view-reference'
+import { useViewInstances } from '@/lib/generative/view-instances'
 import { escapeHtml, scriptJson } from '@/lib/notebooks/page'
 import {
   observableDocument,
@@ -47,6 +50,8 @@ import { safeHref } from '../utils/href'
 import { useViewActions } from './view-actions'
 
 export type InteractiveViewProps = {
+  /** The agent's name for the view, which its receipts carry. */
+  id?: string
   title?: string
   cells?: Array<string>
   data?: unknown
@@ -89,6 +94,30 @@ export function InteractiveView(props: InteractiveViewProps) {
   )
   const build = useCallback((theme: ThemeState) => observableDocument(notebook, theme, { inline: true }), [notebook])
 
+  // How this revision's cells settle, for the present receipt. Mounted in a
+  // layout effect, before the frame's own effects can report on it.
+  const instance = (typeof props.id === 'string' && props.id.trim()) || revision
+  const { mount, advance, settle, error: noteError, unbuilt, select, offerSave } = useViewInstances.getState()
+  useLayoutEffect(
+    () =>
+      mount(
+        instance,
+        revision,
+        notebook.cells.map((cell) => cell.id),
+        notebook.cells.map((cell) => cell.source),
+      ),
+    [mount, instance, revision, notebook],
+  )
+  const onStatus = useCallback((status: CellStatus) => settle(instance, revision, status), [settle, instance, revision])
+  const onBuildError = useCallback(
+    (message: string) => unbuilt(instance, revision, message),
+    [unbuilt, instance, revision],
+  )
+  const onStage = useCallback(
+    (stage: 'compiled' | 'mounted') => advance(instance, revision, stage),
+    [advance, instance, revision],
+  )
+
   const threadId = useAuiState((s) => s.threadListItem.remoteId)
   const messageId = useAuiState((s) => s.message.id)
   const id = useId()
@@ -101,6 +130,7 @@ export function InteractiveView(props: InteractiveViewProps) {
   const onSelection = useCallback(
     (next: AppSelection) => {
       setHeld({ revision, selection: next })
+      select(instance, revision, next)
       touch(messageId, id)
       if (!threadId) return
       const reference = viewReference({ threadId, messageId, title, revision, selection: next })
@@ -108,12 +138,19 @@ export function InteractiveView(props: InteractiveViewProps) {
       if (selectionSays(next)) references.add(reference)
       else references.remove(referenceKey(reference))
     },
-    [revision, touch, messageId, id, threadId, title],
+    [revision, select, instance, touch, messageId, id, threadId, title],
   )
 
-  const [failure, setFailure] = useState<FrameError>()
-  const onError = useCallback((error: FrameError) => setFailure((seen) => seen ?? error), [])
-  useEffect(() => setFailure(undefined), [revision])
+  // A failure belongs to the revision that raised it: a revised view starts clear.
+  const [failed, setFailed] = useState<{ revision: string; error: FrameError }>()
+  const failure = failed?.revision === revision ? failed.error : undefined
+  const onError = useCallback(
+    (error: FrameError) => {
+      noteError(instance, revision, error.message)
+      setFailed((seen) => (seen?.revision === revision ? seen : { revision, error }))
+    },
+    [noteError, instance, revision],
+  )
 
   const [expanded, setExpanded] = useState(false)
   useEffect(() => {
@@ -125,27 +162,36 @@ export function InteractiveView(props: InteractiveViewProps) {
 
   const router = useRouter({ warn: false }) as ReturnType<typeof useRouter> | undefined
   const [saving, setSaving] = useState<{ documentId: string; html: string }>()
+  // Saved as an App starting from what the reader set: from the reply's
+  // menu, which then offers to place it as a page, or by the agent (`ui.view`).
+  const saveDocument = useCallback(async () => {
+    const saved = savedOf(selection)
+    const definition = {
+      title,
+      cells,
+      data: props.data ?? null,
+      source: props.source,
+      revision,
+      ...(saved && { saved }),
+    }
+    const html = await observablePage(notebook, resolvedTheme(), {
+      saved,
+      head: `<script type="application/json" id="theorem-view">${scriptJson(definition)}</script>\n<meta name="description" content="${escapeHtml(`Interactive view saved from a reply: ${title}`)}">`,
+    })
+    const { documentId } = await createAppDocument(title, html)
+    return { documentId, html }
+  }, [selection, title, cells, props.data, props.source, revision, notebook])
   const save = useCallback(async () => {
     try {
-      const saved = savedOf(selection)
-      const definition = {
-        title,
-        cells,
-        data: props.data ?? null,
-        source: props.source,
-        revision,
-        ...(saved && { saved }),
-      }
-      const html = await observablePage(notebook, resolvedTheme(), {
-        saved,
-        head: `<script type="application/json" id="theorem-view">${scriptJson(definition)}</script>\n<meta name="description" content="${escapeHtml(`Interactive view saved from a reply: ${title}`)}">`,
-      })
-      const { documentId } = await createAppDocument(title, html)
-      setSaving({ documentId, html })
+      setSaving(await saveDocument())
     } catch (error) {
       toastManager.add({ type: 'error', title: 'The view was not saved', description: describeError(error, 'document') })
     }
-  }, [selection, title, cells, props.data, props.source, revision, notebook])
+  }, [saveDocument])
+  useEffect(
+    () => offerSave(instance, async () => ({ documentId: (await saveDocument()).documentId })),
+    [offerSave, instance, saveDocument],
+  )
 
   const register = useViewActions((s) => s.register)
   useEffect(
@@ -190,6 +236,9 @@ export function InteractiveView(props: InteractiveViewProps) {
             loading="Starting the view…"
             onSelection={onSelection}
             onError={onError}
+            onStatus={onStatus}
+            onBuildError={onBuildError}
+            onStage={onStage}
           />
         ) : (
           <p className="py-3 text-sm text-ink-muted">This view has no cells.</p>
@@ -198,7 +247,7 @@ export function InteractiveView(props: InteractiveViewProps) {
           <FailureLine
             failure={failure}
             onFix={() => {
-              setFailure(undefined)
+              setFailed(undefined)
               return repairRequest(title, failure)
             }}
           />

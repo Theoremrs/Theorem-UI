@@ -9,6 +9,8 @@ import type { WorkspaceClient } from '@/lib/workspace/types'
 import type { Capabilities } from './declarations'
 import {
   DB_READS,
+  MAX_CELL_ERROR,
+  MAX_CELL_SHOWS,
   MAX_OUTLINE,
   MAX_SNAPSHOT,
   call,
@@ -22,6 +24,7 @@ import type {
   CapabilityMethod,
   CapabilityOutcome,
   CapabilityQueryParams,
+  CellStatus,
   DbFailure,
   DbMethod,
   DbOutcome,
@@ -128,6 +131,8 @@ export interface BridgeHost {
   onSelection?: (selection: AppSelection) => void
   /** The frame's code threw and nothing caught it. */
   onError?: (error: FrameError) => void
+  /** A notebook cell first showed its value or its failure. */
+  onStatus?: (status: CellStatus) => void
   /** A static copy of the frame, unsanitized: snapshots.ts cleans it before showing it. */
   onSnapshot?: (html: string, outline?: string) => void
   /** The page's conversation, where questions asked from inside the App go. */
@@ -233,6 +238,12 @@ const params = {
     line: z.number().int().nonnegative().optional(),
     column: z.number().int().nonnegative().optional(),
     stack: z.string().max(8000).optional(),
+  }),
+  status: z.object({
+    cell: z.string().max(200),
+    stage: z.enum(['ready', 'failed']),
+    error: z.string().max(MAX_CELL_ERROR).optional(),
+    shows: z.string().max(MAX_CELL_SHOWS).optional(),
   }),
   resize: z.object({
     height: z.number().finite().nonnegative(),
@@ -543,6 +554,11 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
 
   serve<PageMethods, 'frame.error'>(rpc, 'frame.error', (raw) => {
     host.onError?.(params.error.parse(raw))
+    return null
+  })
+
+  serve<PageMethods, 'frame.status'>(rpc, 'frame.status', (raw) => {
+    host.onStatus?.(params.status.parse(raw))
     return null
   })
 

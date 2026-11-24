@@ -60,6 +60,7 @@ const STYLE = `
 .tv-meta{color:var(--ink-muted)}
 .tv-param{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .tv-moved{display:inline-flex;align-items:center;padding:0 6px;border-radius:4px;background:var(--ochre-container,var(--surface-hover));color:var(--ochre-ink,var(--ink));font:500 12px/20px var(--font-sans,system-ui,sans-serif)}
+.tv-moved[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){.tv-view *{transition:none!important}}
 `
 
@@ -232,7 +233,7 @@ export function createViews(
    * name each record. `mark` is `dot` (the default) or `line`.
    */
   function linked(
-    data: Array<Row>,
+    data: Iterable<Row> | null | undefined,
     options: {
       x: Accessor
       y: Accessor
@@ -258,8 +259,8 @@ export function createViews(
       | undefined
     const inside = (row: Row, index: number, scales: { x: PlotLib.Scale; y: PlotLib.Scale }) => {
       if (!extent) return true
-      const px = scales.x.apply!(value(row, options.x, index)) as number
-      const py = scales.y.apply!(value(row, options.y, index)) as number
+      const px = scales.x.apply(value(row, options.x, index)) as number
+      const py = scales.y.apply(value(row, options.y, index)) as number
       return (
         px >= extent.x[0] && px <= extent.x[1] && py >= extent.y[0] && py <= extent.y[1]
       )
@@ -286,7 +287,7 @@ export function createViews(
           style: { background: 'transparent', color: theme.inkMuted, fontSize: '12px' },
           color: { range: theme.series, legend: options.fill !== undefined },
           marks,
-        }) as (SVGSVGElement | HTMLElement) & PlotLib.Plot
+        })
         const svg = (plot instanceof SVGSVGElement ? plot : plot.querySelector('svg'))!
         const scales = { x: plot.scale('x')!, y: plot.scale('y')! }
         const circles = Array.from(svg.querySelectorAll<SVGCircleElement>('circle'))
@@ -530,7 +531,7 @@ export function createViews(
     const key = keyOf('tree', options.key)
     const hierarchy = d3
       .hierarchy(data, (d) => d[childrenKey] as Array<Row> | undefined)
-      .sum((d) => (typeof d[valueKey] === 'number' ? (d[valueKey] as number) : 0))
+      .sum((d) => (typeof d[valueKey] === 'number' ? (d[valueKey]) : 0))
       .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
     const pathOf = (node: D3.HierarchyNode<Row>) =>
       node
@@ -544,7 +545,7 @@ export function createViews(
       (element, width, theme) => {
         const height = options.height ?? Math.round(Math.min(360, width * 0.6))
         const laid = d3.partition<Row>().size([height, (hierarchy.height + 1) * (width / 3)])(
-          hierarchy.copy() as D3.HierarchyNode<Row>,
+          hierarchy.copy(),
         )
         const cells = laid.descendants()
         const focus = cells.find((d) => pathOf(d) === focusPath) ?? laid
@@ -610,7 +611,7 @@ export function createViews(
    * events it overlaps.
    */
   function timeline(
-    events: Array<Row>,
+    events: Iterable<Row> | null | undefined,
     options: { start?: string; end?: string; lane?: string; label?: string; id?: string; height?: number; key?: string } = {},
   ) {
     const startKey = options.start ?? 'start'
@@ -722,7 +723,7 @@ export function createViews(
    * and its value travels with the selection as a parameter named `name`.
    */
   function param<T extends HTMLElement & { value: unknown }>(input: T, name?: string) {
-    const label = name ?? input.querySelector('label')?.textContent?.trim() ?? 'value'
+    const label = name ?? input.querySelector('label')?.textContent.trim() ?? 'value'
     const written = input.value
     if (Object.hasOwn(params, label)) {
       input.value = params[label]
@@ -735,7 +736,7 @@ export function createViews(
     const sync = () => {
       const changed = JSON.stringify(input.value) !== JSON.stringify(written)
       moved.hidden = !changed
-      moved.textContent = `moved from ${text(written)}`
+      moved.textContent = `moved from ${Array.isArray(written) ? written.map(text).join(', ') : text(written)}`
       if (changed) params[label] = input.value
       else delete params[label]
     }

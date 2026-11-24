@@ -138,7 +138,8 @@ function vendored(path: string): Esbuild.OnResolveResult {
 /**
  * Resolves the entry and the compiled cell from memory, `./name` to the
  * sandbox runtime's sources and bare names through the import map to the
- * vendored files: the same modules a block frame loads, and no others.
+ * vendored files: the same modules a block frame loads. A URL stays an
+ * import the frame fetches when it runs.
  */
 function exportPlugin(entry: string, cell: string): Esbuild.Plugin {
   return {
@@ -153,6 +154,7 @@ function exportPlugin(entry: string, cell: string): Esbuild.Plugin {
           ? undefined
           : { path: path.slice(2), namespace: NAMESPACE.runtime },
       )
+      build.onResolve({ filter: /^https?:\/\// }, ({ path }) => ({ path, external: true }))
       build.onResolve({ filter: /.*/ }, ({ path }) => vendored(path))
       build.onLoad(
         { filter: /.*/, namespace: NAMESPACE.entry },

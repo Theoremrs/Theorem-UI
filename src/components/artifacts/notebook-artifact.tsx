@@ -1,5 +1,5 @@
 // SOURCING: the hosted App frame (BlockFrame over FrameConnection: sandbox
-// "allow-scripts", a CSP that loads nothing unless a run names its hosts),
+// "allow-scripts" on an origin of its own, a CSP only when the person sets a limit),
 // the bridge's theme.changed call and the platform MutationObserver (the
 // page's theme followed into the frame, as live-terminal-theme follows it),
 // the TanStack Highlight SyntaxHighlighter (the marimo source), ui/button,
@@ -9,7 +9,7 @@
 // library hosts an Observable or marimo notebook in Theorem's sandbox.
 //
 // A notebook artifact shows what it computed. Observable cells run in the
-// frame with the vendored modules and nothing from the network. A marimo
+// frame with the vendored modules and import anything else by URL. A marimo
 // notebook shows its recorded outputs with code hidden; it runs in the browser
 // only when the person starts it, and never claims a run it did not make.
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -25,6 +25,7 @@ import type { FrameConnection } from '@/lib/blocks/executor'
 import { call } from '@/lib/blocks/sandbox/protocol'
 import type {
   AppSelection,
+  CellStatus,
   FrameError,
   SandboxMethods,
 } from '@/lib/blocks/sandbox/protocol'
@@ -62,6 +63,7 @@ const denied = (what: string) => async () => {
 export function notebookHost(
   onSelection?: (selection: AppSelection) => void,
   onError?: (error: FrameError) => void,
+  onStatus?: (status: CellStatus) => void,
 ): BridgeHost {
   return {
     state: {
@@ -78,6 +80,7 @@ export function notebookHost(
     run: denied('starts no agents'),
     onSelection,
     onError,
+    onStatus,
   }
 }
 
@@ -128,7 +131,10 @@ function usePage(build: (theme: ThemeState) => Promise<string>, key: unknown) {
 
 /**
  * A notebook's frame: its document, the deny-all host, the page's theme
- * followed in. `onError` hears what its cells throw and nothing catches.
+ * followed in. `onError` hears what its cells throw and nothing catches, and
+ * a document that does not build, which `onBuildError` hears too; `onStatus`
+ * hears how each cell first settles, and `onStage` when the document built
+ * and when its frame started.
  */
 export function NotebookFrame({
   build,
@@ -137,6 +143,9 @@ export function NotebookFrame({
   loading,
   onSelection,
   onError,
+  onStatus,
+  onBuildError,
+  onStage,
 }: {
   build: (theme: ThemeState) => Promise<string>
   buildKey: unknown
@@ -144,11 +153,30 @@ export function NotebookFrame({
   loading: string
   onSelection: (selection: AppSelection) => void
   onError?: (error: FrameError) => void
+  onStatus?: (status: CellStatus) => void
+  onBuildError?: (message: string) => void
+  onStage?: (stage: 'compiled' | 'mounted') => void
 }) {
   const page = usePage(build, buildKey)
   const host = useMemo(
-    () => notebookHost(onSelection, onError),
-    [onSelection, onError],
+    () => notebookHost(onSelection, onError, onStatus),
+    [onSelection, onError, onStatus],
+  )
+  useEffect(() => {
+    if (!page.error) return
+    onError?.({ message: page.error })
+    onBuildError?.(page.error)
+  }, [page.error, onError, onBuildError])
+  useEffect(() => {
+    if (page.src) onStage?.('compiled')
+  }, [page.src, onStage])
+  const onConnection = useCallback(
+    (connection: FrameConnection) => {
+      // The frame is made before its document loads; it has started once it connects.
+      void connection.connected.then(() => onStage?.('mounted'), () => {})
+      return followTheme(connection)
+    },
+    [onStage],
   )
   if (page.error) return <BlockMessage tone="error">{page.error}</BlockMessage>
   if (!page.src)
@@ -162,7 +190,7 @@ export function NotebookFrame({
       src={page.src}
       host={host}
       title={title}
-      onConnection={followTheme}
+      onConnection={onConnection}
     />
   )
 }
