@@ -455,7 +455,7 @@ try {
   await page.evaluate(() => window.__appearanceRuntime.rejectUpload())
   const errorTile = page.getByLabel(/fixture-reference\.txt, upload failed/)
   await errorTile.waitFor()
-  await errorTile.hover({ position: { x: 8, y: 40 } })
+  // The card says why in place of its facts, with no pointer over it.
   await page.locator('.aui-attachment-error-message').waitFor()
   const error = await page
     .locator('.aui-attachment-error-message')
