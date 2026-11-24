@@ -385,3 +385,54 @@ test('a cell in Observable JavaScript runs too: viewof and bare assignments', as
   range.dispatchEvent(new Event('input', { bubbles: true }))
   await waitFor(() => sum.textContent.includes('sum 15'))
 })
+
+test('a cell imports @theorem/ui from the bundle, and its controls reach the agent until the cell is invalidated', async () => {
+  const notebook: ObservableRun = {
+    title: 'Kit',
+    cells: [
+      {
+        id: 'k',
+        kind: 'js',
+        source: [
+          'const ui = await import("@theorem/ui")',
+          'const { createElement: h, useState } = await import("react")',
+          'const root = Object.assign(document.createElement("div"), { value: 3 })',
+          'function K() {',
+          '  const [k, setK] = useState(3)',
+          '  const moved = (v) => { setK(v); root.value = v; root.dispatchEvent(new Event("input")) }',
+          '  return h(ui.Slider, { label: "k", value: k, min: 0, max: 10, control: "k", onChange: moved })',
+          '}',
+          'invalidation.then(ui.mount(root, h(K)))',
+          'const k = view(root)',
+        ].join('\n'),
+      },
+      { id: 'twice', kind: 'js', source: 'k * 2' },
+    ],
+  }
+  const page = await observablePage(notebook, LIGHT, { esbuild })
+  expect(page).toContain('"@theorem/ui"')
+  const registered = new Map<string, { label: string; kind: string; read?: () => unknown }>()
+  ;(window as { theorem?: unknown }).theorem = {
+    controls: {
+      register: (spec: { name: string; label: string; kind: string; read?: () => unknown }) => {
+        registered.set(spec.name, spec)
+        return () => registered.delete(spec.name)
+      },
+    },
+  }
+  ;(0, eval)(await bundleNotebookRuntime(esbuild, ['@theorem/ui', 'react']))
+  document.body.innerHTML = '<main></main>'
+  const main = document.querySelector('main')!
+  const started = (0, eval)(notebookCellsScript(notebook)) as { runtime: { dispose: () => void } }
+  await waitFor(() => registered.has('k'))
+  expect(registered.get('k')).toMatchObject({ label: 'k', kind: 'number' })
+  expect(registered.get('k')!.read!()).toBe(3)
+  // The cell's own component and its state run on the kit's React.
+  ;(registered.get('k') as unknown as { set: (value: number) => void }).set(7)
+  const twice = main.querySelector('[data-cell-id="twice"]')!
+  await waitFor(() => twice.textContent.includes('14'))
+  expect(registered.get('k')!.read!()).toBe(7)
+  expect(document.querySelector('style')?.textContent).toContain('.tu-stage')
+  started.runtime.dispose()
+  await waitFor(() => !registered.size)
+}, 120_000)
