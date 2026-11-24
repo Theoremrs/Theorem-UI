@@ -1,4 +1,4 @@
-// SOURCING: the agent terminal's own crate (terminal/src/command.rs, built into src/terminal-wasm): in the reply where a call ran a command (chat/theorem-parts' tool-call slot, and a host call's part, which the server rewrites with what the command has printed while it runs), Ratzilla draws the command on the prompt's line and what it printed through the VT interpreter the workbench's process panes use; loadWasm from terminal-screen loads it and paints it in the workspace's terminal colours; the frame is the elements' lifted frame (surfaces). It opens and closes as assistant-ui's Reasoning element does (open while it works, closed after unless the reader chose), the crate drawing the shimmer and the clock, and cell-grid.css turning the prompt down while the output shows; framer-motion's useReducedMotion holds the shimmer still. While output streams it takes the column so wider lines never widen it, lines past the fold slide in as the crate reports the scroll, and every open and close glides without overshoot. The output scrolls by wheel, by keys once it has focus and by a finger's drag, the page scrolling once the output can go no further; opening a cut command shows all of it, and the copy over the prompt copies it with useCopyToClipboard and the Copy/Copied icons, as the code block's header does (markdown-text). Should the terminal not load, the command and what it printed show as text.
+// SOURCING: the agent terminal's own crate (terminal/src/command.rs, built into src/terminal-wasm): in the reply where a call ran a command (chat/theorem-parts' tool-call slot, and a host call's part, which the server rewrites with what the command has printed while it runs), Ratzilla draws the command on the prompt's line and what it printed through the VT interpreter the workbench's process panes use; loadWasm from terminal-screen loads it and paints it in the workspace's terminal colours, on the agent terminal's canvas and in its type (cell-grid.css data-terminal-type), its height counted in that type's rows; the frame is the elements' lifted frame (surfaces). It opens and closes as assistant-ui's Reasoning element does (open while it works, closed after unless the reader chose), the crate drawing the shimmer and the clock, and cell-grid.css turning the prompt down while the output shows; framer-motion's useReducedMotion holds the shimmer still. While output streams it takes the column so wider lines never widen it, lines past the fold slide in as the crate reports the scroll, and every open and close glides without overshoot. The output scrolls by wheel, by keys once it has focus and by a finger's drag, the page scrolling once the output can go no further; opening a cut command shows all of it, and the copy over the prompt copies it with useCopyToClipboard and the Copy/Copied icons, as the code block's header does (markdown-text). Should the terminal not load, the command and what it printed show as text.
 import { useReducedMotion } from 'framer-motion'
 import { useEffect, useId, useRef, useState } from 'react'
 import { liftedFrame } from '@/components/assistant-ui/elements/surfaces'
@@ -7,7 +7,7 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { cn } from '@/lib/utils'
 import type { CommandHandle } from '@/terminal-wasm/theorem_terminal'
 import type { CallState } from '@/components/chat/theorem-parts'
-import { loadWasm } from './terminal-screen'
+import { CellProbe, loadWasm, rowHeight } from './terminal-screen'
 import './cell-grid.css'
 
 /** The crate's fold, for the first guess at the height before the crate says. */
@@ -207,11 +207,10 @@ const mounts = new WeakMap<HTMLElement, Promise<CommandHandle | undefined>>()
  */
 function slide(grid: HTMLElement, rows: number) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
-  const style = getComputedStyle(grid)
-  const rising = parseFloat(style.getPropertyValue('--slide')) || 0
-  const row = parseFloat(style.fontSize) * 1.5
+  const rising =
+    parseFloat(getComputedStyle(grid).getPropertyValue('--slide')) || 0
   grid.dataset.sliding = ''
-  grid.style.setProperty('--slide', `${rising + rows * row}px`)
+  grid.style.setProperty('--slide', `${rising + rows * rowHeight(grid)}px`)
   requestAnimationFrame(() => {
     delete grid.dataset.sliding
     grid.style.setProperty('--slide', '0px')
@@ -320,7 +319,7 @@ export function CommandTerminal({
       const by = touchedAt - y
       if (!made.can_scroll(Math.sign(by))) return
       event.preventDefault()
-      const row = parseFloat(getComputedStyle(element).fontSize) * 1.5
+      const row = rowHeight(element)
       const lines = Math.trunc(by / row)
       if (lines === 0) return
       made.scroll(lines)
@@ -352,6 +351,7 @@ export function CommandTerminal({
   return (
     <div
       data-slot="command-terminal"
+      data-terminal-type=""
       data-state={open ? 'open' : 'closed'}
       data-opens={opens || undefined}
       className={cn(
@@ -360,9 +360,9 @@ export function CommandTerminal({
         className,
       )}
     >
-      <div className="bg-term py-1.5">
+      <div className="bg-term-canvas py-1.5">
         {failed ? (
-          <pre className="px-[1ch] font-mono text-[12.5px] leading-[1.5] break-all whitespace-pre-wrap text-term-ink">
+          <pre className="px-[1ch] break-all whitespace-pre-wrap text-term-ink">
             <span className="text-term-muted">❯ </span>
             {command}
             {stdout && `\n${stdout.replace(ESCAPES, '').trimEnd()}`}
@@ -377,9 +377,9 @@ export function CommandTerminal({
             onTransitionEnd={(event) => {
               if (event.target === event.currentTarget) setByReader(false)
             }}
-            style={{ height: `${(open ? rows : 1) * 1.5}em` }}
+            style={{ height: `${open ? rows : 1}lh` }}
             className={cn(
-              'group/command relative overflow-hidden font-mono text-[12.5px] transition-[height] motion-reduce:transition-none',
+              'group/command relative overflow-hidden transition-[height] motion-reduce:transition-none',
               byReader
                 ? open
                   ? 'duration-(--duration-snap) ease-glide'
@@ -387,6 +387,7 @@ export function CommandTerminal({
                 : 'duration-(--duration-glide) ease-glide',
             )}
           >
+            <CellProbe />
             <div
               ref={host}
               id={id}
@@ -400,7 +401,7 @@ export function CommandTerminal({
                   event.preventDefault()
               }}
               style={{
-                height: `${rows * 1.5}em`,
+                height: `${rows}lh`,
                 width: wide ? '100%' : `${cols + 0.25}ch`,
               }}
               className="relative max-w-full overflow-hidden whitespace-pre text-term-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
@@ -415,7 +416,7 @@ export function CommandTerminal({
                   setByReader(true)
                   setChosen(!open)
                 }}
-                className="absolute inset-x-0 top-0 h-[1.5em] cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+                className="absolute inset-x-0 top-0 h-[1lh] cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
               />
             )}
             <button
@@ -426,7 +427,7 @@ export function CommandTerminal({
                 // Over the prompt while the terminal is pointed at or the copy has focus; a
                 // finger, which cannot point, finds it once the terminal is open, or at
                 // once when there is nothing to open.
-                'absolute top-0 left-0 flex h-[1.5em] w-[3ch] items-center justify-center bg-term text-term-muted opacity-0 transition-opacity group-hover/command:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none',
+                'absolute top-0 left-0 flex h-[1lh] w-[3ch] items-center justify-center bg-term-canvas text-term-muted opacity-0 transition-opacity group-hover/command:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none',
                 open || isCopied || !opens
                   ? 'pointer-coarse:opacity-100'
                   : 'pointer-coarse:pointer-events-none',

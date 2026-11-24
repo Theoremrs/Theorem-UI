@@ -1,4 +1,4 @@
-// SOURCING: the agent terminal's own crate (terminal/src/cells.rs, built into src/terminal-wasm): Ratzilla draws a view's cells under a prompt's line as command.rs draws a command, and edits them with the workbench editor's SourceView over an EditSession; loadWasm from terminal-screen loads it and paints it in the workspace's terminal colours. The hidden textarea that takes typed text, an IME's committed text and a paste is the workbench's host-input pattern (workbench.tsx); the cells are one text in Jupytext's percent format (lib/notebooks/percent-cells) and are coloured by @tanstack/highlight through terminal-code's highlightLines; the frame is the elements' lifted frame (surfaces), and the open and close glide without overshoot. Should the terminal not load, the cells show as text.
+// SOURCING: the agent terminal's own crate (terminal/src/cells.rs, built into src/terminal-wasm): Ratzilla draws a view's cells under a prompt's line as command.rs draws a command, and edits them with the workbench editor's SourceView over an EditSession; loadWasm from terminal-screen loads it and paints it in the workspace's terminal colours, on the agent terminal's canvas and in its type (cell-grid.css data-terminal-type), its height counted in that type's rows. The hidden textarea that takes typed text, an IME's committed text and a paste is the workbench's host-input pattern (workbench.tsx); the cells are one text in Jupytext's percent format (lib/notebooks/percent-cells) and are coloured by @tanstack/highlight through terminal-code's highlightLines; the frame is the elements' lifted frame (surfaces), and the open and close glide without overshoot. Should the terminal not load, the cells show as text.
 import { useEffect, useId, useRef, useState } from 'react'
 import { useReducedMotion } from 'framer-motion'
 import { liftedFrame } from '@/components/assistant-ui/elements/surfaces'
@@ -6,7 +6,7 @@ import { joinCells, splitCells } from '@/lib/notebooks/percent-cells'
 import { cn } from '@/lib/utils'
 import type { CellsHandle } from '@/terminal-wasm/theorem_terminal'
 import { highlightLines } from './terminal-code'
-import { loadWasm } from './terminal-screen'
+import { CellProbe, loadWasm } from './terminal-screen'
 import './cell-grid.css'
 
 /** The textarea the crate finds beside its grid (terminal/src/cells.rs FIELD_LABEL). */
@@ -146,8 +146,12 @@ export function CellsTerminal({
 
   if (failed)
     return (
-      <div data-slot="cells-terminal" className={cn(liftedFrame, className)}>
-        <pre className="bg-term px-[1ch] py-1.5 font-mono text-[12.5px] leading-[1.5] break-all whitespace-pre-wrap text-term-ink">
+      <div
+        data-slot="cells-terminal"
+        data-terminal-type=""
+        className={cn(liftedFrame, className)}
+      >
+        <pre className="bg-term-canvas px-[1ch] py-1.5 break-all whitespace-pre-wrap text-term-ink">
           <span className="text-term-muted">❯ </span>
           {title}
           {open && `\n${source}`}
@@ -158,11 +162,12 @@ export function CellsTerminal({
   return (
     <div
       data-slot="cells-terminal"
+      data-terminal-type=""
       data-state={open ? 'open' : 'closed'}
       className={cn(liftedFrame, 'w-full', className)}
     >
       <div
-        className="bg-term py-1.5"
+        className="bg-term-canvas py-1.5"
         onKeyDown={(event) => {
           // Keys pressed during an IME composition belong to the composition.
           if (
@@ -183,9 +188,9 @@ export function CellsTerminal({
           onTransitionEnd={(event) => {
             if (event.target === event.currentTarget) setByReader(false)
           }}
-          style={{ height: `${rows * 1.5}em` }}
+          style={{ height: `${rows}lh` }}
           className={cn(
-            'relative overflow-hidden font-mono text-[12.5px] transition-[height] motion-reduce:transition-none',
+            'relative overflow-hidden transition-[height] motion-reduce:transition-none',
             byReader
               ? open
                 ? 'duration-(--duration-snap) ease-glide'
@@ -193,6 +198,7 @@ export function CellsTerminal({
               : 'duration-(--duration-glide) ease-glide',
           )}
         >
+          <CellProbe />
           <div
             ref={host}
             id={id}
@@ -213,7 +219,7 @@ export function CellsTerminal({
               if (event.buttons & 1) pointer('move', event)
             }}
             onPointerUp={(event) => pointer('up', event)}
-            style={{ height: `${rows * 1.5}em` }}
+            style={{ height: `${rows}lh` }}
             className="relative w-full cursor-text overflow-hidden whitespace-pre text-term-ink"
           />
           <textarea
@@ -261,7 +267,7 @@ export function CellsTerminal({
               setByReader(true)
               setOpen(!open)
             }}
-            className="absolute inset-x-0 top-0 h-[1.5em] cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+            className="absolute inset-x-0 top-0 h-[1lh] cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
           />
         </div>
       </div>

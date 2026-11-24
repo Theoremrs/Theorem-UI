@@ -15,10 +15,10 @@
 //   surface (SELECTED_STEP). Each keeps its source's hue and chroma, so a warm
 //   palette stays warm and a cool one cool, and the four are told apart by
 //   lightness alone, by the same amount on every palette.
-// - text: primary is the palette's bright; secondary and disabled keep the
-//   muted's hue and chroma and are placed in lightness where they just read on
-//   the lightest surface (the selected band) at SECONDARY / DISABLED contrast,
-//   never darker than the muted already is. Because the selected band is the
+// - text: primary is the palette's bright; secondary, metadata and disabled
+//   keep the muted's hue and chroma and are placed in lightness where they
+//   just read on the lightest surface (the selected band) at their own
+//   contrast targets, never darker than the muted already is. Because the selected band is the
 //   lightest surface, they read at least that well on every darker one.
 // - registers (informational, success, approval, failure): the hues the
 //   palette's own state colours have, all four at one lightness and one chroma
@@ -33,6 +33,9 @@
 //   words and code are told by their text's colour on the canvas. The diff rows
 //   and the selected row are the only grounds drawn behind text (owner,
 //   2026-11-22).
+// - accent: resources, prompts and actionable labels keep the accent's hue
+//   and chroma, lifted only when needed to read on the selected band. The base
+//   roles were checked against bg/raised, before this lighter band existed.
 // - brand: the palette's mark, lifted in lightness only if it does not read on
 //   the selected band. It colours the text of what is relevant, never a band.
 import { clampChroma, converter, formatHex, wcagContrast } from 'culori'
@@ -51,8 +54,10 @@ export const SELECTED_STEP = 0.06
 export const READ = {
   primary: 7,
   secondary: 5,
+  metadata: 4.5,
   disabled: 3.2,
   register: 5.5,
+  accent: 4.5,
   brand: 4.5,
 } as const
 /** Every register shares this chroma (where sRGB allows) and one lightness. */
@@ -109,13 +114,20 @@ export type Ladder = {
     diffAddition: string
     diffDeletion: string
   }
-  text: { primary: string; body: string; secondary: string; disabled: string }
+  text: {
+    primary: string
+    body: string
+    secondary: string
+    metadata: string
+    disabled: string
+  }
   registers: {
     informational: string
     success: string
     approval: string
     failure: string
   }
+  accent: string
   brand: string
 }
 
@@ -136,6 +148,7 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
       ),
     )
   const secondary = text(READ.secondary)
+  const metadata = text(READ.metadata)
   const disabled = text(READ.disabled)
   // The disabled text is never lighter than the secondary: the two are one hue and chroma
   // placed by contrast, secondary at the higher one.
@@ -172,6 +185,19 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
   )
   const registers = registerAt(registerL)
 
+  const accentSource = at(chrome.accent)
+  const accent = hex(
+    withL(
+      accentSource,
+      lowestReading(
+        (l) => [hex(withL(accentSource, l))],
+        selected,
+        READ.accent,
+        accentSource.l,
+      ),
+    ),
+  )
+
   const mark = at(chrome.mark)
   const brand = hex(
     withL(
@@ -207,8 +233,9 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
       diffAddition: row(DIFF_ROW.hue.added),
       diffDeletion: row(DIFF_ROW.hue.removed),
     },
-    text: { primary, body: chrome.text, secondary, disabled },
+    text: { primary, body: chrome.text, secondary, metadata, disabled },
     registers,
+    accent,
     brand,
   }
 }
@@ -219,13 +246,16 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
  */
 export function ladderPalette(roles: TerminalRoles) {
   const ladder = terminalLadder(roles)
-  const { surfaces, text, registers, brand } = ladder
+  const { surfaces, text, registers, accent, brand } = ladder
   return {
     ...wasmPalette(roles),
     // Roles of the base palette that take the ladder's value.
     bright: text.primary,
     muted: text.secondary,
     disabled: text.disabled,
+    sage: accent,
+    accent,
+    focus: accent,
     success: registers.success,
     error: registers.failure,
     warning: registers.approval,
@@ -241,7 +271,9 @@ export function ladderPalette(roles: TerminalRoles) {
     // A finished call is recessive: a secondary name, on no band.
     completedInk: text.secondary,
     info: registers.informational,
-    textDisabled: text.disabled,
+    // Legacy key: durations and line numbers are information, not inactive
+    // controls. Keep their normal-text contrast separate from `disabled`.
+    textDisabled: text.metadata,
     diffAddedMark: registers.success,
     diffRemovedMark: registers.failure,
   }
