@@ -263,6 +263,13 @@ test('App selection stays bounded and is delivered as context without executing 
     expect(selections).toHaveLength(1)
     await call<PageMethods,'frame.selection'>(frame,'frame.selection',{text:'',entityId:'gpu-lane-7',entityLabel:'GPU lane 7'})
     expect(selections[1]).toEqual({text:'',entityId:'gpu-lane-7',entityLabel:'GPU lane 7'})
+    // A view's selection carries the records' ids and its state.
+    const view={text:'',entityLabel:'Alpha and 2 neighbours',ids:['a','b','c'],state:{graph1:'a',params:{k:7}}}
+    await call<PageMethods,'frame.selection'>(frame,'frame.selection',view)
+    expect(selections[2]).toEqual(view)
+    const heavy = await call<PageMethods,'frame.selection'>(frame,'frame.selection',{text:'',state:{big:'x'.repeat(5000)}}).then(()=>false,()=>true)
+    expect(heavy).toBe(true)
+    expect(selections).toHaveLength(3)
   } finally { stop();channel.port1.close();channel.port2.close() }
 })
 

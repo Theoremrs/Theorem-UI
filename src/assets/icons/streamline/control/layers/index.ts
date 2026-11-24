@@ -129,6 +129,9 @@ import browserLine from './browser-line.svg'
 import browserAccent from './browser-accent.svg'
 import browserTint from './browser-tint.svg'
 import browserPaper from './browser-paper.svg'
+import readAloudLine from './readAloud-line.svg'
+import readAloudAccent from './readAloud-accent.svg'
+import readAloudPaper from './readAloud-paper.svg'
 import skillLine from './skill-line.svg'
 
 /** Each control mark's masks: the SVG's shape is the layer. */
@@ -174,6 +177,7 @@ export const CONTROL_LAYERS = {
   approved: { line: approvedLine, accent: approvedAccent, tint: approvedTint },
   plugins: { line: pluginsLine, accent: pluginsAccent, tint: pluginsTint, paper: pluginsPaper },
   browser: { line: browserLine, accent: browserAccent, tint: browserTint, paper: browserPaper },
+  readAloud: { line: readAloudLine, accent: readAloudAccent, paper: readAloudPaper },
   skill: { line: skillLine },
 } as const
 

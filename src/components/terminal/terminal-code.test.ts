@@ -125,6 +125,76 @@ test('a diff whose counts are off, or still arriving, still reads line by line',
   }
 })
 
+test('header-like source rows stay in a miscounted hunk', () => {
+  const lines = diffLines([
+    '--- a/headings.txt',
+    '+++ b/headings.txt',
+    '@@ -1,20 +1,20 @@',
+    '--- old heading',
+    '+++ new heading',
+    ' context',
+  ].join('\n'))
+  expect(lines.map((line) => [line.k, textOf(line)])).toEqual([
+    ['file', 'headings.txt'],
+    ['hunk', '@@ -1,20 +1,20 @@'],
+    ['del', '-- old heading'],
+    ['add', '++ new heading'],
+    ['ctx', 'context'],
+  ])
+})
+
+test('a malformed git patch keeps file boundaries after header-like source rows', () => {
+  const lines = diffLines([
+    'diff --git a/headings.txt b/headings.txt',
+    '--- a/headings.txt',
+    '+++ b/headings.txt',
+    '@@ -1,20 +1,20 @@',
+    '--- old heading',
+    '+++ new heading',
+    ' context',
+    'diff --git a/next.rs b/next.rs',
+    'index 1111111..2222222 100644',
+    '--- a/next.rs',
+    '+++ b/next.rs',
+    '@@ -1,4 +1,4 @@',
+    '-let next = 1;',
+    '+let next = 2;',
+  ].join('\n'))
+  expect(lines.map((line) => [line.k, textOf(line)])).toEqual([
+    ['file', 'headings.txt'],
+    ['hunk', '@@ -1,20 +1,20 @@'],
+    ['del', '-- old heading'],
+    ['add', '++ new heading'],
+    ['ctx', 'context'],
+    ['file', 'next.rs'],
+    ['hunk', '@@ -1,4 +1,4 @@'],
+    ['del', 'let next = 1;'],
+    ['add', 'let next = 2;'],
+  ])
+  expect(lines[7]!.t[0]).toEqual({ t: 'let', c: 'keyword' })
+  expect(changedIn(lines[8]!)).toEqual(['2'])
+})
+
+test('a well-formed multi-file unified patch needs no git preambles', () => {
+  const lines = diffLines([
+    '--- a/first.txt',
+    '+++ b/first.txt',
+    '@@ -1 +1 @@',
+    '-old',
+    '+new',
+    '--- a/second.rs',
+    '+++ b/second.rs',
+    '@@ -1 +1 @@',
+    '-let x = 1;',
+    '+let x = 2;',
+  ].join('\n'))
+  expect(lines.filter((line) => line.k === 'file').map(textOf)).toEqual([
+    'first.txt',
+    'second.rs',
+  ])
+  expect(lines.at(-1)!.t[0]).toEqual({ t: 'let', c: 'keyword' })
+})
+
 test("a diff's language comes from the file it names, else from the tool's path", () => {
   const hunkOnly = '@@ -1 +1 @@\n-let a = 1;\n+let a = 2;'
   expect(diffLines(hunkOnly, 'src/x.rs')[1]!.t[0]).toEqual({

@@ -2158,8 +2158,8 @@ impl TheoPanel {
         }
     }
 
-    /// The waiting approval, pinned over the composer on the ground of a call that waits on
-    /// the person.
+    /// The waiting approval, pinned over the composer: an approval-coloured edge and
+    /// heading on the conversation's own canvas, with no band behind it (owner, 2026-11-22).
     fn draw_approval(&self, buf: &mut Buffer, area: Rect) {
         self.approval_cells.set(Default::default());
         let Some(approval) = &self.owner.approval else {
@@ -2169,8 +2169,6 @@ impl TheoPanel {
             return;
         }
         let p = palette();
-        let ground = Style::new().bg(p.pending_row());
-        buf.set_style(area, ground);
         for y in area.y..area.bottom() {
             buf.set_stringn(area.x, y, "\u{258E}", 1, Style::new().fg(p.approval));
         }

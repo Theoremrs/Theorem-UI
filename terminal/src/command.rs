@@ -8,7 +8,7 @@
 //! thinks: a band of light crosses the command, the time it has taken counts
 //! up beside its spinner, and the output holds to its newest line unless the
 //! reader scrolls back, its edges fading where more is out of view. The page
-//! opens and closes the output; the chevron at the row's end says which.
+//! opens and closes the output and turns the prompt down while it shows.
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -67,13 +67,6 @@ struct Run {
 impl Run {
     fn running(&self) -> bool {
         matches!(self.status.as_str(), "running" | "awaiting")
-    }
-
-    /// Whether it printed anything a terminal would show.
-    fn has_output(&self) -> bool {
-        [&self.stdout, &self.stderr]
-            .iter()
-            .any(|text| !text.trim_end_matches(['\r', '\n']).is_empty())
     }
 
     /// The bytes a terminal would have read: standard output, then standard
@@ -425,7 +418,7 @@ impl CommandView {
     }
 
     /// The command's rows at `width`, the line's end (the time it has taken,
-    /// how it ended, and the chevron that says whether what is under it shows),
+    /// and how it ended),
     /// and whether the command is longer than its line has room for. Cut, it
     /// ends in an ellipsis; while what is under it shows, it goes on in rows of
     /// its own under where it starts, so the whole command can be read.
@@ -446,10 +439,6 @@ impl CommandView {
             width.saturating_sub(PROMPT.width() + end_cols + 1)
         };
         let command = escaped(&run.command.replace('\n', " "));
-        if run.has_output() || command.width() > room(&end) {
-            let chevron = if run.open { " ▾" } else { " ▸" };
-            end.push(Span::styled(chevron, Style::new().fg(p.muted)));
-        }
         let room = room(&end);
         let cut = command.width() > room;
         let rows = match (cut, run.open) {
@@ -772,7 +761,7 @@ mod tests {
         let shown = rows(&drawn(&mut ok, 40, 2));
         assert_eq!(
             shown[0],
-            format!(" {PROMPT}bun test src/tiles{}✓ ▸", " ".repeat(15))
+            format!(" {PROMPT}bun test src/tiles{}✓", " ".repeat(17))
         );
         assert_eq!(shown[1], " 14 pass, 0 fail");
 
@@ -783,7 +772,7 @@ mod tests {
             "exitCode": 1,
         }));
         let buf = drawn(&mut failed, 40, 2);
-        assert!(rows(&buf)[0].ends_with("✗ exit 1 ▸"));
+        assert!(rows(&buf)[0].ends_with("✗ exit 1"));
         assert_eq!(buf[(1, 1)].symbol(), "1");
         assert_eq!(
             buf[(1, 1)].fg,
@@ -800,14 +789,14 @@ mod tests {
         }));
         let row = rows(&drawn(&mut view, 24, 1)).remove(0);
         assert!(row.contains('…'), "{row}");
-        assert!(row.ends_with("✓ ▸"), "a cut command opens: {row}");
+        assert!(row.ends_with('✓'), "{row}");
         assert_eq!(row.width(), 23);
         assert_eq!(view.wanted(24), (1, true));
     }
 
     #[test]
     fn a_long_command_shows_whole_while_what_is_under_it_shows() {
-        // 52 columns of command; 22 inside the margins, the prompt's 2 and "✓ ▾" leave 16.
+        // 52 columns of command; 22 inside the margins, the prompt's 2 and " ✓" leave 18.
         let mut view = run(serde_json::json!({
             "command": "cargo test --workspace --all-features -- --nocapture",
             "status": "complete",
@@ -817,9 +806,9 @@ mod tests {
         assert_eq!(
             rows(&drawn(&mut view, 24, 3)),
             [
-                format!(" {PROMPT}cargo test --wor ✓ ▾"),
-                "   kspace --all-feature".to_owned(),
-                "   s -- --nocapture".to_owned(),
+                format!(" {PROMPT}cargo test --works ✓"),
+                "   pace --all-features".to_owned(),
+                "   -- --nocapture".to_owned(),
             ]
         );
 
@@ -935,7 +924,7 @@ mod tests {
             "exitCode": 1,
         }));
         let shown = rows(&drawn(&mut view, 20, 2));
-        assert_eq!(shown[0], format!(" {PROMPT}bun … ✗ exit 1 ▸"));
+        assert_eq!(shown[0], format!(" {PROMPT}bun te… ✗ exit 1"));
         assert_eq!(shown[1], " ro, got three");
     }
 
@@ -1027,17 +1016,18 @@ mod tests {
     }
 
     #[test]
-    fn the_chevron_says_whether_the_output_shows() {
+    fn the_line_ends_in_how_it_ended_open_or_closed() {
         let mut open = run(serde_json::json!({
             "command": "ls",
             "stdout": "a",
             "status": "complete",
             "open": true,
         }));
-        assert!(rows(&drawn(&mut open, 20, 2))[0].ends_with("✓ ▾"));
+        // The prompt is the line's one pointer; the page turns it down while the output shows.
+        assert!(rows(&drawn(&mut open, 20, 2))[0].ends_with('✓'));
         let mut closed =
             run(serde_json::json!({"command": "ls", "stdout": "a", "status": "complete"}));
-        assert!(rows(&drawn(&mut closed, 20, 2))[0].ends_with("✓ ▸"));
+        assert!(rows(&drawn(&mut closed, 20, 2))[0].ends_with('✓'));
         let mut empty =
             run(serde_json::json!({"command": "true", "stdout": "\n", "status": "complete"}));
         assert!(

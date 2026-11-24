@@ -1,4 +1,4 @@
-// SOURCING: culori (OKLCH, WCAG contrast, gamut clamping, hex output) and lib/code-colours' GitHub Dark for the code colours the terminal draws. No library derives one palette from another by preserved relationships; the rules here are the terminal's own, measured from pi's slate in GitHub Sharp.
+// SOURCING: culori (OKLCH, WCAG contrast, gamut clamping, hex output) and terminal-editor.ts's editors (GitHub Dark, Vitesse Dark) for the terminal's depth and the code colours it draws. No library derives one palette from another by preserved relationships; the rules here are the terminal's own, measured from pi's slate in GitHub Sharp.
 //
 // The terminal's colours as a function of the workspace around it. pi's slate
 // was set in GitHub Sharp; each colour keeps the relationship it has there,
@@ -12,11 +12,14 @@
 //   tint is raised toward the slate's in proportion to how near the
 //   workspace's hue is to the slate's (the cosine of the angle between them),
 //   and a workspace a right angle or more away, Stone among them, keeps its
-//   own tint: graphite in its own warmth. A shade below the darkest large
-//   colour around it
-//   (the ink in a light workspace, the main screen in a dark one); never
-//   lighter than the slate, where the diff rows already use all the lightness
-//   their text allows;
+//   own tint: graphite in its own warmth. In a light workspace, a shade below
+//   its ink, never lighter than the slate, where the diff rows already use
+//   all the lightness their text allows. In a dark one, a canvas step
+//   (CANVAS_STEP) above the ground of the palette's dark editor
+//   (terminal-editor.ts), so that the canvas the conversation sits on is that
+//   editor's ground, below the main screen rather than level with it. A
+//   palette built on its editor's colours (Vitesse) does the same with the
+//   ground as it is, its hue and chroma too, in both modes;
 // - the mark, the colour of the letters of what is chosen or matched: the
 //   slate's burnt orange carried by its relationships. Its hue is the
 //   background's plus the offset it has from the slate background's hue, so
@@ -28,7 +31,7 @@
 //   background;
 // - text and status colours: their hue and chroma, at the lightness that
 //   keeps the contrast each has on the slate, and at least 4.5:1 on every
-//   surface they are drawn on;
+//   surface they are drawn on; code takes the editor's own colours;
 // - diff tints: GitHub Dark's diff hues, each with at least the chroma it has
 //   on the slate and more where it needs it to keep the distance (ΔE00) it has
 //   there from what it sits on: a row from the background, changed words from
@@ -46,7 +49,8 @@ import {
   wcagContrast,
 } from 'culori'
 import type { Oklch } from 'culori'
-import { GITHUB_DARK } from '@/lib/code-colours'
+import { GITHUB_DARK } from './terminal-editor'
+import type { TerminalEditor } from './terminal-editor'
 
 const oklch = converter('oklch')
 const oklab = converter('oklab')
@@ -142,12 +146,18 @@ const DIFF_HUE = { removed: 26.8, added: 146.3 }
 export const SUCCESS = '#7ee787'
 export const LINK = '#58a6ff'
 
-/** The code colours the crate draws: one per token class, with plain text in the ink. */
-const CODE = [...new Set(Object.values(GITHUB_DARK))].filter(
-  (colour) => colour !== GITHUB_DARK.token,
-)
-const COMMENT = GITHUB_DARK.comment
 const READABLE = 4.5
+/**
+ * Lightness the canvas, where the conversation sits, takes below the
+ * terminal's background (terminal-ladder.ts lays it).
+ */
+export const CANVAS_STEP = -0.06
+
+/** The canvas the conversation sits on, a canvas step below the terminal's background `bg`. */
+export function canvasOf(bg: string) {
+  const colour = at(bg)
+  return hex({ ...colour, l: colour.l + CANVAS_STEP })
+}
 
 function at(colour: string): Oklch {
   const parsed = oklch(colour)
@@ -195,11 +205,8 @@ function raise(h: number) {
   const apart = Math.abs(((h - slate.h! + 540) % 360) - 180)
   return 1 + (TINT - 1) * Math.max(0, Math.cos((apart * Math.PI) / 180))
 }
-/** How far below its anchor the slate sits, light and dark. */
-const SHADE = {
-  light: slate.l - GITHUB_SHARP.anchor.light,
-  dark: slate.l - GITHUB_SHARP.anchor.dark,
-}
+/** How far below its anchor the slate sits in a light workspace. */
+const SHADE = { light: slate.l - GITHUB_SHARP.anchor.light }
 
 /** `colour` in the background's terms: lightness above it, chroma as a share of it, hue from it. */
 function step(name: keyof TerminalTheme, bg: Oklch): Oklch {
@@ -374,18 +381,45 @@ function placeWords(
   return shown
 }
 
-export function terminalTheme(workspace: Workspace): TerminalTheme {
+/**
+ * The code colours the crate draws on `bg` and `raised`, plain text aside:
+ * the editor's own, each lightened only as far as it needs to read there.
+ */
+export function codeColours(
+  editor: TerminalEditor,
+  bg: string,
+  raised: string,
+) {
+  const drawn = (colour: string) => lift(at(colour), [bg, raised], READABLE)
+  return {
+    code: [...new Set(Object.values(editor.syntax).map(drawn))],
+    comment: drawn(editor.syntax.comment),
+  }
+}
+
+export function terminalTheme(
+  workspace: Workspace,
+  editor: TerminalEditor = GITHUB_DARK,
+): TerminalTheme {
   const around = measure(workspace)
   const h = around.tint.h + HUE_STEP
-  const bgColour: Oklch = {
-    mode: 'oklch',
-    l: Math.min(slate.l, around.anchor + SHADE[around.dark ? 'dark' : 'light']),
-    c: Math.min(slate.c, raise(h) * around.tint.c),
-    h,
-  }
-  const bg = hex(bgColour)
+  const ground = at(editor.ground)
+  const overGround = ground.l - CANVAS_STEP
+  const bg = hex(
+    editor.onGround
+      ? { ...ground, l: overGround }
+      : {
+          mode: 'oklch',
+          l: around.dark
+            ? overGround
+            : Math.min(slate.l, around.anchor + SHADE.light),
+          c: Math.min(slate.c, raise(h) * around.tint.c),
+          h,
+        },
+  )
   const surface = at(bg)
   const raised = hex(step('raised', surface))
+  const { code: CODE, comment: COMMENT } = codeColours(editor, bg, raised)
   const line = hex(step('line', surface))
   const grey = (name: 'ink' | 'bright' | 'muted') =>
     text(step(name, surface), name, bg, raised)
@@ -440,7 +474,11 @@ export function terminalTheme(workspace: Workspace): TerminalTheme {
     addedLine: rows.added,
     removedWords: words.removed,
     addedWords: words.added,
-    commentOnWords: lift(at(COMMENT), [words.removed, words.added], READABLE),
+    commentOnWords: lift(
+      at(editor.syntax.comment),
+      [words.removed, words.added],
+      READABLE,
+    ),
   }
 }
 
@@ -458,9 +496,12 @@ const CSS_COLOURS = [
 ] as const
 
 export function terminalCss(theme: TerminalTheme): Record<string, string> {
-  return Object.fromEntries(
-    CSS_COLOURS.map((name) => [`--term-${name}`, theme[name]]),
-  )
+  return {
+    ...Object.fromEntries(
+      CSS_COLOURS.map((name) => [`--term-${name}`, theme[name]]),
+    ),
+    '--term-canvas': canvasOf(theme.bg),
+  }
 }
 
 export { SLATE }

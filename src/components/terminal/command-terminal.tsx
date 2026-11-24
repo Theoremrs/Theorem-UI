@@ -1,7 +1,7 @@
-// SOURCING: the agent terminal's own crate (terminal/src/command.rs, built into src/terminal-wasm): in the reply where a call ran a command (chat/theorem-parts' tool-call slot, and a host call's part, which the server rewrites with what the command has printed while it runs), Ratzilla draws the command on the prompt's line and what it printed through the VT interpreter the workbench's process panes use; loadWasm from terminal-screen loads it and paints it in the workspace's terminal colours; the frame is the assistant-ui elements' response frame (surfaces). It opens and closes as assistant-ui's Reasoning element does (open while it works, closed after unless the reader chose), the crate drawing the shimmer, the clock and the chevron; framer-motion's useReducedMotion holds the shimmer still. While output streams it takes the column so wider lines never widen it, lines past the fold slide in as the crate reports the scroll, and what the work moves glides while the reader's own clicks spring. The output scrolls by wheel, by keys once it has focus and by a finger's drag, the page scrolling once the output can go no further; opening a cut command shows all of it, and the copy over the prompt copies it with useCopyToClipboard and the Copy/Copied icons, as the code block's header does (markdown-text). Should the terminal not load, the command and what it printed show as text.
+// SOURCING: the agent terminal's own crate (terminal/src/command.rs, built into src/terminal-wasm): in the reply where a call ran a command (chat/theorem-parts' tool-call slot, and a host call's part, which the server rewrites with what the command has printed while it runs), Ratzilla draws the command on the prompt's line and what it printed through the VT interpreter the workbench's process panes use; loadWasm from terminal-screen loads it and paints it in the workspace's terminal colours; the frame is the elements' lifted frame (surfaces). It opens and closes as assistant-ui's Reasoning element does (open while it works, closed after unless the reader chose), the crate drawing the shimmer and the clock, and cell-grid.css turning the prompt down while the output shows; framer-motion's useReducedMotion holds the shimmer still. While output streams it takes the column so wider lines never widen it, lines past the fold slide in as the crate reports the scroll, and every open and close glides without overshoot. The output scrolls by wheel, by keys once it has focus and by a finger's drag, the page scrolling once the output can go no further; opening a cut command shows all of it, and the copy over the prompt copies it with useCopyToClipboard and the Copy/Copied icons, as the code block's header does (markdown-text). Should the terminal not load, the command and what it printed show as text.
 import { useReducedMotion } from 'framer-motion'
 import { useEffect, useId, useRef, useState } from 'react'
-import { responseFrame } from '@/components/assistant-ui/elements/surfaces'
+import { liftedFrame } from '@/components/assistant-ui/elements/surfaces'
 import { Icon } from '@/components/icons'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { cn } from '@/lib/utils'
@@ -20,8 +20,6 @@ const MARGIN_COLS = 2
 const MIN_COLS = 20
 /** The crate's time before the ending ("10m 10s "), kept whole so the terminal does not widen as it counts. */
 const TIME_COLS = 8
-/** The chevron after the ending (" ▸"). */
-const CHEVRON_COLS = 2
 /** Escape sequences, which take no columns on the screen. */
 // eslint-disable-next-line no-control-regex
 const ESCAPES = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
@@ -194,8 +192,7 @@ export function terminalColumns(
     width(command.replaceAll('\n', ' ')) +
     1 +
     (timed ? TIME_COLS : 0) +
-    ending +
-    (printedAnything({ stdout, stderr }) ? CHEVRON_COLS : 0)
+    ending
   return Math.max(MIN_COLS, prompt, ...printed) + MARGIN_COLS
 }
 
@@ -250,8 +247,8 @@ export function CommandTerminal({
   if (state === 'running' && !timed) setTimed(true)
   // While output streams in, the terminal takes the column, so wider lines never widen it.
   const wide = state === 'running' && printed
-  // The reader's own open springs and their close is quick; what the work
-  // does (output arriving, the run ending) glides, so streamed text never bounces.
+  // The reader's own close is quick; their open and what the work does (output
+  // arriving, the run ending) glide, so nothing overshoots.
   const [byReader, setByReader] = useState(false)
   const shows = useRef(open)
   useEffect(() => {
@@ -356,8 +353,9 @@ export function CommandTerminal({
     <div
       data-slot="command-terminal"
       data-state={open ? 'open' : 'closed'}
+      data-opens={opens || undefined}
       className={cn(
-        responseFrame,
+        liftedFrame,
         wide ? 'w-full' : 'w-fit max-w-full',
         className,
       )}
@@ -384,7 +382,7 @@ export function CommandTerminal({
               'group/command relative overflow-hidden font-mono text-[12.5px] transition-[height] motion-reduce:transition-none',
               byReader
                 ? open
-                  ? 'duration-(--duration-snap) ease-snap'
+                  ? 'duration-(--duration-snap) ease-glide'
                   : 'duration-(--duration-exit) ease-exit'
                 : 'duration-(--duration-glide) ease-glide',
             )}

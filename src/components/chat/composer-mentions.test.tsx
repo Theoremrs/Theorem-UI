@@ -321,7 +321,8 @@ describe('the @ list in the composer', () => {
     )
     // One search, for what was typed, not a recent-documents search first.
     expect(asked).toEqual([{ kind: 'items', query: { q: 'noo', limit: 5 } }])
-    expect(container.textContent).toContain('Records and documents')
+    // The rows say what the list holds; no heading explains it.
+    expect(container.textContent).not.toContain('Records and documents')
     const rows = options().map((o) => o.textContent)
     expect(rows[0]).toBe('NoorPerson')
     expect(rows.at(-1)).toBe('Notes on the kiln visitDocument')

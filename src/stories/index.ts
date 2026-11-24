@@ -297,12 +297,6 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 900, height: 600 },
   },
   {
-    id: 'response-style-picker',
-    title: 'Composer with the response style picker',
-    lane: 'original',
-    viewport: { width: 760, height: 320 },
-  },
-  {
     id: 'response-details',
     title: 'Response details for a reply',
     lane: 'original',
@@ -339,6 +333,18 @@ export const STORIES: readonly StoryMeta[] = [
   {
     id: 'command-live',
     title: 'A command\'s terminal as it runs, a line at a time, then closing when it ends well',
+    lane: 'original',
+    viewport: { width: 900, height: 700 },
+  },
+  {
+    id: 'present-view',
+    title: 'A reply with an interactive view, its cells editable under it',
+    lane: 'original',
+    viewport: { width: 1100, height: 900 },
+  },
+  {
+    id: 'view-cells',
+    title: 'A view\'s cells in the terminal, edited and run again',
     lane: 'original',
     viewport: { width: 900, height: 700 },
   },

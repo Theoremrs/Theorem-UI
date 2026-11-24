@@ -8,6 +8,7 @@ import { readArtifact } from './artifact-model'
 import { PinnedAppFrame } from './app-revision-frame'
 import {
   fileNameOf,
+  isBare,
   isLive,
   representationOf,
   sourceOf,
@@ -185,6 +186,21 @@ test('a named kind keeps its own presentation whatever language its source is in
     representationOf(part('artifact', 'markdown', 'Notes'), 'thing')
       .contribution,
   ).toBe('theorem.document')
+})
+
+test('the agent picks the drawing by kind, and either one is bare in the reply', () => {
+  const graph = part('graph', 'json', 'Headland map')
+  expect(representationOf(graph, 'preview').renderer).toBe('theorem-graph')
+  expect(representationOf(graph, 'thing').renderer).toBe('theorem-graph')
+  expect(isBare(graph, 'preview')).toBe(true)
+  const diagram = part('diagram', 'mermaid', 'Warp flow')
+  expect(representationOf(diagram, 'preview').renderer).toBe(
+    'theorem-diagram.reply',
+  )
+  expect(isBare(diagram, 'preview')).toBe(true)
+  // The panel keeps the diagram as it was.
+  expect(representationOf(diagram, 'thing').renderer).toBe('theorem-diagram')
+  expect(fileNameOf(graph, true)).toBe('headland-map.json')
 })
 
 test('a download is named for the media type its contribution hands over', () => {

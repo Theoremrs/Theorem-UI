@@ -10,15 +10,16 @@
     1.6875rem * var(--appearance-scale-content)
   );
   --recipe-prose: 400 1.0625rem / 1.5882352941 var(--font-sans);
-  --recipe-composer-content: var(--recipe-prose);
+  --recipe-prose-human: 400 1rem / 1.625 var(--font-human);
+  --recipe-composer-content: 400 1rem / 1.5 var(--font-human);
   --recipe-ui-label: 400 0.875rem / 1.4285714286 var(--font-sans);
   --recipe-ui-section: 500 0.875rem / 1.4285714286 var(--font-sans);
   --recipe-ui-group: 600 0.9375rem / 1.3333333333 var(--font-sans);
   --recipe-metadata: 400 0.75rem / 1.5 var(--font-sans);
-  --recipe-code: 400 0.8125rem / 1.5384615385 var(--font-mono);
-  --recipe-heading-small: 650 1.1875rem / 1.3684210526 var(--font-sans);
-  --recipe-heading-medium: 650 1.375rem / 1.3636363636 var(--font-sans);
-  --recipe-heading-large: 650 1.625rem / 1.3076923077 var(--font-sans);
+  --recipe-code: 400 0.875rem / 1.5 var(--font-mono);
+  --recipe-heading-small: 600 1.1875rem / 1.3684210526 var(--font-sans);
+  --recipe-heading-medium: 600 1.375rem / 1.3636363636 var(--font-sans);
+  --recipe-heading-large: 600 1.625rem / 1.3076923077 var(--font-sans);
   --appearance-gap-within: 0.25rem;
   --appearance-gap-related: 0.5rem;
   --appearance-gap-group: 1rem;
@@ -165,6 +166,10 @@
   font: var(--recipe-prose);
   letter-spacing: normal;
 }
+[data-appearance-recipe='prose.human'] {
+  font: var(--recipe-prose-human);
+  letter-spacing: normal;
+}
 [data-appearance-recipe='composer.content'] {
   font: var(--recipe-composer-content);
   letter-spacing: normal;
@@ -184,10 +189,13 @@
 [data-appearance-recipe='metadata'] {
   font: var(--recipe-metadata);
   letter-spacing: 0.01em;
+  /* Counts and times line up from row to row. */
+  font-variant-numeric: tabular-nums;
 }
 [data-appearance-recipe='code'] {
   font: var(--recipe-code);
   letter-spacing: normal;
+  font-variant-numeric: slashed-zero;
 }
 [data-appearance-recipe='heading.small'] {
   font: var(--recipe-heading-small);
@@ -355,7 +363,7 @@
   background: var(--surface-user-message);
   border-color: transparent;
   border-radius: var(--appearance-radius-message);
-  font: var(--recipe-prose);
+  font: var(--recipe-prose-human);
 }
 
 :root:where(:not([data-appearance-preset]), [data-appearance-preset='calm']) {
@@ -559,6 +567,9 @@
   display: flow-root;
   --appearance-paragraph-gap: calc(0.75 * var(--appearance-prose-line-height));
   --appearance-section-gap: calc(1.5 * var(--appearance-prose-line-height));
+  /* A heading belongs to the text under it: a quarter line below it, against
+     a section's gap above (owner, 2026-11-22). */
+  --appearance-heading-gap: calc(0.25 * var(--appearance-prose-line-height));
 }
 .aui-md > .aui-md-p {
   margin-block: 0;
@@ -572,11 +583,23 @@
 .aui-md > * + :is(h1, h2, h3, h4, h5, h6) {
   margin-block-start: var(--appearance-section-gap);
 }
-.aui-md > :is(h1, h2, h3, h4, h5, h6) + .aui-md-p {
-  margin-block-start: var(--appearance-paragraph-gap);
+/* :is() lifts this over the paragraph rule above at any sibling. */
+.aui-md > :is(h1, h2, h3, h4, h5, h6) + :is(.aui-md-p, *) {
+  margin-block-start: var(--appearance-heading-gap);
 }
 .aui-md :is(.aui-md-li, .aui-md-table) {
   line-height: inherit;
+}
+/* Paragraphs avoid a lone last word; headings break into even lines. */
+.aui-md :is(.aui-md-p, .aui-md-li),
+[data-appearance-recipe='prose'],
+.theorem-note .ProseMirror :is(p, li) {
+  text-wrap: pretty;
+}
+.aui-md :is(h1, h2, h3, h4, h5, h6),
+[data-appearance-recipe^='heading'],
+.theorem-note .ProseMirror :is(h1, h2, h3, h4) {
+  text-wrap: balance;
 }
 
 /* Reading ink: the answer reads a step stronger than the chrome around it,
@@ -602,7 +625,9 @@
    ink on a faint tint of it, with no border. */
 .aui-md-inline-code {
   font-family: var(--appearance-font-mono, var(--font-mono));
-  font-size: 0.875em;
+  /* Paper Mono's x-height is 0.51 of its size against Plex's 0.52, so code
+     at 0.95em sits level with the words around it. */
+  font-size: 0.95em;
   font-weight: 500;
   letter-spacing: normal;
   color: var(--attention-ink);
@@ -668,8 +693,7 @@
 /* Code rows as the owner's editor screenshot draws them: numbers right-aligned
    in a narrow gutter tinted from the code ground (sized to the widest number,
    --digits from the highlighter), a bar at the gutter's edge beside each row a
-   diff added or removed,
-   faint dots for whitespace, and a long row wrapping under its own
+   diff added or removed, and a long row wrapping under its own
    indentation (the highlighter sets --indent) with no number of its own. */
 .aui-shiki pre {
   --gutter: 0.875rem;
@@ -702,13 +726,16 @@
   background: transparent;
 }
 .aui-shiki .line {
+  /* Keep the source indentation on the first row. Deeply nested code must
+     still leave room to read its continuation on a narrow screen. */
+  --wrap-indent: min(var(--indent, 0ch), 40%);
   position: relative;
   display: inline-block;
   inline-size: 100%;
   min-block-size: 1lh;
   vertical-align: top;
-  padding-inline: calc(var(--gutter) + var(--indent, 0ch)) 0.875rem;
-  text-indent: calc(-1 * var(--indent, 0ch));
+  padding-inline: calc(var(--gutter) + var(--wrap-indent)) 0.875rem;
+  text-indent: calc(-1 * var(--wrap-indent));
 }
 .aui-shiki pre[data-line-numbers] .line[data-line]::before {
   content: attr(data-line);
@@ -743,25 +770,6 @@
 }
 .aui-shiki .line.highlighted {
   box-shadow: inset 2px 0 var(--line-control);
-}
-.aui-shiki :is(.space, .tab) {
-  position: relative;
-}
-.aui-shiki :is(.space, .tab)::before {
-  position: absolute;
-  inset-inline-start: 0;
-  inline-size: 1ch;
-  text-align: center;
-  text-indent: 0;
-  color: var(--ink-faint);
-  opacity: 0.5;
-  pointer-events: none;
-}
-.aui-shiki .space::before {
-  content: '\00b7';
-}
-.aui-shiki .tab::before {
-  content: '\2192';
 }
 
 /* Code stays inside the prose column, as tables do, and scrolls sideways in
@@ -982,7 +990,10 @@
    but --lg-show, the rest being the field itself through the thinned body.
    Where the field is empty that lands on the tone at body x (1 - show) over
    the sheet, so the tab lays exactly that and the two meet as one colour. */
-:root:is([data-material-navigation='glass'], [data-material-navigation='liquid'])
+:root:is(
+    [data-material-navigation='glass'],
+    [data-material-navigation='liquid']
+  )
   .rail-junction[data-joins='navigation']
   > * {
   --junction-veil: color-mix(
@@ -1002,7 +1013,10 @@
    room for them, and the CSS corners and the veil go. It sits over the rail,
    so it draws what its thinned body would show (--lg-backdrop) instead of a
    blur of the rail. Until it draws, the veil above stands in. */
-:root:is([data-material-navigation='glass'], [data-material-navigation='liquid'])
+:root:is(
+    [data-material-navigation='glass'],
+    [data-material-navigation='liquid']
+  )
   .rail-junction[data-joins='navigation'] {
   & > .rail-junction-tab {
     isolation: isolate;

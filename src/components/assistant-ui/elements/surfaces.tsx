@@ -7,6 +7,16 @@ import { useIsomorphicLayoutEffect } from "../utils/useIsomorphicLayoutEffect";
 
 export const paper = "bg-background border border-border/60 dark:bg-popover";
 
+// Theorem: a diagram drawn on the reply's own ground, in line with its text,
+// with the Mermaid element's box, fill and inset taken off.
+export const bareDrawing = "rounded-none bg-transparent p-0 [&_svg]:mx-0";
+
+// Theorem: a search field on a menu's own ground, as coss's CommandInput draws
+// it: no fill, border, ring or focus outline of its own (the caret shows where
+// typing goes), the menu's hairline under it.
+export const menuSearch =
+  "border-transparent! bg-transparent! shadow-none before:hidden has-focus-visible:ring-0 [&_input]:outline-none!";
+
 export const floating = "bg-background border border-border/60 dark:bg-popover";
 
 export const field =
@@ -48,6 +58,14 @@ export const live = "text-redwood-ink";
  * policy reach them; these names are the recipe components compose.
  */
 export const responseFrame = "response-frame my-2";
+
+/**
+ * A terminal in the reply, lifted off it as the site's paper cards are
+ * (styles.css surface-paper-subtle: a soft edge and shadow, no drawn outline),
+ * at the response frame's radius.
+ */
+export const liftedFrame =
+  "surface-paper-subtle my-2 flex min-w-0 flex-col overflow-hidden rounded-(--appearance-radius-response)";
 
 export const responseToolbar = "response-toolbar";
 

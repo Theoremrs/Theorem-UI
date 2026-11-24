@@ -1,6 +1,6 @@
-// SOURCING: the gallery's PreviewCanvas (cabinet/cabinet-overlay), which paints a pixel preview's indices in the terminal's illustration roles, inside assistant-ui's attachment tile (elements/attachment.aui); the owner's Streamline office-file-text mark (Icon.AttachedFile) where there is no picture.
+// SOURCING: the gallery's PreviewCanvas (cabinet/preview-canvas), which paints a pixel preview's indices in the terminal's illustration roles, inside assistant-ui's attachment tile (elements/attachment.aui); the owner's Streamline office-file-text mark (Icon.AttachedFile) where there is no picture.
 import type { FC } from 'react'
-import { PreviewCanvas } from '@/components/cabinet/cabinet-overlay'
+import { PreviewCanvas } from '@/components/cabinet/preview-canvas'
 import { Icon } from '@/components/icons'
 import { factLine, useFilePicture } from './attachment-file'
 import { isPastedText, pastedTitle } from './pasted-text'
@@ -43,7 +43,7 @@ export const AttachmentFace: FC<{
         <span
           className={
             status
-              ? 'text-destructive truncate text-[0.6875rem]'
+              ? 'aui-attachment-error-message text-destructive truncate text-[0.6875rem]'
               : 'text-ink-muted truncate text-[0.6875rem]'
           }
         >

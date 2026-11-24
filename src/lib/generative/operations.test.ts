@@ -50,6 +50,13 @@ describe('present requests', () => {
     expect(GENERATIVE_OPERATIONS[0].effect).toBe('presentation')
   })
 
+  test('the description fits the server\'s 1 KB cap and teaches View', () => {
+    const { description } = GENERATIVE_OPERATIONS[0]
+    expect(Buffer.byteLength(description)).toBeLessThanOrEqual(1024)
+    for (const helper of ['linked', 'graph', 'tree', 'timeline', 'param'])
+      expect(description).toContain(`views.${helper}(`)
+  })
+
   test('only a live turn\'s pending present calls are read', () => {
     const tree = { _type: 'Card' }
     expect(presentRequestsOf([message(tree)], true)).toHaveLength(1)
@@ -73,14 +80,42 @@ describe('present requests', () => {
     })
   })
 
-  test('a tree whose root names no component is refused plainly', async () => {
+  test('a tree whose root names a component outside the vocabulary is painted, with a warning', async () => {
     const posted: Array<PresentReceipt> = []
     const post = (_: PresentRequest, receipt: PresentReceipt) => {
       posted.push(receipt)
       return Promise.resolve()
     }
-    await servePresentRequests([request({ _type: 'NoSuchComponent' })], post)
+    await servePresentRequests([request({ _type: 'NoSuchComponent', label: 'x', value: 1 })], post)
+    expect(posted[0]?.outcome).toBe('applied')
+    expect(JSON.stringify(posted[0]?.result)).toContain('NoSuchComponent')
+  })
+
+  test('A2UI from any catalog is painted, and its surfaces named in the receipt', async () => {
+    const posted: Array<PresentReceipt> = []
+    const post = (_: PresentRequest, receipt: PresentReceipt) => {
+      posted.push(receipt)
+      return Promise.resolve()
+    }
+    const a2ui = [
+      { version: 'v0.9', createSurface: { surfaceId: 's1', catalogId: 'https://agent.example/c.json' } },
+      {
+        version: 'v0.9',
+        updateComponents: { surfaceId: 's1', components: [{ id: 'root', component: 'Dial', value: 3 }] },
+      },
+    ]
+    await servePresentRequests([request({ a2ui })], post)
+    expect(posted[0]).toMatchObject({ outcome: 'applied', result: { painted: 's1' } })
+  })
+
+  test('a call with nothing to paint is refused plainly', async () => {
+    const posted: Array<PresentReceipt> = []
+    const post = (_: PresentRequest, receipt: PresentReceipt) => {
+      posted.push(receipt)
+      return Promise.resolve()
+    }
+    await servePresentRequests([request({ caption: 'nothing' })], post)
     expect(posted[0]?.outcome).toBe('rejected')
-    expect(posted[0]?.reason).toContain('_type')
+    expect(posted[0]?.reason).toContain('a2ui')
   })
 })

@@ -68,7 +68,7 @@ test('an App that keeps state only in its frame becomes a pinned page bound to i
   await render(
     <SaveAsPageDialog
       client={owner.client}
-      artifact={app('doc-1')}
+      title={app('doc-1').title}
       documentId="doc-1"
       latest
       loadSource={async () => '<!doctype html><p>Habits</p>'}
@@ -107,7 +107,7 @@ test('state kept in the App document comes along, and an earlier revision says i
   await render(
     <SaveAsPageDialog
       client={owner.client}
-      artifact={app('doc-1')}
+      title={app('doc-1').title}
       documentId="doc-1"
       latest={false}
       loadSource={async () =>

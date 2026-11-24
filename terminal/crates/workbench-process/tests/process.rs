@@ -116,6 +116,18 @@ fn palette() -> Palette {
     Palette::default()
 }
 
+/// The Default preset with Tools taking its share of the window. The preset opens Tools at
+/// its narrowest, 40 columns whatever the window; a dragged splitter drops that pin the
+/// same way. These tests size the pane by the window.
+fn dock() -> Dock {
+    let (dock, regions) = Dock::from_preset(DockConfig::default(), Preset::Default);
+    let mut doc = dock.document();
+    doc.groups.get_mut(&regions.tools).expect("tools").pinned_px = None;
+    Dock::restore(doc, DockConfig::default(), |_| true)
+        .expect("the preset restores")
+        .0
+}
+
 fn model(workspace: &str) -> Model {
     let mut factories = PanelFactories::new();
     register(&mut factories, ProcessStyles::new(palette()), "n1");
@@ -123,8 +135,7 @@ fn model(workspace: &str) -> Model {
     extend_registry(&mut registry).expect("the shell actions register");
     let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
     assert!(issues.is_empty(), "{issues:?}");
-    let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
-    let mut m = Model::new(registry, factories, keys, Capabilities::of(CAPS), dock);
+    let mut m = Model::new(registry, factories, keys, Capabilities::of(CAPS), dock());
     update(
         &mut m,
         Msg::Resize {

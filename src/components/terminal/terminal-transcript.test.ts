@@ -270,6 +270,38 @@ test('a program is highlighted in the language it names, Monty when it names non
   ])
 })
 
+test('a reply view shows its cells in the terminal as the program it runs', () => {
+  const present = {
+    type: 'data',
+    name: 'theorem-client_operation',
+    data: {
+      operation: 'ui.present',
+      state: 'applied',
+      args: {
+        _type: 'Stack',
+        children: [
+          { _type: 'Text', children: 'Prices' },
+          { _type: 'View', title: 'Prices', cells: ['const k = 2', 'Plot.dot(data).plot()'] },
+        ],
+      },
+    },
+  }
+  const drawn = draw([message('assistant', [present])], [], false)
+  const [view, ...rest] = (drawn.messages[0]?.parts ?? []) as {
+    type: string
+    lines: { t: string; c?: string }[][]
+  }[]
+  expect(rest).toHaveLength(0)
+  expect(view?.type).toBe('program')
+  expect(view?.lines.map((line) => line.map((token) => token.t).join(''))).toEqual([
+    '// Prices',
+    'const k = 2',
+    '',
+    'Plot.dot(data).plot()',
+  ])
+  expect(view?.lines[1]?.[0]).toEqual({ t: 'const', c: 'keyword' })
+})
+
 test('a tool that names a file opens it, and the next turn shows what it carries', () => {
   const read = {
     type: 'tool-call',

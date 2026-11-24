@@ -6,6 +6,7 @@ import { describeError, hasStatus, mutate, theorem } from './client'
 import { fromBase64, toBase64 } from '../blocks/state'
 import {
   contentDigest,
+  encodeNote,
   isEditableNote,
   noteMarkdown,
   reviseNote,
@@ -224,4 +225,36 @@ export function appDocumentFor(id: string): AppDocument {
     documents.set(id, app)
   }
   return app
+}
+
+/**
+ * Writes a new App document holding `html`, laid out as every App is: one
+ * Markdown paragraph of source in the canonical body. It opens wherever an
+ * App opens, and the agent reads and revises it like any other.
+ */
+export async function createAppDocument(
+  title: string,
+  html: string,
+): Promise<{ documentId: string; revision: Theorem.DocumentRevision }> {
+  const canonical = encodeNote(html)
+  const digest = await contentDigest(canonical)
+  const { document } = await mutate((headers) =>
+    theorem().documents.create({
+      ...headers,
+      schema: 'theorem-document/2',
+      idempotencyKey: headers['Idempotency-Key'],
+      body: {
+        title,
+        documentKind: 'theorem.app',
+        markdownProjection: html,
+        canonical: {
+          placement: 'inline',
+          bytesBase64: toBase64(canonical),
+          size: canonical.length,
+          digest,
+        },
+      },
+    }),
+  )
+  return { documentId: document.documentId, revision: document.revision }
 }

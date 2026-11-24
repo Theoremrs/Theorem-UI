@@ -43,32 +43,67 @@ const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/
 const FILE_HEADER = /^(diff |index |new file mode|deleted file mode|similarity |rename |old mode|new mode)/
 
 /**
+ * A single code pane cannot name or tokenize several files as one file. Git
+ * preambles identify the boundary directly. Without them, a second header
+ * pair followed by a hunk is a new file (or ambiguous hunk content): keep
+ * the original diff in either case, rather than discarding or mislabelling it.
+ */
+function needsRawDiff(source: readonly string[]) {
+  let gitFiles = 0
+  let named = false
+  let inHunk = false
+  for (let index = 0; index < source.length; index++) {
+    const row = source[index]!
+    if (row.startsWith('diff --git ') && ++gitFiles > 1) return true
+    if (HUNK.test(row)) inHunk = true
+    if (!row.startsWith('--- ') || !source[index + 1]?.startsWith('+++ ')) continue
+    if (inHunk) {
+      if (HUNK.test(source[index + 2] ?? '')) return true
+    } else {
+      if (named) return true
+      named = true
+    }
+  }
+  return false
+}
+
+/**
  * A unified diff as the block shows it: each row without its `+`, `-` or
  * space, numbered as the new file numbers it, in the changed file's
  * language. The file headers become the block's path; each hunk keeps its
- * `@@` row as written. Rows before any hunk number from one.
+ * `@@` row as written. Rows before any hunk number from one. Multiple files
+ * retain the original diff, with patch-line numbers and the diff grammar.
  */
 export function diffLines(code: string): CodeLines {
   const source = code.replace(/\n+$/, '').split('\n')
+  if (needsRawDiff(source)) {
+    return {
+      text: code,
+      lines: code.split('\n').map((_, index) => ({ number: index + 1 })),
+      language: 'diff',
+    }
+  }
   const text: string[] = []
   const lines: GutterLine[] = []
   let path: string | undefined
   let at = 1
+  let inHunk = false
   source.forEach((row, index) => {
     const hunk = HUNK.exec(row)
     if (hunk) {
       text.push(row)
       lines.push({ change: 'hunk' })
       at = Number(hunk[1])
+      inHunk = true
       return
     }
     const next = source[index + 1] ?? ''
     const previous = source[index - 1] ?? ''
-    if (row.startsWith('--- ') && next.startsWith('+++ ')) {
+    if (!inHunk && row.startsWith('--- ') && next.startsWith('+++ ')) {
       path ??= cleanPath(row.slice(4))
       return
     }
-    if (row.startsWith('+++ ') && previous.startsWith('--- ')) {
+    if (!inHunk && row.startsWith('+++ ') && previous.startsWith('--- ')) {
       path = cleanPath(row.slice(4)) ?? path
       return
     }

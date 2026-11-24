@@ -186,6 +186,44 @@ export function useCabinetController({
     )
   })
 
+  // A card in the conversation opened the Gallery on its artifact: show every
+  // object, read what is newest, and page on until its card can be selected.
+  const asked = useShell((s) => s.galleryArtifact)
+  const [askedFor, setAskedFor] = useState<string>()
+  if (asked !== askedFor) {
+    setAskedFor(asked)
+    if (asked) {
+      setFilter('all')
+      setQuery('')
+      setSearch('')
+    }
+  }
+  const askedAt = useRef(0)
+  useEffect(() => {
+    if (!asked) return
+    askedAt.current = Date.now()
+    void outputs.refetch()
+    // Only a new ask reads again; `outputs` changes on every page it loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asked])
+  useEffect(() => {
+    if (!asked || !surface) return
+    const entry = entries.find(
+      (e) => e.source.type === 'artifact' && e.source.artifactId === asked,
+    )
+    if (entry) {
+      surface.select(entry.key)
+      focusAfter.current = entry.key
+      useShell.getState().shownInGallery()
+      return
+    }
+    // Not loaded yet: wait for the read the ask began, then the next page.
+    const read = Math.max(outputs.dataUpdatedAt, outputs.errorUpdatedAt)
+    if (outputs.isFetching || read < askedAt.current) return
+    if (outputs.hasNextPage) void outputs.fetchNextPage()
+    else useShell.getState().shownInGallery()
+  }, [asked, surface, entries, outputs])
+
   // Preview states change the card's drawn state line.
   usePreviews((s) => s.states)
 

@@ -31,25 +31,47 @@ const OBSERVABLE_STYLE = [inputsStyle, inspectorStyle, highlightStyle].join('\n'
  * map URL to fetch from; its bundle holds the import map's modules and
  * answers by specifier.
  */
-function pointImports(body: string): string {
+function pointImports(body: string, imports: Set<string>): string {
   const out = new MagicString(body)
   simple(parseExpressionAt(body, 0, { ecmaVersion: 'latest' }), {
     ImportExpression(node) {
-      const { source } = node as AcornNode & { source: AcornNode }
+      const { source } = node as AcornNode & { source: AcornNode & { value?: unknown } }
       out.overwrite(node.start, source.start, '__theoremImport(')
+      if (typeof source.value === 'string') imports.add(source.value)
     },
   })
   return out.toString()
 }
 
+/**
+ * A cell compiled by Notebook Kit. JavaScript that does not parse is tried as
+ * Observable JavaScript (`viewof x = ...`, `x = 2`), which Notebook Kit also
+ * compiles, so a cell written in either dialect runs; when neither parses,
+ * the JavaScript error is the one shown.
+ */
+function transpileCell(cell: ObservableCell, index: number) {
+  const options = { resolveImport: (specifier: string) => specifier }
+  try {
+    return transpile(toCell({ id: index, value: cell.source, mode: cell.kind }), options)
+  } catch (error) {
+    if (cell.kind !== 'js') throw error
+    try {
+      return transpile(toCell({ id: index, value: cell.source, mode: 'ojs' }), options)
+    } catch {
+      throw error
+    }
+  }
+}
+
 /** One cell's definition, as the source of an object literal. */
-function compileCell(cell: ObservableCell, index: number): string {
+function compileCell(
+  cell: ObservableCell,
+  index: number,
+  imports: Set<string>,
+): string {
   const meta = { id: cell.id, kind: cell.kind }
   try {
-    const compiled = transpile(
-      toCell({ id: index, value: cell.source, mode: cell.kind }),
-      { resolveImport: (specifier: string) => specifier },
-    )
+    const compiled = transpileCell(cell, index)
     const definition = {
       ...meta,
       inputs: compiled.inputs ?? [],
@@ -59,7 +81,7 @@ function compileCell(cell: ObservableCell, index: number): string {
       autoview: compiled.autoview === true,
       automutable: compiled.automutable === true,
     }
-    return `{...${scriptJson(definition)}, body: ${pointImports(compiled.body)}}`
+    return `{...${scriptJson(definition)}, body: ${pointImports(compiled.body, imports)}}`
   } catch (error) {
     // A cell that does not parse shows its error where it stands; the rest run.
     const message = (error as Error).message
@@ -67,41 +89,100 @@ function compileCell(cell: ObservableCell, index: number): string {
   }
 }
 
-/** The script that defines the notebook's cells into the frame. */
-export function notebookCellsScript(notebook: ObservableNotebook): string {
-  const cells = notebook.cells.map(compileCell).join(',\n')
-  return inlineCode(
-    `window.__theoremNotebook.start([\n${cells}\n], { data: ${scriptJson(notebook.data ?? {})} })`,
-  )
-}
-
-let runtime: Promise<string> | undefined
+/** What a saved view was saved with, which its views start from (sandbox/views.ts). */
+export type SavedView = { params?: Record<string, unknown>; state?: Record<string, unknown> }
 
 /**
- * The hosted document an Observable notebook runs in: the App bridge, the
- * notebook runtime with the import map's modules, the cells, and the theme it
- * opened with. It loads nothing it does not carry.
+ * What a page runs: a notebook's title, cells and data. A view in a reply is
+ * one too, and its data may be any JSON value, such as an array of records.
  */
-export async function observableDocument(
-  notebook: ObservableNotebook,
+export type ObservableRun = Omit<ObservableNotebook, 'form' | 'data'> & {
+  form?: 'observable'
+  data?: unknown
+}
+
+/** The notebook's cells compiled, and the import map's modules they import. */
+function compileNotebook(notebook: ObservableRun, saved?: SavedView) {
+  const imports = new Set<string>()
+  const cells = notebook.cells
+    .map((cell, index) => compileCell(cell, index, imports))
+    .join(',\n')
+  const options = `{ data: ${scriptJson(notebook.data ?? {})}${saved ? `, saved: ${scriptJson(saved)}` : ''} }`
+  return {
+    script: inlineCode(`window.__theoremNotebook.start([\n${cells}\n], ${options})`),
+    imports: [...imports].sort(),
+  }
+}
+
+/** The script that defines the notebook's cells into the frame. */
+export function notebookCellsScript(
+  notebook: ObservableRun,
+  saved?: SavedView,
+): string {
+  return compileNotebook(notebook, saved).script
+}
+
+type PageOptions = {
+  esbuild?: Bundler
+  saved?: SavedView
+  /** Drawn inside a reply: no surface or margin of its own, so it reads as part of the answer. */
+  inline?: boolean
+}
+
+/** What an inline notebook drops: the frame's surface and the page's margin. */
+const INLINE_STYLE = '<style>html{background:transparent}body{padding:0}</style>'
+
+/** Runtimes bundled in this page, by the modules they carry. */
+const runtimes = new Map<string, Promise<string>>()
+
+function runtimeFor(imports: Array<string>, esbuild?: Bundler) {
+  if (esbuild) return bundleNotebookRuntime(esbuild, imports)
+  const key = imports.join('\n')
+  let runtime = runtimes.get(key)
+  if (!runtime) {
+    runtime = bundleNotebookRuntime(undefined, imports).catch((error) => {
+      runtimes.delete(key)
+      throw error
+    })
+    runtimes.set(key, runtime)
+  }
+  return runtime
+}
+
+/**
+ * An Observable notebook's page before it is hosted: the notebook runtime
+ * with the modules its cells import, the cells, and the theme it opened
+ * with. It loads nothing it does not carry, so it is also what a view is
+ * saved as: an App document that runs the same notebook anywhere an App runs.
+ */
+export async function observablePage(
+  notebook: ObservableRun,
   theme: ThemeState,
-  esbuild?: Bundler,
+  options: PageOptions & { head?: string } = {},
 ): Promise<string> {
-  const script = esbuild
-    ? await bundleNotebookRuntime(esbuild)
-    : await (runtime ??= bundleNotebookRuntime().catch((error) => {
-        runtime = undefined
-        throw error
-      }))
-  const html = notebookPage({
+  const { script: cells, imports } = compileNotebook(notebook, options.saved)
+  const script = await runtimeFor(imports, options.esbuild)
+  return notebookPage({
     title: notebook.title,
     form: 'observable',
     theme,
     style: OBSERVABLE_STYLE,
+    head: [options.inline && INLINE_STYLE, options.head].filter(Boolean).join('\n') || undefined,
     main: '',
-    scripts: `<script>${script}</script>\n<script>${notebookCellsScript(notebook)}</script>`,
+    scripts: `<script>${script}</script>\n<script>${cells}</script>`,
   })
-  return hostedAppDocument(html, esbuild)
+}
+
+/** The hosted document an Observable notebook runs in: its page with the App bridge. */
+export async function observableDocument(
+  notebook: ObservableRun,
+  theme: ThemeState,
+  options: PageOptions = {},
+): Promise<string> {
+  return hostedAppDocument(
+    await observablePage(notebook, theme, options),
+    options.esbuild,
+  )
 }
 
 /**

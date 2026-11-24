@@ -616,10 +616,19 @@ function applyAppearance(appearance: ResolvedAppearance) {
   }
   for (const [name, recipe] of Object.entries(TEXT_RECIPES)) {
     const key = `--recipe-${name.replace('.', '-')}`
-    const ratio = font?.[`${recipe.scale}LineHeight`] ?? recipe.lineHeight
+    // A custom font replaces the interface's text and code faces; what the
+    // person writes keeps Manrope and its own line.
+    const family =
+      recipe.family === 'human'
+        ? 'var(--font-human)'
+        : `var(--appearance-font-${recipe.family}, var(--font-${recipe.family === 'text' ? 'sans' : 'mono'}))`
+    const ratio =
+      recipe.family === 'human'
+        ? recipe.lineHeight
+        : (font?.[`${recipe.scale}LineHeight`] ?? recipe.lineHeight)
     root.style.setProperty(
       key,
-      `${recipe.weight} calc(${recipe.size}rem * var(--appearance-scale-${recipe.scale})) / ${ratio} var(--appearance-font-${recipe.family}, var(--font-${recipe.family === 'text' ? 'sans' : 'mono'}))`,
+      `${recipe.weight} calc(${recipe.size}rem * var(--appearance-scale-${recipe.scale})) / ${ratio} ${family}`,
     )
   }
   for (const token of new Set(Object.values(COLOR_ROLES))) {

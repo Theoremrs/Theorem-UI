@@ -74,7 +74,7 @@ export function EffortPicker() {
         <span>{shown ? effortLabel(shown) : 'Effort'}</span>
         <Icon.UpDown className="size-3.5 shrink-0" />
       </MenuTrigger>
-      <MenuPopup side="top" align="end" className="w-52">
+      <MenuPopup side="bottom" align="end" className="w-36">
         <MenuGroup>
           <MenuGroupLabel>Reasoning effort</MenuGroupLabel>
           <MenuRadioGroup

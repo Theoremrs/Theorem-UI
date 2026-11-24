@@ -44,6 +44,15 @@ const tellDossier = (state: DossierState) => {
   for (const listener of dossierListeners) listener(state)
 }
 
+/** What a view named of its selection with `theorem.select`, until it says otherwise. */
+interface ViewSelection {
+  label: string
+  ids?: Array<string>
+  state?: Record<string, unknown>
+}
+let chosen: ViewSelection | null = null
+let reportSelection: (event?: Event) => void = () => {}
+
 const context = connectToPage().then((port) => {
   const rpc = rpcOver(port)
   const cells = new CellContext(rpc, { show: () => {}, clear: () => {} })
@@ -143,16 +152,21 @@ const context = connectToPage().then((port) => {
       target
         ?.closest('[data-theorem-source]')
         ?.getAttribute('data-theorem-source') ?? undefined
+    // A view's own selection (a brush, a chosen node) stands until the view
+    // clears it; a click inside the view does not replace it.
     void call<PageMethods, 'frame.selection'>(rpc, 'frame.selection', {
       text: text.slice(0, 4096),
       rowId: rowId?.slice(0, 200),
       field: field?.slice(0, 200),
       entityId: entityId?.slice(0, 200),
-      entityLabel: entityLabel?.slice(0, 200),
+      entityLabel: (entityLabel ?? chosen?.label)?.slice(0, 200),
       cellId: cellId?.slice(0, 200),
       source: source?.slice(0, 300),
+      ids: chosen?.ids?.slice(0, 200).map((id) => String(id).slice(0, 200)),
+      state: chosen?.state,
     }).catch(() => {})
   }
+  reportSelection = selection
   // A person's input inside the frame never reaches the page; say so, so a
   // module's next event starts its own chain.
   const used = () => {
@@ -301,6 +315,17 @@ const theorem = {
       call<PageMethods, 'capability.query'>((await context_()).rpc, 'capability.query', request),
     invoke: async (request: CapabilityInvokeParams) =>
       call<PageMethods, 'capability.invoke'>((await context_()).rpc, 'capability.invoke', request),
+  },
+  /**
+   * Names what the person selected in a view the DOM cannot see, such as a
+   * brushed range or a chosen node: a `label`, the records' `ids` and the
+   * view's `state` (JSON, at most 4 KB). The page carries it into the next
+   * question asked about this App. `null` clears it.
+   */
+  select: async (selection: ViewSelection | null) => {
+    chosen = selection
+    await context
+    reportSelection()
   },
   /** Resolves once the page has connected this app. */
   ready: context.then(() => undefined),

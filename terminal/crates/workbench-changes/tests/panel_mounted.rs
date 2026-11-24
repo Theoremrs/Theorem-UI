@@ -148,18 +148,29 @@ fn factories(slot: &Slot) -> PanelFactories {
     factories
 }
 
+/// The Default preset with Tools taking its share of the window. The preset opens Tools at
+/// its narrowest, 40 columns whatever the window; a dragged splitter drops that pin the
+/// same way. These tests size the panel by the window.
+fn dock() -> Dock {
+    let (dock, regions) = Dock::from_preset(DockConfig::default(), Preset::Default);
+    let mut doc = dock.document();
+    doc.groups.get_mut(&regions.tools).expect("tools").pinned_px = None;
+    Dock::restore(doc, DockConfig::default(), |_| true)
+        .expect("the preset restores")
+        .0
+}
+
 fn model_with(caps: &[&'static str], workspace: &str, slot: &Slot) -> Model {
     let mut registry = builtin::registry();
     extend_registry(&mut registry).expect("the actions register");
     let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
     assert!(issues.is_empty(), "{issues:?}");
-    let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
     let mut m = Model::new(
         registry,
         factories(slot),
         keys,
         Capabilities::of(caps.iter().copied()),
-        dock,
+        dock(),
     );
     update(
         &mut m,
@@ -3143,9 +3154,9 @@ fn an_unavailable_repository_is_told_apart_from_no_changes_in_the_text_and_the_n
 
 // ---- R39: text a person must read is not cut at the pane edge ---------------
 
-/// The panel's body at the width the preset gives it in the rig's window, a narrow 24
-/// columns and a wide 120.
-const PANE_WIDTHS: [Option<u16>; 3] = [None, Some(24), Some(120)];
+/// The panel's body at the width the rig's window gives it, a narrow 24 columns, the 40 the
+/// Default preset opens Tools at and a wide 120.
+const PANE_WIDTHS: [Option<u16>; 4] = [None, Some(24), Some(40), Some(120)];
 
 impl Rig {
     /// The window widened or narrowed until the dock gives the panel `want` columns.

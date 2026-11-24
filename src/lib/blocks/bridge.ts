@@ -201,6 +201,9 @@ export function checkPath(path: string): string {
 }
 
 const name = z.string().min(1).max(200)
+/** The most a view's selection state may be, as JSON, so a reference to it stays small. */
+const MAX_SELECTION_STATE = 4096
+
 const params = {
   read: z.object({
     path: z.string(),
@@ -243,6 +246,13 @@ const params = {
     entityLabel: z.string().max(200).optional(),
     cellId: z.string().max(200).optional(),
     source: z.string().max(300).optional(),
+    ids: z.array(z.string().max(200)).max(200).optional(),
+    state: z
+      .record(z.string(), z.json())
+      .refine((state) => JSON.stringify(state).length <= MAX_SELECTION_STATE, {
+        message: `A view's state is at most ${MAX_SELECTION_STATE} characters`,
+      })
+      .optional(),
   }),
   ask: z.object({
     text: z.string().trim().min(1).max(MAX_DOSSIER_QUESTION),

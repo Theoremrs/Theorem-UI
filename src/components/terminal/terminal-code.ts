@@ -3,7 +3,7 @@
 // Code the agent writes, highlighted for the terminal. The terminal draws
 // markdown itself (tui-markdown, highlighting off); fenced code is lifted out
 // here and handed over as lines of classed tokens, which the crate colours in
-// Stone dark's code theme.
+// the palette's dark code theme (terminal-editor.ts).
 import { createPatch, diffWordsWithSpace, parsePatch } from 'diff'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { classedLines, languageOf as grammarOf } from '@/lib/code-classes'
@@ -94,12 +94,11 @@ function parsed(text: string): FilePatch[] {
   }))
 }
 
-/** A diff's header lines: its file names, a hunk's header, and git's own. */
-const HEADER = /^(?:@@|diff |index |--- |\+\+\+ )/
-
 /**
  * A diff jsdiff refuses (counts that disagree with its lines, as a model
- * writes them, or a hunk still arriving), read line by line instead.
+ * writes them, or a hunk still arriving), read line by line instead. Once
+ * inside a hunk, --- and +++ belong to its source: unreliable counts cannot
+ * tell us otherwise. A diff preamble starts the next file unambiguously.
  */
 function classified(text: string): FilePatch[] {
   const files: FilePatch[] = []
@@ -107,18 +106,25 @@ function classified(text: string): FilePatch[] {
   let file: FilePatch | undefined
   let hunk: Hunk | undefined
   for (const line of text.split('\n')) {
-    if (HEADER.test(line)) {
-      const name = line.slice(4).split('\t')[0]
-      if (line.startsWith('--- ')) before = name
-      if (line.startsWith('+++ ')) {
-        file = { name: fileName(before, name), hunks: [] }
-        files.push(file)
-        hunk = undefined
-      } else if (line.startsWith('@@')) {
-        if (!file) files.push((file = { hunks: [] }))
-        hunk = { header: line, rows: [] }
-        file.hunks.push(hunk)
-      }
+    if (line.startsWith('diff ')) {
+      before = undefined
+      file = undefined
+      hunk = undefined
+      continue
+    }
+    if (line.startsWith('@@')) {
+      if (!file) files.push((file = { hunks: [] }))
+      hunk = { header: line, rows: [] }
+      file.hunks.push(hunk)
+      continue
+    }
+    if (!hunk && line.startsWith('--- ')) {
+      before = line.slice(4).split('\t')[0]
+      continue
+    }
+    if (!hunk && line.startsWith('+++ ')) {
+      file = { name: fileName(before, line.slice(4).split('\t')[0]), hunks: [] }
+      files.push(file)
       continue
     }
     if (hunk) hunk.rows.push(...rowOf(line))

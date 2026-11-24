@@ -50,6 +50,73 @@ test('a hunk whose counts disagree with its header still reads', () => {
   ])
 })
 
+test('header-like removed and added content stays in its hunk', () => {
+  const read = diffLines([
+    '--- a/headings.txt',
+    '+++ b/headings.txt',
+    '@@ -1,2 +1,2 @@',
+    '--- old heading',
+    '+++ new heading',
+    ' context',
+  ].join('\n'))
+  expect(read.path).toBe('headings.txt')
+  expect(read.text).toBe('@@ -1,2 +1,2 @@\n-- old heading\n++ new heading\ncontext')
+  expect(read.lines).toEqual([
+    { change: 'hunk' },
+    { change: 'remove' },
+    { number: 1, change: 'add' },
+    { number: 2 },
+  ])
+})
+
+test('header-like content is preserved even when the hunk counts are wrong', () => {
+  const read = diffLines('@@ -1,20 +1,20 @@\n--- old heading\n+++ new heading\n context')
+  expect(read.path).toBeUndefined()
+  expect(read.text).toBe('@@ -1,20 +1,20 @@\n-- old heading\n++ new heading\ncontext')
+})
+
+test('a multi-file patch keeps every filename and source row as a raw diff', () => {
+  const patch = [
+    'diff --git a/first.ts b/first.ts',
+    '--- a/first.ts',
+    '+++ b/first.ts',
+    '@@ -1 +1 @@',
+    '-const x = 1;',
+    '+const x = 2;',
+    'diff --git a/last.py b/last.py',
+    '--- a/last.py',
+    '+++ b/last.py',
+    '@@ -1 +1 @@',
+    '-x = 1',
+    '+x = 2',
+    '',
+  ].join('\n')
+  const read = diffLines(patch)
+  expect(read.path).toBeUndefined()
+  expect(read.language).toBe('diff')
+  expect(read.text).toBe(patch)
+  expect(read.lines).toHaveLength(patch.split('\n').length)
+})
+
+test('a multi-file unified patch without git preambles also retains its file headers', () => {
+  const patch = [
+    '--- before.ts',
+    '+++ after.ts',
+    '@@ -1 +1 @@',
+    '-const x = 1;',
+    '+const x = 2;',
+    '--- before.py',
+    '+++ after.py',
+    '@@ -1 +1 @@',
+    '-x = 1',
+    '+x = 2',
+  ].join('\n')
+  const read = diffLines(patch)
+  expect(read.path).toBeUndefined()
+  expect(read.language).toBe('diff')
+  expect(read.text).toBe(patch)
+})
+
 test('bare added and removed lines number from one', () => {
   const read = diffLines('-old\n+new\n same')
   expect(read.path).toBeUndefined()

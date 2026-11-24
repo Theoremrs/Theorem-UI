@@ -26,7 +26,7 @@ export function ArtifactKindIcon({
   const Glyph =
     kind === 'code'
       ? Icon.Code
-      : kind === 'diagram'
+      : kind === 'diagram' || kind === 'graph'
         ? Icon.Diagram
         : Icon.Article
   return <Glyph className={className} />
