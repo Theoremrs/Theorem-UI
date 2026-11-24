@@ -181,6 +181,24 @@ test('a downloaded notebook carries its data and the theme it was drawn in, so i
   expect(kit.indexOf('const theme =')).toBeLessThan(kit.indexOf('theme.series[0]'))
 })
 
+test('a cell written in Observable JavaScript is exported as Observable JavaScript, so Notebook Kit runs it', () => {
+  const kit = observableSource(
+    {
+      form: 'observable',
+      title: 'Dialects',
+      cells: [
+        { id: 'pick', kind: 'js', source: 'viewof pick = Inputs.checkbox(["a", "b"])' },
+        { id: 'count', kind: 'js', source: 'const count = pick.length' },
+      ],
+    },
+    LIGHT,
+  )
+  const typeOf = (source: string) =>
+    new RegExp(`<script id="\\d+" type="([^"]+)"[^>]*>\\s*${source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).exec(kit)?.[1]
+  expect(typeOf('viewof pick')).toBe('application/vnd.observable.javascript')
+  expect(typeOf('const count')).toBe('module')
+})
+
 test('a reply view reads an array as its data, and views.linked draws its records as a linked table', async () => {
   const main = await run({
     title: 'Linked',

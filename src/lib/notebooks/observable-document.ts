@@ -173,6 +173,15 @@ export async function observableDocument(
   )
 }
 
+/** The dialect a cell is written in, as it compiles; one that does not compile keeps its kind. */
+function modeOf(cell: { source: string; kind: 'js' | 'md' }) {
+  try {
+    return transpileCell(cell.source, 0, cell.kind).mode
+  } catch {
+    return cell.kind
+  }
+}
+
 /**
  * The notebook as a Notebook Kit file, which Observable Desktop and
  * `notebooks preview` open. Its data and the theme it was drawn in, builtins
@@ -196,7 +205,7 @@ export function observableSource(
     toNotebook({
       title: notebook.title,
       cells: sources.map((cell, index) =>
-        toCell({ id: index + 1, value: cell.source, mode: cell.kind }),
+        toCell({ id: index + 1, value: cell.source, mode: modeOf(cell) }),
       ),
     }),
   )

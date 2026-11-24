@@ -7,7 +7,10 @@
 // wrote them what will fail: no library checks a notebook without running it.
 import { toCell, transpile } from '@observablehq/notebook-kit'
 
-type Compiled = ReturnType<typeof transpile>
+type Compiled = ReturnType<typeof transpile> & {
+  /** The dialect the cell compiled in: Observable JavaScript when only that parses. */
+  mode: 'js' | 'ojs' | 'md'
+}
 
 /** How far into the source a parse got before it failed. */
 const reached = (error: unknown) => {
@@ -25,11 +28,11 @@ const reached = (error: unknown) => {
 export function transpileCell(source: string, id: number, kind: 'js' | 'md' = 'js'): Compiled {
   const options = { resolveImport: (specifier: string) => specifier }
   try {
-    return transpile(toCell({ id, value: source, mode: kind }), options)
+    return { ...transpile(toCell({ id, value: source, mode: kind }), options), mode: kind }
   } catch (error) {
     if (kind !== 'js') throw error
     try {
-      return transpile(toCell({ id, value: source, mode: 'ojs' }), options)
+      return { ...transpile(toCell({ id, value: source, mode: 'ojs' }), options), mode: 'ojs' }
     } catch (ojs) {
       throw withRemedy(reached(ojs) > reached(error) ? ojs : error)
     }
