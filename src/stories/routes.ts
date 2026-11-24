@@ -17,6 +17,9 @@ import {
 } from './fixtures/notebook-parts'
 import { CABINET_ARTIFACTS, CABINET_DESCRIPTIONS, cabinetMessages, cabinetRevision } from './fixtures/cabinet'
 import GRAY_SCOTT from './fixtures/gray-scott.html?raw'
+import { GRAY_SCOTT_KIT } from './fixtures/gray-scott-kit'
+import { KIT_CONTROLS, kitControlApp } from './fixtures/kit-controls'
+import { FRAME_COUNTER } from './fixtures/frame-counter'
 import { GRAY_SCOTT_DIRECTIONS, grayScottDirection } from './fixtures/gray-scott-study'
 import { organizationFixture } from './fixtures/organization'
 import { projectContextRoutes, uploadedItem } from './fixtures/project-context'
@@ -98,6 +101,9 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
   const notes = new Map([
     ...Object.entries(documentFixtures),
     ['doc_gray_scott', GRAY_SCOTT],
+    ['doc_gray_scott_kit', GRAY_SCOTT_KIT],
+    ...KIT_CONTROLS.map((control) => [`doc_kit_${control}`, kitControlApp(control)] as const),
+    ['doc_kit_frame_counter', FRAME_COUNTER],
     ...GRAY_SCOTT_DIRECTIONS.map((d) => [`doc_gray_scott_${d}`, grayScottDirection(d)] as const),
   ])
   const uploads = new Map<string, Response>()
@@ -113,7 +119,9 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
           now,
           documentId.startsWith('doc_gray_scott')
             ? { documentKind: 'theorem.app', title: 'Gray-Scott Reaction-Diffusion' }
-            : undefined,
+            : documentId.startsWith('doc_kit_')
+              ? { documentKind: 'theorem.app', title: documentId.slice('doc_kit_'.length) }
+              : undefined,
         )
   }
   const missing = () => new Response(null, { status: 404 })

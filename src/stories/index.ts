@@ -8,7 +8,7 @@ import { PALETTE_STORIES } from './palette-matrix'
 export type StoryMeta = {
   id: string
   title: string
-  lane: 'translation' | 'original'
+  lane: 'verbatim' | 'translation' | 'original'
   /** Under docs/plans/evidence/refs/; an original drawn to no reference has none, and the oracle skips it. */
   reference?: string
   /** Width and height the reference's region is read at. */
@@ -31,6 +31,12 @@ const SIDEBAR_REF = 'sidebar-compare@2026-11-05.webp'
 const CANVAS_REF = 'canvas-note-types@2026-11-05.png'
 /** The coding-workspace mockup the person attached: the terminal against the code pane, and the fox. */
 const CODING_REF = 'coding-workspace-mockup@2026-11-08.png'
+/** Where a kit control's App draws its 912 by 513 sheet, the size its Astryx reference was shot at. */
+const KIT_SHEET = [184, 28, 912, 513] as const
+const KIT_TOLERANCE = {
+  threshold: 0.2,
+  note: 'Package-bound reference: the same Astryx component from the same package, so its parts, sizes and spacing should land on the reference. Colours, font and radius are Theorem\'s theme by design (the accent, the surface, IBM Plex for the system face), so those pixels differ, and the kit\'s Slider shows its value as text where Astryx shows a tooltip. The differing share is reported, never a verdict.',
+}
 
 export const STORIES: readonly StoryMeta[] = [
   {
@@ -373,6 +379,78 @@ export const STORIES: readonly StoryMeta[] = [
     title: 'Chromeless artifacts: the Gray–Scott App in a reply, as the model wrote it',
     lane: 'original',
     viewport: { width: 1280, height: 1100 },
+  },
+  {
+    id: 'chromeless-gray-scott-kit',
+    title: 'Chromeless artifacts: the Gray–Scott App on @theorem/ui, study C, built from its source',
+    lane: 'original',
+    viewport: { width: 1280, height: 1100 },
+  },
+  {
+    id: 'kit-button',
+    title: '@theorem/ui Button: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-button@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/button',
+  },
+  {
+    id: 'kit-number-input',
+    title: '@theorem/ui NumberInput: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-number-input@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/number-input',
+  },
+  {
+    id: 'kit-segmented-control',
+    title: '@theorem/ui SegmentedControl: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-segmented-control@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/segmented-control',
+  },
+  {
+    id: 'kit-selector',
+    title: '@theorem/ui Selector: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-selector@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/selector',
+  },
+  {
+    id: 'kit-slider',
+    title: '@theorem/ui Slider: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-slider@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/slider',
+  },
+  {
+    id: 'kit-switch',
+    title: '@theorem/ui Switch: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-switch@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/switch',
+  },
+  {
+    id: 'presentation-frame-counter',
+    title: 'Presentation: an App counting its frames shows where it is shown; expanding and collapsing leave the count climbing',
+    lane: 'original',
+    viewport: { width: 1280, height: 720 },
   },
   {
     id: 'chromeless-study-strip',

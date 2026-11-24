@@ -116,8 +116,9 @@ async function withPage(story, run, { reducedMotion = 'reduce', deviceScaleFacto
         () =>
           [...document.querySelectorAll('video, audio')].every((m) => m.readyState >= 2) &&
           ![...document.querySelectorAll('[data-story] *')].some(
-            // "Loading…", and a viewer's own ("Loading App…").
-            (el) => !el.children.length && /^Loading( \w+)?…$/.test(el.textContent ?? ''),
+            // "Loading…", a viewer's own ("Loading App…"), and an App's type check, whose line
+            // stands over the frame until it settles.
+            (el) => !el.children.length && /^(Loading( \w+)?|Checking types)…$/.test(el.textContent ?? ''),
           ),
         null,
         { timeout: 20_000 },

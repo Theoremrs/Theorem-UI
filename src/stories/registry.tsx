@@ -150,6 +150,9 @@ import { WorkbenchChangesReviewStory } from '@/components/workbench/workbench-re
 import { WorkbenchTheoBlocksStory } from '@/components/workbench/workbench-theo-blocks-story'
 import { WorkbenchTheoComposerStory } from '@/components/workbench/workbench-theo-composer-story'
 import GRAY_SCOTT from './fixtures/gray-scott.html?raw'
+import { GRAY_SCOTT_KIT } from './fixtures/gray-scott-kit'
+import { KIT_CONTROLS, kitControlApp } from './fixtures/kit-controls'
+import { FRAME_COUNTER } from './fixtures/frame-counter'
 import { grayScottDirection } from './fixtures/gray-scott-study'
 import type { GrayScottDirection } from './fixtures/gray-scott-study'
 
@@ -548,31 +551,31 @@ function partsStory(messages: ThreadMessageLike[]) {
   }
 }
 
-/** A finished reply holding a Gray–Scott App document. */
-const grayScottReply = (documentId: string, content: string) =>
+/** A finished reply holding an App document, after `text` when there is any. */
+const appReply = (documentId: string, title: string, content: string, text?: string) =>
   partsStory([
     {
-      id: 'message-gray-scott',
+      id: `message-${documentId}`,
       role: 'assistant',
       status: { type: 'complete', reason: 'stop' },
       content: [
-        { type: 'text', text: 'Here is a Gray–Scott reaction–diffusion simulation running on the GPU. Drag on it to seed new growth.' },
+        ...(text ? [{ type: 'text' as const, text }] : []),
         {
           type: 'data',
           name: ARTIFACT_PART,
           data: {
-            artifactId: 'art_gray_scott',
+            artifactId: `art_${documentId}`,
             artifactRevision: '6',
             artifactKind: 'app',
             rendererId: 'theorem-app',
             contractVersion: 'theorem-artifact-v1',
             lifecycle: 'ready',
             patchSequence: 6,
-            fallbackText: 'Gray-Scott Reaction-Diffusion',
+            fallbackText: title,
             payload: {
               documentId,
               revision: { position: 1 },
-              title: 'Gray-Scott Reaction-Diffusion',
+              title,
               content,
               language: 'html',
             },
@@ -582,11 +585,31 @@ const grayScottReply = (documentId: string, content: string) =>
     },
   ])
 
+/** A finished reply holding a Gray–Scott App document. */
+const grayScottReply = (documentId: string, content: string) =>
+  appReply(
+    documentId,
+    'Gray-Scott Reaction-Diffusion',
+    content,
+    'Here is a Gray–Scott reaction–diffusion simulation running on the GPU. Drag on it to seed new growth.',
+  )
+
+/** An App counting its frames: expanding, collapsing or a theme change must leave the count climbing. */
+const frameCounterStory = appReply('doc_kit_frame_counter', 'Frame counter', FRAME_COUNTER)
+
+/** Each @theorem/ui control alone, drawing its Astryx reference's example, built as an App the agent writes is. */
+const kitControlStories = Object.fromEntries(
+  KIT_CONTROLS.map((control) => [`kit-${control}`, appReply(`doc_kit_${control}`, control, kitControlApp(control))]),
+)
+
 /**
  * The Gray–Scott App Qwen4 Max wrote on 2026-11-24, exactly as it ran, in a
  * finished reply: the baseline for chromeless artifacts.
  */
 const grayScottStory = grayScottReply('doc_gray_scott', GRAY_SCOTT)
+
+/** The same App on @theorem/ui in study C, built from its source as an App the agent writes is. */
+const grayScottKitStory = grayScottReply('doc_gray_scott_kit', GRAY_SCOTT_KIT)
 
 /**
  * Where a healthy App's host actions go, for the study: over the frame's
@@ -1428,6 +1451,9 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'composer-markdown': threadStory(undefined, [], COMPOSER_DRAFT),
   'chat-program': programStory,
   'chromeless-gray-scott': grayScottStory,
+  'chromeless-gray-scott-kit': grayScottKitStory,
+  ...kitControlStories,
+  'presentation-frame-counter': frameCounterStory,
   'chromeless-study-strip': grayScottStudy('strip', 'corner'),
   'chromeless-study-inspector': grayScottStudy('inspector', 'beneath'),
   'chromeless-study-overlay': grayScottStudy('overlay', 'corner'),
