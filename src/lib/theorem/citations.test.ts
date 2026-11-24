@@ -840,9 +840,74 @@ test('Add to context carries the retained version and the exact span, and compac
     version: 'blake3:aaa',
   })
   // The offsets survive compaction: they are a few hundred bytes and name
-  // exactly which retained text the referenced message holds.
+  // The offsets and part identities survive compaction: they are a few
+  // hundred bytes and name exactly which retained text, in which stored
+  // citation part, the referenced message holds.
   expect(compacted.spans).toEqual([{ startByte: 0, endByte: 19 }])
   // Dedupe is stable across the two envelope forms: one source, one
   // composer reference, whether it fit or not.
   expect(citationReferenceKey(compact)).toBe(citationReferenceKey(reference))
+})
+
+test('each passage keeps its stored part identity even while one sourceId groups them', () => {
+  // Parts as the SDK assembles them: the durable part ID rides the
+  // assistant-ui part identity, not the payload.
+  const citationPart = (id: string, data: Record<string, unknown>) => ({
+    type: 'data' as const,
+    id,
+    name: 'theorem-citation',
+    data,
+  })
+  const sources = collectCitationSources([
+    citationPart('cite-a', {
+      sourceId: 'chatsource:retained:source:first',
+      sourceKind: 'web_read',
+      provenance: {
+        url: 'https://example.com/page',
+        excerpt: 'First exact passage.',
+        source: retainedRef,
+        span: { startByte: 0, endByte: 19 },
+      },
+    }),
+    citationPart('cite-b', {
+      sourceId: 'chatsource:retained:source:first',
+      sourceKind: 'web_read',
+      provenance: {
+        url: 'https://example.com/page',
+        excerpt: 'Second exact passage.',
+        source: retainedRef,
+        span: { startByte: 210, endByte: 280 },
+      },
+    }),
+  ])
+  expect(sources).toHaveLength(1)
+  expect(sources[0]!.passages.map((passage) => passage.partId)).toEqual([
+    'cite-a',
+    'cite-b',
+  ])
+  const full = JSON.parse(
+    citationContextReference(sources[0]!, 'thread-1', 'message-1').excerpt!,
+  ).citation
+  expect(
+    full.passages.map((passage: { partId: string }) => passage.partId),
+  ).toEqual(['cite-a', 'cite-b'])
+
+  // Oversized evidence compacts; the part identities still survive.
+  const huge = collectCitationSources([
+    citationPart('cite-big', {
+      sourceId: 'chatsource:retained:source:first',
+      sourceKind: 'web_read',
+      provenance: {
+        url: 'https://example.com/page',
+        excerpt: 'x'.repeat(9000),
+        source: retainedRef,
+        span: { startByte: 0, endByte: 19 },
+      },
+    }),
+  ])
+  const compact = JSON.parse(
+    citationContextReference(huge[0]!, 'thread-1', 'message-1').excerpt!,
+  ).citation
+  expect(compact.partIds).toEqual(['cite-big'])
+  expect(compact.spans).toEqual([{ startByte: 0, endByte: 19 }])
 })

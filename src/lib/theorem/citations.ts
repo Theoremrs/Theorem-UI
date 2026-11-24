@@ -1,7 +1,7 @@
 import type { TheoremContextReference } from '@theoremharness/sdk'
 
 type Json = Record<string, unknown>
-type CitationPart = { type: string; name?: string; data?: unknown }
+type CitationPart = { type: string; name?: string; id?: string; data?: unknown }
 
 const object = (value: unknown): Json =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -23,6 +23,10 @@ export function citationUrl(value: unknown): string | undefined {
 }
 
 export interface CitationPassage {
+  /** The stored citation part this passage came from. Theorem's
+   * retained-passage opener takes (messageId, partId), so a card grouped
+   * under one sourceId still names which observation each passage was. */
+  partId: string | undefined
   excerpt: string
   /** Exact UTF-8 range of this excerpt within the retained version, when
    * the capture kept one: `startByte` inclusive, `endByte` exclusive. */
@@ -197,10 +201,12 @@ export function collectCitationSources(
   let citationIndex = 0
   for (const part of content) {
     if (part.type !== 'data' || part.name !== 'theorem-citation') continue
-    // The SDK omits stored part IDs from assistant-ui citation data. Its
-    // citation order survives appends/reload, unlike surrounding text or
-    // activity positions, so use that order when no source identity exists.
+    // The SDK carries the stored part ID on the assistant-ui part's own
+    // `id` across both assembly paths (stream and history hydration). Its
+    // citation order also survives appends/reload, so keep using that order
+    // when no source identity exists.
     const fallbackKey = `part:${citationIndex++}`
+    const partId = str(part.id)
     const data = object(part.data)
     const provenance = supplied(object(data.provenance))
     const sourceId = str(data.sourceId)
@@ -297,7 +303,9 @@ export function collectCitationSources(
       if (previous) {
         previous.provenance = { ...previous.provenance, ...metadata }
         previous.span ??= span
-      } else source.passages.push({ excerpt, span, provenance: metadata })
+        previous.partId ??= partId
+      } else
+        source.passages.push({ partId, excerpt, span, provenance: metadata })
     }
   }
   return sources
@@ -367,13 +375,21 @@ export function citationContextReference(
               },
             }
           : {}),
-        // The offsets survive compaction even when the quotes do not: they
-        // are a few hundred bytes and name exactly which retained text the
-        // referenced message holds.
+        // The offsets and part identities survive compaction even when the
+        // quotes do not: they are a few hundred bytes and name exactly which
+        // retained text, in which stored citation part, the referenced
+        // message holds.
         ...(source.passages.some((passage) => passage.span)
           ? {
               spans: source.passages.flatMap((passage) =>
                 passage.span ? [passage.span] : [],
+              ),
+            }
+          : {}),
+        ...(source.passages.some((passage) => passage.partId)
+          ? {
+              partIds: source.passages.flatMap((passage) =>
+                passage.partId ? [passage.partId] : [],
               ),
             }
           : {}),
