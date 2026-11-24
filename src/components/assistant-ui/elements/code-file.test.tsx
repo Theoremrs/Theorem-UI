@@ -2,6 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { act } from 'react'
 import { CodeBlock } from '@/components/ui/code-block'
 import { CodeFile } from './code-file'
+import { SyntaxHighlighter } from './shiki-highlighter'
 import { cleanup, click, render, waitFor } from '../../../../test/blocks/render'
 
 afterEach(cleanup)
@@ -183,6 +184,35 @@ test('a block without numbers leaves the gutter empty', async () => {
   expect(container.querySelector('figcaption')?.textContent).toBe('output')
   expect(container.querySelector('pre[data-line-numbers]')).toBeNull()
   expect(container.querySelector('.line[data-line]')).toBeNull()
+})
+
+test('standalone highlighting keeps leading blank lines and their numbers', async () => {
+  const { container, rerender } = await render(
+    <SyntaxHighlighter code={'\n\nconst a = 1'} language="ts" streaming />,
+  )
+  expect(container.querySelector('pre')?.textContent).toBe('\n\nconst a = 1')
+  expect(
+    [...container.querySelectorAll('.line')].map((row) =>
+      row.getAttribute('data-line'),
+    ),
+  ).toEqual(['1', '2', '3'])
+  await rerender(
+    <SyntaxHighlighter code={'const a = 1\n\n'} language="ts" streaming />,
+  )
+  expect(container.querySelector('pre')?.textContent).toBe('const a = 1')
+})
+
+test('a Windows path reads as a breadcrumb with its folders apart', async () => {
+  const { container } = await render(
+    <CodeFile
+      code="const a = 1"
+      language="ts:C:\\workspace\\project\\src\\example.ts"
+      streaming
+    />,
+  )
+  expect(container.querySelector('figcaption')?.textContent).toBe(
+    'C:/workspace/project/src/example.ts',
+  )
 })
 
 test('TypeScript keeps its highlighting after an arrow, which `v`-flag patterns lose on JavaScriptCore', async () => {

@@ -82,9 +82,10 @@ function CopyButton({
  * A path as the editor's header shows it: the folders faint, each slash set
  * close between them, the file a step darker. Folders give way first; an
  * exceptionally long filename can truncate too, keeping the copy button visible.
+ * POSIX and Windows separators both divide the parts; the header shows slashes.
  */
 function Breadcrumb({ path }: { path: string }) {
-  const parts = path.split('/').filter(Boolean)
+  const parts = path.split(/[\\/]/).filter(Boolean)
   const file = parts.pop()
   return (
     <span className="flex min-w-0" title={path}>

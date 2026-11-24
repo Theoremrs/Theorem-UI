@@ -461,8 +461,9 @@ export const SyntaxHighlighter: FC<SyntaxHighlighterProps> = ({
   lines: linesProp,
   ...options
 }) => {
-  // Given gutter lines name the rows as they are; plain code drops the blank lines around it.
-  const trimmed = linesProp ? code : code.replace(/^\n+|\s+$/g, '')
+  // Given gutter lines name the rows as they are; plain code drops only the
+  // trailing blank text, so a file that opens with blank lines keeps its numbers.
+  const trimmed = linesProp ? code : code.replace(/\s+$/g, '')
   const lines = useMemo(
     () =>
       linesProp ??

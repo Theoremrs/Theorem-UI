@@ -43,12 +43,27 @@ const SyntaxHighlighterImpl: FC<HighlighterProps> = ({
   );
 };
 
+/**
+ * Whether two fences render the same block: the code, its language and file,
+ * and every prop the block forwards. The node changes identity on each parse;
+ * only its meta matters. Streaming is the part's own status, not a caller prop.
+ */
+export const sameHighlighterProps = (
+  prev: HighlighterProps,
+  next: HighlighterProps,
+) =>
+  prev.code === next.code &&
+  prev.language === next.language &&
+  metaOf(prev.node) === metaOf(next.node) &&
+  prev.title === next.title &&
+  prev.lineNumbers === next.lineNumbers &&
+  prev.maxCollapsedLines === next.maxCollapsedLines &&
+  prev.className === next.className &&
+  prev.viewportClassName === next.viewportClassName;
+
 export const SyntaxHighlighter = memo(
   SyntaxHighlighterImpl,
-  (prev, next) =>
-    prev.code === next.code &&
-    prev.language === next.language &&
-    metaOf(prev.node) === metaOf(next.node),
+  sameHighlighterProps,
 );
 
 SyntaxHighlighter.displayName = "SyntaxHighlighter";

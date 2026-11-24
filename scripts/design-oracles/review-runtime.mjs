@@ -637,8 +637,9 @@ try {
             .split(',')[0]
             .trim()
             .replace(/^['"]|['"]$/g, '') === codeFamily &&
-          code[selector].size === '19.5px' &&
-          code[selector].lineHeight === '30px',
+          // The code recipe is 14px / 21px; the override scales it by 1.5.
+          code[selector].size === '21px' &&
+          code[selector].lineHeight === '31.5px',
       ),
     { expectedCodeFamily: codeFamily, styles: code },
   )
