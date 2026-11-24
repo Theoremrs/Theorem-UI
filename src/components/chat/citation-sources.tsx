@@ -136,8 +136,12 @@ const SourcePassage: FC<{
         {isCopied ? 'Copied' : 'Copy passage'}
       </button>
       {span && (
-        <span data-slot="passage-span" data-appearance-recipe="metadata">
-          bytes {span.startByte}–{span.endByte}
+        <span
+          data-slot="passage-span"
+          data-appearance-recipe="metadata"
+          className="text-ink-muted"
+        >
+          [{span.startByte}, {span.endByte})
         </span>
       )}
     </div>
@@ -165,37 +169,50 @@ const EvidenceLine: FC<{ source: CitationSource }> = ({ source }) => {
       <span
         data-slot="evidence-kind"
         data-appearance-recipe="metadata"
-        className="text-ink-muted"
+        className="wrap-break-word text-ink-muted"
       >
         Retained capture · {source.capture.version}
         {source.capture.coverage.status === 'acquisition_capped'
-          ? ` · capped at ${source.capture.coverage.limitBytes} B, tail not fetched`
-          : ''}
+          ? ` · capped at ${source.capture.coverage.limit_bytes} B, tail not fetched`
+          : source.capture.coverage.status === 'unknown'
+            ? ' · completeness unknown to this version'
+            : ''}
       </span>
     )
-  if (source.sourceKind === 'web_read')
-    return (
-      <span
-        data-slot="evidence-kind"
-        data-appearance-recipe="metadata"
-        className="text-ink-muted"
-      >
-        Inspected preview, not retained
-      </span>
-    )
-  return null
+  // Absence of a capture reference proves nothing about retention: this
+  // build, a pre-capture history, or a malformed reference all look alike
+  // from the wire. Say what is seen, not what is inferred.
+  return (
+    <span
+      data-slot="evidence-kind"
+      data-appearance-recipe="metadata"
+      className="text-ink-muted"
+    >
+      No capture reference
+    </span>
+  )
 }
 
 const SourceActions: FC<{ source: CitationSource }> = ({ source }) => {
   const threadId = useAuiState((s) => s.threadListItem.remoteId)
   const messageId = useAuiState((s) => s.message.id)
+  // The run that produced this reply, while it streams or as the SDK's
+  // hydration named it; Add to context carries it, so reopened evidence
+  // keeps its run provenance. The durable message's own runId is the same.
+  const runId = useAuiState(
+    (s) =>
+      (s.message.metadata.custom as { theoremRunId?: string } | undefined)
+        ?.theoremRunId,
+  )
   const [contextError, setContextError] = useState<string | null>(null)
   if (source.passages.length === 0 && !threadId) return null
   return (
     <div data-slot="source-actions" className="flex flex-col items-start gap-1">
       {source.passages.map(({ excerpt }, index) => (
         <SourcePassage
-          key={excerpt}
+          // One quote can appear at two offsets (or with and without one):
+          // the row's identity is its place in the list, not its text.
+          key={`${index}:${excerpt}`}
           source={source}
           excerpt={excerpt}
           index={index}
@@ -207,7 +224,9 @@ const SourceActions: FC<{ source: CitationSource }> = ({ source }) => {
           className={sourceControl}
           onClick={() => {
             try {
-              askAbout(citationContextReference(source, threadId, messageId))
+              askAbout(
+                citationContextReference(source, threadId, messageId, runId),
+              )
               setContextError(null)
             } catch (error) {
               setContextError(

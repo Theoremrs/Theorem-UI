@@ -39,16 +39,27 @@ export interface CitationSpan {
 /** The nested `SourceRef` PR #1138 publishes under a retained capture.
  * Mirrors the SDK's `TheoremRetainedSourceRef` field for field. A handle is
  * a reference, not authority: it names what was captured, never what can
- * still be opened. */
+ * still be opened; no label here may read as a permission or revocation
+ * verdict before a native open route exists. */
 export interface CitationCapture {
   handle: string
   version: string
   extractionVersion: string
   textBasis: string
   textBytes: number
+  /** Mirrors the Rust `SourceCoverage` serde output exactly: the enum's
+   * container-level `rename_all` renames only variant NAMES, and the owner
+   * sets no `rename_all_fields`, so the cap travels snake_case inside an
+   * otherwise camelCase `SourceRef`. Verified in independent review by
+   * compiling a replica of the attributes against the locked serde_derive.
+   * `unknown` is this UI's honest fourth state, never a wire value: it
+   * appears when the Rust owner adds a coverage variant before this mirror
+   * learns it — the capture identity is still real, its completeness is
+   * not. */
   coverage:
     | { status: 'complete' }
-    | { status: 'acquisition_capped'; limitBytes: number }
+    | { status: 'acquisition_capped'; limit_bytes: number }
+    | { status: 'unknown' }
 }
 
 export interface CitationSource {
@@ -89,7 +100,7 @@ export function citationCapture(value: unknown): CitationCapture | undefined {
       textBytes: ref.textBytes,
       coverage: { status: 'complete' },
     }
-  if (coverage.status === 'acquisition_capped' && natural(coverage.limitBytes))
+  if (coverage.status === 'acquisition_capped' && natural(coverage.limit_bytes))
     return {
       handle,
       version,
@@ -98,8 +109,20 @@ export function citationCapture(value: unknown): CitationCapture | undefined {
       textBytes: ref.textBytes,
       coverage: {
         status: 'acquisition_capped',
-        limitBytes: coverage.limitBytes,
+        limit_bytes: coverage.limit_bytes,
       },
+    }
+  // A coverage status this build does not know says nothing about the
+  // identity beside it: keep the capture, admit the gap, and never guess
+  // completeness from silence.
+  if (typeof coverage.status === 'string')
+    return {
+      handle,
+      version,
+      extractionVersion,
+      textBasis,
+      textBytes: ref.textBytes,
+      coverage: { status: 'unknown' },
     }
   return undefined
 }
@@ -120,10 +143,16 @@ function citationSpan(
   return { startByte, endByte }
 }
 
-/** Where a source's evidence came from, for the reader's label. Three
- * states the wire itself proves: a search hit is discovery; a page read with
- * a well-formed capture is retained evidence with reopenable offsets; a
- * page read without one was inspected but not kept. */
+/** Where a source's evidence came from, for the reader's label. Two states
+ * the wire itself proves: a search hit is discovery; a citation carrying a
+ * well-formed capture is retained evidence with exact byte offsets into its
+ * version. Everything else — a page read, or any citation whose capture
+ * reference is absent, malformed or from before the capture wire existed —
+ * is simply "no capture reference", which says nothing about whether the
+ * page was kept. A handle is a reference, not authority: until a native
+ * open route is wired, only the server's bounded `source_read` can answer
+ * whether a capture can still be opened, and a stale or revoked one is
+ * answered there, never from historical metadata. */
 export function citationEvidenceKind(
   source: Pick<CitationSource, 'sourceKind' | 'capture'>,
 ): 'discovery' | 'preview' | 'retained' {
@@ -179,12 +208,22 @@ export function collectCitationSources(
     const url = citationUrl(provenance.url)
     const label = str(data.label)
     const excerpt = str(provenance.excerpt)
+    // Parse the declared capture once, at the wire boundary: an
+    // unverifiable reference names no capture, and junk from the wire is
+    // neither rendered nor forwarded into a context reference.
+    const declared =
+      provenance.source === undefined
+        ? undefined
+        : citationCapture(provenance.source)
     let source = sourceId ? byId.get(sourceId) : undefined
     if (!source && url) {
       const ambiguous = (explicitIdsByUrl.get(url)?.size ?? 0) > 1
       const matches = sources.filter(
         (candidate) =>
           candidate.url === url &&
+          // Two distinct captures never share a card, even anonymously:
+          // different handles mean different evidence.
+          !(declared && candidate.capture?.handle !== declared.handle) &&
           // Ambiguous URLs group anonymous repeats, but never cross an ID boundary.
           (ambiguous
             ? !sourceId && !candidate.sourceId
@@ -225,37 +264,35 @@ export function collectCitationSources(
       label ??
       (source.label === 'Source' && url ? new URL(url).hostname : source.label)
     // The complete passage belongs below; source metadata must not imply the
-    // last excerpt is the only evidence this source contributed. The capture
-    // and its span are parsed once here, at the wire boundary: an
-    // unverifiable reference names no capture and no offsets, and the
-    // generic provenance keeps only the validated forms, so junk from the
-    // wire is neither rendered nor forwarded into a context reference.
-    const declared =
-      provenance.source === undefined
-        ? undefined
-        : citationCapture(provenance.source)
-    const capture = declared ?? source.capture
-    source.capture = capture
-    // A span qualifies the excerpt it travelled with, measured against that
-    // citation's own capture when it named one.
-    const span = citationSpan(
-      provenance.span,
-      provenance.source === undefined ? source.capture : declared,
-    )
+    // last excerpt is the only evidence this source contributed. The first
+    // well-formed capture a source ever declares is its identity: later
+    // conflicting references never flip the card's version.
+    source.capture ??= declared
+    // A span qualifies only the excerpt it travelled with, measured against
+    // the capture declared by the same citation. The wire always pairs them;
+    // a span arriving without its own source names no text, and is not
+    // retroactively adopted from a sibling's capture.
+    const span = citationSpan(provenance.span, declared)
     const metadata = { ...provenance }
     delete metadata.excerpt
     delete metadata.span
-    if ('source' in metadata) {
-      if (declared) metadata.source = declared
-      else delete metadata.source
-    }
+    // The capture belongs on the source, once; passages repeat it only by
+    // reference, so a many-passage envelope stays small.
+    delete metadata.source
     source.provenance = { ...source.provenance, ...metadata }
+    if (source.capture) source.provenance.source = source.capture
     if (source.sourceId) byId.set(source.sourceId, source)
     if (excerpt) {
+      // Same quote, and no contradicting offsets: one passage. A later
+      // observation that proves a span enriches the earlier one instead of
+      // duplicating the row.
       const previous = source.passages.find(
         (passage) =>
           passage.excerpt === excerpt &&
-          JSON.stringify(passage.span) === JSON.stringify(span),
+          (passage.span === undefined ||
+            span === undefined ||
+            (passage.span.startByte === span.startByte &&
+              passage.span.endByte === span.endByte)),
       )
       if (previous) {
         previous.provenance = { ...previous.provenance, ...metadata }
@@ -277,18 +314,23 @@ const referenceBytes = (reference: TheoremContextReference) =>
 /**
  * The SDK supports a message location with a text excerpt, not a citation
  * resource. Keep that real location and carry the selected evidence in the
- * supported excerpt field so it survives send, recovery and transcript reload.
+ * supported excerpt field so it survives send, recovery and transcript
+ * reload. `runId` names the run that produced the citations, when the
+ * caller knows it (the message's `metadata.custom.theoremRunId`); it is
+ * carried so the reopened context keeps its run provenance too.
  */
 export function citationContextReference(
   source: CitationSource,
   threadId: string,
   messageId: string,
+  runId?: string,
 ): TheoremContextReference {
   const identity = {
     key: source.key,
     sourceId: source.sourceId,
     sourceKind: source.sourceKind,
     url: source.url,
+    ...(runId ? { runId } : {}),
   }
   const reference: TheoremContextReference = {
     label: source.label,
@@ -323,6 +365,16 @@ export function citationContextReference(
                 handle: source.capture.handle,
                 version: source.capture.version,
               },
+            }
+          : {}),
+        // The offsets survive compaction even when the quotes do not: they
+        // are a few hundred bytes and name exactly which retained text the
+        // referenced message holds.
+        ...(source.passages.some((passage) => passage.span)
+          ? {
+              spans: source.passages.flatMap((passage) =>
+                passage.span ? [passage.span] : [],
+              ),
             }
           : {}),
         omittedEvidence: {

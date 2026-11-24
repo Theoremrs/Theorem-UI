@@ -1133,7 +1133,7 @@ test('two captures of one URL render one card each, labelled by their retained v
   })
   const captureCards = [...listed].map((card) => ({
     id: card.getAttribute('data-source-id'),
-    text: card.textContent ?? '',
+    text: card.textContent,
   }))
   expect(captureCards.map((card) => card.id)).toEqual([
     'chatsource:retained:source:first',
@@ -1144,9 +1144,10 @@ test('two captures of one URL render one card each, labelled by their retained v
   expect(captureCards[0]!.text).toContain('blake3:v1')
   expect(captureCards[1]!.text).toContain('Retained capture')
   expect(captureCards[1]!.text).toContain('blake3:v2')
-  // The capture card pins the exact passage offsets next to the passage.
-  expect(container.textContent).toContain('bytes 0–30')
-  expect(container.textContent).toContain('bytes 210–240')
+  // The capture card pins the exact passage offsets beside the passage, in
+  // half-open notation matching the end-exclusive wire.
+  expect(container.textContent).toContain('[0, 30)')
+  expect(container.textContent).toContain('[210, 240)')
 
   const trigger = await waitFor(() =>
     container.querySelector('button[aria-label="List sources"]'),
