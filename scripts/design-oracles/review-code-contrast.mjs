@@ -29,6 +29,9 @@ function contrast(foreground, layers) {
  * Shiki pass over the bundled Vitesse theme, without the application's theme
  * adapter. This checks the authored colors and alpha character by character;
  * merging adjacent DOM spans cannot make a different tokenization pass.
+ * Whitespace is the exception: the renderer (codeToHast) attaches a space to
+ * a neighbouring token, so its span colour is not part of the authored
+ * contract. Visible characters still compare strictly.
  */
 async function vitesseFidelity(observed) {
   const theme = observed.dark ? vitesseDark : vitesseLight
@@ -68,7 +71,8 @@ async function vitesseFidelity(observed) {
     const authored = expectedCharacters[offset]
     if (
       actual?.character !== authored?.character ||
-      (authored?.character !== '\n' && actual?.color !== authored?.color)
+      (!/\s/.test(authored?.character ?? '') &&
+        actual?.color !== authored?.color)
     )
       mismatches.push({ offset, actual, authored })
   }
