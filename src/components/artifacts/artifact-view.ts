@@ -8,6 +8,12 @@ import { create } from 'zustand'
  */
 export const ArtifactPlacement = createContext<'panel' | 'inline'>('panel')
 
+/**
+ * Opens the larger view of an artifact drawn bare in its reply, which has no
+ * card to carry Open; unset where the artifact is already the larger view.
+ */
+export const ArtifactOpener = createContext<(() => void) | undefined>(undefined)
+
 /** The desktop dock, which hosts each open artifact as its own panel. */
 export type ArtifactDock = {
   open: (artifactId: string) => void

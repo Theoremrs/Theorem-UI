@@ -213,7 +213,15 @@ mountRenderers(
     'theorem-scene': SceneArtifact,
   },
   {
-    bare: ['theorem-scene.reply', 'theorem-diagram.reply', 'theorem-graph'],
+    // A notebook carries its own line of status, Ask and Open, so the reply
+    // shows it whole with no card around it.
+    bare: [
+      'theorem-scene.reply',
+      'theorem-diagram.reply',
+      'theorem-graph',
+      'theorem-observable',
+      'theorem-marimo',
+    ],
     cards: ['theorem-document.reply'],
     fills: ['theorem-scene'],
   },

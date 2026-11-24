@@ -26,6 +26,7 @@
 // person sees apart from what its own hidden run saw.
 import {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -37,7 +38,9 @@ import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highl
 import { BlockFrame } from '@/components/blocks/block-frame'
 import { BlockMessage } from '@/components/blocks/block-status'
 import { askAbout } from '@/components/chat/composer-references'
+import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
+import { OPENS_WHOLE } from '@/lib/face/things'
 import { BridgeDenied } from '@/lib/blocks/bridge'
 import type {
   AppArtifacts,
@@ -88,6 +91,7 @@ import { useOpenLatest } from './app-history'
 import { useSeed } from './app-revision-frame'
 import type { TheoremArtifact } from './artifact-model'
 import type { RendererProps } from './artifact-registry'
+import { ArtifactOpener } from './artifact-view'
 import { useSavedArtifact } from './saved-artifact'
 import type { SavedHead } from './saved-artifact'
 
@@ -594,6 +598,7 @@ function NotebookSurface({
   children: ReactNode
 }) {
   const { documentId, documentPosition } = artifact
+  const open = useContext(ArtifactOpener)
   return (
     <section
       aria-label={artifact.title}
@@ -632,6 +637,18 @@ function NotebookSurface({
         {pinned && (
           <Button size="xs" variant="secondary" onClick={pinned.openLatest}>
             Open latest
+          </Button>
+        )}
+        {open && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Open in larger view"
+            {...OPENS_WHOLE}
+            className="group/open size-7 p-1.5"
+            onClick={open}
+          >
+            <Icon.Open className="size-4" />
           </Button>
         )}
       </div>
