@@ -13,7 +13,7 @@ import {
 import { defaultDirectiveFormatter, useAui, useAuiState } from '@assistant-ui/react'
 import { toastManager } from '@/components/coss/toast'
 import { TheoremError } from '@theoremharness/sdk'
-import type { ChatModelRunOptions } from '@assistant-ui/react'
+import type { ChatModelRunOptions, ChatModelRunResult } from '@assistant-ui/react'
 import { act, createElement, useEffect, useState } from 'react'
 import { cleanup, render, waitFor } from '../../../test/workspace'
 import { usePlanning, useWebSearch } from '@/components/chat/composer-tools'
@@ -30,6 +30,7 @@ import {
   createHistoryAdapter,
   createThreadListAdapter,
   runTurn,
+  tailRun,
   draftedPlan,
 } from './runtime'
 
@@ -327,6 +328,65 @@ test('a reload reattaches to the run left live', async () => {
   const steps: unknown[] = []
   for await (const step of resume) steps.push(step)
   expect(JSON.stringify(steps)).toContain('Answered')
+})
+
+test('tailRun names the durable assistant message only once the run persists it', async () => {
+  // The live path: parts stream under an assistant-ui local id; the
+  // CHAT.MESSAGE.PERSISTED event adds the server's saved message id. An
+  // open before that would aim at a synthetic id, so the durable name is
+  // absent until the event arrives — and matches what history carries.
+  runEvents = [
+    [
+      {
+        seq: 1,
+        sourceEventType: 'CHAT.MESSAGE.PART',
+        payload: {
+          part: {
+            type: 'citation',
+            partId: 'cite-live-1',
+            sourceId: 'chatsource:retained:source:first',
+            sourceKind: 'web_read',
+            provenance: {
+              url: 'https://example.com/shared',
+              excerpt: 'Passage from the first fetch.',
+            },
+          },
+        },
+      },
+      {
+        seq: 2,
+        sourceEventType: 'CHAT.MESSAGE.PERSISTED',
+        payload: { messageId: 'chatmsg_live-1', role: 'assistant', textHash: 'h' },
+      },
+      { seq: 3, sourceEventType: 'RUN.CLOSED', payload: {} },
+    ]
+      .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+      .join(''),
+  ]
+  const steps: ChatModelRunResult[] = []
+  for await (const step of tailRun(
+    'run-live-cite',
+    new AbortController().signal,
+  ))
+    steps.push(step)
+  // Streaming steps before the persist carry no durable message name.
+  expect(steps[0]?.metadata?.custom).not.toHaveProperty('theoremMessageId')
+  // The persist event yields a metadata step with the server's id, and the
+  // closing steps keep naming it.
+  const named = steps.filter((step) =>
+    Object.hasOwn(step.metadata?.custom ?? {}, 'theoremMessageId'),
+  )
+  expect(named.length).toBeGreaterThan(0)
+  for (const step of named)
+    expect(step.metadata?.custom?.theoremMessageId).toBe('chatmsg_live-1')
+  // The citation part survived; its stored part id rides the projection
+  // only once the SDK release carries Theorem's part-ID preservation
+  // (unpublished today — the vendored alpha hydrates without it, so the
+  // UI open control stays absent until that release lands, never guessing
+  // a part).
+  const last = steps.at(-1)!
+  expect(last.status?.type).toBe('complete')
+  expect(last.content?.some((part) => part.type === 'data')).toBe(true)
 })
 
 test('a send after a refused replay goes out as the new turn', async () => {

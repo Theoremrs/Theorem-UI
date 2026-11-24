@@ -1037,6 +1037,12 @@ const retainedSourceRef = (handle: string, version: string) => ({
   textBytes: 4096,
   coverage: { status: 'complete' },
 })
+/** What an open route answers for a well-formed passage. */
+const passageBody = {
+  source: retainedSourceRef('source:first', 'blake3:v1'),
+  span: { startByte: 0, endByte: 30 },
+  excerpt: 'Passage from the first fetch.',
+}
 const retainedCitation = (
   partId: string,
   handle: string,
@@ -1165,6 +1171,279 @@ test('two captures of one URL render one card each, labelled by their retained v
   // Discovery is visibly not a capture: labelled a snippet, no version.
   expect(entry.textContent).toContain('Search snippet')
   expect(entry.textContent).not.toContain('blake3:')
+})
+
+test('the retained-passage open is click-only, names durable ids, and surfaces authority answers instead of guessing', async () => {
+  const calls: string[] = []
+  // Only the citation route answers an open; the app's own bootstrapping
+  // (models, tools, link previews) is not what this test guards.
+  const opens = () =>
+    calls.filter((url) => new URL(url).pathname.includes('/citations/'))
+  const page = (
+    window as unknown as { happyDOM: { setURL: (url: string) => void } }
+  ).happyDOM
+  page.setURL('http://localhost:3000/')
+  const original = window.fetch
+  window.fetch = ((input: RequestInfo | URL) => {
+    calls.push(String(input instanceof Request ? input.url : input))
+    return Promise.resolve(
+      Response.json(
+        {
+          type: '/problems/cited_passage_unavailable',
+          title: 'The cited passage is no longer available',
+          status: 410,
+          code: 'cited_passage_unavailable',
+          correlationId: 'corr-1',
+        },
+        { status: 410 },
+      ),
+    )
+  }) as typeof fetch
+  const client = new QueryClient()
+  // Seed the metadata the card would otherwise query: this test guards the
+  // passage open, not the app's unrelated link-preview fetches.
+  client.setQueryData(
+    ['theorem', 'link-preview', 'https://example.com/shared'],
+    null,
+  )
+  // The projection a newer SDK yields: the durable part ID rides the
+  // assistant-ui part identity, exactly as Theorem #1150 preserves it.
+  const message: ThreadMessageLike = {
+    id: 'assistant-saved',
+    role: 'assistant',
+    content: [
+      {
+        type: 'data',
+        id: 'cite-part-1',
+        name: 'theorem-citation',
+        data: {
+          sourceId: 'chatsource:retained:source:first',
+          sourceKind: 'web_read',
+          label: 'Shared page',
+          provenance: {
+            url: 'https://example.com/shared',
+            excerpt: 'Passage from the first fetch.',
+            source: retainedSourceRef('source:first', 'blake3:v1'),
+            span: { startByte: 0, endByte: 30 },
+          },
+        },
+      },
+    ],
+  }
+  try {
+    const { container } = await render(
+      <Harness messages={[message]} client={client} />,
+    )
+    // Reloading or rendering a Sources card opens no passage.
+    expect(opens()).toEqual([])
+    const trigger = await waitFor(() =>
+      container.querySelector('button[aria-label="List sources"]'),
+    )
+    await act(async () =>
+      trigger.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    )
+    const open = await waitFor(() => {
+      const found = [...document.querySelectorAll('button')].find((button) =>
+        button.textContent.includes('Open retained passage'),
+      )
+      return found ?? null
+    })
+    expect(opens()).toEqual([])
+    await act(async () =>
+      open.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    )
+    // One click, one request, the durable message and part ids.
+    await waitFor(() => opens().length === 1)
+    expect(new URL(opens()[0]!).pathname).toBe(
+      '/api/chat/v1/threads/thread_citations/messages/assistant-saved/citations/cite-part-1',
+    )
+    const alert = await waitFor(() =>
+      document.querySelector('[data-slot="open-passage-failure"]'),
+    )
+    // The server's 410 is the reader's answer: gone, not "no evidence".
+    expect(alert.textContent).toContain('no longer available')
+    expect(document.querySelector('[data-slot="opened-passage"]')).toBeNull()
+    // Re-opening is still click-driven; no retry storm on a settled failure.
+    const again = [...document.querySelectorAll('button')].find((button) =>
+      button.textContent.includes('Open retained passage'),
+    )!
+    await act(async () =>
+      again.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    )
+    await waitFor(() => opens().length === 2)
+  } finally {
+    window.fetch = original
+    page.setURL('about:blank')
+  }
+})
+
+test('the open control waits for the run to persist its message, then names the server ID, not the local one', async () => {
+  const calls: string[] = []
+  const opens = () =>
+    calls.filter((url) => new URL(url).pathname.includes('/citations/'))
+  const page = (
+    window as unknown as { happyDOM: { setURL: (url: string) => void } }
+  ).happyDOM
+  page.setURL('http://localhost:3000/')
+  const original = window.fetch
+  window.fetch = ((input: RequestInfo | URL) => {
+    const url = String(input instanceof Request ? input.url : input)
+    calls.push(url)
+    // Only the citation route answers here; unrelated app queries fail as
+    // they do in the neighbouring tests, so the header renders without them.
+    if (new URL(url).pathname.includes('/citations/'))
+      return Promise.resolve(Response.json(passageBody))
+    return Promise.resolve(
+      Response.json({ code: 'fixture', status: 500 }, { status: 500 }),
+    )
+  }) as typeof fetch
+  const client = new QueryClient()
+  client.setQueryData(
+    ['theorem', 'link-preview', 'https://example.com/shared'],
+    null,
+  )
+  const citation: ThreadMessageLike['content'] = [
+    {
+      type: 'data',
+      id: 'cite-part-1',
+      name: 'theorem-citation',
+      data: {
+        sourceId: 'chatsource:retained:source:first',
+        sourceKind: 'web_read',
+        label: 'Shared page',
+        provenance: {
+          url: 'https://example.com/shared',
+          excerpt: 'Passage from the first fetch.',
+          source: retainedSourceRef('source:first', 'blake3:v1'),
+          span: { startByte: 0, endByte: 30 },
+        },
+      },
+    },
+  ]
+  try {
+    // While the reply streams, the assistant-ui message id is local: the
+    // adapter's per-step metadata (theoremCursor) marks that. No control,
+    // no request aimed at a synthetic id.
+    const streaming: ThreadMessageLike = {
+      id: 'local-aui-uuid',
+      role: 'assistant',
+      content: citation,
+      metadata: { custom: { theoremRunId: 'run-9', theoremCursor: 1 } },
+    }
+    const live = await render(
+      <Harness messages={[streaming]} client={client} />,
+    )
+    const liveTrigger = await waitFor(() =>
+      live.container.querySelector('button[aria-label="List sources"]'),
+    )
+    await act(async () =>
+      liveTrigger.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    )
+    await waitFor(() => document.querySelector('[data-slot="source-entry"]'))
+    expect(
+      [...document.querySelectorAll('button')].some((button) =>
+        button.textContent.includes('Open retained passage'),
+      ),
+    ).toBe(false)
+    expect(opens()).toEqual([])
+    await live.unmount()
+
+    // The run persists: metadata now names the saved message. The control
+    // opens against THAT durable id — not the assistant-ui local one.
+    const persisted: ThreadMessageLike = {
+      id: 'local-aui-uuid',
+      role: 'assistant',
+      content: citation,
+      metadata: {
+        custom: {
+          theoremRunId: 'run-9',
+          theoremCursor: 2,
+          theoremMessageId: 'chatmsg_real',
+        },
+      },
+    }
+    const saved = await render(
+      <Harness messages={[persisted]} client={client} />,
+    )
+    const savedTrigger = await waitFor(() =>
+      saved.container.querySelector('button[aria-label="List sources"]'),
+    )
+    await act(async () =>
+      savedTrigger.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    )
+    const open = await waitFor(() => {
+      const found = [...document.querySelectorAll('button')].find((button) =>
+        button.textContent.includes('Open retained passage'),
+      )
+      return found ?? null
+    })
+    await act(async () =>
+      open.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    )
+    await waitFor(() => opens().length === 1)
+    expect(new URL(opens()[0]!).pathname).toBe(
+      '/api/chat/v1/threads/thread_citations/messages/chatmsg_real/citations/cite-part-1',
+    )
+    expect(saved.container.textContent).not.toContain('local-aui-uuid')
+  } finally {
+    window.fetch = original
+    page.setURL('about:blank')
+  }
+})
+
+test('with a projection that carries no part identity, no open control appears and nothing is fetched', async () => {
+  const calls: string[] = []
+  const opens = () =>
+    calls.filter((url) => new URL(url).pathname.includes('/citations/'))
+  const original = window.fetch
+  window.fetch = ((input: RequestInfo | URL) => {
+    calls.push(String(input instanceof Request ? input.url : input))
+    return Promise.resolve(
+      Response.json({ href: 'https://example.com/shared' }),
+    )
+  }) as typeof fetch
+  const client = new QueryClient()
+  client.setQueryData(
+    ['theorem', 'link-preview', 'https://example.com/shared'],
+    null,
+  )
+  // The vendored SDK hydrates citations without part ids: the control stays
+  // absent instead of guessing a part, and the card never reaches the network.
+  const stored = storedMessage(
+    retainedCitation(
+      'cite-first',
+      'source:first',
+      'blake3:v1',
+      'Passage from the first fetch.',
+      { startByte: 0, endByte: 30 },
+    ),
+  )
+  try {
+    const { container } = await render(
+      <Harness messages={toAssistantMessages([stored])} client={client} />,
+    )
+    expect(calls).toEqual([])
+    const trigger = await waitFor(() =>
+      container.querySelector('button[aria-label="List sources"]'),
+    )
+    await act(async () =>
+      trigger.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    )
+    const entry = await waitFor(() =>
+      document.querySelector('[data-slot="source-entry"]'),
+    )
+    // The evidence label still distinguishes the capture; only the open
+    // control is absent, because no part identity is known.
+    expect(entry.textContent).toContain('Retained capture')
+    expect(
+      [...document.querySelectorAll('button')].some((button) =>
+        button.textContent.includes('Open retained passage'),
+      ),
+    ).toBe(false)
+    expect(opens()).toEqual([])
+  } finally {
+    window.fetch = original
+  }
 })
 
 test('a reload of the durable message redraws the exact capture without any request, and Add to context keeps handle, version and span', async () => {

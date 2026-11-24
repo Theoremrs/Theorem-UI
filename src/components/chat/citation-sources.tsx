@@ -22,6 +22,11 @@ import {
 } from '@/lib/theorem/citations'
 import type { CitationSource } from '@/lib/theorem/citations'
 import {
+  openRetainedPassage,
+  retainedPassageFailureMessage,
+} from '@/lib/theorem/retained-passage'
+import type { RetainedPassageResult } from '@/lib/theorem/retained-passage'
+import {
   linkMetadataQueryKey,
   useLinkMetadata,
 } from '@/lib/theorem/link-preview'
@@ -80,6 +85,75 @@ const SourceSlot: FC<{ source: CitationSource }> = ({ source }) => {
   )
 }
 
+/** Opens the exact retained bytes behind one passage, on the reader's
+ * click only. The call names durable ids — the saved assistant message and
+ * this passage's stored citation part — and reaches Theorem's typed chat
+ * route through the SDK client; it never constructs an object-store URL and
+ * never prefetches. Rendering a Sources card issues no request: this is the
+ * one place the app asks the server what a historical handle can still do,
+ * so "missing"/"gone" answers come from authority, not from the citation
+ * metadata on screen. */
+const OpenPassage: FC<{
+  source: CitationSource
+  passageNumber: number
+  threadId: string
+  messageId: string
+  partId: string | undefined
+}> = ({ source, passageNumber, threadId, messageId, partId }) => {
+  const [state, setState] = useState<
+    | { phase: 'idle' | 'opening' }
+    | { phase: 'result'; result: RetainedPassageResult }
+  >({ phase: 'idle' })
+  if (!partId) return null
+  const label =
+    source.passages.length > 1 ? `passage ${passageNumber + 1} of ` : ''
+  const range =
+    state.phase === 'result' && state.result.ok
+      ? `[${state.result.passage.span.startByte}, ${state.result.passage.span.endByte})`
+      : ''
+  return (
+    <div data-slot="open-passage" className="flex flex-wrap items-center gap-1">
+      <button
+        type="button"
+        className={sourceControl}
+        disabled={state.phase === 'opening'}
+        aria-label={`Open the retained ${label}passage of ${source.label}`}
+        onClick={() => {
+          if (state.phase === 'opening') return
+          setState({ phase: 'opening' })
+          // Click-only: no effect, no query, no prefetch on this path.
+          void openRetainedPassage({ threadId, messageId, partId }).then(
+            (result) => setState({ phase: 'result', result }),
+          )
+        }}
+      >
+        <Icon.Open aria-hidden className="size-3" />
+        {state.phase === 'opening' ? 'Opening…' : 'Open retained passage'}
+      </button>
+      {state.phase === 'result' &&
+        (state.result.ok ? (
+          <span
+            data-slot="opened-passage"
+            data-appearance-recipe="metadata"
+            className="wrap-break-word text-ink-muted"
+          >
+            Opened {range} from {state.result.passage.source.version}:{' '}
+            {state.result.passage.excerpt}
+          </span>
+        ) : (
+          <span
+            role="alert"
+            data-slot="open-passage-failure"
+            data-appearance-recipe="metadata"
+            className="wrap-break-word text-error-ink"
+          >
+            {retainedPassageFailureMessage(state.result.failure)}
+          </span>
+        ))}
+    </div>
+  )
+}
+
 /** Each passage keeps its own inspector and copy feedback as more arrive. A
  * retained capture's passage also names the exact UTF-8 byte range within
  * its version, so the reader sees which slice of the kept text the quote is. */
@@ -87,7 +161,9 @@ const SourcePassage: FC<{
   source: CitationSource
   excerpt: string
   index: number
-}> = ({ source, excerpt, index }) => {
+  threadId: string | undefined
+  messageId: string | undefined
+}> = ({ source, excerpt, index, threadId, messageId }) => {
   const { isCopied, copyToClipboard } = useCopyToClipboard()
   const passageName =
     source.passages.length > 1
@@ -144,6 +220,15 @@ const SourcePassage: FC<{
           [{span.startByte}, {span.endByte})
         </span>
       )}
+      {threadId && messageId && (
+        <OpenPassage
+          source={source}
+          passageNumber={index}
+          threadId={threadId}
+          messageId={messageId}
+          partId={source.passages[index]?.partId}
+        />
+      )}
     </div>
   )
 }
@@ -196,6 +281,20 @@ const EvidenceLine: FC<{ source: CitationSource }> = ({ source }) => {
 const SourceActions: FC<{ source: CitationSource }> = ({ source }) => {
   const threadId = useAuiState((s) => s.threadListItem.remoteId)
   const messageId = useAuiState((s) => s.message.id)
+  // Which message the open route may name, decided from what the
+  // projection proves: a persisted live reply carries the server's ID in
+  // metadata; a reply loaded from history IS its durable ID; a reply still
+  // assembling in this session (theoremCursor without theoremMessageId)
+  // has no savable name at all. The synthetic `run:<id>` the native
+  // projection uses is refused by the opener itself.
+  const durableMessageId = useAuiState((s) => {
+    const custom = s.message.metadata.custom as
+      { theoremCursor?: number; theoremMessageId?: string } | undefined
+    if (custom?.theoremMessageId) return custom.theoremMessageId
+    // Steps streamed in this session are not yet saved history.
+    if (custom?.theoremCursor !== undefined) return undefined
+    return s.message.id
+  })
   // The run that produced this reply, while it streams or as the SDK's
   // hydration named it; Add to context carries it, so reopened evidence
   // keeps its run provenance. The durable message's own runId is the same.
@@ -216,6 +315,8 @@ const SourceActions: FC<{ source: CitationSource }> = ({ source }) => {
           source={source}
           excerpt={excerpt}
           index={index}
+          threadId={threadId}
+          messageId={durableMessageId}
         />
       ))}
       {threadId && (
@@ -225,7 +326,15 @@ const SourceActions: FC<{ source: CitationSource }> = ({ source }) => {
           onClick={() => {
             try {
               askAbout(
-                citationContextReference(source, threadId, messageId, runId),
+                citationContextReference(
+                  source,
+                  threadId,
+                  // The saved message, not the local id of a reply still
+                  // streaming: the reference is read back from durable
+                  // history on a later turn.
+                  durableMessageId ?? messageId,
+                  runId,
+                ),
               )
               setContextError(null)
             } catch (error) {
