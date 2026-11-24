@@ -455,7 +455,7 @@ try {
   await page.evaluate(() => window.__appearanceRuntime.rejectUpload())
   const errorTile = page.getByLabel(/fixture-reference\.txt, upload failed/)
   await errorTile.waitFor()
-  await errorTile.hover({ position: { x: 8, y: 40 } })
+  // The card says why in place of its facts, with no pointer over it.
   await page.locator('.aui-attachment-error-message').waitFor()
   const error = await page
     .locator('.aui-attachment-error-message')
@@ -637,7 +637,7 @@ try {
             .split(',')[0]
             .trim()
             .replace(/^['"]|['"]$/g, '') === codeFamily &&
-          // The code recipe (appearance.css --recipe-code, 14px / 1.5) at the 1.5 code scale.
+          // The code recipe is 14px / 21px; the override scales it by 1.5.
           code[selector].size === '21px' &&
           code[selector].lineHeight === '31.5px',
       ),

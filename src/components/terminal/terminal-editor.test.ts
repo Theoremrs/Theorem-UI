@@ -1,8 +1,8 @@
-// The dark editors terminals are drawn as: GitHub Dark as TanStack Highlight
-// gives it, and Anthony Fu's Vitesse Dark as shiki bundles it, each chosen by
-// the palette's own dark code theme.
+// The dark editors terminals are drawn as: GitHub Dark's shared role contract
+// and Anthony Fu's Vitesse Dark as Shiki bundles it, each chosen by the
+// palette's own dark code theme.
 import { expect, test } from 'bun:test'
-import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
+import { GITHUB_DARK as GITHUB_COLOURS } from '@/lib/code-colours'
 import {
   GITHUB_DARK,
   SYNTAX_ROLES,
@@ -16,10 +16,10 @@ test("each palette's terminal is drawn as its dark code theme's editor", () => {
     expect(editorFor(palette)).toBe(GITHUB_DARK)
 })
 
-test('GitHub Dark is the code colours TanStack Highlight gives it', () => {
+test('GitHub Dark keeps the shared code colours and Shiki editor ground', () => {
   expect(GITHUB_DARK.ground).toBe('#0d1117')
   for (const role of SYNTAX_ROLES)
-    expect(GITHUB_DARK.syntax[role]).toBe(githubDarkTheme.tokens[role])
+    expect(GITHUB_DARK.syntax[role]).toBe(GITHUB_COLOURS[role])
 })
 
 test("Vitesse Dark is Fu's ground and token colours, translucent ones as drawn on it", () => {

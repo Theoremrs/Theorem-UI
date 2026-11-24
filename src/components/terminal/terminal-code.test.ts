@@ -21,7 +21,13 @@ test('an answer splits into its prose and its highlighted code, in order', () =>
     lines: [
       [
         { t: 'const', c: 'keyword' },
-        { t: ' ready = count > ' },
+        { t: ' ' },
+        { t: 'ready', c: 'number' },
+        { t: ' ' },
+        { t: '=', c: 'keyword' },
+        { t: ' count ' },
+        { t: '>', c: 'keyword' },
+        { t: ' ' },
         { t: '0', c: 'number' },
       ],
     ],
@@ -39,12 +45,12 @@ test('a fence still streaming runs to the end of what has arrived', () => {
   })
 })
 
-test("TanStack's diff grammar classes whole lines; an unknown language is plain", () => {
+test("Shiki's diff grammar classes whole lines in GitHub Dark's colours; an unknown language is plain", () => {
   const lines = highlightLines('@@ -1 +1 @@\n-old\n+new\n same', 'diff')
   expect(lines.map((line) => line.map((token) => token.c))).toEqual([
-    ['meta'],
+    ['function'],
     ['deleted'],
-    ['inserted'],
+    ['tag'],
     [undefined],
   ])
   expect(highlightLines('one\ntwo', 'nonesuch')).toEqual([
@@ -117,6 +123,76 @@ test('a diff whose counts are off, or still arriving, still reads line by line',
     expect(lines[2]!.t[0]).toEqual({ t: 'let', c: 'keyword' })
     expect(changedIn(lines[3]!)).toEqual(['2'])
   }
+})
+
+test('header-like source rows stay in a miscounted hunk', () => {
+  const lines = diffLines([
+    '--- a/headings.txt',
+    '+++ b/headings.txt',
+    '@@ -1,20 +1,20 @@',
+    '--- old heading',
+    '+++ new heading',
+    ' context',
+  ].join('\n'))
+  expect(lines.map((line) => [line.k, textOf(line)])).toEqual([
+    ['file', 'headings.txt'],
+    ['hunk', '@@ -1,20 +1,20 @@'],
+    ['del', '-- old heading'],
+    ['add', '++ new heading'],
+    ['ctx', 'context'],
+  ])
+})
+
+test('a malformed git patch keeps file boundaries after header-like source rows', () => {
+  const lines = diffLines([
+    'diff --git a/headings.txt b/headings.txt',
+    '--- a/headings.txt',
+    '+++ b/headings.txt',
+    '@@ -1,20 +1,20 @@',
+    '--- old heading',
+    '+++ new heading',
+    ' context',
+    'diff --git a/next.rs b/next.rs',
+    'index 1111111..2222222 100644',
+    '--- a/next.rs',
+    '+++ b/next.rs',
+    '@@ -1,4 +1,4 @@',
+    '-let next = 1;',
+    '+let next = 2;',
+  ].join('\n'))
+  expect(lines.map((line) => [line.k, textOf(line)])).toEqual([
+    ['file', 'headings.txt'],
+    ['hunk', '@@ -1,20 +1,20 @@'],
+    ['del', '-- old heading'],
+    ['add', '++ new heading'],
+    ['ctx', 'context'],
+    ['file', 'next.rs'],
+    ['hunk', '@@ -1,4 +1,4 @@'],
+    ['del', 'let next = 1;'],
+    ['add', 'let next = 2;'],
+  ])
+  expect(lines[7]!.t[0]).toEqual({ t: 'let', c: 'keyword' })
+  expect(changedIn(lines[8]!)).toEqual(['2'])
+})
+
+test('a well-formed multi-file unified patch needs no git preambles', () => {
+  const lines = diffLines([
+    '--- a/first.txt',
+    '+++ b/first.txt',
+    '@@ -1 +1 @@',
+    '-old',
+    '+new',
+    '--- a/second.rs',
+    '+++ b/second.rs',
+    '@@ -1 +1 @@',
+    '-let x = 1;',
+    '+let x = 2;',
+  ].join('\n'))
+  expect(lines.filter((line) => line.k === 'file').map(textOf)).toEqual([
+    'first.txt',
+    'second.rs',
+  ])
+  expect(lines.at(-1)!.t[0]).toEqual({ t: 'let', c: 'keyword' })
 })
 
 test("a diff's language comes from the file it names, else from the tool's path", () => {

@@ -148,6 +148,57 @@ export function toolPillMessages(): Theorem.Message[] {
   ]
 }
 
+const FENCE = '```'
+
+/** A finished reply with a diff, a file named by its fence, a command and plain text. */
+export function codeBlockMessages(): Theorem.Message[] {
+  const reply = [
+    "The scroll guard lives in the command's grid, so the change is one line:",
+    '',
+    `${FENCE}diff`,
+    'diff --git a/terminal/src/command.rs b/terminal/src/command.rs',
+    '--- a/terminal/src/command.rs',
+    '+++ b/terminal/src/command.rs',
+    '@@ -118,7 +118,8 @@ impl CommandGrid {',
+    '     pub fn scroll(&mut self, lines: i32) {',
+    '         let max = self.rows.len().saturating_sub(self.height);',
+    '-        self.top = (self.top as i32 + lines).clamp(0, max as i32) as usize;',
+    '+        let top = (self.top as i32 + lines).clamp(0, max as i32) as usize;',
+    '+        self.top = top;',
+    ' \tself.dirty = true;',
+    '     }',
+    ' }',
+    FENCE,
+    '',
+    'The handle that reads it, with a long line that wraps under its own indentation:',
+    '',
+    `${FENCE}ts title="src/components/terminal/command-terminal.tsx"`,
+    "export function canScroll(handle: CommandHandle, direction: 'up' | 'down'): boolean {",
+    '  if (!handle.ready) return false',
+    "  return direction === 'up' ? handle.top() > 0 : handle.top() + handle.height() < handle.rows() // the grid's own count, not the DOM's",
+    '}',
+    FENCE,
+    '',
+    'And to run it:',
+    '',
+    `${FENCE}sh`,
+    'bun test src/components/terminal',
+    FENCE,
+    '',
+    FENCE,
+    'plain text with no language',
+    FENCE,
+  ].join('\n')
+  return [
+    message('code-ask', 'user', ASKED_AT, [
+      said('code-ask-text', 'Why does the terminal stop scrolling at the end?'),
+    ]),
+    message('code-answer', 'assistant', ASKED_AT + 9_000, [
+      said('code-answer-text', reply),
+    ]),
+  ]
+}
+
 /** A finished reply that searched, then checked the App it wrote and found two problems. */
 export function appCheckMessages(): Theorem.Message[] {
   return [

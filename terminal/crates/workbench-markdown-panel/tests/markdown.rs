@@ -107,6 +107,18 @@ impl Panel for Recorder {
     }
 }
 
+/// The Default preset with Tools taking its share of the window. The preset opens Tools at
+/// its narrowest, 40 columns whatever the window; a dragged splitter drops that pin the
+/// same way. These tests size the panel by the window.
+fn dock() -> Dock {
+    let (dock, regions) = Dock::from_preset(DockConfig::default(), Preset::Default);
+    let mut doc = dock.document();
+    doc.groups.get_mut(&regions.tools).expect("tools").pinned_px = None;
+    Dock::restore(doc, DockConfig::default(), |_| true)
+        .expect("the preset restores")
+        .0
+}
+
 fn model(caps: &[&'static str], drafts: &Drafts, width: u16, refs: Option<Refs>) -> Model {
     let mut factories = PanelFactories::new();
     theorem_workbench_panels::register(&mut factories);
@@ -122,13 +134,12 @@ fn model(caps: &[&'static str], drafts: &Drafts, width: u16, refs: Option<Refs>)
     extend_registry(&mut registry).expect("the Markdown actions register beside the editor's");
     let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
     assert!(issues.is_empty(), "{issues:?}");
-    let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
     let mut m = Model::new(
         registry,
         factories,
         keys,
         Capabilities::of(caps.iter().copied()),
-        dock,
+        dock(),
     );
     update(
         &mut m,

@@ -8,7 +8,7 @@ import { fileMatchesAccept } from '@assistant-ui/core/internal'
 /** A paste at least this long becomes an attachment. */
 export const PASTED_TEXT_MIN_CHARS = 4_000
 /** A paste of at least this many lines becomes an attachment, however short they are. */
-export const PASTED_TEXT_MIN_LINES = 80
+export const PASTED_TEXT_MIN_LINES = 50
 
 const PASTED_TYPE = 'text/plain'
 const PASTED_NAME = /^Pasted text(?: (\d+))?\.txt$/

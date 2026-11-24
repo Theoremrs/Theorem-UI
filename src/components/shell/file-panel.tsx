@@ -1,6 +1,6 @@
-// SOURCING: the SyntaxHighlighter element (TanStack Highlight, in the palette's code themes; the language is the file's extension, which Highlight resolves through its own aliases), @tanstack/react-query via lib/theorem/project-files
+// SOURCING: the SyntaxHighlighter element (Shiki, in the palette's code themes; the language is the file's extension, which Shiki resolves through its own aliases), @tanstack/react-query via lib/theorem/project-files
 import { useQuery } from '@tanstack/react-query'
-import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highlighter'
+import { SyntaxHighlighter } from '@/components/assistant-ui/elements/shiki-highlighter'
 import { describeError } from '@/lib/theorem/client'
 import { fileContentQuery } from '@/lib/theorem/project-files'
 
@@ -36,7 +36,7 @@ export function FilePanel({
           <SyntaxHighlighter
             code={content.data.text}
             language={extension ?? 'text'}
-            className="[&_pre]:min-h-full [&_pre]:rounded-none! [&_pre]:border-0! [&_pre]:bg-transparent!"
+            className="py-2"
           />
         )}
       </div>
