@@ -253,3 +253,29 @@ test('decoration hidden from assistive technology is left out of a copy before a
     document.body.replaceChildren()
   }
 })
+
+test('a copy leaves out what the page does not display, and keeps its styles and its SVG whole', () => {
+  document.body.innerHTML = `
+    <style>.fallback { display: none }</style>
+    <main>
+      <canvas id="scene"></canvas>
+      <p class="fallback">WebGL2 unavailable</p>
+      <p hidden>Loading</p>
+      <p style="display: none">Debug</p>
+      <p>Feed 0.037</p>
+      <svg><defs><linearGradient id="sky"><stop offset="0"></stop></linearGradient></defs><rect fill="url(#sky)"></rect></svg>
+    </main>`
+  try {
+    const copy = document.createElement('div')
+    copy.innerHTML = snapshotHtml()
+    expect(copy.textContent).not.toContain('WebGL2 unavailable')
+    expect(copy.textContent).not.toContain('Loading')
+    expect(copy.textContent).not.toContain('Debug')
+    expect(copy.textContent).toContain('Feed 0.037')
+    expect(copy.querySelector('main > img')).not.toBeNull()
+    expect(copy.querySelector('body style, div > style')?.textContent).toContain('.fallback')
+    expect(copy.querySelector('svg linearGradient#sky stop')).not.toBeNull()
+  } finally {
+    document.body.replaceChildren()
+  }
+})

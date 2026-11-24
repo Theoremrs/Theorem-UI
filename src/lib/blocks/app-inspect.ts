@@ -227,7 +227,10 @@ async function run(
   frame.setAttribute('aria-hidden', 'true')
   frame.tabIndex = -1
   // Laid out at a real size, so the App measures what it would on screen.
-  frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${PICTURE_WIDTH}px;height:${FRAME_HEIGHT}px;visibility:hidden;pointer-events:none;border:0`
+  // In the viewport and transparent rather than off screen or hidden: the
+  // browser gives a frame it counts as unseen no animation frames, and an
+  // App drawn in requestAnimationFrame would never draw.
+  frame.style.cssText = `position:fixed;left:0;top:0;width:${PICTURE_WIDTH}px;height:${FRAME_HEIGHT}px;opacity:0;z-index:-1;pointer-events:none;border:0`
   const connection = new FrameConnection(frame, {
     ...pinnedAppHost(
       html,
@@ -368,7 +371,9 @@ export async function inspectApp(
         declarations.errors.map((message) => ({ kind: 'build', message })),
       )
     // A check runs the App as it runs on the page, network and all.
-    page = await hosted.hostedAppDocument(html)
+    page = await hosted.hostedAppDocument(html, undefined, {
+      keepDrawnFrames: options.picture === true,
+    })
   } catch (error) {
     if (!(error instanceof AppBuildError)) throw error
     found.push(...error.problems)
