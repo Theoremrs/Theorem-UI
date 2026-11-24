@@ -12,6 +12,7 @@
 // (records.test.ts).
 import { z } from 'zod'
 import { styledGenerativeUILibrary } from '@/components/assistant-ui/elements/generative-ui'
+import { APP_LIBRARIES } from '@/lib/blocks/app-libraries'
 import { importMap } from '@/lib/blocks/vendor/manifest'
 import { FRAME_BUILTINS } from '@/lib/notebooks/cells'
 import type { CapabilityExample, CapabilityRecord, DocSection } from './contract'
@@ -292,6 +293,88 @@ const htl: CapabilityRecord = {
   import: 'htl',
   formats: [OBSERVABLE],
   reference: 'https://github.com/observablehq/htl',
+}
+
+const ASTRYX = APP_LIBRARIES['@theorem/ui']!.dependencies['@astryxdesign/core']!
+
+const ui: CapabilityRecord = {
+  id: 'library:@theorem/ui',
+  kind: 'library',
+  version: ASTRYX,
+  title: 'Theorem UI',
+  summary:
+    "Astryx's controls in Theorem's theme for an App or a notebook cell: slider, number, switch, checkbox, toggle, button, segmented control, selector and text input, plus a Stage for the picture and a Dock that floats its controls over it. A control given `control` can be read and moved by the agent while the App runs.",
+  affordances: [
+    'slider', 'number input', 'switch', 'checkbox', 'toggle button', 'button', 'segmented control',
+    'dropdown', 'text field', 'parameter panel', 'controls over a canvas', 'play and pause',
+    'reset', 'agent-operable controls', 'theme tokens', 'responsive layout',
+  ],
+  related: ['format:html-app', OBSERVABLE],
+  import: '@theorem/ui',
+  formats: ['format:html-app', OBSERVABLE],
+  reference: 'https://astryx.atmeta.com/components',
+  sections: [
+    {
+      id: 'controls',
+      title: 'Controls, and the agent reaching them',
+      body: [
+        "`Slider`, `NumberInput`, `Switch`, `CheckboxInput`, `ToggleButton`, `Button`, `SegmentedControl`, `Selector` and `TextInput` take Astryx's props unchanged (https://astryx.atmeta.com/components/<Name>).",
+        '',
+        "Each also takes `control`, a name. While the App runs, `app.control` lists its named controls with their values and ranges, sets one (a number is clamped to its range and step) or presses a button, and answers with the value read back.",
+        '',
+        "A control the kit does not have registers itself the same way: `useControl(name, { label, kind, read, set, invoke, min, max, step, options })` in React, or `theorem.controls.register(spec)`, which returns what unregisters it. `kind` is `number`, `boolean`, `choice`, `text` or `action`.",
+      ].join('\n'),
+    },
+    {
+      id: 'stage',
+      title: 'Stage and Dock',
+      body: [
+        "`<Stage aspect=\"16 / 9\" narrowAspect=\"1\">` is the picture: full width, its height from its aspect, so a resize never changes what it is drawing. A canvas, video or image inside it fills it.",
+        '',
+        "`<Dock panel={...}>` floats over the Stage: its children are the few controls that are always there (a primary action first), and Parameters opens `panel`. `DockRow` spans the panel for presets or secondary actions.",
+        '',
+        '```tsx',
+        "import { Button, Dock, Slider, Stage, mount } from '@theorem/ui'",
+        '',
+        'mount(document.getElementById(\'root\')!, (',
+        '  <Stage>',
+        '    <canvas ref={draw} />',
+        '    <Dock panel={<Slider label="Feed" value={feed} min={0.01} max={0.09} step={0.0001} control="feed" onChange={setFeed} />}>',
+        '      <Button label={running ? \'Pause\' : \'Play\'} control="pause" onClick={toggle} />',
+        '    </Dock>',
+        '  </Stage>',
+        '))',
+        '```',
+      ].join('\n'),
+    },
+    {
+      id: 'notebook',
+      title: 'In a notebook cell',
+      body: [
+        "A cell imports it as any module: `const ui = await import('@theorem/ui')`. `ui.mount(element, node)` renders React into an element in Theorem's theme and returns what unmounts it; pass that to `invalidation` so a re-run leaves nothing registered. As a view, the element's `value` is what other cells read:",
+        '',
+        '```js',
+        "const ui = await import('@theorem/ui')",
+        "const { createElement: h, useState } = await import('react')",
+        "const root = Object.assign(document.createElement('div'), { value: 3 })",
+        'function K() {',
+        '  const [k, setK] = useState(3)',
+        "  const moved = (v) => { setK(v); root.value = v; root.dispatchEvent(new Event('input')) }",
+        "  return h(ui.Slider, { label: 'k', value: k, min: 0, max: 10, control: 'k', onChange: moved })",
+        '}',
+        'invalidation.then(ui.mount(root, h(K)))',
+        'const k = view(root)',
+        '```',
+      ].join('\n'),
+    },
+    {
+      id: 'presentation',
+      title: 'Where it is shown',
+      body: [
+        "`theorem.presentation.now()` is `{ mode, width, height }`: `mode` is `inline` in a reply, `panel` beside the conversation or `expanded`, and `height` is the room it has. `theorem.presentation.onChange(listener)` hears each change and returns what stops it. The frame also sets `data-theorem-presentation` on the root element and `--theorem-available-width` and `--theorem-available-height`. Moving between them does not reload the App.",
+      ].join('\n'),
+    },
+  ],
 }
 
 // ── Theorem's views helpers ─────────────────────────────────────────────────
@@ -616,7 +699,7 @@ const a2ui: CapabilityRecord = {
 /** Every record this interface publishes. */
 export const INTERFACE_RECORDS: ReadonlyArray<CapabilityRecord> = [
   observable, generativeUi, a2ui,
-  plot, d3, inputs, htl,
+  plot, d3, inputs, htl, ui,
   ...viewsComponents, ...vocabulary, ...undrawn,
 ]
 
