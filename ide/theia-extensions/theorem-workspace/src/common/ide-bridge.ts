@@ -10,6 +10,19 @@
 import type { TheoremContextReference, TheoremLocation } from '@theoremharness/sdk';
 import type { IdeTheme } from './ide-theme';
 
+/** The workspace file selected in an IDE editor. */
+export type IdeFileLocation = TheoremLocation & {
+    resource: Extract<TheoremLocation['resource'], { kind: 'file' }>;
+};
+
+/**
+ * Add Selection to Chat only sends workspace files. Keep that wire contract
+ * narrower than either window's SDK resource union, which can evolve separately.
+ */
+export type IdeFileReference = Omit<TheoremContextReference, 'location'> & {
+    location: IdeFileLocation;
+};
+
 export interface RevealOptions {
     /** Leave keyboard focus where it is. */
     preserveFocus?: boolean;
@@ -168,7 +181,7 @@ export type IdeFrameMethods = {
 
 /** What the Theorem UI offers the IDE frame inside it. */
 export type IdeHostMethods = {
-    addToChat(reference: TheoremContextReference): void;
+    addToChat(reference: IdeFileReference): void;
     /** The person moved to another place themselves, so Follow pauses. */
     navigated(location: TheoremLocation): void;
     /** The left side panel opened or closed. */
