@@ -358,6 +358,41 @@ export const MAX_SNAPSHOT = 512 * 1024
 /** The largest outline of a page a frame may send, in characters. */
 export const MAX_OUTLINE = 128 * 1024
 
+/** Where a frame is shown: in a reply, in the side panel, or expanded over the page. */
+export type PresentationMode = 'inline' | 'panel' | 'expanded'
+
+/** A frame's presentation: where it is shown and the CSS pixels it has to fill. */
+export interface Presentation {
+  mode: PresentationMode
+  width: number
+  /** The height it may fill without the page scrolling past it. */
+  height: number
+}
+
+/** What a control is, as the agent reads it. */
+export type ControlKind = 'number' | 'boolean' | 'choice' | 'text' | 'action'
+
+/** A control an App named for the agent, and its value now. */
+export interface ControlState {
+  name: string
+  label: string
+  kind: ControlKind
+  value?: unknown
+  min?: number
+  max?: number
+  step?: number
+  /** A choice's values. */
+  options?: Array<string>
+  disabled?: boolean
+}
+
+/** What the agent asks of a control: a new value, or a press. */
+export interface ControlAct {
+  name: string
+  action: 'set' | 'invoke'
+  value?: unknown
+}
+
 /** Methods the sandbox serves; the page calls them. */
 export interface SandboxMethods {
   'cell.run': {
@@ -382,6 +417,15 @@ export interface SandboxMethods {
    * (`scheme` tells them apart), for the host stylesheet under the App's own.
    */
   'theme.changed': { params: ThemeState | AppTheme; result: null }
+  /** Where the frame is shown and the room it has, now and when either changes. */
+  'presentation.changed': { params: Presentation; result: null }
+  /** The controls the App named for the agent, each with its value now. */
+  'controls.list': { params: Record<string, never>; result: Array<ControlState> }
+  /**
+   * Sets a named control or presses it, through the same function the visible
+   * control calls, then reads it back once the App has drawn the change.
+   */
+  'controls.act': { params: ControlAct; result: ControlState }
   /**
    * The frame as it is now, without waiting for it to settle: what a snapshot
    * holds. Null when the copy is too large to send.

@@ -48,6 +48,7 @@ import type {
   StateCollections,
 } from '@/lib/blocks/bridge'
 import { pinnedAppState, useDocumentReplica } from '@/lib/blocks/document-app'
+import { trackRunningApp } from '@/lib/blocks/running-apps'
 import type { FrameConnection } from '@/lib/blocks/executor'
 import { call } from '@/lib/blocks/sandbox/protocol'
 import type {
@@ -203,9 +204,12 @@ export function NotebookFrame({
   onStatus,
   onBuildError,
   onStage,
+  documentId,
 }: {
   build: (theme: ThemeState) => Promise<string>
   buildKey: unknown
+  /** The saved notebook it runs, so the agent's app.control reaches its named controls. */
+  documentId?: string
   lend?: NotebookLoan
   title: string
   loading: string
@@ -232,9 +236,14 @@ export function NotebookFrame({
     (connection: FrameConnection) => {
       // The frame is made before its document loads; it has started once it connects.
       void connection.connected.then(() => onStage?.('mounted'), () => {})
-      return followTheme(connection)
+      const unfollow = followTheme(connection)
+      const untrack = documentId ? trackRunningApp(documentId, title, connection) : () => {}
+      return () => {
+        untrack()
+        unfollow()
+      }
     },
-    [onStage],
+    [onStage, documentId, title],
   )
   if (page.error) return <BlockMessage tone="error">{page.error}</BlockMessage>
   if (!page.src)
@@ -722,6 +731,7 @@ export function ObservableNotebookView({
           title={notebook.title}
           loading="Starting the notebook…"
           onSelection={onSelection}
+          {...(!pinned && artifact.documentId && { documentId: artifact.documentId })}
           {...report}
         />
       ) : (

@@ -5,10 +5,12 @@ import appBridge from './sandbox/app-bridge.ts?raw'
 import cell from './sandbox/cell.ts?raw'
 import cellRuntime from './sandbox/cell-runtime.ts?raw'
 import connect from './sandbox/connect.ts?raw'
+import controls from './sandbox/controls.ts?raw'
 import db from './sandbox/db.ts?raw'
 import display from './sandbox/display.ts?raw'
 import notebook from './sandbox/notebook.ts?raw'
 import outline from './sandbox/outline.ts?raw'
+import presentation from './sandbox/presentation.ts?raw'
 import protocol from './sandbox/protocol.ts?raw'
 import standalone from './sandbox/standalone.ts?raw'
 import theme from './sandbox/theme.ts?raw'
@@ -21,10 +23,12 @@ export const runtimeSources: Record<string, string> = {
   cell,
   'cell-runtime': cellRuntime,
   connect,
+  controls,
   db,
   display,
   notebook,
   outline,
+  presentation,
   protocol,
   standalone,
   theme,

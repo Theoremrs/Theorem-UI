@@ -22,6 +22,9 @@ import {
 } from './app-operations'
 import type { AppOperationHost, AppReceipt, AppRequest } from './app-operations'
 import type { ObservableNotebook } from '@/lib/notebooks/forms'
+import { actOnControl, listControls, registerControl } from './sandbox/controls'
+import { rpcOver, serve } from './sandbox/protocol'
+import type { SandboxMethods } from './sandbox/protocol'
 
 const CLEAN: AppInspection = {
   built: true,
@@ -45,6 +48,7 @@ function host(overrides: Partial<AppOperationHost> = {}) {
   const notebooks: Array<ObservableNotebook> = []
   const asked: Array<string> = []
   const value: AppOperationHost = {
+    running: { app: () => undefined, list: () => [] },
     inspect: async (html, options) => {
       inspected.push({ html, ...options })
       return CLEAN
@@ -88,11 +92,11 @@ const assistant = (...content: Array<ReturnType<typeof operation>>) =>
   }) as unknown as ThreadMessage
 
 describe('the operations a turn declares', () => {
-  test('app.check, which also reads library declarations, is declared within what Theorem admits of a declaration', () => {
-    expect(APP_OPERATIONS.map(({ name }) => name)).toEqual(['app.check'])
+  test('app.check, which also reads library declarations, and app.control are declared within what Theorem admits of a declaration', () => {
+    expect(APP_OPERATIONS.map(({ name }) => name)).toEqual(['app.check', 'app.control'])
     for (const declared of APP_OPERATIONS) {
       expect(declared.name).toMatch(/^[a-z][a-z0-9_.]{2,63}$/)
-      expect(declared.description.length).toBeLessThanOrEqual(1024)
+      expect(new TextEncoder().encode(declared.description).length).toBeLessThanOrEqual(1024)
       expect(JSON.stringify(declared.inputSchema).length).toBeLessThanOrEqual(
         8 * 1024,
       )
@@ -431,6 +435,59 @@ describe('answering a check', () => {
         )
       ).outcome,
     ).toBe('rejected')
+  })
+})
+
+describe('acting on a running App\'s controls', () => {
+  // The App's end of the bridge, serving what app-bridge.ts serves, over a real channel.
+  function runningFrame() {
+    const channel = new MessageChannel()
+    const app = rpcOver(channel.port2)
+    serve<SandboxMethods, 'controls.list'>(app, 'controls.list', () => listControls())
+    serve<SandboxMethods, 'controls.act'>(app, 'controls.act', (act) => actOnControl(act))
+    return rpcOver(channel.port1)
+  }
+  const control = (args: Record<string, unknown>): AppRequest => ({ ...request(args), operation: 'app.control' })
+
+  test('lists, sets and presses through the functions the visible control calls, and reads back the value drawn', async () => {
+    let feed = 0.037
+    let paused = false
+    const unregister = [
+      registerControl({ name: 'feed', label: 'Feed rate', kind: 'number', min: 0.01, max: 0.09, step: 0.0001, read: () => feed, set: (value) => { feed = value as number } }),
+      registerControl({ name: 'pause', label: 'Pause', kind: 'action', invoke: () => { paused = !paused } }),
+    ]
+    const rpc = runningFrame()
+    const page = host({ running: { app: (id) => (id === 'doc-1' ? rpc : undefined), list: () => [{ documentId: 'doc-1', title: 'Gray–Scott' }] } })
+    try {
+      const listed = await answerAppRequest(control({ action: 'list' }), page.host)
+      expect(listed).toEqual({
+        outcome: 'applied',
+        result: {
+          documentId: 'doc-1',
+          controls: [
+            { name: 'feed', label: 'Feed rate', kind: 'number', value: 0.037, min: 0.01, max: 0.09, step: 0.0001 },
+            { name: 'pause', label: 'Pause', kind: 'action' },
+          ],
+        },
+      })
+      // Held to the slider's range and step, as the slider would hold it.
+      const set = await answerAppRequest(control({ action: 'set', name: 'feed', value: 0.12345 }), page.host)
+      expect(set.result).toEqual({ documentId: 'doc-1', control: expect.objectContaining({ name: 'feed', value: 0.09 }) })
+      await answerAppRequest(control({ action: 'set', name: 'feed', value: 0.05555 }), page.host)
+      expect(feed).toBe(0.0556)
+      await answerAppRequest(control({ action: 'invoke', name: 'pause', documentId: 'doc-1' }), page.host)
+      expect(paused).toBe(true)
+      const unknown = await answerAppRequest(control({ action: 'set', name: 'kill', value: 1 }), page.host)
+      expect(unknown).toEqual({ outcome: 'rejected', reason: expect.stringContaining('["feed","pause"]') })
+    } finally {
+      for (const undo of unregister) undo()
+    }
+  })
+
+  test('with no App running, or one not running, it says which are', async () => {
+    expect(await answerAppRequest(control({ action: 'list' }), host().host)).toEqual({ outcome: 'rejected', reason: 'No App is running on the page.' })
+    const page = host({ running: { app: () => undefined, list: () => [{ documentId: 'doc-1', title: 'A' }, { documentId: 'doc-2', title: 'B' }] } })
+    expect((await answerAppRequest(control({ action: 'list' }), page.host)).reason).toBe('Name the App by documentId: doc-1 (A), doc-2 (B).')
   })
 })
 

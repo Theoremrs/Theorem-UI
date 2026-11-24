@@ -10,6 +10,7 @@ import {
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { flyGhost, takeLaunch } from '@/lib/motion'
+import { FramePresentation, PRESENTATION_ROOM } from '@/lib/blocks/presentation'
 import { cn } from '@/lib/utils'
 import { messageIdOf, useThreadArtifacts } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
@@ -133,11 +134,13 @@ export function ArtifactPanel({
       />
 
       <div
+        {...{ [PRESENTATION_ROOM]: '' }}
         className={cn(
           'min-h-0 flex-1',
           fills ? 'flex flex-col' : 'overflow-y-auto',
         )}
       >
+        <FramePresentation value="panel">
         {/* A body that fills the panel, such as an App's frame, has no
             line for the caret to follow. */}
         <CanvasSplitBody
@@ -174,6 +177,7 @@ export function ArtifactPanel({
             </div>
           )}
         </CanvasSplitBody>
+        </FramePresentation>
       </div>
     </CanvasSplitDocument>
   )

@@ -22,9 +22,14 @@ import {
   libraryDeclarations,
   theoremAppDeclarations,
 } from './check/theorem-app.generated'
+import { runningApp, runningApps } from './running-apps'
+import { call } from './sandbox/protocol'
+import type { ControlState, Rpc, SandboxMethods } from './sandbox/protocol'
 
 /** The operation that checks an App, as the turn's tool `app__check`. */
 export const APP_CHECK = 'app.check'
+/** The operation that reads and changes a running App's named controls, as `app__control`. */
+export const APP_CONTROL = 'app.control'
 /** What `app.check` with `library` calls the declarations of `window.theorem` itself. */
 export const BRIDGE_LIBRARY = 'window.theorem'
 
@@ -41,7 +46,7 @@ export const APP_OPERATIONS = [
     // One operation for both, since a send admits sixteen and Kit, the face,
     // the workbench and the present one take the rest (client-surface.ts).
     description:
-      "Builds and checks an App in the person's browser and returns what is wrong with it. Pass `html`, a complete App document exactly as it would be published, or `artifact`, another form as write_app takes it, to check a draft, or `documentId` to check a published App as saved now. The result says whether it built, lists build, type and runtime problems by file, line and column, and gives what the App showed: its text, and `outline`, each thing on the page by role, name and state with the source place that made it. `picture: true` adds an image of the App as drawn, if you read images. Nothing is changed or shown to the person: the App runs hidden for a moment with empty state and an empty in-memory database. Pass `library` instead to read the TypeScript declarations an App is checked against: window.theorem, @theorem/runtime, @theorem/spatial, @theorem/annotate. It lists the files, returns index.d.ts or `file`, and a `digest` of the whole API. Read what you use instead of guessing its shape.",
+      "Builds and checks an App in the person's browser and returns what is wrong with it. Pass `html`, a complete App document exactly as it would be published, or `artifact`, another form as write_app takes it, to check a draft, or `documentId` to check a published App as saved now. The result says whether it built, lists build, type and runtime problems by file, line and column, and gives what the App showed: its text, and `outline`, each thing on the page by role, name and state with the source place that made it. `picture: true` adds an image of the App as drawn, if you read images. Nothing is changed or shown to the person: the App runs hidden for a moment with empty state and an empty in-memory database. Pass `library` instead to read the TypeScript declarations an App is checked against: window.theorem, @theorem/ui, @theorem/runtime, @theorem/spatial, @theorem/annotate. It lists the files, returns index.d.ts or `file`, and a `digest` of the whole API. Read what you use instead of guessing its shape.",
     effect: 'read',
     inputSchema: {
       type: 'object',
@@ -82,7 +87,7 @@ export const APP_OPERATIONS = [
           minLength: 1,
           maxLength: 100,
           description:
-            'Read declarations instead of checking: window.theorem, @theorem/runtime, @theorem/spatial or @theorem/annotate.',
+            'Read declarations instead of checking: window.theorem, @theorem/ui, @theorem/runtime, @theorem/spatial or @theorem/annotate.',
         },
         file: {
           type: 'string',
@@ -91,6 +96,33 @@ export const APP_OPERATIONS = [
           description:
             'With library: one declaration file its listing names, such as operations.d.ts.',
         },
+      },
+    },
+  },
+  {
+    name: APP_CONTROL,
+    description:
+      "Reads and changes the controls a running App on the person's screen names for you (with `theorem.controls.register`, or @theorem/ui's `control` prop). `list` returns each control: its name, label, kind (number, boolean, choice, text or action), value, and range or options. `set` gives one a value and `invoke` presses one, through the same function the visible control calls; the person sees the change. The result is the control as read back once the App has drawn it, which can differ from what was asked (a number is held to its range and step). Pass `documentId` for a saved App; without it, the one running App is used.",
+    effect: 'presentation',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['action'],
+      properties: {
+        action: { type: 'string', enum: ['list', 'set', 'invoke'] },
+        documentId: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 200,
+          description: 'The saved App, when more than one is running.',
+        },
+        name: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 200,
+          description: 'With set or invoke: the control, by the name `list` gives.',
+        },
+        value: { description: 'With set: the new value, of the control\'s kind.' },
       },
     },
   },
@@ -228,6 +260,7 @@ export interface AppAnswer {
   readonly outcome: Outcome
   readonly reason?: string
   readonly result?:
+    | AppControlResult
     | (AppInspection & {
         /** The saved revision that was checked, when a published App was. */
         revision?: string
@@ -243,6 +276,8 @@ export interface AppAnswer {
  */
 export interface AppOperationHost {
   inspect: typeof inspectApp
+  /** The newest running frame of a saved App, and the Apps running on the page. */
+  running: { app: (documentId: string) => Rpc | undefined; list: typeof runningApps }
   /** A saved App's head, its source read as the form it is saved in. */
   load: (
     documentId: string,
@@ -258,6 +293,7 @@ export interface AppOperationHost {
 
 const pageHost: AppOperationHost = {
   inspect: inspectApp,
+  running: { app: runningApp, list: runningApps },
   load: (documentId) => appDocumentFor(documentId).load(),
   // Loaded only when a notebook is checked: the notebook runtime is large.
   notebookPage: async (notebook) => {
@@ -328,6 +364,55 @@ async function checkArtifact(
 const failure = (error: unknown) =>
   error instanceof Error ? error.message : String(error)
 
+/** What `app.control` returns: the App reached, and its controls or the one acted on. */
+export interface AppControlResult {
+  documentId: string
+  controls?: Array<ControlState>
+  control?: ControlState
+}
+
+/** Lists, sets or presses a running App's named controls, in its frame. */
+async function controlApp(args: Record<string, unknown>, host: AppOperationHost): Promise<AppAnswer> {
+  const { action, name, value } = args
+  const apps = host.running.list()
+  const documentId =
+    typeof args.documentId === 'string' && args.documentId
+      ? args.documentId
+      : apps.length === 1
+        ? apps[0]!.documentId
+        : undefined
+  const named = apps.map((app) => `${app.documentId} (${app.title})`).join(', ')
+  if (!documentId)
+    return {
+      outcome: 'rejected',
+      reason: apps.length ? `Name the App by documentId: ${named}.` : 'No App is running on the page.',
+    }
+  const rpc = host.running.app(documentId)
+  if (!rpc)
+    return {
+      outcome: 'rejected',
+      reason: `App ${documentId} is not running on the page${apps.length ? `; ${named} is` : ''}.`,
+    }
+  try {
+    if (action === 'list')
+      return {
+        outcome: 'applied',
+        result: { documentId, controls: await call<SandboxMethods, 'controls.list'>(rpc, 'controls.list', {}) },
+      }
+    if ((action !== 'set' && action !== 'invoke') || typeof name !== 'string' || !name)
+      return { outcome: 'rejected', reason: 'Pass action list, or set or invoke with the control\'s name.' }
+    const control = await call<SandboxMethods, 'controls.act'>(rpc, 'controls.act', {
+      name,
+      action,
+      ...(action === 'set' && { value }),
+    })
+    return { outcome: 'applied', result: { documentId, control } }
+  } catch (error) {
+    // The App's refusal (no such control, a value it does not take) is its answer.
+    return { outcome: 'rejected', reason: failure(error) }
+  }
+}
+
 /**
  * Answers one request. A check that finds problems is `applied`: the check
  * was made, and its result says what it found. `failed` is a check that could
@@ -337,6 +422,7 @@ export async function answerAppRequest(
   request: AppRequest,
   host: AppOperationHost = pageHost,
 ): Promise<AppAnswer> {
+  if (request.operation === APP_CONTROL) return controlApp(request.args, host)
   if (request.operation !== APP_CHECK)
     return {
       outcome: 'rejected',
