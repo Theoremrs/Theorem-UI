@@ -68,6 +68,44 @@ async function fieldsOf(
   }
 }
 
+const KIND = {
+  'html-app': ['app', 'theorem-app', 'html'],
+  openui: ['openui', 'theorem-openui', 'openui'],
+  observable: ['observable', 'theorem-observable', 'json'],
+  marimo: ['marimo', 'theorem-marimo', 'python'],
+} as const
+
+/**
+ * An artifact for a document opened with no message, such as from Notes: the
+ * head of the document, drawn by the renderer its form's part names. It pins
+ * no position, since no result was made at one; its views read the head.
+ */
+export function documentArtifact(snapshot: AppSnapshot): TheoremArtifact {
+  const [kind, rendererId, language] = Object.hasOwn(KIND, snapshot.form)
+    ? KIND[snapshot.form as keyof typeof KIND]
+    : KIND['html-app']
+  const id = `document:${snapshot.documentId}`
+  return {
+    partId: id,
+    artifactId: id,
+    revision: String(snapshot.revision.position),
+    kind,
+    rendererId,
+    contractVersion: 'theorem-artifact-v1',
+    lifecycle: 'ready',
+    patchSequence: Number(snapshot.revision.position),
+    title: snapshot.title,
+    content: snapshot.html,
+    language,
+    fallbackText: snapshot.title,
+    payloadRef: undefined,
+    runId: undefined,
+    sourceTool: undefined,
+    documentId: snapshot.documentId,
+    documentPosition: undefined,
+  }
+}
+
 /** How often a visible view reads its head again, as DocumentApp does. */
 const REFRESH_MS = 10_000
 
@@ -100,6 +138,45 @@ function useHead(app: AppDocument | undefined): string | undefined {
     }
   }, [app])
   return error
+}
+
+/**
+ * A saved document as the artifact its renderer shows, for a surface that
+ * opens one with no message, such as Notes: the part the server would make of
+ * its head. Undefined until it is read; `error` says why a read failed or the
+ * saved source is not a form this build reads.
+ */
+export function useDocumentArtifact(documentId: string): {
+  artifact?: TheoremArtifact
+  error?: string
+} {
+  const app = useMemo(() => appDocumentFor(documentId), [documentId])
+  const snapshot = useSyncExternalStore(app.subscribe, app.getSnapshot)
+  const error = useHead(app)
+  // Made again only when the source or title changes: its views read the
+  // head themselves, so a state save is not a new artifact.
+  const key = snapshot?.publication && `${snapshot.title}\n${snapshot.html}`
+  const [made, setMade] = useState<{ key: string; artifact: TheoremArtifact }>()
+  useEffect(() => {
+    const publication = snapshot?.publication
+    if (!snapshot || !publication || !key) return
+    let active = true
+    void fieldsOf(snapshot.documentId, publication).then((fields) => {
+      if (active)
+        setMade({ key, artifact: { ...documentArtifact(snapshot), ...fields } })
+    })
+    return () => {
+      active = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  const unreadable =
+    snapshot?.unreadable &&
+    `The saved ${snapshot.form} could not be read: ${snapshot.unreadable}`
+  return {
+    artifact: made && made.key === key ? made.artifact : undefined,
+    error: error ?? (unreadable || undefined),
+  }
 }
 
 const noSnapshot = () => null

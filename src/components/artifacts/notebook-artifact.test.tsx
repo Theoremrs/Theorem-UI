@@ -12,6 +12,14 @@ import { call } from '@/lib/blocks/sandbox/protocol'
 import type { PageMethods } from '@/lib/blocks/sandbox/protocol'
 import type { NotebookForm, RetainedOutputs } from '@/lib/notebooks/forms'
 import { BROWSER_RUN_HOSTS } from '@/lib/notebooks/marimo'
+import { encodeNote } from '@/lib/theorem/note-canonical'
+import {
+  editNote,
+  noteKey,
+  settleNote,
+  useNoteStatus,
+} from '@/lib/theorem/notes'
+import type { Note } from '@/lib/theorem/notes'
 import type { ExecuteEnvironment } from '@/lib/theorem/artifact-host'
 import { installFakeTheorem } from '@/stories/fake-theorem'
 import {
@@ -41,6 +49,7 @@ import {
   sourceOf,
 } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
+import { NotePanel } from '../notes/note-panel'
 
 const MARIMO_SOURCE = `import marimo
 
@@ -572,4 +581,64 @@ test('a part that names no App document offers no reference to it', async () => 
     <ArtifactView artifact={unnamed} distance="thing" latest />,
   )
   expect(buttonNamed(container, 'Ask about this')).toBeUndefined()
+})
+
+test('a notebook opened from Notes runs as its form from its document\'s head, never in the Markdown editor', async () => {
+  const head = await savedHead('rents-note', RENTS_HEAD, {
+    state: { notebook: { saved: { params: { rent: 1600 } } } },
+  })
+  serve({ documents: [head] })
+  const capture = captureDocuments()
+  let close = () => {}
+  try {
+    const { container } = await render(<NotePanel documentId="rents-note" />)
+    const frame = await connectAppFrame(container)
+    close = frame.close
+    const built = capture.documents.at(-1)!
+    expect(built).toContain('rent * 12')
+    expect(built).toContain('"params":{"rent":1600}')
+    expect(container.querySelector('.ProseMirror')).toBeNull()
+    expect(head.writes.length).toBe(0)
+  } finally {
+    close()
+    capture.restore()
+  }
+}, 30_000)
+
+test('a note save that meets a revision saved as an App stops instead of filing it as a note', async () => {
+  // The note as it was cached, and the same document since saved as a
+  // notebook: one history, so Loro would merge the two.
+  const typed = encodeNote('Rents')
+  const doc = LoroDoc.fromSnapshot(typed)
+  const [block] = doc.getTree('blocks').getNodes().filter(
+    (node) => doc.getMap(`attrs:${node.id}`).get('kind') === 'paragraph',
+  )
+  doc.getMap(`attrs:${block!.id}`).set('artifactForm', 'observable')
+  doc.getText(`text:${block!.id}`).update(JSON.stringify(RENTS_HEAD))
+  doc.commit()
+  const head = await appDocumentFixture({
+    documentId: 'rents-retagged',
+    position: 2,
+    canonical: doc.export({ mode: 'snapshot' }),
+  })
+  serve({ documents: [head] })
+  const note: Note = {
+    documentId: 'rents-retagged',
+    title: 'Rents',
+    markdown: 'Rents',
+    savedMarkdown: 'Rents',
+    revision: { position: 1, contentDigest: 'earlier' },
+    canonical: typed,
+    documentKind: 'authored',
+    editable: true,
+    origin: { kind: 'user_authored', actorId: 'person:test', originSurface: 'test' },
+    retired: false,
+  }
+  const queryClient = new QueryClient()
+  queryClient.setQueryData(noteKey(note.documentId), note)
+  editNote(queryClient, note.documentId, 'Rents, revised')
+  await settleNote(queryClient, note.documentId).catch(() => undefined)
+  expect(useNoteStatus.getState().status[note.documentId]).toBe('conflict')
+  expect(head.writes.length).toBe(0)
+  expect(head.saved().summary.documentKind).toBe('theorem.app')
 })
