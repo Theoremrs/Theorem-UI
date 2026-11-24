@@ -53,8 +53,9 @@ try {
    })}
   })
   // A heading's space above is 1.75 lines (--appearance-section-gap, the
-  // design overhaul's "more space above"); below it stays 0.75 lines.
-  const passed=errors.length===0&&measured.headings.length===3&&measured.headings.every(n=>Math.abs(n.before-1.75*measured.leading)<=0.25&&Math.abs(n.after-0.75*measured.leading)<=0.25)
+  // design overhaul's "more space above"); below it is a quarter line
+  // (--appearance-heading-gap, owner 2026-11-22).
+  const passed=errors.length===0&&measured.headings.length===3&&measured.headings.every(n=>Math.abs(n.before-1.75*measured.leading)<=0.25&&Math.abs(n.after-0.25*measured.leading)<=0.25)
   results.push({settings,passed,errors,...measured});await p.close()
  }
  await writeFile(resolve(output,'chromium-touch-and-rhythm.json'),JSON.stringify({generatedAt:new Date().toISOString(),engine:browser.version(),results},null,2)+'\n')
