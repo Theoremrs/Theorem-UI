@@ -66,9 +66,13 @@ async function vitesseFidelity(observed) {
   ) {
     const actual = actualCharacters[offset]
     const authored = expectedCharacters[offset]
+    // Whitespace paints no ink, and the app's pass (codeToTokensBase in
+    // lib/code-classes.ts, mergeWhitespaces by default) gives a lone space
+    // the next token's colour. Compare colour on glyphs only.
     if (
       actual?.character !== authored?.character ||
-      (authored?.character !== '\n' && actual?.color !== authored?.color)
+      (!/\s/.test(authored?.character ?? '') &&
+        actual?.color !== authored?.color)
     )
       mismatches.push({ offset, actual, authored })
   }

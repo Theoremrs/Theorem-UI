@@ -14,9 +14,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use ratatui::{
     Frame,
-    buffer::Buffer,
+    buffer::{Buffer, Cell},
     layout::{Constraint, Layout, Margin, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Widget},
 };
@@ -46,6 +46,8 @@ const REST_MS: f64 = 600.0;
 const BAND: f64 = 4.0;
 /// How far an edge row's text goes toward the ground where output is out of view.
 const FADE: f32 = 0.55;
+/// How far a program's faint text goes toward its ground, as half opacity took it.
+const FAINT: f32 = 0.5;
 
 /// What React pushes in: one command and what it printed.
 #[derive(Deserialize, Default, PartialEq, Clone)]
@@ -122,11 +124,12 @@ fn wrap(text: &str, first: usize, rest: usize) -> Vec<String> {
     rows
 }
 
-/// The process panes' colours (workbench.rs) on the panel's own ground.
+/// The process panes' colours (workbench.rs) on the canvas the agent terminal's
+/// conversation sits on.
 fn vt_palette(p: &Palette) -> VtPalette {
     VtPalette {
         fg: p.ink,
-        bg: p.bg,
+        bg: p.canvas(),
         ansi: ansi_of(p),
         selection: Style::new().bg(p.selection),
         search_match: Style::new(),
@@ -213,21 +216,39 @@ fn command_spans(text: String, run: &Run, p: &Palette, at: f64) -> Vec<Span<'sta
         .collect()
 }
 
+/// `cell`'s text taken `t` of the way toward its ground.
+fn toward_ground(cell: &mut Cell, p: &Palette, t: f32) {
+    let ground = if cell.bg == Color::Reset {
+        p.canvas()
+    } else {
+        cell.bg
+    };
+    let ink = if cell.fg == Color::Reset {
+        p.ink
+    } else {
+        cell.fg
+    };
+    cell.fg = mix(ink, ground, t);
+}
+
 /// Row `y` of `area`, its text taken toward its ground as a fade's end would be.
 fn fade(buf: &mut Buffer, area: Rect, y: u16, p: &Palette) {
     for x in area.x..area.right() {
-        let cell = &mut buf[(x, y)];
-        let ground = if cell.bg == Color::Reset {
-            p.bg
-        } else {
-            cell.bg
-        };
-        let ink = if cell.fg == Color::Reset {
-            p.ink
-        } else {
-            cell.fg
-        };
-        cell.fg = mix(ink, ground, FADE);
+        toward_ground(&mut buf[(x, y)], p, FADE);
+    }
+}
+
+/// What a program printed faint, muted in its colour. The terminal type draws
+/// DIM at full opacity in a lighter weight (cell-grid.css), since the agent's
+/// own secondary text is muted already; a program's is not, so its colour goes
+/// half way to its ground, as half opacity drew it, and the ground stays whole.
+/// A colour that is not RGB keeps its letters and the lighter weight.
+fn faint(cell: &mut Cell, p: &Palette) {
+    if cell.modifier.contains(Modifier::DIM)
+        && matches!(cell.fg, Color::Rgb(..) | Color::Reset)
+        && matches!(cell.bg, Color::Rgb(..) | Color::Reset)
+    {
+        toward_ground(cell, p, FAINT);
     }
 }
 
@@ -507,7 +528,10 @@ impl CommandView {
     fn draw_at(&mut self, frame: &mut Frame, at: f64) {
         let p = palette();
         let area = frame.area();
-        frame.render_widget(Block::new().style(Style::new().bg(p.bg).fg(p.ink)), area);
+        frame.render_widget(
+            Block::new().style(Style::new().bg(p.canvas()).fg(p.ink)),
+            area,
+        );
         let inner = area.inner(Margin::new(1, 0));
         let command = self.command_rows(inner.width, at);
         let command_rows = u16::try_from(command.len()).unwrap_or(u16::MAX);
@@ -533,7 +557,9 @@ impl CommandView {
             let buf = frame.buffer_mut();
             for y in 0..body.height {
                 for x in 0..body.width {
-                    buf[(body.x + x, body.y + y)] = read[(x, start + y)].clone();
+                    let mut cell = read[(x, start + y)].clone();
+                    faint(&mut cell, &p);
+                    buf[(body.x + x, body.y + y)] = cell;
                 }
             }
             // A single row of output is left whole, and the newest row stays whole with one
@@ -1044,7 +1070,7 @@ mod tests {
         let buf = drawn(&mut view, 20, 4);
         let ink = buf[(1, 3)].fg;
         let ink = if ink == Color::Reset { p.ink } else { ink };
-        let faded = mix(ink, p.bg, FADE);
+        let faded = mix(ink, p.canvas(), FADE);
         assert_eq!(buf[(1, 1)].fg, faded, "older lines are above");
         assert_eq!(buf[(1, 3)].fg, ink, "the newest line is whole");
 
@@ -1148,5 +1174,39 @@ mod tests {
             view.wants_frame(Rect::new(0, 0, 20, 4)),
             "a grown element draws at once"
         );
+    }
+    #[test]
+    fn a_command_sits_on_the_agent_terminals_canvas() {
+        let canvas = Color::Rgb(0x12, 0x12, 0x12);
+        let mut laddered = palette();
+        laddered.canvas = Some(canvas);
+        crate::PALETTE.set(laddered);
+        let mut view = run(
+            serde_json::json!({"command": "ls", "stdout": "a", "status": "complete", "open": true}),
+        );
+        let buf = drawn(&mut view, 20, 3);
+        assert_eq!(buf[(0, 0)].bg, canvas, "the prompt's line");
+        assert_eq!(buf[(1, 1)].bg, canvas, "what it printed");
+        assert_eq!(buf[(19, 2)].bg, canvas, "the rows it left empty");
+    }
+
+    #[test]
+    fn faint_output_is_muted_in_its_colour_and_keeps_its_lighter_weight() {
+        let p = palette();
+        let mut view = run(serde_json::json!({
+            "command": "test",
+            "stdout": "\u{1b}[2mfaint\u{1b}[0m plain",
+            "status": "complete",
+            "open": true,
+        }));
+        let buf = drawn(&mut view, 30, 2);
+        assert_eq!(rows(&buf)[1], " faint plain");
+        let faint = &buf[(1, 1)];
+        assert!(faint.modifier.contains(Modifier::DIM));
+        assert_eq!(faint.fg, mix(p.ink, p.canvas(), FAINT));
+        assert_eq!(faint.bg, p.canvas(), "its ground stays whole");
+        let plain = &buf[(7, 1)];
+        assert!(!plain.modifier.contains(Modifier::DIM));
+        assert!(plain.fg == p.ink || plain.fg == Color::Reset);
     }
 }

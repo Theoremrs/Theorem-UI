@@ -427,7 +427,11 @@ impl CellsView {
             self.styled_by = Some(p);
         }
         let area = frame.area();
-        frame.render_widget(Block::new().style(Style::new().bg(p.bg).fg(p.ink)), area);
+        // The cells sit on the canvas the agent terminal's conversation sits on.
+        frame.render_widget(
+            Block::new().style(Style::new().bg(p.canvas()).fg(p.ink)),
+            area,
+        );
         let inner = area.inner(Margin::new(1, 0));
         frame.render_widget(self.head_line(inner.width), Rect { height: 1, ..inner });
         self.caret = None;
@@ -630,7 +634,7 @@ pub fn mount_cells(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
+    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Color};
 
     fn cells(source: &str, open: bool) -> CellsView {
         let mut view = CellsView::new(None);
@@ -793,5 +797,15 @@ mod tests {
             .unwrap();
         let shown = rows(&drawn(&mut view, 30, 1));
         assert!(shown[0].ends_with('…'), "{shown:?}");
+    }
+    #[test]
+    fn the_cells_sit_on_the_agent_terminals_canvas() {
+        let canvas = Color::Rgb(0x12, 0x12, 0x12);
+        let mut laddered = palette();
+        laddered.canvas = Some(canvas);
+        crate::PALETTE.set(laddered);
+        let buf = drawn(&mut cells("const x = 1", true), 24, 3);
+        assert_eq!(buf[(0, 0)].bg, canvas, "the prompt's line");
+        assert_eq!(buf[(23, 2)].bg, canvas, "under the cells");
     }
 }

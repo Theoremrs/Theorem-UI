@@ -342,7 +342,8 @@ for (const engine of engines.filter(
           await readState(option, {
             name: 'model-option/highlighted',
             state: 'highlighted',
-            descendant: '.truncate',
+            // The model's name wraps rather than truncates (model-picker.tsx).
+            descendant: '.break-words',
           }),
         )
         await page.keyboard.press('Escape')

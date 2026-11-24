@@ -1,0 +1,34 @@
+{
+  "command-live--github-sharp-dark": {
+    "differs": 0.39,
+    "threshold": 0.2
+  },
+  "command-live--vitesse-dark": {
+    "differs": 0.39,
+    "threshold": 0.2
+  },
+  "command-live--vitesse-light": {
+    "differs": 2.78,
+    "threshold": 0.2
+  },
+  "command-live--stone-light": {
+    "differs": 2.78,
+    "threshold": 0.2
+  },
+  "view-cells--github-sharp-dark": {
+    "differs": 1.01,
+    "threshold": 0.2
+  },
+  "view-cells--vitesse-dark": {
+    "differs": 1.02,
+    "threshold": 0.2
+  },
+  "view-cells--vitesse-light": {
+    "differs": 2.38,
+    "threshold": 0.2
+  },
+  "view-cells--stone-light": {
+    "differs": 2.36,
+    "threshold": 0.2
+  }
+}
