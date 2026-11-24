@@ -20,7 +20,7 @@ import {
 } from '@/lib/blocks/app-source'
 import type { AppProblem } from '@/lib/blocks/app-source'
 import { traceFrameError } from '@/lib/blocks/app-trace'
-import { documentAppHost, documentAppState } from '@/lib/blocks/document-app'
+import { documentAppHost, useDocumentReplica } from '@/lib/blocks/document-app'
 import * as hosted from '@/lib/blocks/hosted-app'
 import type { AppDossier } from '@/lib/blocks/bridge'
 import type {
@@ -57,28 +57,6 @@ import { BlockFrame } from './block-frame'
 import { BlockMessage } from './block-status'
 import { appDeclarations } from './html-app-handler'
 import { SourceEditor } from './source-editor'
-
-function useDocumentReplica(app: AppDocument) {
-  const [state, setState] = useState<ReturnType<typeof documentAppState>>()
-  const [error, setError] = useState<string>()
-  useEffect(() => {
-    let active = true
-    const replica = documentAppState(app)
-    void replica.ready.then(
-      () => {
-        if (active) setState(replica)
-      },
-      (failure) => {
-        if (active) setError(errorText(failure))
-      },
-    )
-    return () => {
-      active = false
-      replica.dispose()
-    }
-  }, [app])
-  return { state, error }
-}
 
 function errorText(error: unknown): string {
   return describeError(error, 'document')

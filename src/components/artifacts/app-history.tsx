@@ -24,13 +24,17 @@ export const OpenLatestContext = createContext<
   ((artifactId: string) => void) | undefined
 >(undefined)
 
-export function AppRevision({ artifact }: { artifact: TheoremArtifact }) {
-  const [selection, setSelection] = useState<AppSelection>()
+/** What Open latest does for a saved revision: the surface's own handler, or the panel's. */
+export function useOpenLatest(artifactId: string): () => void {
   const select = useArtifactView((s) => s.select)
   const owner = useContext(OpenLatestContext)
+  return () => (owner ? owner(artifactId) : select(artifactId, undefined))
+}
+
+export function AppRevision({ artifact }: { artifact: TheoremArtifact }) {
+  const [selection, setSelection] = useState<AppSelection>()
+  const openLatest = useOpenLatest(artifact.artifactId)
   const position = String(artifact.documentPosition ?? artifact.revision)
-  const openLatest = () =>
-    owner ? owner(artifact.artifactId) : select(artifact.artifactId, undefined)
   return (
     <section
       aria-label={`${artifact.title}, revision ${position}`}

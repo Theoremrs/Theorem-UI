@@ -32,7 +32,7 @@ export const previewKey = (artifact: TheoremArtifact) =>
   )}#${APP_PREVIEW_BUILD}`
 
 /** The saved document's state, when the pinned revision is still the App's current one. */
-function useSeed(artifact: TheoremArtifact) {
+export function useSeed(artifact: TheoremArtifact) {
   const [seed, setSeed] = useState<{ bytes: Uint8Array | null }>()
   const { documentId, documentPosition } = artifact
   useEffect(() => {

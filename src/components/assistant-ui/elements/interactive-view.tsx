@@ -41,8 +41,8 @@ import { escapeHtml, scriptJson } from '@/lib/notebooks/page'
 import {
   observableDocument,
   observablePage,
+  savedViewOf,
 } from '@/lib/notebooks/observable-document'
-import type { SavedView } from '@/lib/notebooks/observable-document'
 import { createAppDocument } from '@/lib/theorem/apps'
 import { describeError } from '@/lib/theorem/client'
 import { cn } from '@/lib/utils'
@@ -58,17 +58,6 @@ export type InteractiveViewProps = {
   caption?: string
   source?: string
   sourceUrl?: string
-}
-
-/** What the view is saved with: the parameters moved, and every view's state. */
-function savedOf(selection?: AppSelection): SavedView | undefined {
-  const state = selection?.state
-  if (!state) return undefined
-  const { params, ...views } = state as { params?: Record<string, unknown> }
-  return {
-    ...(params && { params }),
-    ...(Object.keys(views).length && { state: views }),
-  }
 }
 
 /** The message Fix sends: the agent wrote the cells, so it is asked to mend them. */
@@ -165,7 +154,7 @@ export function InteractiveView(props: InteractiveViewProps) {
   // Saved as an App starting from what the reader set: from the reply's
   // menu, which then offers to place it as a page, or by the agent (`ui.view`).
   const saveDocument = useCallback(async () => {
-    const saved = savedOf(selection)
+    const saved = savedViewOf(selection)
     const definition = {
       title,
       cells,

@@ -19,6 +19,7 @@ import { bundleNotebookRuntime } from '@/lib/blocks/export'
 import { hostedAppDocument } from '@/lib/blocks/hosted-app'
 import { chartTheme } from '@/lib/blocks/sandbox/theme'
 import type { ThemeState } from '@/lib/blocks/sandbox/theme'
+import type { AppSelection } from '@/lib/blocks/sandbox/protocol'
 import { transpileCell } from './cells'
 import type { ObservableCell, ObservableNotebook } from './forms'
 import { inlineCode, notebookPage, scriptJson } from './page'
@@ -79,6 +80,21 @@ function compileCell(
 
 /** What a saved view was saved with, which its views start from (sandbox/views.ts). */
 export type SavedView = { params?: Record<string, unknown>; state?: Record<string, unknown> }
+
+/**
+ * What a notebook's views hold now, as a selection carries it: the
+ * parameters moved with `views.param` and each view's own state. Undefined
+ * when they hold nothing, so there is nothing to start from.
+ */
+export function savedViewOf(selection?: AppSelection): SavedView | undefined {
+  const state = selection?.state
+  if (!state) return undefined
+  const { params, ...views } = state as { params?: Record<string, unknown> }
+  return {
+    ...(params && { params }),
+    ...(Object.keys(views).length && { state: views }),
+  }
+}
 
 /**
  * What a page runs: a notebook's title, cells and data. A view in a reply is

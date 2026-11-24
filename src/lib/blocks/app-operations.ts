@@ -13,6 +13,7 @@ import { useEffect } from 'react'
 import { ObservableForm } from '@/lib/notebooks/forms'
 import type { ObservableNotebook } from '@/lib/notebooks/forms'
 import { appDocumentFor } from '@/lib/theorem/apps'
+import type { AppSnapshot } from '@/lib/theorem/apps'
 import { hasStatus, mutate, theorem } from '@/lib/theorem/client'
 import { MAX_RUN_MS, inspectApp } from './app-inspect'
 import type { AppInspection } from './app-inspect'
@@ -239,9 +240,14 @@ export interface AppAnswer {
  */
 export interface AppOperationHost {
   inspect: typeof inspectApp
+  /** A saved App's head, its source read as the form it is saved in. */
   load: (
     documentId: string,
-  ) => Promise<{ html: string; revision: { position: unknown } }>
+  ) => Promise<
+    Pick<AppSnapshot, 'html' | 'form' | 'publication' | 'unreadable'> & {
+      revision: { position: unknown }
+    }
+  >
   notebookPage: (notebook: ObservableNotebook) => Promise<string>
 }
 
@@ -275,7 +281,7 @@ const UNCHECKED: Record<string, string> = {
  * page is built and run as an App is, so a cell that throws is found too.
  */
 async function checkArtifact(
-  artifact: Record<string, unknown>,
+  artifact: Readonly<Record<string, unknown>>,
   options: Parameters<typeof inspectApp>[1],
   host: AppOperationHost,
 ): Promise<AppAnswer> {
@@ -342,14 +348,21 @@ export async function answerAppRequest(
     if (Object.keys(record(request.args.artifact)).length)
       return await checkArtifact(record(request.args.artifact), options, host)
     if (typeof documentId === 'string' && documentId) {
+      // A saved artifact is checked as the form it is saved in, the way its
+      // draft was: an HTML App's page, another form's publication.
       const saved = await host.load(documentId)
-      return {
-        outcome: 'applied',
-        result: {
-          ...(await host.inspect(saved.html, options)),
-          revision: String(saved.revision.position),
-        },
-      }
+      if (!saved.publication)
+        return {
+          outcome: 'rejected',
+          reason: saved.unreadable ?? `The saved ${saved.form} could not be read.`,
+        }
+      const checked = await checkArtifact(saved.publication, options, host)
+      return checked.result
+        ? {
+            ...checked,
+            result: { ...checked.result, revision: String(saved.revision.position) },
+          }
+        : checked
     }
   } catch (error) {
     return { outcome: 'failed', reason: failure(error) }

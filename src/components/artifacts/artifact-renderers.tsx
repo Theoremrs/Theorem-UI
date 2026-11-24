@@ -23,11 +23,7 @@ import type { TheoremArtifact } from './artifact-model'
 import { AppPreview } from './app-revision-frame'
 import { DocumentCard } from './document-card'
 import { AppRevision } from './app-history'
-import {
-  MarimoNotebookView,
-  ObservableNotebookView,
-  UnreadableNotebook,
-} from './notebook-artifact'
+import { NotebookArtifact } from './notebook-artifact'
 import { OpenUIArtifact } from './openui/renderer'
 import { SceneInConversation, SceneInReply } from '@/components/chat/scene-part'
 import {
@@ -158,19 +154,14 @@ const AppPreviewArtifact: FC<RendererProps> = ({ artifact }) => (
   <AppPreview artifact={artifact} />
 )
 
-const ObservableArtifact: FC<RendererProps> = ({ artifact }) =>
-  artifact.notebook?.form === 'observable' ? (
-    <ObservableNotebookView artifact={artifact} notebook={artifact.notebook} />
-  ) : (
-    <UnreadableNotebook artifact={artifact} />
-  )
+/** A notebook: its document's head for the newest revision, the pinned one for an older. */
+const ObservableArtifact: FC<RendererProps> = (props) => (
+  <NotebookArtifact {...props} form="observable" />
+)
 
-const MarimoArtifact: FC<RendererProps> = ({ artifact }) =>
-  artifact.notebook?.form === 'marimo' ? (
-    <MarimoNotebookView artifact={artifact} notebook={artifact.notebook} />
-  ) : (
-    <UnreadableNotebook artifact={artifact} />
-  )
+const MarimoArtifact: FC<RendererProps> = (props) => (
+  <NotebookArtifact {...props} form="marimo" />
+)
 
 /** A scene in its reply: the whole surface, wired to the conversation. */
 const SceneReplyArtifact: FC<RendererProps> = ({ artifact }) =>

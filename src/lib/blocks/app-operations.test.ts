@@ -45,7 +45,8 @@ function host(overrides: Partial<AppOperationHost> = {}) {
     },
     load: async (documentId) => {
       loaded.push(documentId)
-      return { html: '<p>Saved</p>', revision: { position: 7 } }
+      const html = '<p>Saved</p>'
+      return { html, form: 'html-app', publication: { form: 'html-app', title: 'Saved', html }, revision: { position: 7 } }
     },
     notebookPage: async (notebook) => {
       notebooks.push(notebook)
@@ -304,6 +305,46 @@ describe('answering a check', () => {
     expect(page.loaded).toEqual(['app-document'])
     expect(page.inspected).toEqual([{ html: '<p>Saved</p>' }])
     expect(answer.result).toEqual({ ...CLEAN, revision: '7' })
+  })
+
+  test('a saved notebook is checked as the notebook it is saved as, the way its draft was', async () => {
+    const page = host({
+      load: async () => ({
+        html: JSON.stringify(rainfall),
+        form: 'observable',
+        publication: rainfall as ObservableNotebook,
+        revision: { position: 12 },
+      }),
+    })
+    const answer = await answerAppRequest(request({ documentId: 'notebook-document' }), page.host)
+    // Its page is built from the publication, not its saved JSON read as HTML.
+    expect(page.notebooks.map((notebook) => notebook.title)).toEqual(['Rainfall by month'])
+    expect(page.inspected).toEqual([{ html: '<title>Rainfall by month</title>' }])
+    expect(answer).toEqual({
+      outcome: 'applied',
+      result: {
+        ...CLEAN,
+        problems: [{ kind: 'build', message: 'Cell 1 reads `unit`, which no cell defines.' }],
+        revision: '12',
+      },
+    })
+  })
+
+  test('a saved artifact this page cannot read says why, and nothing runs', async () => {
+    const page = host({
+      load: async () => ({
+        html: '{"form":"observable"',
+        form: 'observable',
+        unreadable: 'The saved observable source is not a publication: JSON Parse error',
+        revision: { position: 3 },
+      }),
+    })
+    const answer = await answerAppRequest(request({ documentId: 'broken' }), page.host)
+    expect(answer).toEqual({
+      outcome: 'rejected',
+      reason: 'The saved observable source is not a publication: JSON Parse error',
+    })
+    expect(page.inspected).toEqual([])
   })
 
   test('problems are a check that was made, not one that failed', async () => {
