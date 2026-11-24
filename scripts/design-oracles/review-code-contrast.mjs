@@ -1,22 +1,99 @@
 // Actual Shiki and Crepe/CodeMirror paint in the Vite story routes.
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { blend, wcagContrast } from 'culori'
+import { blend, formatHex8, wcagContrast } from 'culori'
+import { createHighlighterCore } from 'shiki/core'
+import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
+import typescript from 'shiki/langs/typescript.mjs'
+import vitesseDark from 'shiki/themes/vitesse-dark.mjs'
+import vitesseLight from 'shiki/themes/vitesse-light.mjs'
 import { launchReviewBrowser, reviewOutput } from './review-browser.mjs'
 
 const origin = process.env.ORACLE_BASE ?? 'http://127.0.0.1:3117'
 const engine = process.env.ORACLE_ENGINE ?? 'chromium'
 const out =
-  process.env.ORACLE_CODE_OUT ??
-  `${reviewOutput}/${engine}-code-contrast.json`
+  process.env.ORACLE_CODE_OUT ?? `${reviewOutput}/${engine}-code-contrast.json`
 const browser = await launchReviewBrowser(engine)
 const results = []
 const minimum = 4.5
+let referenceHighlighter
 
 function contrast(foreground, layers) {
   const background = blend(layers, 'normal', 'rgb')
   const text = blend([background, foreground], 'normal', 'rgb')
   return wcagContrast(text, background)
+}
+
+/**
+ * F04's first fence is TypeScript. Compare its actual text paint with a fresh
+ * Shiki pass over the bundled Vitesse theme, without the application's theme
+ * adapter. This checks the authored colors and alpha character by character;
+ * merging adjacent DOM spans cannot make a different tokenization pass.
+ */
+async function vitesseFidelity(observed) {
+  const theme = observed.dark ? vitesseDark : vitesseLight
+  referenceHighlighter ??= createHighlighterCore({
+    engine: createJavaScriptRegexEngine({ target: 'ES2018' }),
+    langs: [typescript],
+    themes: [vitesseLight, vitesseDark],
+  })
+  const highlighter = await referenceHighlighter
+  const reference = highlighter.codeToTokens(observed.base.text, {
+    lang: 'typescript',
+    theme: theme.name,
+  })
+  const expected = reference.tokens.flatMap((line, index) => [
+    ...(index ? [{ text: '\n', foreground: reference.fg }] : []),
+    ...line.map((token) => ({
+      text: token.content,
+      foreground: token.color ?? reference.fg,
+    })),
+  ])
+  const characters = (runs) =>
+    runs.flatMap(({ text, foreground }) =>
+      [...text].map((character) => ({
+        character,
+        color: formatHex8(foreground),
+      })),
+    )
+  const actualCharacters = characters(observed.paintRuns)
+  const expectedCharacters = characters(expected)
+  const mismatches = []
+  for (
+    let offset = 0;
+    offset < Math.max(actualCharacters.length, expectedCharacters.length);
+    offset++
+  ) {
+    const actual = actualCharacters[offset]
+    const authored = expectedCharacters[offset]
+    if (
+      actual?.character !== authored?.character ||
+      (authored?.character !== '\n' && actual?.color !== authored?.color)
+    )
+      mismatches.push({ offset, actual, authored })
+  }
+  const expectedGround = formatHex8(theme.colors['editor.background'])
+  const actualGround = formatHex8(
+    blend(observed.base.background, 'normal', 'rgb'),
+  )
+  const expectedForeground = formatHex8(theme.colors['editor.foreground'])
+  const actualForeground = formatHex8(observed.base.foreground)
+  return {
+    source: `Shiki bundled ${theme.name}`,
+    language: 'typescript',
+    expectedGround,
+    actualGround,
+    expectedForeground,
+    actualForeground,
+    comparedCharacters: expectedCharacters.length,
+    mismatchCount: mismatches.length,
+    mismatches: mismatches.slice(0, 20),
+    passed:
+      expectedCharacters.length > 0 &&
+      actualGround === expectedGround &&
+      actualForeground === expectedForeground &&
+      mismatches.length === 0,
+  }
 }
 
 async function customProfile() {
@@ -88,7 +165,9 @@ async function measure(page, fixture, root, leaf, inline) {
           const translucent =
             value.startsWith('rgba(') ||
             (alpha !== undefined &&
-              (alpha.endsWith('%') ? parseFloat(alpha) < 100 : parseFloat(alpha) < 1))
+              (alpha.endsWith('%')
+                ? parseFloat(alpha) < 100
+                : parseFloat(alpha) < 1))
           if (!translucent && value !== 'transparent') break
         }
         return colors.reverse()
@@ -104,11 +183,23 @@ async function measure(page, fixture, root, leaf, inline) {
       const token = first.querySelector(leaf)
       const nativeSelection = getComputedStyle(token, '::selection')
       const inlineCode = document.querySelector(inline)
+      const paintRuns = []
+      if (!editor) {
+        const walker = document.createTreeWalker(first, NodeFilter.SHOW_TEXT)
+        while (walker.nextNode()) {
+          const node = walker.currentNode
+          paintRuns.push({
+            text: node.textContent,
+            foreground: getComputedStyle(node.parentElement).color,
+          })
+        }
+      }
       return {
         palette: appearance.dataset.palette,
         dark: appearance.classList.contains('dark'),
         base: paint(first),
         tokens: [...first.querySelectorAll(leaf)].map(paint),
+        paintRuns,
         inline: inlineCode && paint(inlineCode),
         selection: editor
           ? {
@@ -142,6 +233,15 @@ async function measure(page, fixture, root, leaf, inline) {
   observed.distinctTokenColors = new Set(
     observed.tokens.map(({ foreground }) => foreground),
   ).size
+  if (fixture === 'content' && observed.palette === 'vitesse') {
+    // The owner requested the original Vitesse hierarchy on its native ground.
+    // Keep all measured ratios as diagnostics; source fidelity is the syntax
+    // contract here. Base text, inline code and selection still require 4.5:1.
+    observed.syntaxContract = 'authored Vitesse on its native ground'
+    observed.sourceFidelity = await vitesseFidelity(observed)
+  } else {
+    observed.syntaxContract = 'calibrated contrast'
+  }
   return observed
 }
 
@@ -197,8 +297,8 @@ try {
         const transcript = await measure(
           page,
           'content',
-          '.aui-code-block pre.th-code',
-          '.th-line > .th-token',
+          '.aui-shiki pre',
+          '.line > span',
           '.aui-md-inline-code',
         )
         const editor = await measure(
@@ -216,7 +316,11 @@ try {
               surface.dark === (mode === 'dark') &&
               surface.inline &&
               surface.distinctTokenColors >= 2 &&
-              surface.minimumRatio >= minimum &&
+              surface.base.ratio >= minimum &&
+              surface.inline.ratio >= minimum &&
+              (surface.sourceFidelity
+                ? surface.sourceFidelity.passed
+                : surface.minimumRatio >= minimum) &&
               surface.selection.minimumRatio >= minimum,
           ) &&
           editor.caretRatio >= 3
@@ -249,6 +353,7 @@ try {
   }
 } finally {
   const version = browser.version()
+  if (referenceHighlighter) (await referenceHighlighter).dispose()
   await browser.close()
   await mkdir(dirname(out), { recursive: true })
   await writeFile(

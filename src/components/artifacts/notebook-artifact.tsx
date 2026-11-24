@@ -2,7 +2,7 @@
 // "allow-scripts", a CSP that loads nothing unless a run names its hosts),
 // the bridge's theme.changed call and the platform MutationObserver (the
 // page's theme followed into the frame, as live-terminal-theme follows it),
-// the TanStack Highlight SyntaxHighlighter (the marimo source), ui/button,
+// the Shiki code block (CodeFile, the marimo source), ui/button,
 // composer-references' askAbout with app-references' notebookReference (the
 // path an HTML App's selection takes to the next turn), and artifact-host's
 // react-query reads of the host description and the recorded outputs. No
@@ -14,7 +14,7 @@
 // only when the person starts it, and never claims a run it did not make.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highlighter'
+import { CodeFile } from '@/components/assistant-ui/elements/code-file'
 import { BlockFrame } from '@/components/blocks/block-frame'
 import { BlockMessage } from '@/components/blocks/block-status'
 import { askAbout } from '@/components/chat/composer-references'
@@ -48,7 +48,6 @@ import {
 } from '@/lib/theorem/artifact-host'
 import type { ArtifactInteraction } from '@/lib/theorem/artifact-host'
 import { describeError } from '@/lib/theorem/client'
-import { cn } from '@/lib/utils'
 import type { TheoremArtifact } from './artifact-model'
 
 const denied = (what: string) => async () => {
@@ -459,13 +458,7 @@ export function MarimoNotebookView({
         />
       ) : null}
       {source && (
-        <SyntaxHighlighter
-          className={cn(
-            '[&_pre]:rounded-lg! [&_pre]:border! [&_pre]:border-separator! [&_pre]:text-[13px]',
-          )}
-          language="python"
-          code={notebook.source}
-        />
+        <CodeFile className="my-0 w-full" language="python" code={notebook.source} />
       )}
     </NotebookSurface>
   )

@@ -1,4 +1,4 @@
-// SOURCING: @tanstack/highlight's githubDarkTheme and @shikijs/themes' vitesse-dark (Anthony Fu's Vitesse Dark, MIT) for each editor's ground and code colours, read by scope rather than copied; culori to flatten a translucent token colour over its ground. lib/appearance-policy's PALETTES names the code theme each palette draws in.
+// SOURCING: Shiki's github-dark-default and vitesse-dark (Anthony Fu's Vitesse Dark, MIT) for each editor's ground; lib/code-colours for the GitHub role contract and Vitesse's TextMate scopes for its colours; culori to flatten a translucent token colour over its ground. lib/appearance-policy's PALETTES names the code theme each palette draws in.
 //
 // The dark editor a palette's terminal is drawn as. The terminal reads as an
 // editor of its own beside the workspace: its code takes the palette's dark
@@ -6,10 +6,11 @@
 // ground, below the main screen. Vitesse is built on Vitesse's own editor
 // colours, so its terminal sits on Vitesse Dark's ground in both modes
 // (owner, 2026-11-22).
-import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
-import vitesseDark from '@shikijs/themes/vitesse-dark'
+import githubDarkDefault from 'shiki/themes/github-dark-default.mjs'
+import vitesseDark from 'shiki/themes/vitesse-dark.mjs'
 import { formatHex, interpolate, parse } from 'culori'
 import { PALETTES } from '@/lib/appearance-policy'
+import { GITHUB_DARK as GITHUB_COLOURS } from '@/lib/code-colours'
 
 /** The syntax roles the terminal colours code in. */
 export const SYNTAX_ROLES = [
@@ -36,10 +37,10 @@ export type TerminalEditor = {
 }
 
 export const GITHUB_DARK: TerminalEditor = {
-  ground: githubDarkTheme.background,
+  ground: githubDarkDefault.colors!['editor.background']!,
   onGround: false,
   syntax: Object.fromEntries(
-    SYNTAX_ROLES.map((role) => [role, githubDarkTheme.tokens[role]]),
+    SYNTAX_ROLES.map((role) => [role, GITHUB_COLOURS[role]]),
   ) as Record<SyntaxRole, string>,
 }
 

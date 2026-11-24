@@ -215,7 +215,14 @@ test("the native agent's program, host calls and progress reach the terminal", (
   expect(live.messages[0]?.parts).toEqual([
     {
       type: 'program',
-      lines: [[{ t: 'x = ' }, { t: '1', c: 'number' }]],
+      lines: [
+        [
+          { t: 'x ' },
+          { t: '=', c: 'keyword' },
+          { t: ' ' },
+          { t: '1', c: 'number' },
+        ],
+      ],
       streaming: true,
     },
     { type: 'tool', name: 'read_file', summary: 'read', status: 'running' },
@@ -254,8 +261,13 @@ test('a program is highlighted in the language it names, Monty when it names non
   }[]
   expect(ts?.lines[0]?.[0]).toEqual({ t: 'const', c: 'keyword' })
   expect(rust?.lines[0]?.[0]).toEqual({ t: 'let', c: 'keyword' })
-  // Python has no `let`, so the keyword stays plain there.
-  expect(monty?.lines[0]).toEqual([{ t: 'n = ' }, { t: '1', c: 'number' }])
+  // Monty is Python, where `=` is GitHub Dark's keyword red.
+  expect(monty?.lines[0]).toEqual([
+    { t: 'n ' },
+    { t: '=', c: 'keyword' },
+    { t: ' ' },
+    { t: '1', c: 'number' },
+  ])
 })
 
 test('a reply view shows its cells in the terminal as the program it runs', () => {
