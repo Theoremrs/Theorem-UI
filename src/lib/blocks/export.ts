@@ -45,19 +45,37 @@ export interface ExportedTool {
 /** The most file data one export carries. */
 export const MAX_EXPORT_BYTES = 10 * 1024 * 1024
 
-let browserBuild: Promise<Bundler> | null = null
+/**
+ * What `make` resolves to, made once per JavaScript realm under `key` and
+ * shared by every copy of the module that asks. The value is held on
+ * `globalThis`, not in this module, because a module can be evaluated again
+ * (hot reload, a second chunk) while what it made lives on. A `make` that
+ * fails is let go, so the next caller tries again.
+ */
+export function oncePerRealm<T>(key: string, make: () => Promise<T>): Promise<T> {
+  const held = globalThis as unknown as Record<symbol, Promise<T> | undefined>
+  const slot = Symbol.for(key)
+  const made = (held[slot] ??= make().catch((error: unknown) => {
+    if (held[slot] === made) held[slot] = undefined
+    throw error
+  }))
+  return made
+}
 
-/** esbuild-wasm in the page, its wasm served with the app's own assets. */
+/**
+ * esbuild-wasm in the page, its wasm served with the app's own assets.
+ * esbuild allows one `initialize` per realm and throws on a second
+ * (esbuild#1266), so the realm, not this module, owns the started compiler.
+ */
 export function browserEsbuild(): Promise<Bundler> {
-  browserBuild ??= (async () => {
+  return oncePerRealm('theorem.esbuild-wasm', async () => {
     const [esbuild, wasm] = await Promise.all([
       import('esbuild-wasm'),
       import('esbuild-wasm/esbuild.wasm?url'),
     ])
     await esbuild.initialize({ wasmURL: wasm.default })
     return esbuild
-  })()
-  return browserBuild
+  })
 }
 
 const NAMESPACE = {
