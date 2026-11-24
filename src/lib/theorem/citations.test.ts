@@ -911,3 +911,34 @@ test('each passage keeps its stored part identity even while one sourceId groups
   expect(compact.partIds).toEqual(['cite-big'])
   expect(compact.spans).toEqual([{ startByte: 0, endByte: 19 }])
 })
+
+test('a retained range keeps the part that proved it, not a matching preview part', () => {
+  const sourceId = 'chatsource:retained:source:first'
+  const excerpt = 'First exact passage.'
+  const sources = collectCitationSources([
+    {
+      type: 'data',
+      name: 'theorem-citation',
+      id: 'preview-part',
+      data: { sourceId, sourceKind: 'web_read', provenance: { excerpt } },
+    },
+    {
+      type: 'data',
+      name: 'theorem-citation',
+      id: 'retained-part',
+      data: {
+        sourceId,
+        sourceKind: 'web_read',
+        provenance: {
+          excerpt,
+          source: retainedRef,
+          span: { startByte: 40, endByte: 60 },
+        },
+      },
+    },
+  ])
+  expect(sources).toHaveLength(1)
+  expect(sources[0]!.passages).toMatchObject([
+    { partId: 'retained-part', excerpt, span: { startByte: 40, endByte: 60 } },
+  ])
+})

@@ -278,7 +278,13 @@ export function collectCitationSources(
     // the capture declared by the same citation. The wire always pairs them;
     // a span arriving without its own source names no text, and is not
     // retroactively adopted from a sibling's capture.
-    const span = citationSpan(provenance.span, declared)
+    const span =
+      sourceKind === 'web_read' &&
+      declared &&
+      source.capture?.handle === declared.handle &&
+      source.capture.version === declared.version
+        ? citationSpan(provenance.span, declared)
+        : undefined
     const metadata = { ...provenance }
     delete metadata.excerpt
     delete metadata.span
@@ -302,8 +308,14 @@ export function collectCitationSources(
       )
       if (previous) {
         previous.provenance = { ...previous.provenance, ...metadata }
-        previous.span ??= span
-        previous.partId ??= partId
+        if (!previous.span && span) {
+          // The native opener resolves a specific part. Use the part that
+          // supplied these offsets, not a preview that quoted the same text.
+          previous.span = span
+          previous.partId = partId
+        } else if (!previous.span || span) {
+          previous.partId ??= partId
+        }
       } else
         source.passages.push({ partId, excerpt, span, provenance: metadata })
     }

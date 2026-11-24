@@ -98,13 +98,12 @@ const OpenPassage: FC<{
   passageNumber: number
   threadId: string
   messageId: string
-  partId: string | undefined
+  partId: string
 }> = ({ source, passageNumber, threadId, messageId, partId }) => {
   const [state, setState] = useState<
     | { phase: 'idle' | 'opening' }
     | { phase: 'result'; result: RetainedPassageResult }
   >({ phase: 'idle' })
-  if (!partId) return null
   const label =
     source.passages.length > 1 ? `passage ${passageNumber + 1} of ` : ''
   const range =
@@ -169,7 +168,7 @@ const SourcePassage: FC<{
     source.passages.length > 1
       ? `supporting passage ${index + 1} of ${source.passages.length}`
       : 'supporting passage'
-  const span = source.passages[index]?.span
+  const { span, partId } = source.passages[index] ?? {}
   return (
     <div
       data-slot="source-passage"
@@ -220,13 +219,14 @@ const SourcePassage: FC<{
           [{span.startByte}, {span.endByte})
         </span>
       )}
-      {threadId && messageId && (
+      {threadId && messageId && span && partId && (
         <OpenPassage
+          key={JSON.stringify([threadId, messageId, partId])}
           source={source}
           passageNumber={index}
           threadId={threadId}
           messageId={messageId}
-          partId={source.passages[index]?.partId}
+          partId={partId}
         />
       )}
     </div>
@@ -286,14 +286,15 @@ const SourceActions: FC<{ source: CitationSource }> = ({ source }) => {
   // metadata; a reply loaded from history IS its durable ID; a reply still
   // assembling in this session (theoremCursor without theoremMessageId)
   // has no savable name at all. The synthetic `run:<id>` the native
-  // projection uses is refused by the opener itself.
+  // projection uses also names no saved message.
   const durableMessageId = useAuiState((s) => {
     const custom = s.message.metadata.custom as
       { theoremCursor?: number; theoremMessageId?: string } | undefined
-    if (custom?.theoremMessageId) return custom.theoremMessageId
     // Steps streamed in this session are not yet saved history.
-    if (custom?.theoremCursor !== undefined) return undefined
-    return s.message.id
+    const id =
+      custom?.theoremMessageId ??
+      (custom?.theoremCursor === undefined ? s.message.id : undefined)
+    return id?.startsWith('run:') ? undefined : id
   })
   // The run that produced this reply, while it streams or as the SDK's
   // hydration named it; Add to context carries it, so reopened evidence

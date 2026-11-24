@@ -1228,6 +1228,16 @@ test('the retained-passage open is click-only, names durable ids, and surfaces a
           },
         },
       },
+      {
+        type: 'data',
+        id: 'discovery-part',
+        name: 'theorem-citation',
+        data: {
+          sourceId: 'chatsource:discovery',
+          sourceKind: 'web_search',
+          provenance: { excerpt: 'A discovery snippet with a durable id.' },
+        },
+      },
     ],
   }
   try {
@@ -1248,6 +1258,9 @@ test('the retained-passage open is click-only, names durable ids, and surfaces a
       )
       return found ?? null
     })
+    expect(
+      document.querySelectorAll('[data-slot="open-passage"]'),
+    ).toHaveLength(1)
     expect(opens()).toEqual([])
     await act(async () =>
       open.dispatchEvent(new MouseEvent('click', { bubbles: true })),
