@@ -125,6 +125,44 @@ function reporting(cellId: string, told: WeakSet<object>, settled: Set<string>):
   }
 }
 
+/** How long the runtime waits for an animation frame before a timer computes instead. */
+const FRAME_FALLBACK_MS = 100
+
+/** The runtime's scheduling, which Observable keeps on the instance as private, writable methods. */
+type Scheduled = {
+  _computeSoon: () => Promise<void>
+  _computeNow: () => Promise<void>
+  _computing: Promise<void> | null
+  _disposed: boolean
+}
+
+/**
+ * Observable's runtime computes at the next animation frame, and a frame that
+ * is not painted never gets one: the page's check runs the notebook off
+ * screen, and a reply sits in a tab nobody is looking at. A timer stands in
+ * when no frame comes, so the cells still run and report; a frame that is
+ * painted computes once per frame as before, so a generator such as `now`
+ * still advances at the display's rate.
+ */
+function computeWithoutPaint(runtime: Scheduled) {
+  const soon = (run: () => void) => {
+    const timer = setTimeout(() => {
+      cancelAnimationFrame(frame)
+      run()
+    }, FRAME_FALLBACK_MS)
+    const frame = requestAnimationFrame(() => {
+      clearTimeout(timer)
+      run()
+    })
+  }
+  runtime._computeSoon = function (this: Scheduled) {
+    return new Promise<void>(soon).then(() => (this._disposed ? undefined : this._computeNow()))
+  }
+  // Defining the builtins already asked for a frame, and every later compute
+  // waits on that one; when it comes, it computes nothing new.
+  if (runtime._computing) runtime._computing = runtime._computeSoon()
+}
+
 /** Defines the notebook's cells into `root`, in order. */
 export function start(
   cells: Array<NotebookCell>,
@@ -146,6 +184,7 @@ export function start(
         createViews(d3, Plot, options.saved),
       ),
   })
+  computeWithoutPaint(notebook.runtime as unknown as Scheduled)
   const told = new WeakSet<object>()
   const settled = new Set<string>()
   for (const cell of cells) {
