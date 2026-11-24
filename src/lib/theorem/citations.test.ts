@@ -1,10 +1,12 @@
 import { expect, test } from 'bun:test'
 import {
   citationContextReference,
+  citationEvidenceKind,
   citationReferenceKey,
   citationUrl,
   collectCitationSources,
 } from './citations'
+import type { CitationCapture } from './citations'
 
 const part = (data: Record<string, unknown>) => ({
   type: 'data',
@@ -551,4 +553,203 @@ test('same-label sources without IDs or URLs stay distinct from each other and a
   expect(collectCitationSources(JSON.parse(JSON.stringify(parts)))).toEqual(
     sources,
   )
+})
+
+/** The exact `SourceRef` PR #1138 nests under a retained capture's provenance. */
+const retainedRef: CitationCapture = {
+  handle: 'source:first',
+  version: 'blake3:aaa',
+  extractionVersion: 'extractor/2',
+  textBasis: 'utf8-extracted-text',
+  textBytes: 4096,
+  coverage: { status: 'acquisition_capped', limitBytes: 24000 },
+}
+
+const retainedRead = (span: unknown, excerpt = 'First exact passage.') =>
+  part({
+    sourceId: 'chatsource:retained:source:first',
+    sourceKind: 'web_read',
+    label: 'The inspected page',
+    provenance: {
+      url: 'https://example.com/page',
+      excerpt,
+      fetchedAt: '1793890000000',
+      contentHash: 'blake3:bbb',
+      truncated: false,
+      source: retainedRef,
+      span,
+    },
+  })
+
+test('a retained capture keeps its SourceRef and exact byte span through enrichment and reload', () => {
+  const parts = [
+    retainedRead({ startByte: 0, endByte: 19 }),
+    // A later citation of the same capture contributes a second passage at a
+    // different offset and enriches the shared source identity.
+    retainedRead({ startByte: 210, endByte: 280 }, 'Second exact passage.'),
+    part({
+      sourceId: 'chatsource:retained:source:first',
+      provenance: { source: retainedRef },
+    }),
+  ]
+  const sources = collectCitationSources(parts)
+  expect(sources).toHaveLength(1)
+  const source = sources[0]!
+  expect(source.capture).toEqual(retainedRef)
+  expect(source.passages.map((passage) => passage.excerpt)).toEqual([
+    'First exact passage.',
+    'Second exact passage.',
+  ])
+  expect(source.passages.map((passage) => passage.span)).toEqual([
+    { startByte: 0, endByte: 19 },
+    { startByte: 210, endByte: 280 },
+  ])
+  expect(citationEvidenceKind(source)).toBe('retained')
+  // The same projection after a durable round-trip: nothing invented, nothing
+  // lost, stable keys so composer references dedupe across reload.
+  const reloaded = collectCitationSources(JSON.parse(JSON.stringify(parts)))
+  expect(reloaded).toEqual(sources)
+  expect(reloaded[0]!.key).toBe(source.key)
+})
+
+test('two captures of one URL stay separate cards, and repeated observations of one handle merge into one', () => {
+  const secondRef = {
+    ...retainedRef,
+    handle: 'source:second',
+    version: 'blake3:ccc',
+    coverage: { status: 'complete' },
+  }
+  const parts = [
+    retainedRead({ startByte: 0, endByte: 19 }),
+    part({
+      sourceId: 'chatsource:retained:source:second',
+      sourceKind: 'web_read',
+      label: 'Same page, later fetch',
+      provenance: {
+        url: 'https://example.com/page',
+        excerpt: 'Freshly fetched passage.',
+        source: secondRef,
+        span: { startByte: 40, endByte: 61 },
+      },
+    }),
+    // The same first handle observed again: one card, one passage each.
+    retainedRead({ startByte: 0, endByte: 19 }),
+  ]
+  const sources = collectCitationSources(parts)
+  expect(sources).toHaveLength(2)
+  expect(sources.map((source) => source.capture?.handle)).toEqual([
+    'source:first',
+    'source:second',
+  ])
+  expect(sources[0]!.passages).toHaveLength(1)
+  expect(sources[0]!.capture?.coverage).toEqual({
+    status: 'acquisition_capped',
+    limitBytes: 24000,
+  })
+  expect(sources[1]!.capture?.coverage).toEqual({ status: 'complete' })
+})
+
+test('discovery, uninspected-retention and retained captures are visibly distinguishable', () => {
+  const discovery = part({
+    sourceId: 'chatsource:run:call:url',
+    sourceKind: 'web_search',
+    provenance: { url: 'https://example.com/a', excerpt: 'Snippet only.' },
+  })
+  const preview = part({
+    sourceId: 'chatsource:run:call:b',
+    sourceKind: 'web_read',
+    provenance: { url: 'https://example.com/b', excerpt: 'Preview, not kept.' },
+  })
+  const [discoverySource, previewSource, retainedSource] =
+    collectCitationSources([
+      discovery,
+      preview,
+      retainedRead({ startByte: 0, endByte: 19 }),
+    ])
+  expect(citationEvidenceKind(discoverySource!)).toBe('discovery')
+  expect(citationEvidenceKind(previewSource!)).toBe('preview')
+  expect(citationEvidenceKind(retainedSource!)).toBe('retained')
+  // A snippet quotes bytes nobody kept: it cannot claim a span or a handle.
+  expect(discoverySource!.capture).toBeUndefined()
+  expect(discoverySource!.passages[0]!.span).toBeUndefined()
+})
+
+test('a malformed capture reference loses only its metadata, never the passage', () => {
+  const malformed = part({
+    sourceId: 'chatsource:retained:broken',
+    sourceKind: 'web_read',
+    provenance: {
+      url: 'https://example.com/page',
+      excerpt: 'Still real evidence.',
+      source: { handle: 42, version: null },
+      span: { startByte: 'zero', endByte: 19 },
+    },
+  })
+  const [source] = collectCitationSources([malformed])
+  expect(source!.passages[0]!.excerpt).toBe('Still real evidence.')
+  expect(source!.capture).toBeUndefined()
+  expect(source!.passages[0]!.span).toBeUndefined()
+  expect(source!.provenance.source).toBeUndefined()
+  expect(citationEvidenceKind(source!)).toBe('preview')
+})
+
+test('a span past the retained bytes or with inverted endpoints names no text, while the capture identity stands', () => {
+  const outOfBounds = part({
+    sourceId: 'chatsource:retained:oob',
+    sourceKind: 'web_read',
+    provenance: {
+      url: 'https://example.com/other',
+      excerpt: 'Evidence past the retained bytes.',
+      source: retainedRef,
+      // endByte past textBytes (4096): stale metadata, not a lost capture.
+      span: { startByte: 4090, endByte: 5000 },
+    },
+  })
+  const reversed = part({
+    sourceId: 'chatsource:retained:reversed',
+    sourceKind: 'web_read',
+    provenance: {
+      url: 'https://example.com/third',
+      excerpt: 'Span with its endpoints swapped.',
+      source: retainedRef,
+      span: { startByte: 30, endByte: 10 },
+    },
+  })
+  for (const source of collectCitationSources([outOfBounds, reversed])) {
+    expect(source.passages[0]!.excerpt).toBeTruthy()
+    // The capture stays: the handle and version were well-formed; only the
+    // offsets it cannot vouch for are dropped, never the quote.
+    expect(source.capture).toEqual(retainedRef)
+    expect(source.passages[0]!.span).toBeUndefined()
+    expect(citationEvidenceKind(source)).toBe('retained')
+  }
+})
+
+test('Add to context carries the retained version and the exact span, and compaction keeps handle and version', () => {
+  const [source] = collectCitationSources([
+    retainedRead({ startByte: 0, endByte: 19 }),
+    retainedRead({ startByte: 210, endByte: 280 }, 'Second exact passage.'),
+  ])
+  const reference = citationContextReference(source!, 'thread-1', 'message-1')
+  const carried = JSON.parse(reference.excerpt!).citation
+  expect(carried.sourceId).toBe('chatsource:retained:source:first')
+  expect(carried.passages[0].span).toEqual({ startByte: 0, endByte: 19 })
+  expect(carried.passages[1].span).toEqual({ startByte: 210, endByte: 280 })
+  // The retained capture's handle and version ride on the reference so a
+  // later turn can reopen the exact version, not a refetch.
+  expect(carried.provenance.source).toEqual(retainedRef)
+
+  // Oversized evidence compacts, but never drops the capture identity that
+  // points at the exact retained version in the referenced message.
+  const huge = collectCitationSources([
+    retainedRead({ startByte: 0, endByte: 19 }, 'x'.repeat(9000)),
+  ])
+  const compact = citationContextReference(huge[0]!, 'thread-1', 'message-1')
+  const compacted = JSON.parse(compact.excerpt!).citation
+  expect(compacted.omittedEvidence.passages).toBe(1)
+  expect(compacted.sourceId).toBe('chatsource:retained:source:first')
+  expect(compacted.capture).toEqual({
+    handle: 'source:first',
+    version: 'blake3:aaa',
+  })
 })

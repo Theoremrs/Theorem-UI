@@ -24,7 +24,31 @@ export function citationUrl(value: unknown): string | undefined {
 
 export interface CitationPassage {
   excerpt: string
+  /** Exact UTF-8 range of this excerpt within the retained version, when
+   * the capture kept one: `startByte` inclusive, `endByte` exclusive. */
+  span: CitationSpan | undefined
   provenance: Json
+}
+
+/** A retained capture's byte range within its extracted-text version. */
+export interface CitationSpan {
+  startByte: number
+  endByte: number
+}
+
+/** The nested `SourceRef` PR #1138 publishes under a retained capture.
+ * Mirrors the SDK's `TheoremRetainedSourceRef` field for field. A handle is
+ * a reference, not authority: it names what was captured, never what can
+ * still be opened. */
+export interface CitationCapture {
+  handle: string
+  version: string
+  extractionVersion: string
+  textBasis: string
+  textBytes: number
+  coverage:
+    | { status: 'complete' }
+    | { status: 'acquisition_capped'; limitBytes: number }
 }
 
 export interface CitationSource {
@@ -33,8 +57,78 @@ export interface CitationSource {
   url: string | undefined
   sourceId: string | undefined
   sourceKind: string | undefined
+  /** The capture behind this source, once proven well-formed: the exact
+   * version its passages' spans are measured against. */
+  capture: CitationCapture | undefined
   provenance: Json
   passages: CitationPassage[]
+}
+
+const natural = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+
+/** Parse a retained capture once, at the wire boundary. Anything that does
+ * not match the `SourceRef` contract names no capture: an unverifiable
+ * reference must not become a claimed version, and a stale or revoked handle
+ * is answered by the store when opened, never by trusting its shape here. */
+export function citationCapture(value: unknown): CitationCapture | undefined {
+  const ref = object(value)
+  const handle = str(ref.handle)
+  const version = str(ref.version)
+  const extractionVersion = str(ref.extractionVersion)
+  const textBasis = str(ref.textBasis)
+  if (!handle || !version || !extractionVersion || !textBasis) return undefined
+  if (!natural(ref.textBytes)) return undefined
+  const coverage = object(ref.coverage)
+  if (coverage.status === 'complete')
+    return {
+      handle,
+      version,
+      extractionVersion,
+      textBasis,
+      textBytes: ref.textBytes,
+      coverage: { status: 'complete' },
+    }
+  if (coverage.status === 'acquisition_capped' && natural(coverage.limitBytes))
+    return {
+      handle,
+      version,
+      extractionVersion,
+      textBasis,
+      textBytes: ref.textBytes,
+      coverage: {
+        status: 'acquisition_capped',
+        limitBytes: coverage.limitBytes,
+      },
+    }
+  return undefined
+}
+
+/** A span only means text inside a proven capture version. Without one, or
+ * past its retained bytes, it names no evidence and is dropped; the excerpt
+ * itself stays. */
+function citationSpan(
+  value: unknown,
+  capture: CitationCapture | undefined,
+): CitationSpan | undefined {
+  if (!capture) return undefined
+  const span = object(value)
+  const startByte = span.startByte
+  const endByte = span.endByte
+  if (!natural(startByte) || !natural(endByte)) return undefined
+  if (startByte >= endByte || endByte > capture.textBytes) return undefined
+  return { startByte, endByte }
+}
+
+/** Where a source's evidence came from, for the reader's label. Three
+ * states the wire itself proves: a search hit is discovery; a page read with
+ * a well-formed capture is retained evidence with reopenable offsets; a
+ * page read without one was inspected but not kept. */
+export function citationEvidenceKind(
+  source: Pick<CitationSource, 'sourceKind' | 'capture'>,
+): 'discovery' | 'preview' | 'retained' {
+  if (source.capture) return 'retained'
+  return source.sourceKind === 'web_search' ? 'discovery' : 'preview'
 }
 
 /** Ignore absent streaming fields instead of erasing previously supplied metadata. */
@@ -117,6 +211,7 @@ export function collectCitationSources(
         url,
         sourceId,
         sourceKind,
+        capture: undefined,
         provenance: {},
         passages: [],
       }
@@ -130,18 +225,42 @@ export function collectCitationSources(
       label ??
       (source.label === 'Source' && url ? new URL(url).hostname : source.label)
     // The complete passage belongs below; source metadata must not imply the
-    // last excerpt is the only evidence this source contributed.
+    // last excerpt is the only evidence this source contributed. The capture
+    // and its span are parsed once here, at the wire boundary: an
+    // unverifiable reference names no capture and no offsets, and the
+    // generic provenance keeps only the validated forms, so junk from the
+    // wire is neither rendered nor forwarded into a context reference.
+    const declared =
+      provenance.source === undefined
+        ? undefined
+        : citationCapture(provenance.source)
+    const capture = declared ?? source.capture
+    source.capture = capture
+    // A span qualifies the excerpt it travelled with, measured against that
+    // citation's own capture when it named one.
+    const span = citationSpan(
+      provenance.span,
+      provenance.source === undefined ? source.capture : declared,
+    )
     const metadata = { ...provenance }
     delete metadata.excerpt
+    delete metadata.span
+    if ('source' in metadata) {
+      if (declared) metadata.source = declared
+      else delete metadata.source
+    }
     source.provenance = { ...source.provenance, ...metadata }
     if (source.sourceId) byId.set(source.sourceId, source)
     if (excerpt) {
       const previous = source.passages.find(
-        (passage) => passage.excerpt === excerpt,
+        (passage) =>
+          passage.excerpt === excerpt &&
+          JSON.stringify(passage.span) === JSON.stringify(span),
       )
-      if (previous)
+      if (previous) {
         previous.provenance = { ...previous.provenance, ...metadata }
-      else source.passages.push({ excerpt, provenance: metadata })
+        previous.span ??= span
+      } else source.passages.push({ excerpt, span, provenance: metadata })
     }
   }
   return sources
@@ -188,7 +307,9 @@ export function citationContextReference(
     return reference
 
   // Keep exact source identity and the real message location. Do not silently
-  // cut a quote or manufacture a locator: the full evidence is in that message.
+  // cut a quote or manufacture a locator: the full evidence is in that
+  // message. The compacted envelope still names the retained capture, so a
+  // later turn can reopen the exact version instead of refetching the URL.
   const compact = {
     ...reference,
     label: [...source.label].slice(0, 256).join(''),
@@ -196,6 +317,14 @@ export function citationContextReference(
       schema: CITATION_CONTEXT_SCHEMA,
       citation: {
         ...identity,
+        ...(source.capture
+          ? {
+              capture: {
+                handle: source.capture.handle,
+                version: source.capture.version,
+              },
+            }
+          : {}),
         omittedEvidence: {
           passages: source.passages.length,
           provenance: true,

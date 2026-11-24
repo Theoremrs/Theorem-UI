@@ -17,6 +17,7 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { askAbout } from '@/components/chat/composer-references'
 import {
   citationContextReference,
+  citationEvidenceKind,
   collectCitationSources,
 } from '@/lib/theorem/citations'
 import type { CitationSource } from '@/lib/theorem/citations'
@@ -73,12 +74,15 @@ const SourceSlot: FC<{ source: CitationSource }> = ({ source }) => {
         description={metadata.data.description ?? source.passages[0]?.excerpt}
         siteName={metadata.data.siteName}
       />
+      <EvidenceLine source={source} />
       <SourceActions source={source} />
     </div>
   )
 }
 
-/** Each passage keeps its own inspector and copy feedback as more arrive. */
+/** Each passage keeps its own inspector and copy feedback as more arrive. A
+ * retained capture's passage also names the exact UTF-8 byte range within
+ * its version, so the reader sees which slice of the kept text the quote is. */
 const SourcePassage: FC<{
   source: CitationSource
   excerpt: string
@@ -89,6 +93,7 @@ const SourcePassage: FC<{
     source.passages.length > 1
       ? `supporting passage ${index + 1} of ${source.passages.length}`
       : 'supporting passage'
+  const span = source.passages[index]?.span
   return (
     <div
       data-slot="source-passage"
@@ -130,8 +135,55 @@ const SourcePassage: FC<{
         )}
         {isCopied ? 'Copied' : 'Copy passage'}
       </button>
+      {span && (
+        <span data-slot="passage-span" data-appearance-recipe="metadata">
+          bytes {span.startByte}–{span.endByte}
+        </span>
+      )}
     </div>
   )
+}
+
+/** What the wire itself proves about where this evidence came from. Only
+ * retained captures name a version; the handle is a reference, not a claim
+ * that it can still be opened — bounded opening belongs to the server's
+ * `source_read`, which rechecks authority when called. */
+const EvidenceLine: FC<{ source: CitationSource }> = ({ source }) => {
+  const kind = citationEvidenceKind(source)
+  if (kind === 'discovery')
+    return (
+      <span
+        data-slot="evidence-kind"
+        data-appearance-recipe="metadata"
+        className="text-ink-muted"
+      >
+        Search snippet
+      </span>
+    )
+  if (kind === 'retained' && source.capture)
+    return (
+      <span
+        data-slot="evidence-kind"
+        data-appearance-recipe="metadata"
+        className="text-ink-muted"
+      >
+        Retained capture · {source.capture.version}
+        {source.capture.coverage.status === 'acquisition_capped'
+          ? ` · capped at ${source.capture.coverage.limitBytes} B, tail not fetched`
+          : ''}
+      </span>
+    )
+  if (source.sourceKind === 'web_read')
+    return (
+      <span
+        data-slot="evidence-kind"
+        data-appearance-recipe="metadata"
+        className="text-ink-muted"
+      >
+        Inspected preview, not retained
+      </span>
+    )
+  return null
 }
 
 const SourceActions: FC<{ source: CitationSource }> = ({ source }) => {
@@ -338,6 +390,7 @@ const SourceEntry: FC<{ source: CitationSource }> = ({ source }) => {
           {host}
         </span>
       )}
+      <EvidenceLine source={source} />
       {source.url && (
         <a
           href={source.url}
