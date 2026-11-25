@@ -1,26 +1,32 @@
 /*
- * The gallery and the agent terminal are cell grids (Ratzilla's DOM backend)
- * in one monospaced face at one size, so their hierarchy comes from weight
- * and line pitch:
+ * The gallery and the terminals are cell grids (Ratzilla's DOM backend) in
+ * one monospaced face at one size, so their hierarchy comes from weight and
+ * line pitch.
  *
- * - Rows sit at 1.5 of the text size (18.75px at 12.5px), inside the code
- *   recipe's 1.45-1.6 range. Ratzilla measures its cell from a probe `pre`,
- *   which this rule reaches too, so the grid and the cell height agree and
- *   box-drawing frames still join.
- * - BOLD renders semibold (600): the gallery title, every card title, the
- *   active filter and key glyphs.
- * - DIM renders light (300) at full opacity rather than half opacity: a
- *   quieter weight for labels and ordinals whose colour is already muted, so
- *   their contrast stays the muted role's.
+ * The terminal type (data-terminal-type) is the agent terminal's, and every
+ * terminal starts from it: the agent's, a command's (command-terminal) and a
+ * view's cells (cells-terminal). A host sizes itself in its rows (`lh`, or
+ * terminal-screen's rowHeight), never in a pitch of its own.
  *
- * The agent terminal takes the same pitch and semibold; its DIM keeps half
- * opacity, since agent output uses it to mean secondary.
+ * - Text is 12.5px at the person's code scale, rows 1.4 of it (17.5px).
+ * - Body text is 450, BOLD 600, and DIM 400 at full opacity: colours are
+ *   already muted where they mean secondary, and half opacity would fade the
+ *   text and its cell's background a second time. A command's faint output,
+ *   which a program does not mute, is muted in its colour by command.rs.
+ * - Every glyph keeps the cell's advance: tracking is zero, and Paper Mono's
+ *   kerning, coding ligatures and stylistic sets are off. Tailwind's preflight
+ *   sets a `pre`'s family and features itself, so its rows inherit them back.
+ *
+ * The gallery's (data-artifact-cabinet) rows sit at 1.5 (18.75px), BOLD is
+ * 600 and DIM light (300) at full opacity: a quieter weight for labels and
+ * ordinals whose colour is already muted. Ratzilla measures its cell from a
+ * probe `pre`, which these rules reach too, so the grid and the cell height
+ * agree and box-drawing frames still join.
  *
  * Paper Mono carries 100-800, so these are real weights, not
  * synthesised ones.
  */
-[data-artifact-cabinet] pre,
-[data-terminal-grid] pre {
+[data-artifact-cabinet] pre {
   line-height: 1.5 !important;
 }
 [data-artifact-cabinet] span[style*='font-weight: bold'],
@@ -30,4 +36,99 @@
 [data-artifact-cabinet] span[style*='opacity: 0.5'] {
   opacity: 1 !important;
   font-weight: 300;
+}
+[data-terminal-type] {
+  font-family: var(--appearance-font-mono, var(--font-mono));
+  font-size: calc(12.5px * var(--appearance-scale-code, 1));
+  font-weight: 450;
+  line-height: 1.4;
+  letter-spacing: 0;
+  word-spacing: 0;
+  font-kerning: none;
+  font-variant-ligatures: none;
+  font-variant-numeric: slashed-zero;
+  font-feature-settings:
+    'ss01' 0,
+    'ss02' 0,
+    'ss03' 0;
+}
+[data-terminal-type] pre {
+  font-family: inherit;
+  font-feature-settings: inherit;
+  line-height: inherit !important;
+}
+[data-terminal-type] [data-terminal-grid] span[style*='opacity: 0.5'] {
+  opacity: 1 !important;
+  font-weight: 400;
+}
+
+/*
+ * A command's output rows. When new output moves them up, command-terminal's
+ * slide draws them a row lower (--slide) and lets them rise into place. The
+ * offset moves on the grid's element, which stays, and the rows take it as
+ * they are: Ratzilla rebuilds its rows on any resize on the page.
+ */
+@property --slide {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+[data-slot='command-terminal'] [data-terminal-grid] {
+  transition: --slide calc(var(--duration-glide) / 2) var(--ease-glide);
+}
+[data-slot='command-terminal'] [data-terminal-grid][data-sliding] {
+  transition: none;
+}
+[data-slot='command-terminal']
+  [data-terminal-grid]
+  > div
+  > pre:not(:first-child) {
+  transform: translateY(var(--slide));
+}
+
+/*
+ * Closed to its line, the terminal clips its output rows from sight; once the
+ * close has played they leave the accessibility tree as well, and opening
+ * brings them back at once.
+ */
+[data-slot='command-terminal'][data-state='closed']
+  [data-terminal-grid]
+  > div
+  > pre:not(:first-child) {
+  visibility: hidden;
+  transition: visibility 0s var(--duration-glide);
+}
+
+/*
+ * The prompt's pointer, the row's second cell after the margin, is the line's
+ * one disclosure mark, in a view's cells (cells-terminal) and in a command
+ * that has something under it (command-terminal's data-opens). It points
+ * right while closed and turns down to what it opens, the same glyph a
+ * quarter turn, gliding without overshoot.
+ */
+:is([data-slot='cells-terminal'], [data-slot='command-terminal'][data-opens])
+  [data-terminal-grid]
+  > div
+  > pre:first-child
+  > span:nth-child(2) {
+  transition: rotate var(--duration-snap) var(--ease-glide);
+}
+:is(
+    [data-slot='cells-terminal'],
+    [data-slot='command-terminal'][data-opens]
+  )[data-state='open']
+  [data-terminal-grid]
+  > div
+  > pre:first-child
+  > span:nth-child(2) {
+  rotate: 90deg;
+}
+@media (prefers-reduced-motion: reduce) {
+  :is([data-slot='cells-terminal'], [data-slot='command-terminal'])
+    [data-terminal-grid]
+    > div
+    > pre:first-child
+    > span:nth-child(2) {
+    transition: none;
+  }
 }

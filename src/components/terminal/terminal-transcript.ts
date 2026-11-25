@@ -1,4 +1,4 @@
-// SOURCING: assistant-ui's ThreadMessage parts as the runtime holds them, data parts named per @theoremharness/sdk/assistant-ui (`theorem-user_input`, a present call's `theorem-client_operation`, whose views view-reference reads), and the chat's readApproval; code is terminal-code's (@tanstack/highlight); the snapshot shape is the terminal crate's Snapshot (terminal/src/lib.rs)
+// SOURCING: assistant-ui's ThreadMessage parts as the runtime holds them, data parts named per @theoremharness/sdk/assistant-ui (`theorem-user_input`, a present call's `theorem-client_operation`, whose views view-reference reads), and the chat's readApproval; code is terminal-code's (Shiki, through lib/code-classes); the snapshot shape is the terminal crate's Snapshot (terminal/src/lib.rs)
 //
 // The terminal's transcript as plain data: what the WASM terminal draws from
 // a session's thread and what the session sent while a run worked. Pure, so

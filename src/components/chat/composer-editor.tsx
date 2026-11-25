@@ -4,8 +4,9 @@
 // is a text area with no seam for another editor, and nothing upstream joins
 // Crepe to it, so what that input does besides hold text is repeated here
 // against the same composer state: explicit send goes through the form, the / menu
-// reads the keys and the caret, a pasted file becomes an attachment, and the
-// cursor comes back after a send or a thread switch. The text itself stays in
+// reads the keys and the caret, a pasted file or a long pasted text becomes
+// an attachment (pasted-text), and the cursor comes back after a send or a
+// thread switch. The text itself stays in
 // assistant-ui's composer, so everything that reads or writes it keeps working.
 import {
   unstable_useComposerInput,
@@ -49,6 +50,7 @@ import {
 } from './composer-code'
 import { composerDirectivesPlugin } from './composer-directives'
 import { serializeComposerText } from './composer-markdown'
+import { isLongPaste, pastedTextFile, takesPastedText } from './pasted-text'
 import { useCrepeMarkdown } from '@/components/notes/crepe-markdown'
 import { cn } from '@/lib/utils'
 
@@ -475,8 +477,33 @@ function Editor({
       view.dispatch(tr.scrollIntoView())
       view.focus()
     }
+    // A pasted text taken back out of its attachment lands at the caret as
+    // the paste would have. Taking the event tells the sender it landed.
+    const paste = (event: Event) => {
+      const view = viewRef.current
+      const text = (event as CustomEvent<string>).detail
+      if (!view || isDisabled || !text) return
+      event.preventDefault()
+      pasteAsClipboard(view, text)
+      if (view.hasFocus()) return
+      // The sender focuses the editor once it can. Focus from outside puts
+      // the browser's caret at the start, which the editor would read back;
+      // the editor's own focus keeps it after the paste. A click places it.
+      const dom = view.dom
+      const keep = () => {
+        dom.removeEventListener('pointerdown', click)
+        view.focus()
+      }
+      const click = () => dom.removeEventListener('focus', keep)
+      dom.addEventListener('focus', keep, { once: true })
+      dom.addEventListener('pointerdown', click, { once: true })
+    }
     wrapper.addEventListener(COMPOSER_INSERT, insert)
-    return () => wrapper.removeEventListener(COMPOSER_INSERT, insert)
+    wrapper.addEventListener(COMPOSER_PASTE, paste)
+    return () => {
+      wrapper.removeEventListener(COMPOSER_INSERT, insert)
+      wrapper.removeEventListener(COMPOSER_PASTE, paste)
+    }
   }, [isDisabled])
 
   // Ahead of the editor's own keys: the / menu's, then the composer's.
@@ -565,13 +592,39 @@ function Editor({
   }
 
   const onPasteCapture = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (!aui.thread.getState().capabilities.attachments) return
     const files = Array.from(event.clipboardData.files)
-    if (!files.length || !aui.thread.getState().capabilities.attachments) return
+    if (files.length) {
+      event.preventDefault()
+      event.stopPropagation()
+      for (const file of files)
+        // A refused file is reported by the composer's own error event.
+        aui.composer.addAttachment(file).catch(() => undefined)
+      return
+    }
+    // A long paste into the message goes in as an attachment. A field of its
+    // own (a link's address, a code block's language) and a code block, which
+    // takes what is pasted into it as code, keep their paste.
+    const view = viewRef.current
+    const text = event.clipboardData.getData('text/plain')
+    const composer = aui.composer.getState()
+    const target = event.target as Element
+    if (
+      !view ||
+      isDisabled ||
+      !isLongPaste(text) ||
+      !view.dom.contains(target) ||
+      target.closest('input, textarea, select, .cm-content') ||
+      !takesPastedText(composer.attachmentAccept)
+    )
+      return
     event.preventDefault()
     event.stopPropagation()
-    for (const file of files)
-      // A refused file is reported by the composer's own error event.
-      aui.composer.addAttachment(file).catch(() => undefined)
+    const taken = composer.attachments.map((attachment) => attachment.name)
+    // A paste the composer could not attach is written out after all.
+    aui.composer
+      .addAttachment(pastedTextFile(text, taken))
+      .catch(() => pasteAsClipboard(view, text))
   }
 
   const within = (event: FocusEvent<HTMLDivElement>) =>
@@ -600,10 +653,44 @@ export const COMPOSER_INSERT = 'theorem:composer-insert'
 
 /** Inserts text at the end of the draft or opens an empty code block at the caret. */
 export function insertInComposer(from: Element | null, text?: string) {
+  editorIn(from)?.dispatchEvent(
+    new CustomEvent(COMPOSER_INSERT, { detail: text }),
+  )
+}
+
+/** The event a control dispatches on the editor to paste text at the caret. */
+export const COMPOSER_PASTE = 'theorem:composer-paste'
+
+/**
+ * Pastes text into the draft at the caret, as the editor pastes it from the
+ * clipboard. Answers with the editor's text area when it took the text, for
+ * the caller to focus once it can: a closing modal dialog still holds the
+ * rest of the page inert.
+ */
+export function pasteInComposer(from: Element | null, text: string) {
+  const editor = editorIn(from)
+  const took =
+    !!editor &&
+    !editor.dispatchEvent(
+      new CustomEvent(COMPOSER_PASTE, { detail: text, cancelable: true }),
+    )
+  return took ? editor.querySelector<HTMLElement>('.ProseMirror') : null
+}
+
+const editorIn = (from: Element | null) =>
   from
     ?.closest('[data-slot="aui_composer-shell"]')
     ?.querySelector('.theorem-composer')
-    ?.dispatchEvent(new CustomEvent(COMPOSER_INSERT, { detail: text }))
+
+/** Runs the editor's own paste on a text, as if it came off the clipboard. */
+function pasteAsClipboard(view: EditorView, text: string) {
+  const data = new DataTransfer()
+  data.setData('text/plain', text)
+  const event = new ClipboardEvent('paste', { clipboardData: data })
+  // Not every engine takes the clipboard from the event's init.
+  if (!event.clipboardData)
+    Object.defineProperty(event, 'clipboardData', { value: data })
+  view.pasteText(text, event)
 }
 
 type ComposerEditorProps = {

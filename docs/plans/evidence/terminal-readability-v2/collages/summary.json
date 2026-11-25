@@ -1,0 +1,66 @@
+{
+  "terminal-reading--github-sharp-dark": {
+    "differs": 2.02,
+    "threshold": 0.2
+  },
+  "terminal-reading--vitesse-dark": {
+    "differs": 2.01,
+    "threshold": 0.2
+  },
+  "terminal-reading--vitesse-light": {
+    "differs": 2.01,
+    "threshold": 0.2
+  },
+  "terminal-reading--stone-light": {
+    "differs": 2.65,
+    "threshold": 0.2
+  },
+  "terminal-activity-expanded--github-sharp-dark": {
+    "differs": 2.17,
+    "threshold": 0.2
+  },
+  "terminal-activity-expanded--vitesse-dark": {
+    "differs": 2.18,
+    "threshold": 0.2
+  },
+  "terminal-activity-expanded--vitesse-light": {
+    "differs": 2.18,
+    "threshold": 0.2
+  },
+  "terminal-activity-expanded--stone-light": {
+    "differs": 2.77,
+    "threshold": 0.2
+  },
+  "terminal-code--github-sharp-dark": {
+    "differs": 1.59,
+    "threshold": 0.2
+  },
+  "terminal-code--vitesse-dark": {
+    "differs": 1.6,
+    "threshold": 0.2
+  },
+  "terminal-code--vitesse-light": {
+    "differs": 1.6,
+    "threshold": 0.2
+  },
+  "terminal-code--stone-light": {
+    "differs": 1.95,
+    "threshold": 0.2
+  },
+  "terminal-input-states--github-sharp-dark": {
+    "differs": 1.34,
+    "threshold": 0.2
+  },
+  "terminal-input-states--vitesse-dark": {
+    "differs": 1.34,
+    "threshold": 0.2
+  },
+  "terminal-input-states--vitesse-light": {
+    "differs": 1.34,
+    "threshold": 0.2
+  },
+  "terminal-input-states--stone-light": {
+    "differs": 1.35,
+    "threshold": 0.2
+  }
+}

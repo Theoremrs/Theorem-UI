@@ -59,6 +59,14 @@ export const live = "text-redwood-ink";
  */
 export const responseFrame = "response-frame my-2";
 
+/**
+ * A terminal in the reply, lifted off it as the site's paper cards are
+ * (styles.css surface-paper-subtle: a soft edge and shadow, no drawn outline),
+ * at the response frame's radius.
+ */
+export const liftedFrame =
+  "surface-paper-subtle my-2 flex min-w-0 flex-col overflow-hidden rounded-(--appearance-radius-response)";
+
 export const responseToolbar = "response-toolbar";
 
 export const responseBody = "response-frame-body";

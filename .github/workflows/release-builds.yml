@@ -1,0 +1,73 @@
+name: Versioned release builds
+
+on:
+  push:
+    branches: [codex/versioned-release-builds]
+    tags: ['v*', 'build-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-builds-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Cloudflare Worker distribution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.4.3'
+      - name: Install locked application dependencies
+        run: bun install --frozen-lockfile
+      - name: Build the terminal, production IDE and Worker
+        env:
+          WORKERS_CI: '1'
+        run: bun run build:cloudflare
+      - name: Check application types
+        run: bun run typecheck
+      - name: Check the complete Worker package without deploying
+        run: bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/theorem-worker-check"
+      - name: Package the Worker and complete source
+        run: python3 scripts/package-release.py
+      - name: Retain versioned artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: theorem-ui-${{ github.sha }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 30
+
+  draft-release:
+    name: Attach the successful build to a draft prerelease
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: theorem-ui-${{ github.sha }}
+          path: release-assets
+      - name: Create draft without replacing an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum --check SHA256SUMS
+          gh release create "$RELEASE_TAG" ./* \
+            --verify-tag --draft --prerelease --latest=false \
+            --title "Theorem UI $RELEASE_TAG" \
+            --notes-file RELEASE-NOTES.md

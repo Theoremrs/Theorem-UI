@@ -19,7 +19,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
 
@@ -51,6 +51,8 @@ use wasm_bindgen::prelude::*;
 mod blocks;
 mod cabinet;
 mod cabinet_panel;
+mod cells;
+mod command;
 pub mod preview;
 mod theo;
 mod workbench;
@@ -318,11 +320,10 @@ const BLINK_MS: f64 = 530.0;
 struct Markdown;
 
 impl StyleSheet for Markdown {
-    fn heading(&self, level: u8) -> Style {
-        match level {
-            1 | 2 => Style::new().fg(palette().heading).bold(),
-            _ => Style::new().fg(palette().heading),
-        }
+    fn heading(&self, _level: u8) -> Style {
+        // Every heading shares the cell size, so even a lower-level heading
+        // needs weight to stand apart from the surrounding prose.
+        Style::new().fg(palette().heading).bold()
     }
     // Inline code is told by its colour alone, on no band (owner, 2026-11-22).
     fn code(&self) -> Style {
@@ -678,6 +679,77 @@ fn indented(mut line: Line<'static>) -> Line<'static> {
     line
 }
 
+/// How many of a prose line's first spans are its lead: the spacing, list
+/// marker and quote bar tui-markdown sets before the words, each a span of its
+/// own. Kept outside the wrapping width, they hang a list item's wrapped rows
+/// under its words, unless the lead would take more than half the row.
+fn lead(line: &Line, width: u16) -> usize {
+    let marks = |span: &&Span| {
+        let mark = span.content.trim();
+        let mark = mark
+            .strip_suffix(" [ ]")
+            .or_else(|| mark.strip_suffix(" [x]"))
+            .unwrap_or(mark);
+        mark.is_empty()
+            || matches!(mark, "-" | "*" | "+" | ">")
+            || mark
+                .strip_suffix('.')
+                .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    };
+    let count = line.spans.iter().take_while(marks).count();
+    let columns: usize = line.spans[..count].iter().map(Span::width).sum();
+    if columns * 2 <= usize::from(width).saturating_sub(INDENT.len()) {
+        count
+    } else {
+        0
+    }
+}
+
+/// A logical transcript line laid out with a fixed reading inset. Its leading
+/// spans (the prompt or indentation) occupy the first visual row only; every
+/// wrapped row of the remaining text starts at the same column. Ratatui does
+/// the wrapping and keeps graphemes and span styles intact.
+fn transcript_line(
+    line: &Line<'static>,
+    prefix_spans: usize,
+    width: u16,
+) -> (Line<'static>, Paragraph<'static>, u16) {
+    let mut content = line.clone();
+    let count = prefix_spans.min(content.spans.len());
+    let prefix = Line::from(content.spans.drain(..count).collect::<Vec<_>>()).style(line.style);
+    // Retain a content column even in an exceptionally narrow drawer.
+    let inset = prefix.width().min(usize::from(width.saturating_sub(1))) as u16;
+    (
+        prefix,
+        Paragraph::new(content).wrap(Wrap { trim: false }),
+        inset,
+    )
+}
+
+/// Draw the visible rows of one logical line using the same width recipe as
+/// its row count. Scrolling past the first row does not repeat the prompt.
+fn draw_transcript_line(
+    line: &Line<'static>,
+    prefix_spans: usize,
+    skip: usize,
+    area: Rect,
+    buf: &mut Buffer,
+) {
+    if area.is_empty() {
+        return;
+    }
+    let (prefix, paragraph, inset) = transcript_line(line, prefix_spans, area.width);
+    if skip == 0 && inset > 0 {
+        prefix.render(Rect::new(area.x, area.y, inset, 1), buf);
+    }
+    paragraph
+        .scroll((u16::try_from(skip).unwrap_or(u16::MAX), 0))
+        .render(
+            Rect::new(area.x + inset, area.y, area.width - inset, area.height),
+            buf,
+        );
+}
+
 /// Transcript lines carry their indent, so blank means nothing but spaces.
 fn blank(line: &Line) -> bool {
     line.spans.iter().all(|span| span.content.trim().is_empty())
@@ -866,6 +938,8 @@ fn diff_lines(diff: &[DiffLine], lead: &str) -> Vec<(Line<'static>, Option<Color
 #[derive(Default)]
 struct Built {
     lines: Vec<Line<'static>>,
+    /// Leading spans kept outside the wrapping width, by logical line.
+    prefixes: BTreeMap<usize, usize>,
     fills: Vec<(usize, Color)>,
     toggles: Vec<(usize, String)>,
     links: Vec<(usize, Open)>,
@@ -874,6 +948,15 @@ struct Built {
 }
 
 impl Built {
+    /// Prose keeps its reading inset after wrapping. Keep the original lines
+    /// and their indices intact for blocks, the semantic tree and scroll anchors.
+    fn prefixed(&mut self, lines: impl IntoIterator<Item = Line<'static>>, spans: usize) {
+        for line in lines {
+            self.prefixes.insert(self.lines.len(), spans);
+            self.lines.push(line);
+        }
+    }
+
     /// Lines whose rows carry a background, noting which.
     fn filled(&mut self, rows: Vec<(Line<'static>, Option<Color>)>) {
         for (line, fill) in rows {
@@ -908,13 +991,13 @@ fn is_diff(part: &Part) -> bool {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn now() -> f64 {
+pub(crate) fn now() -> f64 {
     js_sys::Date::now()
 }
 
 /// The host's clock, so the transcript's spinner and notices run in tests.
 #[cfg(not(target_arch = "wasm32"))]
-fn now() -> f64 {
+pub(crate) fn now() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0.0, |since| since.as_secs_f64() * 1000.0)
@@ -923,7 +1006,7 @@ fn now() -> f64 {
 /// The spinner's frame for now. The index is taken in f64: the clock over
 /// 80 ms is past `u32::MAX`, so a `usize` cast on wasm32 saturates and the
 /// spinner would stop on one frame.
-fn spinner() -> &'static str {
+pub(crate) fn spinner() -> &'static str {
     SPINNER[(now() / 80.0 % SPINNER.len() as f64) as usize]
 }
 
@@ -957,6 +1040,8 @@ struct Session {
     approval_elsewhere: bool,
     /// Transcript lines, rebuilt when the snapshot, the width or the palette changes.
     lines: Vec<Line<'static>>,
+    /// Leading spans outside the wrapping width, by logical line.
+    prefixes: BTreeMap<usize, usize>,
     /// Each line's first row once wrapped, then the total, for clicks.
     rows: Vec<usize>,
     /// The tool rows a click opens, by line.
@@ -1013,6 +1098,7 @@ impl Session {
             hint_in_footer: false,
             approval_elsewhere: false,
             lines: Vec::new(),
+            prefixes: BTreeMap::new(),
             rows: Vec::new(),
             links: Vec::new(),
             disclosed: BTreeSet::new(),
@@ -1095,10 +1181,9 @@ impl Session {
                     counts: None,
                     holds: None,
                 });
-                out.lines
-                    .push(blocks::quiet_header("Thinking", time.as_deref(), open));
+                out.prefixed([blocks::quiet_header("Thinking", time.as_deref(), open)], 1);
                 if open {
-                    out.lines.extend(blocks::thought_lines(text));
+                    out.prefixed(blocks::thought_lines(text), 2);
                 }
             }
             Part::Tool {
@@ -1304,7 +1389,7 @@ impl Session {
                         Span::styled(format!("@{name}"), Style::new().fg(p.link)),
                     ]));
                 }
-                out.lines.extend(rows);
+                out.prefixed(rows, 1);
                 out.lines.push(Line::default());
                 continue;
             }
@@ -1320,8 +1405,24 @@ impl Session {
             };
             // A code block keeps a blank line from what comes before and after it.
             let mut after_code = false;
+            // Prose and activity form separate reading groups. Related tool
+            // rows and adjacent prose parts stay together; empty/unknown parts
+            // do not introduce a visual group of their own.
+            let mut previous_prose = None;
             let mut at = 0;
             while at < parts.len() {
+                let prose = match &parts[at] {
+                    Part::Text { text } if !text.trim().is_empty() => Some(true),
+                    Part::Text { .. } | Part::Other => None,
+                    _ => Some(false),
+                };
+                if let Some(prose) = prose {
+                    if previous_prose.is_some_and(|previous| previous != prose) {
+                        // Record block/link/caret positions only after the gap.
+                        separate(&mut out.lines);
+                    }
+                    previous_prose = Some(prose);
+                }
                 if fold && is_activity(&parts[at]) {
                     let run = parts[at..].iter().take_while(|p| is_activity(p)).count();
                     let group: Vec<&Part> = parts[at..at + run].iter().collect();
@@ -1359,7 +1460,7 @@ impl Session {
                         counts: None,
                         holds: Some(holds),
                     });
-                    out.lines.push(blocks::quiet_header(&words, None, shown));
+                    out.prefixed([blocks::quiet_header(&words, None, shown)], 1);
                     if shown {
                         for (offset, part) in group.into_iter().enumerate() {
                             self.activity(
@@ -1398,7 +1499,10 @@ impl Session {
                                 blocks::Piece::Prose(prose) => {
                                     let rendered =
                                         tui_markdown::from_str_with_options(&prose, &options);
-                                    out.lines.extend(own(rendered).into_iter().map(indented));
+                                    for line in own(rendered) {
+                                        let lead = lead(&line, width);
+                                        out.prefixed([indented(line)], 1 + lead);
+                                    }
                                 }
                                 blocks::Piece::Code(code) => {
                                     separate(&mut out.lines);
@@ -1409,6 +1513,7 @@ impl Session {
                         }
                         while out.lines.len() > start && blank(&out.lines[out.lines.len() - 1]) {
                             out.lines.pop();
+                            out.prefixes.remove(&out.lines.len());
                         }
                     }
                     Part::Reasoning { .. } => self.activity(part, place, width, &mut out),
@@ -1472,7 +1577,7 @@ impl Session {
                         }
                     }
                     Part::Input(sent) => {
-                        out.lines.extend(sent_lines(sent));
+                        out.prefixed(sent_lines(sent), 1);
                         out.lines.push(Line::default());
                     }
                     Part::Receipt {
@@ -1506,6 +1611,7 @@ impl Session {
 
         let Built {
             mut lines,
+            mut prefixes,
             fills,
             toggles,
             links,
@@ -1519,7 +1625,10 @@ impl Session {
         }
 
         for sent in &self.snapshot.outgoing {
-            lines.extend(sent_lines(sent));
+            for line in sent_lines(sent) {
+                prefixes.insert(lines.len(), 1);
+                lines.push(line);
+            }
             lines.push(Line::default());
         }
 
@@ -1563,17 +1672,19 @@ impl Session {
             lines.push(Line::default());
         }
 
-        // Each line wraps on its own, so the rows add up line by line.
+        // Count exactly the width drawn below: prose has a persistent inset;
+        // code, diffs and tool headers retain their existing full-width layout.
         let mut rows = Vec::with_capacity(lines.len() + 1);
         let mut row = 0;
-        for line in &lines {
+        for (index, line) in lines.iter().enumerate() {
             rows.push(row);
-            row += Paragraph::new(line.clone())
-                .wrap(Wrap { trim: false })
-                .line_count(width);
+            let (_, paragraph, inset) =
+                transcript_line(line, prefixes.get(&index).copied().unwrap_or(0), width);
+            row += paragraph.line_count(width - inset);
         }
         rows.push(row);
         self.rows = rows;
+        self.prefixes = prefixes;
         self.links = links;
         self.toggles = toggles;
         self.starts = starts;
@@ -1689,8 +1800,7 @@ impl Session {
         if self.built_for != Some((inner.width, palette())) {
             self.build(inner.width);
         }
-        let paragraph = Paragraph::new(self.lines.clone()).wrap(Wrap { trim: false });
-        let total = paragraph.line_count(inner.width);
+        let total = self.rows.last().copied().unwrap_or(0);
         let height = inner.height as usize;
         self.page = height.saturating_sub(2).max(1);
         let max_back = total.saturating_sub(height);
@@ -1742,7 +1852,36 @@ impl Session {
                 buf.set_style(row, Style::new().bg(fill));
             }
         }
-        paragraph.scroll((top, 0)).render(inner, buf);
+        // Render only the visible logical lines. Each uses the same inset and
+        // wrapped-row count as scrolling, pointer targets and the semantic tree.
+        let first_line = self
+            .rows
+            .partition_point(|row| *row <= self.top)
+            .saturating_sub(1);
+        for line in first_line..self.lines.len() {
+            let first = self.rows[line];
+            let end = self.rows[line + 1];
+            if first >= shown.end {
+                break;
+            }
+            let from = first.max(shown.start);
+            let to = end.min(shown.end);
+            if from >= to {
+                continue;
+            }
+            draw_transcript_line(
+                &self.lines[line],
+                self.prefixes.get(&line).copied().unwrap_or(0),
+                from - first,
+                Rect::new(
+                    inner.x,
+                    inner.y + (from - shown.start) as u16,
+                    inner.width,
+                    (to - from) as u16,
+                ),
+                buf,
+            );
+        }
         // The block the keys are on sits on the selected band, across its header row.
         let row = self
             .cursor
@@ -2302,7 +2441,9 @@ fn tool_row_extra(
         Span::styled(
             summary,
             if link {
-                Style::new().fg(p.muted).add_modifier(Modifier::UNDERLINED)
+                // Resources share the inline-code hue; metadata stays muted.
+                // Keep the underline as the existing clickable-file cue.
+                Style::new().fg(p.sage).add_modifier(Modifier::UNDERLINED)
             } else {
                 Style::new().fg(p.muted)
             },
@@ -2828,8 +2969,9 @@ struct Screen {
     /// its own on top of the grid.
     cursor: web_sys::Element,
     cursor_style: String,
-    /// The workbench's hidden input field, found once; it follows the caret.
+    /// The hidden input field beside the grid, found once by its label; it follows the caret.
     field: Option<web_sys::HtmlElement>,
+    field_label: String,
     field_style: String,
 }
 
@@ -2865,8 +3007,19 @@ impl Screen {
             cursor,
             cursor_style: String::new(),
             field: None,
+            field_label: format!(
+                "{} input",
+                theorem_workbench_core::panels::WORKBENCH_LABEL
+            ),
             field_style: String::new(),
         })
+    }
+
+    /// A screen whose hidden input field, beside the grid, is the textarea labelled `label`.
+    fn with_field(parent_id: &str, label: &str) -> Result<Self, JsValue> {
+        let mut screen = Self::new(parent_id)?;
+        screen.field_label = label.to_owned();
+        Ok(screen)
     }
 
     fn send_resize(&self) {
@@ -2877,7 +3030,6 @@ impl Screen {
 
     fn frame<D: Drawn>(&mut self, app: &mut D) -> std::io::Result<()> {
         let (cell_w, cell_h) = self.terminal.backend().cell_size_css_px();
-        app.set_cell((cell_w, cell_h));
         let rect = self.parent.get_bounding_client_rect();
         let measured = (
             (rect.width() / f64::from(cell_w)) as u16,
@@ -2912,12 +3064,16 @@ impl Screen {
                 .resize(Rect::new(0, 0, size.width, size.height))?;
             app.repaint();
         }
+        // A rebuild can remeasure the loaded font. The view, hit testing and
+        // overlay caret must use those new metrics in this same frame.
+        let cell = self.terminal.backend().cell_size_css_px();
+        app.set_cell(cell);
         let area = self.terminal.get_frame().area();
         if area.width > 0 && area.height > 0 && app.wants_frame(area) {
             self.terminal.draw(|frame| app.draw(frame))?;
             app.drawn();
         }
-        self.place_cursor(app, (cell_w, cell_h));
+        self.place_cursor(app, cell);
         Ok(())
     }
 
@@ -2974,8 +3130,8 @@ impl Screen {
                 .and_then(|wrapper| {
                     wrapper
                         .query_selector(&format!(
-                            "textarea[aria-label='{} input']",
-                            theorem_workbench_core::panels::WORKBENCH_LABEL
+                            "textarea[aria-label='{}']",
+                            self.field_label.replace('\'', "\\'")
                         ))
                         .ok()
                         .flatten()
@@ -3174,6 +3330,95 @@ mod tests {
         let mut session = Session::new("t".into(), "T".into(), false);
         session.snapshot = serde_json::from_str(json).unwrap();
         session
+    }
+
+    #[test]
+    fn wrapped_prose_keeps_its_inset_styles_and_wide_glyphs_when_scrolled() {
+        let line = Line::from(vec![
+            Span::styled(PROMPT, Style::new().fg(Color::Green)),
+            Span::styled("alpha ", Style::new().fg(Color::White)),
+            Span::styled("界界", Style::new().fg(Color::Cyan).bold()),
+            Span::styled(" beta", Style::new().fg(Color::White)),
+        ]);
+        let area = Rect::new(0, 0, 10, 3);
+        let (_, paragraph, inset) = transcript_line(&line, 1, area.width);
+        assert_eq!(inset, 2);
+        assert_eq!(paragraph.line_count(area.width - inset), 3);
+        let mut full = Buffer::empty(area);
+        draw_transcript_line(&line, 1, 0, area, &mut full);
+        assert_eq!(full[(0, 0)].symbol(), "❯");
+        assert_eq!(full[(2, 0)].symbol(), "a");
+        assert_eq!(full[(2, 1)].symbol(), "界");
+        assert_eq!(full[(4, 1)].symbol(), "界");
+        assert_eq!(full[(2, 1)].fg, Color::Cyan);
+        assert!(full[(2, 1)].modifier.contains(Modifier::BOLD));
+        assert_eq!(full[(2, 2)].symbol(), "b");
+        for y in 1..3 {
+            assert_eq!(full[(0, y)].symbol(), " ");
+            assert_eq!(full[(1, y)].symbol(), " ");
+        }
+
+        let shown = Rect::new(0, 0, 10, 2);
+        let mut scrolled = Buffer::empty(shown);
+        draw_transcript_line(&line, 1, 1, shown, &mut scrolled);
+        for y in 0..2 {
+            for x in 0..10 {
+                assert_eq!(scrolled[(x, y)], full[(x, y + 1)]);
+            }
+        }
+    }
+
+    #[test]
+    fn unprefixed_code_retains_ratatuis_existing_wrapping_and_styles() {
+        let line = Line::from(vec![
+            Span::raw("    "),
+            Span::styled("let value = 123;", Style::new().fg(Color::Yellow)),
+        ]);
+        let area = Rect::new(0, 0, 12, 4);
+        let mut expected = Buffer::empty(area);
+        Paragraph::new(line.clone())
+            .wrap(Wrap { trim: false })
+            .render(area, &mut expected);
+        let mut actual = Buffer::empty(area);
+        draw_transcript_line(&line, 0, 0, area, &mut actual);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn wrapped_prose_and_group_spacing_keep_tool_hit_rows_in_sync() {
+        let mut s = session(
+            r#"{"messages":[{"role":"assistant","parts":[
+                {"type":"text","text":"Several words that must wrap before the tool calls."},
+                {"type":"unknown"},
+                {"type":"text","text":""},
+                {"type":"tool","name":"read","summary":"one.rs","status":"complete","id":"one","open":{"path":"one.rs"}},
+                {"type":"tool","name":"read","summary":"two.rs","status":"complete","id":"two","open":{"path":"two.rs"}},
+                {"type":"text","text":"The answer follows."}
+            ]}]}"#,
+        );
+        s.set_level(blocks::Activity::All);
+        let area = Rect::new(0, 0, 26, 20);
+        let mut buf = Buffer::empty(area);
+        s.draw_body(&mut buf, area);
+        let first = &s.blocks[0];
+        let second = &s.blocks[1];
+        assert!(blank(&s.lines[first.line - 1]));
+        assert_eq!(
+            second.line,
+            first.line + 1,
+            "related tool rows stay adjacent"
+        );
+        assert!(blank(&s.lines[second.line + 1]));
+        assert!(s.rows[first.line] > first.line, "the prose wrapped");
+        let y = s.body.y + (s.rows[first.line] - s.top) as u16;
+        let glyph = s.body.x + INDENT.len() as u16;
+        assert_eq!(buf[(glyph, y)].symbol(), "✓");
+        assert_eq!(
+            s.link_at(Position::new(glyph, y))
+                .map(|open| open.path.as_str()),
+            Some("one.rs")
+        );
+        assert!(s.link_at(Position::new(glyph, y - 1)).is_none());
     }
 
     /// The ground colour of an empty classic terminal's last cell.
@@ -3453,5 +3698,125 @@ mod tests {
         s.hint_in_footer = true;
         s.notify("copied");
         assert_eq!(row(&mut s), GOLDEN_NOTICE);
+    }
+
+    fn text_of(line: &Line) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    }
+
+    #[test]
+    fn every_heading_level_is_bold() {
+        for level in 1..=6 {
+            assert!(
+                Markdown
+                    .heading(level)
+                    .add_modifier
+                    .contains(Modifier::BOLD),
+                "level {level}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_file_a_tool_row_opens_reads_in_sage_and_stays_underlined() {
+        let p = palette();
+        let opens = tool_row("Read", "src/lib.rs", "complete", true, 60);
+        let span = opens
+            .spans
+            .iter()
+            .find(|s| s.content == "src/lib.rs")
+            .unwrap();
+        assert_eq!(span.style.fg, Some(p.sage));
+        assert!(span.style.add_modifier.contains(Modifier::UNDERLINED));
+        let plain = tool_row("Bash", "ls", "complete", false, 60);
+        let span = plain.spans.iter().find(|s| s.content == "ls").unwrap();
+        assert_eq!(span.style.fg, Some(p.muted));
+    }
+
+    #[test]
+    fn prose_and_tool_rows_sit_one_blank_row_apart_and_tool_rows_stay_together() {
+        let mut s = session(
+            &serde_json::json!({"messages": [{"role": "assistant", "parts": [
+                {"type": "text", "text": "Looking first."},
+                {"type": "text", "text": "  "},
+                {"type": "tool", "name": "Read", "summary": "a.rs", "status": "complete"},
+                {"type": "other"},
+                {"type": "tool", "name": "Grep", "summary": "fn main", "status": "complete"},
+                {"type": "text", "text": "Found it."},
+            ]}]})
+            .to_string(),
+        );
+        s.set_level(blocks::Activity::All);
+        s.build(60);
+        let rows: Vec<String> = s.lines.iter().map(text_of).collect();
+        let at = |needle: &str| rows.iter().position(|row| row.contains(needle)).unwrap();
+        let (first, read, grep, last) = (
+            at("Looking first."),
+            at("a.rs"),
+            at("fn main"),
+            at("Found it."),
+        );
+        assert_eq!(read, first + 2, "{rows:#?}");
+        assert!(rows[first + 1].trim().is_empty(), "{rows:#?}");
+        assert_eq!(grep, read + 1, "{rows:#?}");
+        assert_eq!(last, grep + 2, "{rows:#?}");
+        assert!(rows[grep + 1].trim().is_empty(), "{rows:#?}");
+    }
+
+    #[test]
+    fn a_wrapped_list_item_hangs_under_its_words() {
+        let mut s = session(
+            r#"{"messages":[{"role":"assistant","parts":[
+                {"type":"text","text":"- one two three four five six seven eight nine"}
+            ]}]}"#,
+        );
+        let area = Rect::new(0, 0, 18, 12);
+        let mut buf = Buffer::empty(area);
+        s.draw_body(&mut buf, area);
+        let item = s
+            .lines
+            .iter()
+            .position(|line| text_of(line).contains("- one"))
+            .unwrap();
+        let (first, end) = (s.rows[item], s.rows[item + 1]);
+        assert!(end - first > 1, "the item wrapped");
+        let row = |at: usize| -> String {
+            let y = s.body.y + (at - s.top) as u16;
+            (s.body.x..s.body.x + s.body.width)
+                .map(|x| buf[(x, y)].symbol())
+                .collect()
+        };
+        assert!(row(first).starts_with("  - one"), "{:?}", row(first));
+        for at in first + 1..end {
+            let text = row(at);
+            assert!(
+                text.starts_with("    ") && !text.starts_with("     "),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_lead_is_the_marker_and_quote_spans_and_never_more_than_half_the_row() {
+        let first = |markdown: &str| {
+            own(tui_markdown::from_str(markdown))
+                .into_iter()
+                .find(|line| text_of(line).contains("one"))
+                .unwrap()
+        };
+        assert_eq!(lead(&first("12. one two"), 40), 1);
+        assert_eq!(lead(&first("- [x] one two"), 40), 1);
+        assert_eq!(lead(&first("> one two"), 40), 2);
+        assert_eq!(lead(&first("plain one two"), 40), 0);
+        let nested = first("- zero\n    - one two");
+        assert_eq!(lead(&nested, 40), 1);
+        assert_eq!(
+            lead(&nested, 10),
+            0,
+            "a six-column lead in a ten-column row"
+        );
     }
 }

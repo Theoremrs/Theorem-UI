@@ -337,6 +337,24 @@ export const STORIES: readonly StoryMeta[] = [
     threadId: 'thread-app-gallery',
   },
   {
+    id: 'command-live',
+    title: 'A command\'s terminal as it runs, a line at a time, then closing when it ends well',
+    lane: 'original',
+    viewport: { width: 900, height: 700 },
+  },
+  {
+    id: 'present-view',
+    title: 'A reply with an interactive view, its cells editable under it',
+    lane: 'original',
+    viewport: { width: 1100, height: 900 },
+  },
+  {
+    id: 'view-cells',
+    title: 'A view\'s cells in the terminal, edited and run again',
+    lane: 'original',
+    viewport: { width: 900, height: 700 },
+  },
+  {
     id: 'face-feel',
     title: 'Tuning how Theo moves',
     lane: 'original',
@@ -578,6 +596,12 @@ export const STORIES: readonly StoryMeta[] = [
       note: 'The reference is the chat face (bare light eyes on dark, dark visor on light); the render is its terminal inverse. They are meant to differ: the collage shows the expression and shape are the same, not that the colours match.',
     },
     evidenceDir: 'theo-face-inverse',
+  },
+  {
+    id: 'code-blocks',
+    title: 'Code blocks: a diff, a named file, a command and plain text',
+    lane: 'original',
+    viewport: { width: 900, height: 900 },
   },
   {
     id: 'tool-pills',

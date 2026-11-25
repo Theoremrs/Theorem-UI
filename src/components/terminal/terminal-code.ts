@@ -1,74 +1,12 @@
-// SOURCING: @tanstack/highlight's createHighlighter/tokenize for class-based code tokens, with the languages a coding agent writes, and its renderTokens range decorations for the words a diff line changed; mdast-util-from-markdown for where fenced code sits in the agent's markdown; jsdiff's parsePatch for a diff's files and hunks and diffWordsWithSpace for what changed within a line; jsdiff's createPatch for the code a write or an edit carries in its arguments while it streams; colours are the terminal crate's (terminal/src/lib.rs)
+// SOURCING: lib/code-classes (Shiki over its JavaScript regex engine) for class-based code tokens, with the languages a coding agent writes, and Shiki's splitTokens for the words a diff line changed; mdast-util-from-markdown for where fenced code sits in the agent's markdown; jsdiff's parsePatch for a diff's files and hunks and diffWordsWithSpace for what changed within a line; jsdiff's createPatch for the code a write or an edit carries in its arguments while it streams; colours are the terminal crate's (terminal/src/lib.rs)
 //
 // Code the agent writes, highlighted for the terminal. The terminal draws
 // markdown itself (tui-markdown, highlighting off); fenced code is lifted out
 // here and handed over as lines of classed tokens, which the crate colours in
 // the palette's dark code theme (terminal-editor.ts).
-import { createHighlighter, renderTokens } from '@tanstack/highlight/core'
-import type { HighlightRenderNode } from '@tanstack/highlight/core'
-import { c } from '@tanstack/highlight/languages/c'
-import { cpp } from '@tanstack/highlight/languages/cpp'
-import { csharp } from '@tanstack/highlight/languages/csharp'
-import { css } from '@tanstack/highlight/languages/css'
-import { diff } from '@tanstack/highlight/languages/diff'
-import { dockerfile } from '@tanstack/highlight/languages/dockerfile'
-import { go } from '@tanstack/highlight/languages/go'
-import { graphql } from '@tanstack/highlight/languages/graphql'
-import { html } from '@tanstack/highlight/languages/html'
-import { ini } from '@tanstack/highlight/languages/ini'
-import { java } from '@tanstack/highlight/languages/java'
-import { js } from '@tanstack/highlight/languages/js'
-import { json } from '@tanstack/highlight/languages/json'
-import { jsx } from '@tanstack/highlight/languages/jsx'
-import { kotlin } from '@tanstack/highlight/languages/kotlin'
-import { makefile } from '@tanstack/highlight/languages/makefile'
-import { markdown } from '@tanstack/highlight/languages/markdown'
-import { python } from '@tanstack/highlight/languages/python'
-import { ruby } from '@tanstack/highlight/languages/ruby'
-import { rust } from '@tanstack/highlight/languages/rust'
-import { scss } from '@tanstack/highlight/languages/scss'
-import { shell } from '@tanstack/highlight/languages/shell'
-import { sql } from '@tanstack/highlight/languages/sql'
-import { swift } from '@tanstack/highlight/languages/swift'
-import { toml } from '@tanstack/highlight/languages/toml'
-import { ts } from '@tanstack/highlight/languages/ts'
-import { tsx } from '@tanstack/highlight/languages/tsx'
-import { yaml } from '@tanstack/highlight/languages/yaml'
 import { createPatch, diffWordsWithSpace, parsePatch } from 'diff'
 import { fromMarkdown } from 'mdast-util-from-markdown'
-
-const highlighter = createHighlighter({
-  languages: [
-    c,
-    cpp,
-    csharp,
-    css,
-    diff,
-    dockerfile,
-    go,
-    graphql,
-    html,
-    ini,
-    java,
-    js,
-    json,
-    jsx,
-    kotlin,
-    makefile,
-    markdown,
-    python,
-    ruby,
-    rust,
-    scss,
-    shell,
-    sql,
-    swift,
-    toml,
-    ts,
-    tsx,
-    yaml,
-  ],
-})
+import { classedLines, languageOf as grammarOf } from '@/lib/code-classes'
 
 /**
  * One run of code text; `c` is its highlight class, absent for plain text.
@@ -98,18 +36,11 @@ export type ProsePart = { type: 'text'; text: string }
 
 /** Code as lines of classed tokens; an unknown language comes back plain. */
 export function highlightLines(code: string, lang = ''): Token[][] {
-  const { tokens } = highlighter.tokenize(code, { lang })
-  const lines: Token[][] = [[]]
-  for (const token of tokens) {
-    token.value.split('\n').forEach((piece, index) => {
-      if (index > 0) lines.push([])
-      if (!piece) return
-      lines[lines.length - 1]?.push(
-        token.className ? { t: piece, c: token.className } : { t: piece },
-      )
-    })
-  }
-  return lines
+  return classedLines(code, lang).map((line) =>
+    line.map((token) =>
+      token.class ? { t: token.text, c: token.class } : { t: token.text },
+    ),
+  )
 }
 
 /** Lines of output a tool row carries for ctrl+o; the rest is counted. */
@@ -128,8 +59,7 @@ const DIFF = /^(diff --git |@@ -\d|--- \S|\+\+\+ \S)/m
 /** The language a file path's extension names, if one is registered. */
 function languageOf(path: string | undefined) {
   const ext = path?.match(/\.([\w-]+)$/)?.[1]
-  const lang = highlighter.normalizeLanguage(ext ?? '')
-  return lang === 'plaintext' ? '' : lang
+  return (ext && grammarOf(ext)) ?? ''
 }
 
 type Row = { k: 'ctx' | 'del' | 'add'; text: string }
@@ -166,29 +96,35 @@ function parsed(text: string): FilePatch[] {
 
 /**
  * A diff jsdiff refuses (counts that disagree with its lines, as a model
- * writes them, or a hunk still arriving), read line by line with TanStack's
- * diff grammar instead.
+ * writes them, or a hunk still arriving), read line by line instead. Once
+ * inside a hunk, --- and +++ belong to its source: unreliable counts cannot
+ * tell us otherwise. A diff preamble starts the next file unambiguously.
  */
 function classified(text: string): FilePatch[] {
   const files: FilePatch[] = []
   let before: string | undefined
   let file: FilePatch | undefined
   let hunk: Hunk | undefined
-  for (const tokens of highlightLines(text, 'diff')) {
-    const line = tokens.map((token) => token.t).join('')
-    const kind = tokens[0]?.c
-    if (kind === 'meta') {
-      const name = line.slice(4).split('\t')[0]
-      if (line.startsWith('--- ')) before = name
-      if (line.startsWith('+++ ')) {
-        file = { name: fileName(before, name), hunks: [] }
-        files.push(file)
-        hunk = undefined
-      } else if (line.startsWith('@@')) {
-        if (!file) files.push((file = { hunks: [] }))
-        hunk = { header: line, rows: [] }
-        file.hunks.push(hunk)
-      }
+  for (const line of text.split('\n')) {
+    if (line.startsWith('diff ')) {
+      before = undefined
+      file = undefined
+      hunk = undefined
+      continue
+    }
+    if (line.startsWith('@@')) {
+      if (!file) files.push((file = { hunks: [] }))
+      hunk = { header: line, rows: [] }
+      file.hunks.push(hunk)
+      continue
+    }
+    if (!hunk && line.startsWith('--- ')) {
+      before = line.slice(4).split('\t')[0]
+      continue
+    }
+    if (!hunk && line.startsWith('+++ ')) {
+      file = { name: fileName(before, line.slice(4).split('\t')[0]), hunks: [] }
+      files.push(file)
       continue
     }
     if (hunk) hunk.rows.push(...rowOf(line))
@@ -224,38 +160,6 @@ function changedWords(before: string, after: string) {
   return { removed, added }
 }
 
-/** Rendered nodes as tokens: a token element names the class, a changed span sets `e`. */
-function flatten(
-  nodes: HighlightRenderNode[],
-  cls: string | undefined,
-  e: boolean,
-  out: Token[] = [],
-) {
-  for (const node of nodes) {
-    if (node.type === 'text') {
-      if (node.value)
-        out.push({
-          t: node.value,
-          ...(cls && { c: cls }),
-          ...(e && { e: true as const }),
-        })
-      continue
-    }
-    const name = node.classNames.find(
-      (n) =>
-        n.startsWith('th-') &&
-        !['th-token', 'th-decoration', 'th-line'].includes(n),
-    )
-    flatten(
-      node.children,
-      name?.slice(3) ?? cls,
-      e || node.classNames.includes('changed'),
-      out,
-    )
-  }
-  return out
-}
-
 /**
  * One side of a hunk highlighted as one piece of code, so a string or
  * comment spanning lines keeps its colour, with its changed words marked.
@@ -264,23 +168,27 @@ function sideLines(
   lines: string[],
   lang: string,
   changed: Map<number, Span[]>,
-) {
+): Token[][] {
   const starts: number[] = []
   let offset = 0
   for (const line of lines) {
     starts.push(offset)
     offset += line.length + 1
   }
-  const decorations = [...changed].flatMap(([line, spans]) =>
-    spans.map(([start, end]) => ({
-      range: [starts[line]! + start, starts[line]! + end] as const,
-      className: 'changed',
-    })),
+  const ranges = [...changed].flatMap(([line, spans]) =>
+    spans.map(([start, end]): Span => [
+      starts[line]! + start,
+      starts[line]! + end,
+    ]),
   )
-  const { tokens } = highlighter.tokenize(lines.join('\n'), { lang })
-  return renderTokens(tokens, { lineNumbers: true, decorations }).flatMap(
-    (node) =>
-      node.type === 'element' ? [flatten(node.children, undefined, false)] : [],
+  const marked = (at: number) =>
+    ranges.some(([start, end]) => start <= at && at < end)
+  return classedLines(lines.join('\n'), lang, ranges.flat()).map((line) =>
+    line.map(({ text, offset: at, class: c }) => ({
+      t: text,
+      ...(c && { c }),
+      ...(marked(at) && { e: true as const }),
+    })),
   )
 }
 
@@ -521,7 +429,7 @@ export function proseAndCode(text: string): (ProsePart | CodePart)[] {
     prose(start)
     const lang = node.lang ?? ''
     parts.push(
-      highlighter.normalizeLanguage(lang) === 'diff'
+      grammarOf(lang) === 'diff'
         ? { type: 'code', lang, lines: [], diff: diffLines(node.value) }
         : { type: 'code', lang, lines: highlightLines(node.value, lang) },
     )

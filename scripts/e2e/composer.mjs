@@ -22,7 +22,13 @@ try {
   browser = await engine.launch({
     executablePath: engine === chromium ? process.env.E2E_CHROMIUM : undefined,
   })
-  const page = await browser.newPage()
+  // Chromium lets the page write the clipboard a real paste then reads.
+  const context = await browser.newContext(
+    engine === chromium
+      ? { permissions: ['clipboard-read', 'clipboard-write'] }
+      : {},
+  )
+  const page = await context.newPage()
   const pageErrors = []
   page.on('pageerror', (error) => {
     pageErrors.push(error.message)
@@ -34,6 +40,7 @@ try {
   const sent = () => page.getByTestId('sent-count').textContent()
   const submits = () => page.getByTestId('submit-count').textContent()
   const draft = () => page.getByTestId('draft').textContent()
+  const attachments = () => page.getByTestId('attachments').textContent()
   const load = async (name) => {
     await page
       .getByRole('button', { name: `Load ${name}`, exact: true })
@@ -281,6 +288,135 @@ try {
       (await draft()) === '[Select this text](https://example.com/docs)',
     await draft(),
   )
+  // A real paste: the text goes on the system clipboard and the paste key
+  // reads it back, so the browser builds the paste event itself.
+  const realPaste = async (text) => {
+    await page.evaluate((value) => navigator.clipboard.writeText(value), text)
+    await page.keyboard.press('ControlOrMeta+V')
+  }
+  const until = (testId, test, timeout = 3000) =>
+    page
+      .waitForFunction(
+        ([id, source]) =>
+          new Function('text', `return ${source}`)(
+            document.querySelector(`[data-testid="${id}"]`).textContent,
+          ),
+        [testId, test],
+        { timeout },
+      )
+      .catch(() => undefined)
+  const LONG = Array.from(
+    { length: 120 },
+    (_, line) => `Log line ${line + 1}: request served`,
+  ).join('\n')
+  const tile = page.locator('.aui-attachment-tile')
+
+  await load('Empty')
+  await input.click()
+  await realPaste(LONG)
+  await until('attachments', "text === 'Pasted text.txt'")
+  check(
+    'a long paste becomes a Pasted text attachment and leaves the draft empty',
+    (await attachments()) === 'Pasted text.txt' && (await draft()) === '',
+    { attachments: await attachments(), draft: (await draft()).slice(0, 40) },
+  )
+  await page
+    .locator('.aui-attachment-tile[role="button"]')
+    .waitFor({ state: 'visible', timeout: 3000 })
+    .catch(() => undefined)
+  check(
+    "the tray shows the attachment element's tile, previewing the text",
+    (await tile.count()) === 1 &&
+      (await tile.getAttribute('aria-label')) === 'Preview Pasted text.txt',
+    await tile.getAttribute('aria-label'),
+  )
+  await realPaste(LONG.toUpperCase())
+  await until('attachments', "text.split('\\n').length === 2")
+  check(
+    'a second long paste is numbered apart from the first',
+    (await attachments()) === 'Pasted text.txt\nPasted text 2.txt',
+    await attachments(),
+  )
+  await page.getByRole('button', { name: 'Send message' }).click()
+  await until('sent-count', "text === '1'")
+  check(
+    'a draft of pasted texts alone can be sent',
+    (await sent()) === '1' && (await attachments()) === '',
+    { sent: await sent(), attachments: await attachments() },
+  )
+
+  await load('Empty')
+  await input.click()
+  await realPaste(LONG)
+  await page
+    .locator('.aui-attachment-tile[role="button"]')
+    .waitFor({ state: 'visible', timeout: 3000 })
+  await tile.click()
+  const body = page.locator('.aui-pasted-text-body')
+  await body.waitFor({ state: 'visible' })
+  check(
+    'the tile opens the whole pasted text with its length',
+    (await body.textContent()) === LONG &&
+      (await page.locator('.aui-pasted-text-dialog').textContent()).includes(
+        `120 lines · ${LONG.length.toLocaleString('en-US')} characters`,
+      ),
+  )
+  // This page carries none of the app's styles, so the dialog is not laid
+  // over the modal's inert layer; the button is pressed from the keyboard.
+  await page.getByRole('button', { name: 'Paste inline' }).press('Enter')
+  await until('attachments', "text === ''")
+  await until('draft', "text.includes('Log line 120')")
+  // The editor takes the cursor once the dialog has let go of the page, and
+  // the caret is where the paste would have left it: after the text.
+  await page
+    .waitForFunction(
+      () => document.activeElement?.closest('.ProseMirror') !== null,
+      undefined,
+      { timeout: 3000 },
+    )
+    .catch(() => undefined)
+  await page.keyboard.type(' (end)')
+  await until('draft', "text.endsWith('(end)')")
+  check(
+    'Paste inline puts the text in the draft, drops the tile and keeps the cursor there',
+    (await attachments()) === '' &&
+      (await draft()).startsWith('Log line 1: request served') &&
+      (await draft()).endsWith('Log line 120: request served (end)') &&
+      (await tile.count()) === 0 &&
+      (await input.evaluate((el) => el.contains(document.activeElement))),
+    {
+      attachments: await attachments(),
+      tail: (await draft()).slice(-40),
+      tiles: await tile.count(),
+      focused: await page.evaluate(() => document.activeElement?.className),
+    },
+  )
+
+  await load('Empty')
+  await input.click()
+  await realPaste('A short note')
+  await until('draft', "text === 'A short note'")
+  check(
+    'a short paste goes in the draft',
+    (await draft()) === 'A short note' && (await attachments()) === '',
+    { draft: await draft(), attachments: await attachments() },
+  )
+
+  await load('Code')
+  await code.waitFor({ state: 'visible' })
+  await code.click()
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await realPaste(LONG)
+  await until('draft', "text.includes('Log line 120')")
+  check(
+    'a long paste into a code block stays in the code',
+    (await attachments()) === '' &&
+      (await draft()).startsWith('```ts\nconst first = 1\nLog line 1:') &&
+      (await draft()).includes('Log line 120: request served\n```'),
+    { attachments: await attachments(), draft: (await draft()).slice(0, 60) },
+  )
+
   check(
     'the composer raised no browser errors',
     pageErrors.length === 0,

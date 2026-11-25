@@ -480,7 +480,7 @@ Ten remain; Send Email 1, File Open and Pencil Write 2 are under Retired.
 
 | Registry name                                                                                                                 | File                                                     | Streamline name                                                           | SHA-256                                                            |
 | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Copy                                                                                                                          | `streamline/streamline-copy-paste-1.png`                 | Copy Paste 1                                                              | `9700385580df9e3fe93d3e16bc22a54d029ed999d28528c0f00ee073473da8fc` |
+| Copy (until 2026-11-23, now Common File Double 2)                                                                             | `streamline/streamline-copy-paste-1.png`                 | Copy Paste 1                                                              | `9700385580df9e3fe93d3e16bc22a54d029ed999d28528c0f00ee073473da8fc` |
 | Search                                                                                                                        | `streamline/streamline-search-square.png`                | Search Square                                                             | `df992de155819ffba277e44c678ef72058103fe1dbb1b1918c797108a15379f2` |
 | Share                                                                                                                         | `streamline/streamline-share-1.png`                      | Share 1                                                                   | `6dce180df4d355ff4a0597747ac74474aeadc7355ae08c0f312f0ec762586776` |
 | Web                                                                                                                           | `streamline/streamline-cross-region-data-delivery-2.png` | Amazon Web Service Cross Region Data Delivery 2                           | `bf2af3fedbfe2ef27e2326eefa76bc188a32bd7b2f02fb483e1e412cc0fdaeb5` |
@@ -795,3 +795,13 @@ Retired with them, and removed from the tree:
 Expand 2 was placed first and replaced by Expand 5 the same day: its two
 crossed arrows read as a close mark at 14px, beside the real close in the
 plan card's and the Compare pane's headers.
+
+## Copy as two stacked pages (2026-11-23)
+
+The owner chose Streamline's Common File Double 2 (colored) for Copy wherever
+something is copied, sending "Common-File-Double-2--Streamline-Ultimate.png".
+It is the artwork already in `streamline/control/source/streamline-common-file-double-2.png`
+(the session pair mark), so `Icon.Copy` paints those layers and no new file
+was added. `streamline/streamline-copy-paste-1.png` (Copy Paste 1), which drew
+Copy until then, was removed from the tree; its row in the Light table above
+is kept as the record.

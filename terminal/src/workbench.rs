@@ -131,7 +131,7 @@ fn process_styles() -> theorem_workbench_process::ProcessStyles {
 
 /// The sixteen ANSI colours from the palette's roles: black the deep surface, red the error
 /// colour and so on, the bright eight repeating them with muted for bright black.
-fn ansi_of(p: &Palette) -> [Color; 16] {
+pub(crate) fn ansi_of(p: &Palette) -> [Color; 16] {
     [
         p.deep,
         p.error,
@@ -162,7 +162,7 @@ fn load_nonce() -> String {
 /// changes with the workspace's theme exactly as the agent terminal does. The
 /// state and diff roles take the palette field of the same name: a diff line is
 /// text on the line's tint, changed words on the stronger one.
-fn theme_of(p: &Palette) -> Theme {
+pub(crate) fn theme_of(p: &Palette) -> Theme {
     let on = |bg| Style::new().fg(p.ink).bg(bg);
     let fg = |color| Style::new().fg(color);
     // The chosen thing is told by its letters, never by a band behind them: the mark colour,
@@ -240,7 +240,7 @@ fn theme_of(p: &Palette) -> Theme {
 /// The modifier flags a DOM keyboard or pointer event carries.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
-struct Modifiers {
+pub(crate) struct Modifiers {
     ctrl_key: bool,
     alt_key: bool,
     shift_key: bool,
@@ -248,7 +248,7 @@ struct Modifiers {
 }
 
 impl Modifiers {
-    fn of(event: &KeyboardEvent) -> Self {
+    pub(crate) fn of(event: &KeyboardEvent) -> Self {
         Self {
             ctrl_key: event.ctrl_key(),
             alt_key: event.alt_key(),
@@ -258,7 +258,7 @@ impl Modifiers {
     }
 
     /// `keybinds` tells Cmd from Win; the DOM only says Meta.
-    fn mods(self, platform: Platform) -> Mods {
+    pub(crate) fn mods(self, platform: Platform) -> Mods {
         let mut mods = Mods::NONE;
         mods.set(Mods::CTRL, self.ctrl_key);
         mods.set(Mods::ALT, self.alt_key);
@@ -344,7 +344,7 @@ fn positional_key(code: &str) -> Option<String> {
 /// A keydown as two inputs: the key the browser reports, and, on a Mac with Option held, the
 /// key by its position. The second is the chord a person meant when Option turned the first
 /// into another character.
-fn key_inputs(
+pub(crate) fn key_inputs(
     key: &str,
     code: &str,
     mods: Mods,
@@ -364,7 +364,7 @@ fn key_inputs(
     (reported, positional)
 }
 
-fn is_bare_printable(input: &KeyInput) -> bool {
+pub(crate) fn is_bare_printable(input: &KeyInput) -> bool {
     matches!(input.key(), Key::Char(_))
         && !input
             .mods()
@@ -1036,7 +1036,7 @@ impl Drawn for Mounted {
     }
 }
 
-fn platform_of(window: &web_sys::Window) -> Platform {
+pub(crate) fn platform_of(window: &web_sys::Window) -> Platform {
     let navigator = window.navigator();
     let mac = |text: Result<String, JsValue>| text.is_ok_and(|t| t.contains("Mac"));
     if mac(navigator.platform()) || mac(navigator.user_agent()) {

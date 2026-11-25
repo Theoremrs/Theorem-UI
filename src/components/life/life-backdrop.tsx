@@ -61,10 +61,10 @@ const isFieldSpace = (target: EventTarget, field: Element) =>
 
 /**
  * The blocks of a conversation whose words the field keeps clear of. Code
- * sits on its own glass, which frosts the field instead.
+ * sits on its own opaque block, which covers the field instead.
  */
 const TEXT_BLOCKS =
-  '[data-message-id] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote, th, td, dt, dd, summary):not(figure[data-glass-code] *)'
+  '[data-message-id] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote, th, td, dt, dd, summary):not(figure[data-code-block] *)'
 
 /** How far the quiet reaches past the ends of a line: a cell and a half, so the field resumes a word's width away. */
 const LINE_REACH = 14

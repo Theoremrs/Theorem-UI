@@ -2,7 +2,7 @@
 // "allow-scripts" on an origin of its own, a CSP only when the person sets a limit),
 // the bridge's theme.changed call and the platform MutationObserver (the
 // page's theme followed into the frame, as live-terminal-theme follows it),
-// the TanStack Highlight SyntaxHighlighter (the marimo source), ui/button,
+// the Shiki code block (CodeFile, the marimo source), ui/button,
 // composer-references' askAbout with app-references' notebookReference (the
 // path an HTML App's selection takes to the next turn), and artifact-host's
 // react-query reads of the host description and the recorded outputs, and the
@@ -34,7 +34,7 @@ import {
   useState,
 } from 'react'
 import type { ReactNode } from 'react'
-import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highlighter'
+import { CodeFile } from '@/components/assistant-ui/elements/code-file'
 import { BlockFrame } from '@/components/blocks/block-frame'
 import { BlockMessage } from '@/components/blocks/block-status'
 import { askAbout } from '@/components/chat/composer-references'
@@ -87,7 +87,6 @@ import {
   useViewInstances,
 } from '@/lib/generative/view-instances'
 import { describeError } from '@/lib/theorem/client'
-import { cn } from '@/lib/utils'
 import { useOpenLatest } from './app-history'
 import { useSeed } from './app-revision-frame'
 import type { TheoremArtifact } from './artifact-model'
@@ -190,8 +189,8 @@ function usePage(build: (theme: ThemeState) => Promise<string>, key: unknown) {
  * A notebook's frame: its document, the host with what `lend` gives, the
  * page's theme followed in. `onError` hears what its cells throw and nothing catches, and
  * a document that does not build, which `onBuildError` hears too; `onStatus`
- * hears how each cell first settles, and `onStage` when the document built
- * and when its frame started.
+ * hears how each cell first settles, `onStage` when the document built and
+ * when its frame started, and `onBuilt` when the page for `buildKey` is built.
  */
 export function NotebookFrame({
   build,
@@ -205,6 +204,7 @@ export function NotebookFrame({
   onBuildError,
   onStage,
   documentId,
+  onBuilt,
 }: {
   build: (theme: ThemeState) => Promise<string>
   buildKey: unknown
@@ -218,8 +218,13 @@ export function NotebookFrame({
   onStatus?: (status: CellStatus) => void
   onBuildError?: (message: string) => void
   onStage?: (stage: 'compiled' | 'mounted') => void
+  onBuilt?: (key: unknown) => void
 }) {
   const page = usePage(build, buildKey)
+  const built = Boolean(page.src || page.error)
+  useEffect(() => {
+    if (built) onBuilt?.(buildKey)
+  }, [built, buildKey, onBuilt])
   const host = useMemo(
     () => notebookHost(onSelection, onError, onStatus, lend),
     [onSelection, onError, onStatus, lend],
@@ -912,13 +917,7 @@ export function MarimoNotebookView({
         />
       ) : null}
       {source && (
-        <SyntaxHighlighter
-          className={cn(
-            '[&_pre]:rounded-lg! [&_pre]:border! [&_pre]:border-separator! [&_pre]:text-[13px]',
-          )}
-          language="python"
-          code={notebook.source}
-        />
+        <CodeFile className="my-0 w-full" language="python" code={notebook.source} />
       )}
     </NotebookSurface>
   )

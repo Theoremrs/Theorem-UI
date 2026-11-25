@@ -431,13 +431,93 @@ export function TerminalAgent(props: AgentProps) {
  * works out from the workspace around it.
  */
 let wasmModule: Promise<typeof TerminalWasm> | undefined
+
+/** The terminal's face, as the appearance settings resolve it on the root. */
+function terminalFontFamily() {
+  const style = getComputedStyle(document.documentElement)
+  return (
+    style.getPropertyValue('--appearance-font-mono').trim() ||
+    style.getPropertyValue('--font-mono').trim()
+  )
+}
+
+/** Ratzilla measures its cell once it mounts, so the face it measures has to be the chosen one. */
+async function loadTerminalFonts() {
+  const family = terminalFontFamily()
+  if (!family) return
+  // Both weights are in the vendored variable face. A face that fails to load
+  // leaves the terminal to mount in the stack's fallback.
+  await Promise.allSettled(
+    [450, 600].map((weight) =>
+      document.fonts.load(`${weight} 12.5px ${family}`, '0'),
+    ),
+  )
+}
+
+/**
+ * Ratzilla's DOM backend measures a cell and rebuilds its grid only on a window
+ * `resize` event, so a change of the cell is announced the way it expects, as
+ * the workbench does: once a frame however many grids asked.
+ */
+let remeasuring = 0
+function remeasure() {
+  remeasuring ||= requestAnimationFrame(() => {
+    remeasuring = 0
+    window.dispatchEvent(new Event('resize'))
+  })
+}
+
+/**
+ * One cell of the terminal type (cell-grid.css data-terminal-type), invisible
+ * inside a terminal's host: when its box changes (a face arriving, the code
+ * scale) every grid remeasures. The first report is the starting size.
+ */
+export function CellProbe() {
+  const probe = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    const element = probe.current
+    if (!element) return
+    let probed: string | undefined
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return
+      const size = `${entry.contentRect.width}x${entry.contentRect.height}`
+      if (probed !== undefined && probed !== size) remeasure()
+      probed = size
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  return (
+    <span
+      ref={probe}
+      aria-hidden="true"
+      className="pointer-events-none invisible absolute top-0 left-0 h-[1lh] w-[1ch]"
+    />
+  )
+}
+
+/** A terminal's row in CSS pixels: its type's line pitch (cell-grid.css data-terminal-type). */
+export const rowHeight = (element: Element) =>
+  parseFloat(getComputedStyle(element).lineHeight)
+
 export const loadWasm = () =>
   (wasmModule ??= Promise.all([
     import('@/terminal-wasm/theorem_terminal'),
     import('./live-terminal-theme'),
     import('./terminal-ladder'),
   ]).then(async ([wasm, { useTerminalTheme }, { ladderPalette }]) => {
-    await wasm.default()
+    await Promise.all([wasm.default(), loadTerminalFonts()])
+    // A face of the terminal's stack that arrives later (an appearance font
+    // downloading) remeasures every grid, resized or not.
+    const unquoted = (family: string) =>
+      family.trim().replace(/^['"]|['"]$/g, '')
+    document.fonts.addEventListener('loadingdone', (event) => {
+      const families = terminalFontFamily().split(',').map(unquoted)
+      if (
+        event.fontfaces.some((face) => families.includes(unquoted(face.family)))
+      )
+        remeasure()
+    })
     // One role contract for every terminal and the cabinet (terminal-roles.ts),
     // with the surface ladder and registers derived from it (terminal-ladder.ts).
     const paint = ({ roles }: { roles: TerminalRoles }) =>
@@ -549,7 +629,11 @@ export function TerminalScreen({
   }, [list, ids, tabbed])
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col font-mono text-[12.5px]">
+    <div
+      data-terminal-type=""
+      className="relative flex min-h-0 flex-1 flex-col"
+    >
+      <CellProbe />
       <div
         ref={host}
         id={hostId}
@@ -594,7 +678,7 @@ export function TerminalScreen({
         onFocus={() => handle.current?.set_focused(true)}
         onBlur={() => handle.current?.set_focused(false)}
         data-terminal-grid=""
-        className="relative min-h-0 flex-1 cursor-default overflow-hidden bg-term-canvas font-mono text-[12.5px] whitespace-pre text-term-ink outline-none"
+        className="relative min-h-0 flex-1 cursor-default overflow-hidden bg-term-canvas whitespace-pre text-term-ink outline-none"
       />
       {/* Over the header bar's last columns, which the terminal leaves
           clear. Outside the host, whose contents Ratzilla replaces. */}

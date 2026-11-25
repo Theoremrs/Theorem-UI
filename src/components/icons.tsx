@@ -109,7 +109,6 @@ import PencilNote from '@/assets/icons/streamline/streamline-pencil-write-1.png'
 import PaperPlane from '@/assets/icons/streamline/streamline-travel-paper-plane.png'
 import WorkflowBranch from '@/assets/icons/streamline/streamline-workflow-branch.png'
 import WorkflowPullRequest from '@/assets/icons/streamline/streamline-workflow-pull-request.png'
-import CopyPaste from '@/assets/icons/streamline/streamline-copy-paste-1.png'
 import CrossRegion from '@/assets/icons/streamline/streamline-cross-region-data-delivery-2.png'
 import DownloadBox from '@/assets/icons/streamline/streamline-download-box.png'
 import ShipmentUpload from '@/assets/icons/streamline/streamline-shipment-upload.png'
@@ -281,7 +280,6 @@ const FileEntry: SvgMark = ({ className, ...props }) => (
 const Artifact = masked(SquareWireframe)
 const Ide = masked(AppWindowCode)
 const Todo = masked(ListEdit)
-const Copy = masked(CopyPaste)
 const Download = masked(DownloadBox)
 const TreeFile = solid(TreeFileMark)
 const Diagram = masked(CodeWrite)
@@ -412,6 +410,8 @@ const Thread = painted(CONTROL_LAYERS.thread, 180, true)
 const ChatSearch = painted(CONTROL_LAYERS.chatSearch, 180, true)
 const Send = painted(CONTROL_LAYERS.send, 0, true)
 const Attachment = painted(CONTROL_LAYERS.upload, 180, true)
+/** An attached file the composer has no picture of. */
+const AttachedFile = painted(CONTROL_LAYERS.officeFileText, 180, true)
 const AttachFolder = painted(CONTROL_LAYERS.attachFolder, 45, true)
 const Plan = painted(CONTROL_LAYERS.plan, 180, true)
 // The owner's 2026-11-16 + menu set: a browser window for Web search, a Lego
@@ -451,6 +451,8 @@ const SessionImage = painted(CONTROL_LAYERS.imageFileEdit, 180, true)
 const SessionForked = painted(CONTROL_LAYERS.fileModule, 45, true)
 const SessionContinued = painted(CONTROL_LAYERS.fileDouble, 45, true)
 const SessionPair = painted(CONTROL_LAYERS.fileDouble2, 45, true)
+/** Copy: the owner's two stacked pages (Streamline's Common File Double 2, 2026-11-23) wherever something is copied. */
+const Copy = painted(CONTROL_LAYERS.fileDouble2, 180, true)
 const SessionEmpty = painted(CONTROL_LAYERS.fileEmpty, 180, true)
 
 /* The owner's 2026-11-15 Streamline set, in place of the Noun marks and the
@@ -502,6 +504,7 @@ export const Icon = {
   Article,
   AttachFolder,
   Attachment,
+  AttachedFile,
   Calendar,
   Chat,
   ChatSearch,

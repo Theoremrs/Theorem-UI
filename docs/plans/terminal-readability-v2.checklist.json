@@ -1,0 +1,120 @@
+{
+  "plan": "terminal-readability-v2.md and vitesse-terminal-color.md (owner's patch bundle, terminal-design-files(1).zip), merged with the earlier readability port in terminal/src/lib.rs",
+  "planServer": "The Theorem plan server (127.0.0.1:8390) refused connections, so this checklist is the plan of record.",
+  "oracle": {
+    "class": "static",
+    "driver": "Story URLs (/story/<id>) captured in Chromium at 900x640, device scale 2, palette and mode seeded through the appearance store, for github-sharp dark, vitesse dark, vitesse light and stone light",
+    "before": "HEAD 90ae0a4d's terminal code with this branch's terminal-stories.ts, so both sides draw the same fixture",
+    "after": "this branch: docs/plans/evidence/terminal-readability-v2/renders/ (agent terminal stories) and renders-side/ (command-live and view-cells at 900x700)",
+    "collages": "docs/plans/evidence/terminal-readability-v2/collages/ and collages-side/<story>--<theme>.png: LEFT before, MIDDLE after, RIGHT pixelmatch heatmap at 0.2; percentages in each summary.json are reported, not verdicts",
+    "seal": "hitl: pending until the owner opens the collages. Drift-locks and test counts are not visual proof."
+  },
+  "items": [
+    {
+      "id": "type-recipe",
+      "requirement": "One terminal type for every terminal: 12.5px at the code scale, body 450, bold 600, rows 1.4 (17.5px), DIM 400 at full opacity, zero tracking and word spacing, kerning and ligatures off, ss01-ss03 off",
+      "oracle": "static",
+      "status": "done, visual seal pending",
+      "evidence": [
+        "src/components/terminal/cell-grid.css [data-terminal-type] rules, on the agent terminal (terminal-screen.tsx), a command (command-terminal.tsx) and a view's cells (cells-terminal.tsx); the cabinet keeps 1.5 and 300/600",
+        "renders/measured.json on every story and theme: rowHeight 17.5, fontWeight 450, fontVariantLigatures none, fontFeatureSettings ss01-ss03 0 (HEAD: 18.75, 400, common-ligatures contextual, normal); cell advance unchanged at 7.5625px",
+        "collages/*.png",
+        "Renaming the agent's marker from data-terminal-screen to data-terminal-type left its static stories pixel-identical to renders/ (0 px in all four themes)"
+      ]
+    },
+    {
+      "id": "type-scope",
+      "requirement": "The command and cells terminals derive their type, spacing and colour from the agent terminal (owner, 2026-11-24), specialised only where they need it",
+      "status": "done, visual seal pending",
+      "evidence": [
+        "Type: both roots carry data-terminal-type, so they take the agent terminal's recipe; their own font-mono text-[12.5px] and leading-[1.5] are gone, the load-failure text included",
+        "Rows: heights are counted in the type's rows ({rows}lh, h-[1lh]) and the slide and touch scroll read the row from terminal-screen's rowHeight (the computed line-height), so no host keeps a pitch of its own",
+        "Remeasure: terminal-screen's CellProbe sits in every host, and remeasure() sends one window resize a frame for all of them, so a code-scale change or a late face redraws a command or cells view with no agent terminal on the page",
+        "Colour: one palette (loadWasm's set_palette) as before; the ground is now the agent terminal's canvas, bg-term-canvas in CSS and Palette::canvas() in command.rs (frame, VT ground, edge fade) and cells.rs, where they had the panel ground",
+        "Specialised: a program's faint (SGR 2) output is muted in its colour, half way to its ground as half opacity drew it, since the type draws DIM at full opacity (command.rs faint, FAINT)",
+        "Kept as they were: the frame's 6px padding (py-1.5) and the crate's one-column margin each side",
+        "renders-side/measured.json, all four themes: every grid is exactly its rows (frame 70px = 4 x 17.5, 210px = 12 x 17.5), line-height 17.5px, weight 450, ligatures none, ground rgb(18, 18, 18) in Vitesse dark and light; HEAD: 18.75, 400, ligatures on, panel ground",
+        "Tests: a_command_sits_on_the_agent_terminals_canvas, faint_output_is_muted_in_its_colour_and_keeps_its_lighter_weight, the_cells_sit_on_the_agent_terminals_canvas; cargo test 274 passed",
+        "collages-side/*.png"
+      ],
+      "oracle": "static"
+    },
+    {
+      "id": "font-lifecycle",
+      "requirement": "Startup waits for the mono face at 450 and 600 beside WASM init, a failed face still mounts in the fallback, a late face of the stack remeasures every grid, and a hidden 1ch x 1lh probe announces a cell change (face, code scale)",
+      "status": "done",
+      "evidence": [
+        "terminal-screen.tsx loadTerminalFonts (Promise.allSettled), loadWasm awaits it with wasm.default(), document.fonts loadingdone listener filtered to the stack's families, CellProbe and its ResizeObserver",
+        "ResizeObserver and font reports go through remeasure(), which coalesces them into one window resize per animation frame; cleanup disconnects the observer",
+        "Shared by every terminal: the command and cells views load through the same loadWasm and render their own CellProbe"
+      ]
+    },
+    {
+      "id": "rust-cell-metrics",
+      "requirement": "Cell dimensions read after the backend rebuild and passed to the app and cursor in the same frame",
+      "status": "done",
+      "evidence": [
+        "terminal/src/lib.rs cell_size_css_px at the draw and cursor sites, from v2's lib.rs"
+      ]
+    },
+    {
+      "id": "final-surface-colour",
+      "requirement": "Accent and a metadata role derived against the selected band at 4.5:1; sage, accent, focus and textDisabled are the only emitted fields that change",
+      "status": "done",
+      "evidence": [
+        "terminal-ladder.ts READ.metadata, READ.accent, ladderPalette sage/accent/focus = accent, textDisabled = text.metadata",
+        "terminal-ladder-readability.test.ts: 3 pass; bun test src/components/terminal: 166 pass, 0 fail"
+      ]
+    },
+    {
+      "id": "transcript-layout",
+      "requirement": "The two-cell inset sits outside the wrap so continuation rows keep the reading edge; thinking keeps four; a prompt's continuation aligns with the body and a scrolled continuation does not repeat the prompt; counting and painting share one content width; only visible lines are painted; one blank row between prose and other groups; consecutive tool rows together; every heading bold; resource summaries sage and underlined",
+      "oracle": "static",
+      "status": "done, visual seal pending",
+      "evidence": [
+        "terminal/src/lib.rs transcript_line, draw_transcript_line, Built.prefixes",
+        "Tests: wrapped_prose_keeps_its_inset_styles_and_wide_glyphs_when_scrolled, wrapped_prose_and_group_spacing_keep_tool_hit_rows_in_sync (the Session/hit-map test the bundle could not run), every_heading_level_is_bold, a_file_a_tool_row_opens_reads_in_sage_and_stays_underlined, prose_and_tool_rows_sit_one_blank_row_apart_and_tool_rows_stay_together",
+        "cargo test in terminal/: 274 passed, 0 failed",
+        "collages/terminal-reading--*.png, terminal-activity-expanded--*.png"
+      ]
+    },
+    {
+      "id": "list-hang",
+      "requirement": "The earlier port's hanging indent for list items, carried into v2's prefix model",
+      "status": "done, beyond the bundle",
+      "evidence": [
+        "The bundle says it adds no hanging-indent policy for list bodies; the earlier port did, and the merge keeps it as a per-line prefix count (lead) rather than a second wrapper, so textwrap is gone from Cargo.toml",
+        "Tests: a_wrapped_list_item_hangs_under_its_words, a_lead_is_the_marker_and_quote_spans_and_never_more_than_half_the_row",
+        "terminal-reading story: the long list item's second row starts under 'The'"
+      ]
+    },
+    {
+      "id": "vitesse-canvas",
+      "requirement": "Vitesse's conversation canvas is exactly #121212 in light and dark workspace modes; other palettes unchanged",
+      "oracle": "static",
+      "status": "done without the adapter",
+      "evidence": [
+        "Measured on the live stories, before and after: canvas rgb(18, 18, 18) in vitesse dark and vitesse light (renders/measured.json)",
+        "The real repository already produces it: generated src/palettes.css carries Vitesse's --term-canvas #121212 and terminal-theme.test.ts:262 asserts it (Vitesse sits on Vitesse Dark ground in both modes). The bundle's terminal-editor-reference.ts adapter was written against a fixture with a wrong ground because the upload lacked terminal-editor.ts; here it would be a second path to a value the pipeline already emits, so it was not added"
+      ]
+    },
+    {
+      "id": "stories",
+      "requirement": "A story pins every visual claim",
+      "status": "done",
+      "evidence": [
+        "terminal-stories.ts terminal-reading claim and fixture extended with wrapped prose and a long list item"
+      ]
+    },
+    {
+      "id": "owner-seal",
+      "requirement": "Owner opens the collages and seals the visuals",
+      "oracle": "static",
+      "status": "pending",
+      "evidence": [
+        "docs/plans/evidence/terminal-readability-v2/collages/ (16 collages)",
+        "docs/plans/evidence/terminal-readability-v2/collages-side/ (8 collages)"
+      ]
+    }
+  ]
+}

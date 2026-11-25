@@ -35,7 +35,7 @@ import { scalarToUtf16, utf8ToUtf16, type TheoremLocation, type TheoremRange, ty
 import { connect, WindowMessenger, type RemoteProxy } from 'penpal';
 import {
     EMBEDDED_LAYOUT, type ChatMessage, type ChatThreadUpdate, type DelegationChanges, type IdeConnection, type IdeFileEntry, type IdeFrameMethods,
-    type IdeHostMethods, type RevealOptions, type StatusBarItem, type StatusBarItems
+    type IdeFileLocation, type IdeHostMethods, type RevealOptions, type StatusBarItem, type StatusBarItems
 } from '../common/ide-bridge';
 import { TheoremConnection } from './theorem-connection';
 import { TheoremDelegations } from './theorem-delegations';
@@ -426,7 +426,7 @@ export class TheoremIdeBridge implements FrontendApplicationContribution, Comman
         });
     }
 
-    protected locationOf(editor: TextEditor | undefined): TheoremLocation | undefined {
+    protected locationOf(editor: TextEditor | undefined): IdeFileLocation | undefined {
         const path = editor && this.connection.toPath(editor.uri);
         if (!editor || !path) {
             return undefined;
