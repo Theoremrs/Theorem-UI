@@ -833,22 +833,35 @@ export function createThreadListAdapter(
       const projects = after
         ? Object.keys(after)
         : await projectIds(activeProject())
-      const pages = await Promise.all(
-        projects.map(async (projectId) => ({
-          projectId,
-          page: await client.chat.threads.list({
+      const active = activeProject()
+      const reads = await Promise.allSettled(
+        projects.map((projectId) =>
+          client.chat.threads.list({
             projectId,
             cursor: after?.[projectId],
             includeArchived: true,
             limit: 50,
           }),
-        })),
-      )
-      const more = Object.fromEntries(
-        pages.flatMap(({ projectId, page }) =>
-          page.nextCursor ? [[projectId, page.nextCursor]] : [],
         ),
       )
+      // Only the open project's failure fails the list: another project
+      // that cannot be read (removed, or no longer shared) is left out, and
+      // on a later page keeps its cursor so the next load tries it again.
+      const pages = reads.flatMap((read, index) => {
+        const projectId = projects[index]!
+        if (read.status === 'fulfilled') return [{ projectId, page: read.value }]
+        if (projectId === active) throw read.reason
+        return []
+      })
+      const more = Object.fromEntries([
+        ...pages.flatMap(({ projectId, page }) =>
+          page.nextCursor ? [[projectId, page.nextCursor]] : [],
+        ),
+        ...reads.flatMap((read, index) => {
+          const cursor = after?.[projects[index]!]
+          return read.status === 'rejected' && cursor ? [[projects[index]!, cursor]] : []
+        }),
+      ])
       const seen = new Set<string>()
       const page = {
         items: pages

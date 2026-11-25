@@ -40,13 +40,23 @@ function presentSchema(): Record<string, unknown> {
         if (key === 'description' || key === 'title' || key === 'default') continue
         out[key] = strip(entry)
       }
-      // An enum already names its values, `properties` already makes an
-      // object, and an object's keys are always strings: each says nothing
-      // the rest of the schema does not. The top level keeps its type.
+      // An enum already names its values and an object's keys are always
+      // strings: neither says anything the rest of the schema does not.
       if (Array.isArray(out.enum)) delete out.type
-      if (out.type === 'object' && out.properties) delete out.type
       if (JSON.stringify(out.propertyNames) === '{"type":"string"}')
         delete out.propertyNames
+      // A prop several components declare repeats their schemas in one
+      // anyOf; the same branch twice accepts nothing more.
+      if (Array.isArray(out.anyOf)) {
+        const branches = [
+          ...new Map(out.anyOf.map((branch) => [JSON.stringify(branch), branch])).values(),
+        ]
+        const only = Object.keys(out).length === 1
+        if (only && branches.some((branch) => JSON.stringify(branch) === '{}'))
+          return {}
+        if (only && branches.length === 1) return branches[0]
+        out.anyOf = branches
+      }
       return out
     }
     return value

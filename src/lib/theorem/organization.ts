@@ -884,23 +884,25 @@ export function useProjectOutputs(projectId: string | undefined) {
   })
 }
 
-/**
- * The newest outputs across every project that has any, read through the
- * same queries the sidebar's Outputs folders use.
- */
 /** An output with the project whose Gallery holds it. */
 export type RecentOutput = { projectId: string; output: ProjectOutput }
 
-/** The newest outputs across every project, for a new chat's page. */
+/**
+ * The newest outputs across every project that has any, for a new chat's
+ * page, read through the same queries the sidebar's Outputs folders use.
+ * A run that makes an output ends on the server without telling this tab,
+ * so the reads poll while the page shows them, as the organization does.
+ */
 export function useRecentOutputs(limit: number): RecentOutput[] {
   const { data: organization } = useOrganization()
   const projects = (organization?.projects ?? []).filter(
     (project) => project.outputCount > 0,
   )
   return useQueries({
-    queries: projects.map((project) =>
-      projectOutputsQuery(project.projectId),
-    ),
+    queries: projects.map((project) => ({
+      ...projectOutputsQuery(project.projectId),
+      refetchInterval: 15_000,
+    })),
     combine: (results) =>
       results
         .flatMap((result, at) =>

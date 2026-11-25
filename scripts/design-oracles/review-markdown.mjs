@@ -106,7 +106,11 @@ try {
       const humanVoice = humanBlocks.filter(
         (b) => b.tag !== 'BLOCKQUOTE' || true,
       )
-      const humanMath = Boolean(human.querySelector('.katex'))
+      // Both inline forms render: the dollar pair and \( \).
+      const tex = [...human.querySelectorAll('.katex annotation')].map((n) =>
+        n.textContent.replace(/\s+/g, ''),
+      )
+      const humanMath = ['E=mc^2', 'a^2+b^2=c^2'].every((m) => tex.includes(m))
       const humanPrice = human.textContent.includes('$20')
 
       // The long answer is the last assistant message.
@@ -235,11 +239,18 @@ try {
               }
             : null,
           tdWhiteSpace: style(td).whiteSpace,
+          // Lines the description's own text sits on, not the cell box,
+          // which a taller neighbour or padding can stretch.
           longCellLines: longCell
-            ? Math.round(
-                longCell.getBoundingClientRect().height /
-                  px(style(longCell).lineHeight),
-              )
+            ? (() => {
+                const range = document.createRange()
+                range.selectNodeContents(longCell)
+                return new Set(
+                  [...range.getClientRects()]
+                    .filter((r) => r.width > 0)
+                    .map((r) => Math.round(r.top)),
+                ).size
+              })()
             : 0,
           numericVariant: numeric ? style(numeric).fontVariantNumeric : '',
           numericAlign: numeric ? style(numeric).textAlign : '',
@@ -282,6 +293,15 @@ try {
 
     const scale = c.overrides.scales?.content ?? 1
     const near = (a, b, t = 0.75) => Math.abs(a - b) <= t
+    // A computed colour's alpha: rgba()'s fourth value, or what follows the
+    // slash in oklab(), color() and the other space forms.
+    const alpha = (color) => {
+      if (color === 'transparent') return 0
+      const slash = color.match(/\/\s*([\d.]+)(%?)\s*\)$/)
+      if (slash) return Number(slash[1]) / (slash[2] ? 100 : 1)
+      const rgba = color.match(/^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)$/)
+      return rgba ? Number(rgba[1]) : 1
+    }
     const checks = [
       {
         id: 'human-voice',
@@ -332,9 +352,7 @@ try {
       {
         id: 'prose-table-opaque',
         authority: 'contract',
-        passed: measured.tables.every(
-          (t) => !/rgba\(.*, 0\)|transparent/.test(t.background),
-        ),
+        passed: measured.tables.every((t) => alpha(t.background) === 1),
       },
       {
         id: 'wide-table-local-scroll',
@@ -362,7 +380,7 @@ try {
             near(g, RHYTHM.listItem * measured.H, 1),
           ) &&
           measured.nestedGaps.every(
-            (g) => g <= RHYTHM.listItem * measured.H + 1,
+            (g) => g >= -0.5 && g <= RHYTHM.listItem * measured.H + 1,
           ) &&
           measured.looseInnerGap !== null &&
           near(measured.looseInnerGap, RHYTHM.paragraph * measured.H, 1),

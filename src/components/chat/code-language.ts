@@ -19,19 +19,25 @@ const SETTLE_MS = 400
 // language word, in a chunk of their own: nothing of it loads before then.
 let model: Promise<ModelOperations> | undefined
 const loadModel = () =>
-  (model ??= import('@vscode/vscode-languagedetection').then(
-    ({ ModelOperations }) =>
-      new ModelOperations({
-        modelJsonLoaderFunc: async () =>
-          (await import('@vscode/vscode-languagedetection/model/model.json'))
-            .default,
-        weightsLoaderFunc: async () => {
-          const { default: weights } =
-            await import('@vscode/vscode-languagedetection/model/group1-shard1of1.bin?inline')
-          return (await fetch(weights)).arrayBuffer()
-        },
-      }),
-  ))
+  (model ??= import('@vscode/vscode-languagedetection')
+    .then(
+      ({ ModelOperations }) =>
+        new ModelOperations({
+          modelJsonLoaderFunc: async () =>
+            (await import('@vscode/vscode-languagedetection/model/model.json'))
+              .default,
+          weightsLoaderFunc: async () => {
+            const { default: weights } =
+              await import('@vscode/vscode-languagedetection/model/group1-shard1of1.bin?inline')
+            return (await fetch(weights)).arrayBuffer()
+          },
+        }),
+    )
+    .catch((error: unknown) => {
+      // A failed fetch is tried again by the next fence.
+      model = undefined
+      throw error
+    }))
 
 /**
  * The fence word Crepe can load for one of the model's ids: the id itself
@@ -116,6 +122,8 @@ export function codeLanguagePlugin() {
           return false
         })
       }
+      // A restored draft or an edited message may open with a bare fence.
+      timer = setTimeout(read, SETTLE_MS)
       return {
         update(current, previous) {
           if (current.state.doc.eq(previous.doc)) return

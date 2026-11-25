@@ -165,7 +165,9 @@ function WithRuntime({
   children,
   initialThreadId = 'thread-app-gallery',
 }: {
-  children: React.ReactNode
+  /** A function child is given the thread the runtime has open. */
+  children:
+    React.ReactNode | ((threadId: string | undefined) => React.ReactNode)
   initialThreadId?: string
 }) {
   const [threadId, setThreadId] = useState<string | undefined>(
@@ -177,7 +179,7 @@ function WithRuntime({
       threadId={threadId}
       onThreadIdChange={setThreadId}
     >
-      {children}
+      {typeof children === 'function' ? children(threadId) : children}
     </TheoremRuntimeProvider>
   )
 }
@@ -253,8 +255,12 @@ function PopulatedShellStory() {
 function NewChatStory() {
   return (
     <WithRuntime initialThreadId="">
-      <ChatShell projectId="project-theorem" threadId={undefined} />
-      <CommandPalette />
+      {(threadId) => (
+        <>
+          <ChatShell projectId="project-theorem" threadId={threadId} />
+          <CommandPalette />
+        </>
+      )}
     </WithRuntime>
   )
 }

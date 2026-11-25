@@ -119,7 +119,9 @@ const asDate = (value: DataTableValue) => {
           isCalendarDate(value)
         ? Date.parse(value)
         : Number.NaN
-  return Number.isNaN(timestamp) ? undefined : new Date(timestamp)
+  // Past ±8.64e15 ms a Date is invalid, and its toISOString throws.
+  const date = new Date(timestamp)
+  return Number.isNaN(date.getTime()) ? undefined : date
 }
 
 const fractionDigits = (decimals: number | undefined) =>
@@ -321,7 +323,7 @@ function Value({
     const hrefValue = format.hrefKey ? row[format.hrefKey] : value
     const href = safeHref(typeof hrefValue === 'string' ? hrefValue : undefined)
     if (!href) return <>{textValue(value)}</>
-    const external = /^https?:/.test(href)
+    const external = /^https?:/i.test(href)
     return external ? (
       <a
         href={href}
@@ -385,6 +387,16 @@ const isNumeric = (format: DataTableFormat | undefined) =>
   format?.kind === 'percent' ||
   format?.kind === 'delta'
 
+/** Values of different kinds sort by kind first, so a mixed column has one order. */
+const kindRank = (value: DataTableValue) =>
+  typeof value === 'number'
+    ? 0
+    : typeof value === 'boolean'
+      ? 1
+      : Array.isArray(value)
+        ? 2
+        : 3
+
 const compareValues = (
   a: DataTableValue,
   b: DataTableValue,
@@ -397,12 +409,17 @@ const compareValues = (
     const first = asDate(a)
     const second = asDate(b)
     if (first && second) return first.getTime() - second.getTime()
+    if (first || second) return first ? -1 : 1
   }
+  const rank = kindRank(a) - kindRank(b)
+  if (rank !== 0) return rank
   if (typeof a === 'number' && typeof b === 'number') return a - b
   if (typeof a === 'boolean' && typeof b === 'boolean') {
     return Number(a) - Number(b)
   }
-  if (Array.isArray(a) && Array.isArray(b)) return a.length - b.length
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length - b.length || collator.compare(textValue(a), textValue(b))
+  }
   return collator.compare(textValue(a), textValue(b))
 }
 
@@ -440,7 +457,7 @@ export function DataTable({
   const [internalSort, setInternalSort] = useState<DataTableSort | null>(
     defaultSort ?? null,
   )
-  const [announcement, setAnnouncement] = useState('')
+  const [sortTouched, setSortTouched] = useState(false)
   const activeSort = sort === undefined ? internalSort : sort
   const hasRelativeDates = columns.some(
     (column) =>
@@ -494,13 +511,15 @@ export function DataTable({
           ? { key: column.key, direction: 'desc' as const }
           : null
     if (sort === undefined) setInternalSort(next)
-    setAnnouncement(
-      next
-        ? `Sorted by ${column.label}, ${next.direction === 'asc' ? 'ascending' : 'descending'}`
-        : 'Sorting cleared',
-    )
+    setSortTouched(true)
     onSortChange?.(next)
   }
+  // Said of the sort the rows show, which a controlled parent may not have applied.
+  const announcement = !sortTouched
+    ? ''
+    : activeSort && sortColumn
+      ? `Sorted by ${sortColumn.label}, ${activeSort.direction === 'asc' ? 'ascending' : 'descending'}`
+      : 'Sorting cleared'
 
   const cellClass = (column: DataTableColumn) =>
     cn(
@@ -519,89 +538,91 @@ export function DataTable({
       )}
       {...props}
     >
-      <table className="hidden w-full border-collapse @md:table">
-        {caption ? <caption className="sr-only">{caption}</caption> : null}
-        <thead className="border-foreground/10 border-b">
-          <tr>
-            {columns.map((column) => {
-              const direction =
-                activeSort?.key === column.key
-                  ? activeSort.direction
-                  : undefined
-              const sortable = column.sortable !== false
-              return (
-                <th
-                  key={column.key}
-                  scope="col"
-                  {...(direction
-                    ? {
-                        'aria-sort':
-                          direction === 'asc' ? 'ascending' : 'descending',
-                      }
-                    : {})}
-                  style={column.width ? { width: column.width } : undefined}
-                  className={cn(
-                    mono,
-                    'text-muted-foreground px-4 py-3 font-medium',
-                    (column.align ??
-                      (isNumeric(column.format) ? 'end' : 'start')) === 'end'
-                      ? 'text-end'
-                      : 'text-start',
-                  )}
-                >
-                  {sortable ? (
-                    <button
-                      type="button"
-                      onClick={() => changeSort(column)}
-                      aria-label={`Sort by ${column.label}`}
-                      className="focus-visible:ring-foreground/20 -mx-1 rounded px-1 outline-none focus-visible:ring-1"
-                    >
-                      {column.label}
-                      {direction ? (
-                        <span aria-hidden className="ms-1">
-                          {direction === 'asc' ? '↑' : '↓'}
-                        </span>
-                      ) : null}
-                    </button>
-                  ) : (
-                    column.label
-                  )}
-                </th>
-              )
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {sortedRows.length === 0 ? (
+      <div className="hidden overflow-x-auto @md:block">
+        <table className="w-full border-collapse">
+          {caption ? <caption className="sr-only">{caption}</caption> : null}
+          <thead className="border-foreground/10 border-b">
             <tr>
-              <td
-                colSpan={Math.max(columns.length, 1)}
-                className="text-muted-foreground px-4 py-6 text-center text-[13px]"
-              >
-                <span role="status">{emptyMessage}</span>
-              </td>
+              {columns.map((column) => {
+                const direction =
+                  activeSort?.key === column.key
+                    ? activeSort.direction
+                    : undefined
+                const sortable = column.sortable !== false
+                return (
+                  <th
+                    key={column.key}
+                    scope="col"
+                    {...(direction
+                      ? {
+                          'aria-sort':
+                            direction === 'asc' ? 'ascending' : 'descending',
+                        }
+                      : {})}
+                    style={column.width ? { width: column.width } : undefined}
+                    className={cn(
+                      mono,
+                      'text-muted-foreground px-4 py-3 font-medium',
+                      (column.align ??
+                        (isNumeric(column.format) ? 'end' : 'start')) === 'end'
+                        ? 'text-end'
+                        : 'text-start',
+                    )}
+                  >
+                    {sortable ? (
+                      <button
+                        type="button"
+                        onClick={() => changeSort(column)}
+                        aria-label={`Sort by ${column.label}`}
+                        className="focus-visible:ring-foreground/20 -mx-1 rounded px-1 outline-none focus-visible:ring-1"
+                      >
+                        {column.label}
+                        {direction ? (
+                          <span aria-hidden className="ms-1">
+                            {direction === 'asc' ? '↑' : '↓'}
+                          </span>
+                        ) : null}
+                      </button>
+                    ) : (
+                      column.label
+                    )}
+                  </th>
+                )
+              })}
             </tr>
-          ) : (
-            sortedRows.map(({ row, index }) => (
-              <tr
-                key={rowIdentifier(row, rowKey, index)}
-                className="hover:bg-foreground/[0.025] transition-colors motion-reduce:transition-none"
-              >
-                {columns.map((column) => (
-                  <td key={column.key} className={cellClass(column)}>
-                    <Value
-                      column={column}
-                      row={row}
-                      locale={locale}
-                      relativeTo={relativeTime}
-                    />
-                  </td>
-                ))}
+          </thead>
+          <tbody>
+            {sortedRows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={Math.max(columns.length, 1)}
+                  className="text-muted-foreground px-4 py-6 text-center text-[13px]"
+                >
+                  <span role="status">{emptyMessage}</span>
+                </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              sortedRows.map(({ row, index }) => (
+                <tr
+                  key={rowIdentifier(row, rowKey, index)}
+                  className="hover:bg-foreground/[0.025] transition-colors motion-reduce:transition-none"
+                >
+                  {columns.map((column) => (
+                    <td key={column.key} className={cellClass(column)}>
+                      <Value
+                        column={column}
+                        row={row}
+                        locale={locale}
+                        relativeTo={relativeTime}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
       <div role="list" className="space-y-2 p-2.5 @md:hidden">
         {sortedRows.length === 0 ? (
           <div
@@ -639,7 +660,7 @@ export function DataTable({
                         <dt className="text-muted-foreground truncate">
                           {column.label}
                         </dt>
-                        <dd className="text-foreground/75 shrink-0 text-end tabular-nums">
+                        <dd className="text-foreground/75 min-w-0 text-end tabular-nums [overflow-wrap:anywhere]">
                           <Value
                             column={column}
                             row={row}

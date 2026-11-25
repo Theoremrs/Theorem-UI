@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-24T23:11:46.724Z",
+  "generatedAt": "2026-11-25T15:22:32.661Z",
   "engine": "156.0.8078.4",
   "results": [
     {
@@ -342,7 +342,7 @@
           "pair": "link/assistant-reading"
         },
         "tdWhiteSpace": "normal",
-        "longCellLines": 3,
+        "longCellLines": 2,
         "numericVariant": "tabular-nums",
         "numericAlign": "right",
         "rowBackground": "rgba(0, 0, 0, 0)"
@@ -353,15 +353,15 @@
           "clientWidth": 606,
           "wrapperWidth": 607.75,
           "columnWidth": 607.75,
-          "background": "rgb(255, 255, 255)",
+          "background": "rgb(246, 248, 250)",
           "overflowX": "auto"
         },
         {
-          "scrollWidth": 749,
+          "scrollWidth": 757,
           "clientWidth": 606,
           "wrapperWidth": 607.75,
           "columnWidth": 607.75,
-          "background": "rgb(255, 255, 255)",
+          "background": "rgb(246, 248, 250)",
           "overflowX": "auto"
         }
       ],
@@ -761,7 +761,7 @@
           "pair": "link/assistant-reading"
         },
         "tdWhiteSpace": "normal",
-        "longCellLines": 3,
+        "longCellLines": 2,
         "numericVariant": "tabular-nums",
         "numericAlign": "right",
         "rowBackground": "rgba(0, 0, 0, 0)"
@@ -772,15 +772,15 @@
           "clientWidth": 606,
           "wrapperWidth": 607.75,
           "columnWidth": 607.75,
-          "background": "rgb(38, 40, 41)",
+          "background": "rgb(17, 18, 19)",
           "overflowX": "auto"
         },
         {
-          "scrollWidth": 749,
+          "scrollWidth": 757,
           "clientWidth": 606,
           "wrapperWidth": 607.75,
           "columnWidth": 607.75,
-          "background": "rgb(38, 40, 41)",
+          "background": "rgb(17, 18, 19)",
           "overflowX": "auto"
         }
       ],
@@ -1184,7 +1184,7 @@
           "pair": "link/assistant-reading"
         },
         "tdWhiteSpace": "normal",
-        "longCellLines": 3,
+        "longCellLines": 2,
         "numericVariant": "tabular-nums",
         "numericAlign": "right",
         "rowBackground": "rgba(0, 0, 0, 0)"
@@ -1195,15 +1195,15 @@
           "clientWidth": 758,
           "wrapperWidth": 759.6875,
           "columnWidth": 759.6875,
-          "background": "rgb(255, 255, 255)",
+          "background": "rgb(246, 248, 250)",
           "overflowX": "auto"
         },
         {
-          "scrollWidth": 883,
+          "scrollWidth": 891,
           "clientWidth": 758,
           "wrapperWidth": 759.6875,
           "columnWidth": 759.6875,
-          "background": "rgb(255, 255, 255)",
+          "background": "rgb(246, 248, 250)",
           "overflowX": "auto"
         }
       ],
@@ -1605,7 +1605,7 @@
           "pair": "link/assistant-reading"
         },
         "tdWhiteSpace": "normal",
-        "longCellLines": 3,
+        "longCellLines": 2,
         "numericVariant": "tabular-nums",
         "numericAlign": "right",
         "rowBackground": "rgba(0, 0, 0, 0)"
@@ -1616,7 +1616,7 @@
           "clientWidth": 759,
           "wrapperWidth": 760.75,
           "columnWidth": 760.75,
-          "background": "rgb(255, 255, 255)",
+          "background": "rgb(246, 248, 250)",
           "overflowX": "auto"
         },
         {
@@ -1624,7 +1624,7 @@
           "clientWidth": 759,
           "wrapperWidth": 760.75,
           "columnWidth": 760.75,
-          "background": "rgb(255, 255, 255)",
+          "background": "rgb(246, 248, 250)",
           "overflowX": "auto"
         }
       ],
@@ -2024,26 +2024,26 @@
           "pair": "link/assistant-reading"
         },
         "tdWhiteSpace": "normal",
-        "longCellLines": 7,
+        "longCellLines": 5,
         "numericVariant": "tabular-nums",
         "numericAlign": "right",
         "rowBackground": "rgba(0, 0, 0, 0)"
       },
       "tables": [
         {
-          "scrollWidth": 316,
-          "clientWidth": 316,
-          "wrapperWidth": 318,
-          "columnWidth": 318,
-          "background": "rgb(255, 255, 255)",
+          "scrollWidth": 346,
+          "clientWidth": 346,
+          "wrapperWidth": 348,
+          "columnWidth": 348,
+          "background": "rgb(246, 248, 250)",
           "overflowX": "auto"
         },
         {
-          "scrollWidth": 749,
-          "clientWidth": 316,
-          "wrapperWidth": 318,
-          "columnWidth": 318,
-          "background": "rgb(255, 255, 255)",
+          "scrollWidth": 757,
+          "clientWidth": 346,
+          "wrapperWidth": 348,
+          "columnWidth": 348,
+          "background": "rgb(246, 248, 250)",
           "overflowX": "auto"
         }
       ],
