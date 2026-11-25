@@ -103,3 +103,10 @@ describe('a view read before it runs', () => {
     }
   })
 })
+
+test('a cell of declarations defines its names and displays nothing', () => {
+  const setup = transpileCell('const landscapes = {bowl: (x, y) => x * x + y * y}\nfunction simulate(n) { return n }', 1)
+  expect(setup.outputs).toEqual(['landscapes', 'simulate'])
+  expect(setup.autodisplay).toBe(false)
+  expect(transpileCell('simulate(3)', 2).autodisplay).toBe(true)
+})

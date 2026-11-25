@@ -34,3 +34,29 @@ test('a notebook in a frame that is never painted still runs its cells', async (
   await new Promise((resolve) => setTimeout(resolve, 500))
   expect(root.querySelector('[data-cell-id="total"]')?.textContent).toContain('21')
 })
+
+// Setup a cell's readers depend on, kept out of the reply: a JavaScript cell
+// of declarations compiles to `outputs` with `autodisplay: false`
+// (cells.test.ts), so it shows nothing and its names stay in the graph.
+test('a cell of declarations shows nothing and feeds the cells that read it', async () => {
+  const root = document.createElement('main')
+  document.body.append(root)
+  start(
+    [
+      {
+        id: 'setup',
+        kind: 'js',
+        body: () => ({ landscapes: { bowl: (x: number) => x * x }, simulate: (steps: number) => steps * 2 }),
+        inputs: [],
+        outputs: ['landscapes', 'simulate'],
+        autodisplay: false,
+      },
+      cell('run', (landscapes, simulate) => (landscapes as { bowl: (x: number) => number }).bowl(3) + (simulate as (n: number) => number)(5), ['landscapes', 'simulate']),
+    ],
+    { root },
+    {},
+  )
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  expect(root.querySelector('[data-cell-id="setup"]')?.textContent ?? '').toBe('')
+  expect(root.querySelector('[data-cell-id="run"]')?.textContent).toContain('19')
+})

@@ -133,7 +133,7 @@ const observableSections: Array<DocSection> = [
     id: 'cells',
     title: 'Writing cells',
     body: [
-      'Each string in `cells` is one cell. A cell is an expression (its value is displayed), a block `{ ... }`, or declarations such as `const total = d3.sum(data, (d) => d.value)`; names a cell declares are read by the cells that use them, in any order, and a cell reruns when a name it reads changes.',
+      'Each string in `cells` is one cell. A cell is an expression (its value is displayed), a block `{ ... }`, or declarations such as `const total = d3.sum(data, (d) => d.value)`, which display nothing, so setup the reader need not see stays in the graph; names a cell declares are read by the cells that use them, in any order, and a cell reruns when a name it reads changes.',
       '',
       'The older Observable dialect also compiles: `total = d3.sum(...)`, `viewof k = Inputs.range(...)`, `mutable count = 0`.',
       '',
@@ -141,6 +141,7 @@ const observableSections: Array<DocSection> = [
       '- An input is read by value with `view(Inputs.range(...))` or `viewof k = Inputs.range(...)`. Without either, cells that read it get the element.',
       '- `display(value)` shows more than one value from a cell; `width` is the frame width; `invalidation` is a promise that resolves when the cell reruns or the view closes, so release timers, observers and WebGL contexts there.',
       '- `md`, `html`, `svg` and `tex` are tagged templates for text, markup and math.',
+      '- `theme` is the page\'s colours: `{mode, ink, inkMuted, inkFaint, line, surface, series, states: {positive, warning, negative}, font}`. A cell that reads it runs again when the person changes theme; Plot\'s axes and default marks already draw in the page\'s ink.',
     ].join('\n'),
   },
   {
