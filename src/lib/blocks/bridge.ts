@@ -5,6 +5,7 @@
 import { autoType, csvParse } from 'd3-dsv'
 import picomatch from 'picomatch'
 import { z } from 'zod'
+import type { AppCompute } from '@/lib/theorem/app-compute'
 import type { WorkspaceClient } from '@/lib/workspace/types'
 import type { Capabilities } from './declarations'
 import {
@@ -138,6 +139,8 @@ export interface BridgeHost {
   artifacts?: AppArtifacts
   /** Capability instances a sandboxed module was allowed. Absent: every capability call is denied. */
   capability?: AppCapabilities
+  /** Theorem's computations (theorem/app-compute.ts). Absent where no Theorem backend is reached. */
+  compute?: AppCompute
 }
 
 /**
@@ -283,6 +286,12 @@ const params = {
   resolve: z.strictObject({ subject: z.record(z.string(), z.json()) }),
   openResult: z.strictObject({ id: z.string().regex(/^sha256:[0-9a-f]{64}$/) }),
   openRun: z.strictObject({ id: z.string().min(1).max(256) }),
+  computeCall: z.strictObject({
+    request: z.record(z.string(), z.json()).refine((request) => typeof request.action === 'string', {
+      message: 'A computation call names its `action`.',
+    }),
+  }),
+  computeOutput: z.strictObject({ job: z.string().min(1).max(200), name: z.string().min(1).max(200) }),
   trace: z.strictObject({
     recordingId: z.string().trim().min(1).max(200),
     frames: z.array(
@@ -629,6 +638,19 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
       request.actionKey,
     )
     return capabilityOutcome(() => lent.invoke(request))
+  })
+
+  const compute = () => {
+    if (!host.compute)
+      throw new BridgeDenied('This App is shown where no Theorem backend runs computations.')
+    return host.compute
+  }
+  serve<PageMethods, 'compute.call'>(rpc, 'compute.call', async (raw) =>
+    compute().call(params.computeCall.parse(raw).request),
+  )
+  serve<PageMethods, 'compute.output'>(rpc, 'compute.output', async (raw) => {
+    const { job, name: output } = params.computeOutput.parse(raw)
+    return compute().output(job, output)
   })
 
   serve<PageMethods, 'trace.recording'>(rpc, 'trace.recording', async (raw) => {
