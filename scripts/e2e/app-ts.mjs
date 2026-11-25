@@ -248,6 +248,7 @@ try {
     'a check of a correct App finds nothing and says what it showed',
     cleanCheck.built &&
       cleanCheck.typesChecked &&
+      cleanCheck.design === undefined &&
       cleanCheck.problems.length === 0 &&
       cleanCheck.files.join() === 'main.tsx,Table.tsx,types.ts' &&
       cleanCheck.rendered?.text === 'Alder housing\nBirch transit' &&
@@ -263,6 +264,26 @@ try {
       outline: cleanCheck.rendered?.outline,
       rendered: cleanCheck.rendered,
     },
+  )
+  const designDraft = '<!doctype html><style>html{background:#fff}body{color:#bbb;font:16px/24px sans-serif}</style><p id="faint" data-theorem-source="main.tsx:1:1">This text needs more contrast.</p>'
+  const designCheck = await inspect(designDraft, { design: true })
+  check(
+    'an opt-in design check evaluates the live App DOM and names the source to repair',
+    designCheck.design?.status === 'measured' &&
+      designCheck.design.evidence === 'sandbox-reported-dom' &&
+      designCheck.design.report.findings.some((finding) =>
+        finding.elementId === 'id:faint' &&
+        finding.source === 'main.tsx:1:1' &&
+        finding.authority === 'standard' &&
+        finding.status === 'fail',
+      ),
+    designCheck.design,
+  )
+  const designNotRun = await inspect(designDraft, { runMs: 0, design: true })
+  check(
+    'a build-only check reports design evidence as unavailable',
+    designNotRun.built && designNotRun.design?.status === 'unavailable',
+    designNotRun.design,
   )
   const mistypedCheck = await inspect(MISTYPED, { runMs: 0 })
   check(

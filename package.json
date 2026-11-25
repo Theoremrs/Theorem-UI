@@ -7,6 +7,9 @@
     "#/*": "./src/*"
   },
   "scripts": {
+    "oracle:feedback": "node packages/design-feedback/cli.mjs",
+    "test:design-feedback": "node --test packages/design-feedback/test/*.test.mjs tests/design-feedback/*.test.mjs",
+    "e2e:design-feedback": "node --test scripts/e2e/app-design-feedback.mjs",
     "e2e:stack": "node scripts/e2e/stack.mjs",
     "e2e:review": "node scripts/e2e/review.mjs",
     "e2e:models": "node scripts/e2e/models.mjs",

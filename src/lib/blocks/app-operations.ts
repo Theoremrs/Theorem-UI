@@ -38,7 +38,7 @@ export const APP_OPERATIONS = [
     // One operation for both, since a send admits sixteen and Kit, the face,
     // the workbench and the present one take the rest (client-surface.ts).
     description:
-      "Builds and checks an App in the person's browser and returns what is wrong with it. Pass `html`, a complete App document exactly as it would be published, to check a draft, or `documentId` to check a published App as saved now. The result says whether it built, lists build, type and runtime problems by file, line and column, and gives what the App showed: its text, and `outline`, each thing on the page by role, name and state with the source place that made it. `picture: true` adds an image of the App as drawn, if you read images. Nothing is changed or shown to the person: the App runs hidden for a moment with empty state and an empty in-memory database. Pass `library` instead to read the TypeScript declarations an App is checked against: window.theorem, @theorem/runtime, @theorem/spatial, @theorem/annotate. It lists the files, returns index.d.ts or `file`, and a `digest` of the whole API. Read what you use instead of guessing its shape.",
+      "Builds and checks an App in the person's browser. Pass a complete App document as `html`, or a saved App's `documentId`. Returns build, type and runtime problems by source location, rendered text and a role/name/state `outline`. `design: true` adds live DOM measurements evaluated for contrast, overflow and design targets, with localized findings and coverage; unknowns are explicit and targets are not standards. Requires runMs > 0. `picture: true` adds an approximate image reconstruction, not a browser screenshot. The App runs hidden with empty state and an in-memory database; its network access remains as declared. Pass `library` instead to read declarations: window.theorem, @theorem/runtime, @theorem/spatial or @theorem/annotate. Returns the files, index.d.ts or `file`, and an API `digest`. Read what you use instead of guessing its shape.",
     effect: 'read',
     inputSchema: {
       type: 'object',
@@ -66,7 +66,12 @@ export const APP_OPERATIONS = [
         picture: {
           type: 'boolean',
           description:
-            'Also return an image of what the App showed. Only a model that reads images is shown it.',
+            "Also return an approximate image reconstruction. It omits the App's fonts and is not a browser screenshot. Only a model that reads images is shown it.",
+        },
+        design: {
+          type: 'boolean',
+          description:
+            'Collect live sandbox DOM geometry and styles, then return bounded design findings, authority, evidence and coverage. Requires runMs > 0; defaults to false.',
         },
         library: {
           type: 'string',
@@ -268,10 +273,11 @@ export async function answerAppRequest(
       ? { outcome: 'rejected', reason: read.missing }
       : { outcome: 'applied', result: read }
   }
-  const { html, documentId, runMs, picture } = request.args
+  const { html, documentId, runMs, picture, design } = request.args
   const options = {
     ...(typeof runMs === 'number' ? { runMs } : {}),
     ...(picture === true ? { picture: true } : {}),
+    ...(design === true ? { design: true } : {}),
   }
   try {
     if (typeof html === 'string' && html)

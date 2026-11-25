@@ -363,6 +363,11 @@ export interface SandboxMethods {
     params: Record<string, never>
     result: { html: string; outline: string; page?: PageAttributes } | null
   }
+  /** Live DOM measurements, validated by the host before evaluation. */
+  'frame.design': {
+    params: { captureId: string }
+    result: unknown
+  }
 }
 
 /**
