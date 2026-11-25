@@ -209,3 +209,39 @@ test('a live turn says how long the person waited once it settles', async () => 
   await waitFor(() => activity(container).textContent.includes('Details'))
   expect(activity(container).textContent).toBe('Theorem·42s·Details')
 })
+
+
+test('reply Details opens request inspection only for the identified run', async () => {
+  const originalFetch = globalThis.fetch
+  const asked: string[] = []
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    asked.push(String(input))
+    return Promise.resolve(Response.json({
+      schema: 'theorem.chat.model-requests/v1',
+      runId: 'captured-turn',
+      terminal: true,
+      captureStatus: 'not_recorded',
+      notRecordedReason: 'This earlier turn has no request capture.',
+      requests: [],
+      nextAfterSeq: 0,
+      hasMore: false,
+    }))
+  }) as typeof fetch
+  try {
+    const messages = turn([]).map((item) => item.role === 'assistant' ? {
+      ...item,
+      metadata: { ...item.metadata, custom: { ...item.metadata?.custom, theoremRunId: 'captured-turn' } },
+    } : item)
+    const { container } = await render(<Harness messages={messages} />)
+    await waitFor(() => container.textContent.includes('Denver gets 300 days of sun.'))
+    expect(asked).toEqual([])
+    const details = buttonNamed(activity(container), 'Details')
+    if (!details) throw new Error('no Details control for the run')
+    await click(details)
+    await waitFor(() => container.textContent.includes('This earlier turn has no request capture.'))
+    expect(asked).toEqual(['/api/chat/v1/runs/captured-turn/model-requests?afterSeq=0&limit=100'])
+  } finally {
+    globalThis.fetch = originalFetch
+    queryClient.clear()
+  }
+})

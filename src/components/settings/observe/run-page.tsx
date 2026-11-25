@@ -2,6 +2,7 @@
 import { Link } from '@tanstack/react-router'
 import type { CSSProperties, ReactNode } from 'react'
 import { buttonVariants } from '@/components/ui/button'
+import { ModelRequests } from '@/components/chat/model-requests'
 import {
   describeModel,
   describeStreamEnd,
@@ -99,6 +100,7 @@ function Report({ data }: { data: RunReport }) {
     <>
       <PhaseSection trace={trace} now={now} />
       <TurnSection data={data} />
+      <ModelRequests runId={data.runId} />
       {trace.failure && <FailureSection failure={trace.failure} />}
       <LiveSection data={data} />
       <StepsSection trace={trace} now={now} ended={data.terminal} />
