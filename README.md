@@ -60,6 +60,14 @@ The issuer does not have to be Theorem. `THEOREM_OAUTH_ISSUER`, `THEOREM_OAUTH_S
 
 `bunfig.toml` holds back package versions published less than three days ago. Exemptions are listed there with the reason.
 
+## Model request inspection
+
+A reply's **Details** opens its model request captures through the native chat API. The list reads only request metadata; selecting a request reads its captured body. Messages, system text, tool declarations, other request fields, and downloadable captured JSON retain what the node recorded. Event positions are shown separately from request order.
+
+Captures are made before a send attempt, so they do not establish provider receipt. The inspector shows any exclusions, the original body hash, and original/captured sizes. Older runs whose requests were not recorded say so; unavailable endpoints and authorization failures remain distinct from an empty capture list. The existing Observe run page reuses the same inspector.
+
+App declaration reads are labeled as reads. App inspections report build, type, runtime, pending-cell and capture facts separately; an applied receipt without inspection evidence is never shown as a clean check.
+
 ## Layout
 
 ```
@@ -78,6 +86,7 @@ src/
     client.ts             SDK client, CSRF bootstrap, idempotent mutations
     runtime.tsx           assistant-ui runtime over Theorem threads, history and live-run resume
     observe.ts            the observe API's responses parsed with zod, polling queries, span and wait wording
+    model-requests.ts     native chat request captures, paginated metadata and lazy body reads
   components/
     shell/                rail, context panel, project switcher, sheet and dock layout
     chat/theorem-parts.tsx  renderers for Theorem message parts (artifacts, scenes, approvals, progress, citations, errors)
