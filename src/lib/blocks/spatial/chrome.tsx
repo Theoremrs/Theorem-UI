@@ -197,7 +197,7 @@ export function Control({ path, name, value, spec, set }: {
         isLabelHidden
         size="sm"
         value={truthy(value)}
-        onChange={(checked) => set(path, name, typeof value === 'boolean' ? checked : checked ? 1 : 0)}
+        onChange={(checked: boolean) => set(path, name, typeof value === 'boolean' ? checked : checked ? 1 : 0)}
       />
     )
   if (spec?.kind === 'bits') {
@@ -210,7 +210,7 @@ export function Control({ path, name, value, spec, set }: {
         label={label}
         size="sm"
         value={on}
-        onChange={(next) => set(path, name, next.reduce((sum, bit) => sum + 2 ** Number(bit), 0))}
+        onChange={(next: Array<string>) => set(path, name, next.reduce((sum: number, bit: string) => sum + 2 ** Number(bit), 0))}
       >
         {bits.map((bit) => (
           <ToggleButton key={bit} value={String(bit)} className="ts-bit" label={`bit ${bit} of ${name}`}>
@@ -397,8 +397,8 @@ export function PlaybackStrip({ snapshot, actions }: Pick<ChromeProps, 'snapshot
     <div className="ts-bar" role="toolbar" aria-label="Playback">
       <Glass />
       {snapshot.ticking && <Button label="Step" size="sm" variant="secondary" onClick={actions.step} />}
-      {snapshot.ticking && <ToggleButton label="Run" size="sm" isPressed={snapshot.running} onPressedChange={(on) => actions.run(on)} />}
-      <ToggleButton label="Slow" size="sm" isPressed={snapshot.slow} onPressedChange={(on) => actions.slow(on)} />
+      {snapshot.ticking && <ToggleButton label="Run" size="sm" isPressed={snapshot.running} onPressedChange={(on: boolean) => actions.run(on)} />}
+      <ToggleButton label="Slow" size="sm" isPressed={snapshot.slow} onPressedChange={(on: boolean) => actions.slow(on)} />
       {replay.active && (
         <Button label={replay.paused ? 'Continue' : 'Pause'} size="sm" variant="ghost" onClick={() => actions.pause(!replay.paused)} />
       )}

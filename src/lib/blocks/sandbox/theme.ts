@@ -191,6 +191,12 @@ export const APP_TOKENS = {
   'warning-container': 'ochre-container',
   error: 'error-ink',
   'error-container': 'error-container',
+  // The subjects of a chart: each palette's own categorical colours.
+  'series-1': 'series-1',
+  'series-2': 'series-2',
+  'series-3': 'series-3',
+  'series-4': 'series-4',
+  'series-5': 'series-5',
   font: 'font-sans',
   'font-mono': 'font-mono',
   radius: 'radius-md',
