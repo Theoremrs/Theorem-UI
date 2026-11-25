@@ -5,7 +5,7 @@
 import { Menu } from '@base-ui/react/menu'
 import type { ReactElement, ReactNode } from 'react'
 import { Icon } from '@/components/icons'
-import { menuItem, menuPopup } from '@/components/shell/sidebar'
+import { ChromeMenuPopup, menuItem } from '@/components/shell/chrome-menu'
 import { hostActions } from '@/lib/handlers/actions'
 import {
   handlersFor,
@@ -48,7 +48,7 @@ export function OpenWith({
       <Menu.Trigger render={render}>{children}</Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner align="end" sideOffset={6} className="z-50">
-          <Menu.Popup className={`min-w-52 ${menuPopup}`}>
+          <ChromeMenuPopup className="min-w-52">
             <Menu.Group>
               <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
                 Open with
@@ -97,7 +97,7 @@ export function OpenWith({
                 </Menu.Item>
               </>
             )}
-          </Menu.Popup>
+          </ChromeMenuPopup>
         </Menu.Positioner>
       </Menu.Portal>
     </Menu.Root>

@@ -11,6 +11,8 @@
   );
   --recipe-prose: 400 1.0625rem / 1.5882352941 var(--font-sans);
   --recipe-prose-human: 400 1rem / 1.625 var(--font-human);
+  --recipe-prose-table: 400 1rem / 1.5 var(--font-sans);
+  --recipe-prose-table-header: 500 1rem / 1.5 var(--font-sans);
   --recipe-composer-content: 400 1rem / 1.5 var(--font-human);
   --recipe-ui-label: 400 0.875rem / 1.4285714286 var(--font-sans);
   --recipe-ui-section: 500 0.875rem / 1.4285714286 var(--font-sans);
@@ -168,6 +170,14 @@
 }
 [data-appearance-recipe='prose.human'] {
   font: var(--recipe-prose-human);
+  letter-spacing: normal;
+}
+[data-appearance-recipe='prose.table'] {
+  font: var(--recipe-prose-table);
+  letter-spacing: normal;
+}
+[data-appearance-recipe='prose.table-header'] {
+  font: var(--recipe-prose-table-header);
   letter-spacing: normal;
 }
 [data-appearance-recipe='composer.content'] {
@@ -420,6 +430,63 @@
     var(--appearance-track-side) - var(--appearance-composer-inset)
   );
 }
+
+/* The thread's composer stands a fifth larger than the rest of the
+   conversation (owner, 2026-11-24). Every measure of it scales by the one
+   factor, so its design is unchanged: it centres on the column, wider than
+   the reply text, and never wider than the pane less its page padding. What
+   sits under a new chat's composer (appearance-composer-span) takes its width. */
+.appearance-composer-track,
+.appearance-composer-span {
+  --composer-scale: 1.2;
+  align-self: center;
+  margin-inline: 0;
+  inline-size: min(
+    calc(
+      var(--composer-scale) *
+        (
+          100% - 2 *
+            (var(--appearance-track-side) - var(--appearance-composer-inset))
+        )
+    ),
+    calc(100cqi - 2 * var(--appearance-page-padding))
+  );
+}
+.appearance-composer-track .appearance-composer-box {
+  gap: calc(var(--appearance-editor-toolbar-gap) * var(--composer-scale));
+  padding: calc(var(--appearance-composer-padding) * var(--composer-scale));
+  border-radius: calc(
+    var(--appearance-radius-composer) * var(--composer-scale)
+  );
+  --composer-radius: calc(
+    var(--appearance-radius-composer) * var(--composer-scale)
+  );
+}
+.appearance-composer-track .appearance-composer-toolbar,
+.appearance-composer-track .appearance-composer-tools,
+.appearance-composer-track .appearance-composer-settings,
+.appearance-composer-track .appearance-composer-actions {
+  gap: calc(var(--appearance-gap-related) * var(--composer-scale));
+}
+.appearance-composer-track
+  .appearance-composer-toolbar
+  :is(button, [role='button']) {
+  font-size: calc(0.875rem * var(--composer-scale));
+  min-block-size: calc(var(--appearance-control-min) * var(--composer-scale));
+  min-inline-size: calc(var(--appearance-control-min) * var(--composer-scale));
+}
+.appearance-composer-track
+  .appearance-composer-toolbar
+  :is(button, [role='button'])
+  > svg {
+  inline-size: calc(var(--appearance-icon-size) * var(--composer-scale));
+  block-size: calc(var(--appearance-icon-size) * var(--composer-scale));
+}
+.appearance-composer-track
+  .appearance-composer-toolbar
+  :is(.aui-composer-send, .aui-composer-cancel, .aui-composer-resume) {
+  inline-size: calc(var(--appearance-control-min) * var(--composer-scale));
+}
 .appearance-flat-footer {
   background: var(--surface-neutral);
 }
@@ -557,37 +624,211 @@
   font: var(--recipe-code);
   letter-spacing: normal;
 }
+/* The thread's composer is a fifth larger (--composer-scale above): its text
+   at the recipe's size times the scale, so the recipe's line height, the
+   two-line rest height and the placeholder grow with it. */
+.appearance-composer-track
+  .theorem-composer.theorem-note
+  .milkdown
+  .ProseMirror,
+.appearance-composer-track
+  .theorem-composer.theorem-note
+  .milkdown
+  .ProseMirror
+  :is(p, li),
+.appearance-composer-track
+  .theorem-composer.theorem-note
+  .milkdown
+  .crepe-placeholder::before {
+  font-size: calc(1rem * var(--composer-scale));
+}
+.appearance-composer-track
+  .theorem-composer.theorem-note
+  .milkdown
+  .ProseMirror {
+  max-block-size: min(calc(24rem * var(--composer-scale)), 40dvh);
+}
+/* A fence being typed wears the code block it will be sent as
+   (ui/code-block): the palette's code ground at the field radius, a compact
+   header in the gutter's tint holding the language word and, on hover, copy.
+   It stays the composer's width, so
+   it does not jump as a row grows. Translated from Crepe's code block. */
+.theorem-composer.theorem-note .milkdown .milkdown-code-block {
+  padding: 0;
+  margin: 0.375em 0;
+  overflow: hidden;
+  border-radius: var(--appearance-radius-field);
+  background: var(--surface-code);
+}
+.theorem-composer.theorem-note .milkdown .milkdown-code-block:first-child {
+  margin-block-start: 0;
+}
+.theorem-composer.theorem-note .milkdown .milkdown-code-block.selected {
+  outline: 1px solid var(--line-control);
+  outline-offset: -1px;
+}
+.theorem-composer.theorem-note .milkdown .milkdown-code-block .tools {
+  min-block-size: 1.75rem;
+  padding: 0.125rem 0.125rem 0.125rem 0.375rem;
+  background: var(--surface-code-gutter);
+}
+.theorem-composer.theorem-note .milkdown .milkdown-code-block .language-button {
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0.125rem 0.25rem 0.125rem 0.375rem;
+  border-radius: calc(var(--appearance-radius-field) - 0.25rem);
+  background: transparent;
+  color: var(--ink-faint);
+  font: 400 0.75rem / 1rem var(--font-sans);
+  opacity: 1;
+}
+.theorem-composer.theorem-note
+  .milkdown
+  .milkdown-code-block
+  .language-button:hover {
+  background: var(--surface-hover);
+  color: var(--ink-muted);
+}
+.theorem-composer.theorem-note .milkdown .milkdown-code-block .expand-icon {
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+}
+.theorem-composer.theorem-note .milkdown .milkdown-code-block .expand-icon svg {
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  color: currentColor;
+}
+.theorem-composer.theorem-note
+  .milkdown
+  .milkdown-code-block
+  .tools-button-group
+  button {
+  padding: 0.125rem 0.375rem;
+  border-radius: calc(var(--appearance-radius-field) - 0.25rem);
+  background: transparent;
+  color: var(--ink-faint);
+  font: 400 0.75rem / 1rem var(--font-sans);
+}
+.theorem-composer.theorem-note
+  .milkdown
+  .milkdown-code-block
+  .tools-button-group
+  button:hover {
+  background: var(--surface-hover);
+  color: var(--ink-muted);
+}
+.theorem-composer.theorem-note
+  .milkdown
+  .milkdown-code-block
+  .tools-button-group
+  button
+  svg {
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+  fill: currentColor;
+}
+.theorem-composer.theorem-note
+  .milkdown
+  .milkdown-code-block:is(:hover, :focus-within)
+  .tools-button-group
+  button {
+  opacity: 1;
+}
+.theorem-composer.theorem-note .milkdown .milkdown-code-block .cm-editor,
+.theorem-composer.theorem-note .milkdown .milkdown-code-block .cm-scroller {
+  background: var(--surface-code);
+}
+/* A draft has no use for line numbers or fold markers (Crepe's basicSetup
+   brings both), so the code starts at the block's edge. */
+.theorem-composer.theorem-note .milkdown .milkdown-code-block .cm-gutters {
+  display: none;
+}
+.theorem-composer.theorem-note .milkdown .milkdown-code-block .cm-content {
+  padding-block: 0.375rem;
+}
+/* The code starts under the language word in the header. */
+.theorem-composer.theorem-note .milkdown .milkdown-code-block .cm-line {
+  padding-inline: 0.75rem;
+}
+.theorem-composer.theorem-note .milkdown .milkdown-code-block .cm-activeLine {
+  box-shadow: none;
+}
 .aui-edit-composer-input.theorem-composer.theorem-note .milkdown .ProseMirror {
   min-block-size: 0;
   max-block-size: none;
   padding: 0.5rem 1rem;
 }
 
-.aui-md {
+/* Document rhythm, in fractions of the voice's own line (H): the reply's
+   17/27 Plex, the person's 16/26 Manrope. Each block sits one gap after the
+   one before it, so a gap is applied once and the first block has none
+   (chat typography brief, 2026-11-24). */
+:is(.aui-md, .aui-user-markdown) {
   display: flow-root;
-  --appearance-paragraph-gap: calc(0.75 * var(--appearance-prose-line-height));
-  --appearance-section-gap: calc(1.5 * var(--appearance-prose-line-height));
-  /* A heading belongs to the text under it: a quarter line below it, against
-     a section's gap above (owner, 2026-11-22). */
-  --appearance-heading-gap: calc(0.25 * var(--appearance-prose-line-height));
+  --appearance-markdown-line: var(--appearance-prose-line-height);
+  --appearance-paragraph-gap: calc(0.75 * var(--appearance-markdown-line));
+  /* A heading belongs to the text under it: more space above than below. */
+  --appearance-section-gap: calc(1.25 * var(--appearance-markdown-line));
+  --appearance-heading-gap: calc(0.4 * var(--appearance-markdown-line));
+  --appearance-subsection-gap: var(--appearance-markdown-line);
+  --appearance-subheading-gap: calc(0.3 * var(--appearance-markdown-line));
+  --appearance-item-gap: calc(0.25 * var(--appearance-markdown-line));
 }
-.aui-md > .aui-md-p {
+.aui-user-markdown {
+  --appearance-markdown-line: calc(1.625rem * var(--appearance-scale-content));
+}
+/* The flows: the message, a quotation and a list item each stack their
+   own blocks. */
+:is(.aui-md, .aui-user-markdown, .aui-md-blockquote, .aui-md-li) > * {
   margin-block: 0;
 }
-.aui-md > * + .aui-md-p {
+:is(.aui-md, .aui-user-markdown, .aui-md-blockquote, .aui-md-li) > * + * {
   margin-block-start: var(--appearance-paragraph-gap);
 }
-.aui-md > :is(h1, h2, h3, h4, h5, h6) {
+/* KaTeX's own sheet (loaded again by note excerpts) gives display math a
+   1em margin; the rhythm owns it. */
+:is(.aui-md, .aui-user-markdown, .aui-md-blockquote, .aui-md-li)
+  > .katex-display {
   margin-block: 0;
 }
-.aui-md > * + :is(h1, h2, h3, h4, h5, h6) {
+:is(.aui-md, .aui-user-markdown, .aui-md-blockquote, .aui-md-li)
+  > *
+  + .katex-display {
+  margin-block-start: var(--appearance-paragraph-gap);
+}
+:is(.aui-md, .aui-user-markdown) > * + :is(h1, h2) {
   margin-block-start: var(--appearance-section-gap);
 }
-/* :is() lifts this over the paragraph rule above at any sibling. */
-.aui-md > :is(h1, h2, h3, h4, h5, h6) + :is(.aui-md-p, *) {
+:is(.aui-md, .aui-user-markdown) > * + :is(h3, h4, h5, h6) {
+  margin-block-start: var(--appearance-subsection-gap);
+}
+:is(.aui-md, .aui-user-markdown) > :is(h1, h2) + :is(*, .katex-display) {
   margin-block-start: var(--appearance-heading-gap);
 }
-.aui-md :is(.aui-md-li, .aui-md-table) {
+:is(.aui-md, .aui-user-markdown)
+  > :is(h3, h4, h5, h6)
+  + :is(*, .katex-display) {
+  margin-block-start: var(--appearance-subheading-gap);
+}
+/* Simple items sit a quarter line apart; a list of paragraphs keeps the
+   paragraph gap between them, once. A nested list hangs a quarter line
+   under its item. */
+:is(.aui-md-ul, .aui-md-ol) > .aui-md-li + .aui-md-li {
+  margin-block-start: var(--appearance-item-gap);
+}
+:is(.aui-md-ul, .aui-md-ol):has(> .aui-md-li > p) > .aui-md-li + .aui-md-li {
+  margin-block-start: var(--appearance-paragraph-gap);
+}
+.aui-md-li > :is(.aui-md-ul, .aui-md-ol) {
+  margin-block-start: var(--appearance-item-gap);
+}
+.aui-md .aui-md-li {
+  line-height: inherit;
+}
+.aui-user-markdown :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-human);
+  font-size: 1em;
+  font-weight: 600;
   line-height: inherit;
 }
 /* Paragraphs avoid a lone last word; headings break into even lines. */
@@ -611,7 +852,6 @@
     var(--ink) 78%,
     light-dark(#000, #fff)
   );
-  --appearance-section-gap: calc(1.75 * var(--appearance-prose-line-height));
   color: var(--appearance-reading-ink);
 }
 .appearance-assistant-prose .aui-md :is(h1, h2, h3, h4, h5, h6) {
@@ -621,66 +861,60 @@
   color: color-mix(in oklab, var(--ink) 60%, light-dark(#000, #fff));
 }
 
-/* Inline code: medium-weight mono at the prose's size in the palette's warm
-   ink on a faint tint of it, with no border. */
+/* Inline code reads as part of its sentence: regular-weight mono at the
+   prose's size in the reading ink, on a faint neutral fill with no border.
+   Its padding is horizontal only, so it never grows the line. */
 .aui-md-inline-code {
   font-family: var(--appearance-font-mono, var(--font-mono));
   /* Paper Mono's x-height is 0.51 of its size against Plex's 0.52, so code
      at 0.95em sits level with the words around it. */
   font-size: 0.95em;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: normal;
-  color: var(--attention-ink);
-  background: color-mix(in oklab, var(--attention-ink) 9%, transparent);
-  border-radius: 0.3em;
-  padding: 0.08em 0.32em;
+  color: inherit;
+  background: color-mix(in oklab, currentColor 7%, transparent);
+  border-radius: 0.25em;
+  padding: 0 0.25em;
   overflow-wrap: anywhere;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
-
-/* A long string in backticks becomes a contained diagnostic block. */
-.aui-md-diagnostic {
-  display: block;
-  margin-block: calc(0.5 * var(--appearance-prose-line-height));
-  padding: 0.625rem 0.875rem;
-  color: var(--ink);
-  background: var(--popover);
-  border: var(--appearance-border) solid var(--line-separator);
-  border-inline-start: 2px solid var(--line-control);
-  border-radius: var(--appearance-radius-field);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+/* Strong text and headings keep their weight in their code. */
+:is(strong, b, h1, h2, h3, h4, h5, h6) > .aui-md-inline-code {
+  font-weight: inherit;
 }
 
-/* Tables: inside the column on an opaque quiet surface, padded, with a clear
-   header, scrolling sideways in their own container. */
-.aui-md > .aui-md-table-wrapper {
-  margin-block: var(--appearance-paragraph-gap);
+/* Tables belong to the document: an opaque quiet surface (so no ambient
+   layer shows under the figures) with light rules and a modest header,
+   scrolling sideways in their own container when wider than the column. */
+.aui-md-table-wrapper {
   background: var(--popover);
   border: var(--appearance-border) solid var(--line-separator);
   border-radius: var(--appearance-radius-artifact);
   overflow: hidden;
-  font-size: 0.9375em;
 }
 .aui-md-table-wrapper [data-slot='table-container'] {
   scrollbar-width: thin;
 }
 .aui-md-table .aui-md-thead {
-  background: color-mix(in oklab, var(--ink) 4%, var(--popover));
+  background: color-mix(in oklab, var(--ink) 3%, var(--popover));
 }
 .aui-md-table .aui-md-thead .aui-md-tr {
-  border-block-end: var(--appearance-border) solid var(--line-control);
+  border-block-end: var(--appearance-border) solid var(--line-separator);
 }
 .aui-md-table .aui-md-tr {
   border-block-end: var(--appearance-border) solid var(--line-separator);
+}
+/* A column aligned right holds figures: their digits line up. */
+.aui-md-table :is(.aui-md-td, .aui-md-th)[style*='right'] {
+  font-variant-numeric: tabular-nums;
 }
 .aui-md-table .aui-md-tbody .aui-md-tr:last-child {
   border-block-end: 0;
 }
 
 .aui-shiki :is(pre, code),
-.aui-user-markdown :is(pre, code) {
+.aui-user-markdown :is(pre, pre code) {
   font: var(--recipe-code);
   letter-spacing: normal;
 }
@@ -804,7 +1038,7 @@
 /* The dock clips its content at the panel edge. Reserve space for the
    rounded header buttons' outer focus outlines inside the panel. */
 .appearance-thread-header {
-  padding-block: 0.375rem;
+  padding-block: 0.125rem;
 }
 .appearance-thread-header :focus-visible,
 .aui-assistant-action-bar-root :focus-visible,

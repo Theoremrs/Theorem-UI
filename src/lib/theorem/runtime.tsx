@@ -773,9 +773,23 @@ function useTheoremThreadRuntime() {
   return runtime
 }
 
+/** Every project's threads, read at once: the sidebar's tree draws them all. */
+async function projectIds(active: string): Promise<string[]> {
+  const ids = new Set<string>([active])
+  let cursor: string | undefined
+  for (let read = 0; read < 20; read++) {
+    const page = await theorem().chat.projects.list({ limit: 100, cursor })
+    for (const project of page.items) ids.add(project.projectId)
+    cursor = page.nextCursor
+    if (!cursor) break
+  }
+  return [...ids]
+}
+
 /**
- * Threads open from any project, so the runtime stays up across projects and
- * asks for the active one when it lists or creates.
+ * Threads from every project, so the runtime stays up across projects and the
+ * sidebar's tree finds each of its rows in the list; a new thread goes to the
+ * active project.
  */
 export function createThreadListAdapter(
   activeProject: () => string,
@@ -788,9 +802,8 @@ export function createThreadListAdapter(
     const work = async () => {
       workers += 1
       try {
-        for (const [id, thread] of queued) {
+        for (const [id] of queued) {
           queued.delete(id)
-          if (thread.projectId !== activeProject()) continue
           pending.add(id)
           try {
             const snapshot = await client.chat.threads.get(
@@ -813,12 +826,36 @@ export function createThreadListAdapter(
   }
   return {
     async list(params) {
-      const page = await client.chat.threads.list({
-        projectId: activeProject(),
-        cursor: params?.after,
-        includeArchived: true,
-        limit: 50,
-      })
+      // The cursor names each project that has more, with its own cursor.
+      const after = params?.after
+        ? (JSON.parse(params.after) as Record<string, string>)
+        : undefined
+      const projects = after
+        ? Object.keys(after)
+        : await projectIds(activeProject())
+      const pages = await Promise.all(
+        projects.map(async (projectId) => ({
+          projectId,
+          page: await client.chat.threads.list({
+            projectId,
+            cursor: after?.[projectId],
+            includeArchived: true,
+            limit: 50,
+          }),
+        })),
+      )
+      const more = Object.fromEntries(
+        pages.flatMap(({ projectId, page }) =>
+          page.nextCursor ? [[projectId, page.nextCursor]] : [],
+        ),
+      )
+      const seen = new Set<string>()
+      const page = {
+        items: pages
+          .flatMap((read) => read.page.items)
+          .filter((thread) => !seen.has(thread.threadId) && !!seen.add(thread.threadId)),
+        nextCursor: Object.keys(more).length ? JSON.stringify(more) : undefined,
+      }
       // The agent terminal's threads live in its drawer, and each note's
       // conversation on the document screen, not among the chats.
       const apart = new Set([

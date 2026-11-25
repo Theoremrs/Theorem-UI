@@ -1,15 +1,15 @@
-// SOURCING: coss ui toast (vendored as-is from https://coss.com/ui/r/toast.json; registry imports point at this folder)
+// SOURCING: coss ui toast (vendored as-is from https://coss.com/ui/r/toast.json; registry imports point at this folder); success is the owner's Streamline Checkmark Circle (Icon.CheckCircle, 2026-11-24)
 "use client";
 
 import { Toast } from "@base-ui/react/toast";
 import {
   CircleAlertIcon,
-  CircleCheckIcon,
   InfoIcon,
   LoaderCircleIcon,
   TriangleAlertIcon,
 } from "lucide-react";
 import type React from "react";
+import { Icon as Glyphs } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -17,7 +17,7 @@ const TOAST_ICONS = {
   error: CircleAlertIcon,
   info: InfoIcon,
   loading: LoaderCircleIcon,
-  success: CircleCheckIcon,
+  success: Glyphs.CheckCircle,
   warning: TriangleAlertIcon,
 } as const;
 

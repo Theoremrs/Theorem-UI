@@ -491,6 +491,20 @@ Ten remain; Send Email 1, File Open and Pencil Write 2 are under Retired.
 | Download                                                                                                                      | `streamline/streamline-download-box.png`                 | Download Box                                                              | `883be4b139f91501a74541687e04b8dc8ca85b46aa5ffe7ae501c24046beda97` |
 | Exit                                                                                                                          | `streamline/streamline-x.png`                            | X (from a later download, "streamline-ultimate-light--48x48-PNG(10).zip") | `221832f33e28248257d4e619beabb5153b91c8b23a8475c1c2ded08b5284f52b` |
 
+One Streamline Glyphs mark came from the owner's "streamline-glyphs--48x48-PNG.zip"
+(Streamline Glyphs, 48 x 48, black ink on a transparent ground) on 2026-11-24,
+copied byte for byte and renamed the same way. It replaced the Noun checkmark
+(`records/noun-checkmark-8086058.svg`) as Check everywhere the app draws one.
+
+| Registry name | File                                          | Streamline name | SHA-256                                                            |
+| ------------- | --------------------------------------------- | --------------- | ------------------------------------------------------------------ |
+| Check         | `streamline/streamline-glyphs-checkmark.png` | Checkmark       | `d8cbe65896979191fe412bfa0c72914374410072ddfea5e50a5a2ee0b03a6b7c` |
+| CheckCircle   | `streamline/streamline-glyphs-checkmark-circle.png` | Checkmark Circle | `4007198acf8686c5de1e444747bb13b44e4d0bbc9f0ad2e686b2ab69babf82f0` |
+
+The same day the coss menu, select, combobox and checkbox ticks moved from
+their inline SVG to Check, and lucide's CircleCheck (block status, the success
+toast, a to-do callout) to CheckCircle.
+
 Seven more came from a second download of the same set,
 "streamline-ultimate-light--48x48-PNG(11).zip", copied and renamed the same
 way, for the Vault view.
@@ -784,6 +798,7 @@ Added from the owner's later downloads of 2026-11-15 ("PNG11", "PNG12" and
 | Microphone | Start dictation                                                       | `streamline/control/source/streamline-microphone.png`            | Microphone (24px download) | colored | `d2df3c8e8f888d8dab44fd9c70150cfe8c138826fabcab70dc2d213b1c1c76b1` |
 | Refresh    | Refresh, retry, resume, and the spinning wait                         | `streamline/control/source/streamline-button-refresh-arrows.png` | Button Refresh Arrows      | colored | `e4adcffe226c257e0e174395ef30ad34e43ded7e0e44c853b749dd391022ebc5` |
 | Approved   | An allowed tool call and a finished approval; a menu tick stays Check | `streamline/control/source/streamline-check-2.png`               | Check 2                    | colored | `dfe447a93b4528e390d36b29b6cd28d1a524350158d9dd165ff716d7de4061a3` |
+| Layout, Panels | The layout menu (owner's download "Composition-Layout-3--Streamline-Ultimate.png", 2026-11-24; replaced Browser Page Layout there) | `streamline/control/source/streamline-composition-layout-3.png` | Composition Layout 3 | colored | `48bfb1118d0b0189c91fe43ac1045dab1dfc5bb33e8ff49c5e2992707d8f805a` |
 
 Retired with them, and removed from the tree:
 

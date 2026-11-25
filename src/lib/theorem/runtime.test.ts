@@ -175,6 +175,7 @@ async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
       )
     )
   }
+  if (path.endsWith('/projects')) return Response.json({ items: [] })
   if (path.endsWith('/threads')) return Response.json({ items: [...titleThreads.keys()].map((id) => titleSnapshot(id).thread) })
   const threadId = path.split('/').pop()!
   if (inaccessibleTitles.has(threadId)) return Response.json({ code: 'forbidden' }, { status: 403 })

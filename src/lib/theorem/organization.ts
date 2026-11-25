@@ -3,6 +3,7 @@ import {
   queryOptions,
   useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
@@ -867,14 +868,49 @@ export function useLibrarianHistory(
   })
 }
 
-export function useProjectOutputs(projectId: string | undefined) {
-  return useQuery({
-    queryKey: outputsKey(projectId ?? ''),
-    enabled: projectId !== undefined,
+const projectOutputsQuery = (projectId: string) =>
+  queryOptions({
+    queryKey: outputsKey(projectId),
     queryFn: () =>
       theoremJson<{ items: ProjectOutput[]; total: number }>(
-        `${BASE}/projects/${encodeURIComponent(projectId!)}/outputs`,
+        `${BASE}/projects/${encodeURIComponent(projectId)}/outputs`,
       ),
+  })
+
+export function useProjectOutputs(projectId: string | undefined) {
+  return useQuery({
+    ...projectOutputsQuery(projectId ?? ''),
+    enabled: projectId !== undefined,
+  })
+}
+
+/**
+ * The newest outputs across every project that has any, read through the
+ * same queries the sidebar's Outputs folders use.
+ */
+/** An output with the project whose Gallery holds it. */
+export type RecentOutput = { projectId: string; output: ProjectOutput }
+
+/** The newest outputs across every project, for a new chat's page. */
+export function useRecentOutputs(limit: number): RecentOutput[] {
+  const { data: organization } = useOrganization()
+  const projects = (organization?.projects ?? []).filter(
+    (project) => project.outputCount > 0,
+  )
+  return useQueries({
+    queries: projects.map((project) =>
+      projectOutputsQuery(project.projectId),
+    ),
+    combine: (results) =>
+      results
+        .flatMap((result, at) =>
+          (result.data?.items ?? []).map((output) => ({
+            projectId: projects[at]!.projectId,
+            output,
+          })),
+        )
+        .sort((a, b) => b.output.updatedAtMs - a.output.updatedAtMs)
+        .slice(0, limit),
   })
 }
 

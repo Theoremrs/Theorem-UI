@@ -1,4 +1,4 @@
-// SOURCING: coss ui select (vendored as-is from https://coss.com/ui/r/select.json; registry imports point at this folder)
+// SOURCING: coss ui select (vendored as-is from https://coss.com/ui/r/select.json; registry imports point at this folder); its tick is the owner's Streamline checkmark (Icon.Check, 2026-11-24)
 "use client";
 
 import { appearancePair } from '@/lib/appearance-policy'
@@ -13,6 +13,7 @@ import {
   ChevronUpIcon,
 } from "lucide-react";
 import type * as React from "react";
+import { Icon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 export const Select: typeof SelectPrimitive.Root = SelectPrimitive.Root;
@@ -193,20 +194,7 @@ export function SelectItem({
       {...props}
     >
       <SelectPrimitive.ItemIndicator className="col-start-1">
-        <svg
-          aria-hidden="true"
-          fill="none"
-          height="24"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
-          viewBox="0 0 24 24"
-          width="24"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path d="M5.252 12.7 10.2 18.63 18.748 5.37" />
-        </svg>
+        <Icon.Check />
       </SelectPrimitive.ItemIndicator>
       <SelectPrimitive.ItemText className="wrap-anywhere col-start-2 min-w-0">
         {children}

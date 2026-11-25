@@ -1,4 +1,4 @@
-// SOURCING: coss ui menu (vendored as-is from https://coss.com/ui/r/menu.json; registry imports point at this folder)
+// SOURCING: coss ui menu (vendored as-is from https://coss.com/ui/r/menu.json; registry imports point at this folder); its tick is the owner's Streamline checkmark (Icon.Check, 2026-11-24)
 "use client";
 
 import { appearancePair } from '@/lib/appearance-policy'
@@ -7,6 +7,7 @@ import { ChevronRightIcon } from "lucide-react";
 import type * as React from "react";
 import { useMenuGlass } from "@/components/glass/menu-glass";
 import { useComposedRefs } from "@/lib/composition";
+import { Icon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 export const MenuCreateHandle: typeof MenuPrimitive.createHandle =
@@ -181,20 +182,7 @@ export function MenuCheckboxItem({
       ) : (
         <>
           <MenuPrimitive.CheckboxItemIndicator className="col-start-1 -ms-0.5">
-            <svg
-              aria-hidden="true"
-              fill="none"
-              height="24"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              width="24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path d="M5.252 12.7 10.2 18.63 18.748 5.37" />
-            </svg>
+            <Icon.Check />
           </MenuPrimitive.CheckboxItemIndicator>
           <span className="col-start-2">{children}</span>
         </>
@@ -224,20 +212,7 @@ export function MenuRadioItem({
       {...props}
     >
       <MenuPrimitive.RadioItemIndicator className="col-start-1 -ms-0.5">
-        <svg
-          aria-hidden="true"
-          fill="none"
-          height="24"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
-          viewBox="0 0 24 24"
-          width="24"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path d="M5.252 12.7 10.2 18.63 18.748 5.37" />
-        </svg>
+        <Icon.Check />
       </MenuPrimitive.RadioItemIndicator>
       <span className="col-start-2">{children}</span>
     </MenuPrimitive.RadioItem>

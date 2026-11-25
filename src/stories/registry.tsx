@@ -57,6 +57,7 @@ import { ComparePane } from '@/components/review/compare-pane'
 import { ReviewCard } from '@/components/review/review-card'
 import { LibrarianFooter } from '@/components/organize/librarian-footer'
 import { ContextPanel } from '@/components/shell/sidebar'
+import { CommandPalette } from '@/components/shell/command-palette'
 import { ChatShell } from '@/components/shell/chat-shell'
 import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { GlassCompareStory } from './glass-compare'
@@ -160,9 +161,15 @@ const SettingsAiStory = lazy(() =>
   })),
 )
 
-function WithRuntime({ children }: { children: React.ReactNode }) {
+function WithRuntime({
+  children,
+  initialThreadId = 'thread-app-gallery',
+}: {
+  children: React.ReactNode
+  initialThreadId?: string
+}) {
   const [threadId, setThreadId] = useState<string | undefined>(
-    'thread-app-gallery',
+    initialThreadId || undefined,
   )
   return (
     <TheoremRuntimeProvider
@@ -239,6 +246,15 @@ function PopulatedShellStory() {
   return (
     <WithRuntime>
       <ChatShell projectId="project-theorem" threadId="thread-app-gallery" />
+    </WithRuntime>
+  )
+}
+
+function NewChatStory() {
+  return (
+    <WithRuntime initialThreadId="">
+      <ChatShell projectId="project-theorem" threadId={undefined} />
+      <CommandPalette />
     </WithRuntime>
   )
 }
@@ -1040,6 +1056,151 @@ function DesignOracleContentStory({
   )
 }
 
+// F12: the Markdown inventory the chat typography brief measures (2026-11-24).
+// A human turn that mixes every block, a short answer, and a long one with
+// sections, nested lists, both tables, both code lengths, a long identifier,
+// prices beside math, and a diagram.
+const ORACLE_HUMAN_MARKDOWN = [
+  'Can you check the **release notes** before Friday? The [plan](https://example.com/plan) is in `docs/plan.md` and it costs $20 a seat.',
+  '',
+  '- tight item one',
+  '- tight item with `inline code`',
+  '',
+  '1. A loose item, written as its own paragraph.',
+  '',
+  '2. A second loose item that wraps onto another line so the paragraph inside the list shows its leading.',
+  '',
+  '> A quoted line from the earlier thread.',
+  '',
+  '### A heading the person wrote',
+  '',
+  'The energy is $E = mc^2$ and the bound is \\(a^2 + b^2 = c^2\\).',
+].join('\n')
+
+const ORACLE_SHORT_ANSWER =
+  'Yes. The notes are ready, and `docs/plan.md` already lists the seat price.'
+
+const ORACLE_LONG_ANSWER = [
+  'Here is what changed, section by section, with the numbers checked against the [pricing page](https://example.com/pricing) and the earlier review.[^1]',
+  '',
+  '## What changed',
+  '',
+  'The release moves the reading surface onto one document rhythm. Paragraphs keep three quarters of a line between them, and a heading sits closer to the text it introduces than to the section before it.',
+  '',
+  'A second paragraph follows so the gap between two paragraphs can be measured on its own, without a heading or a list beside it.',
+  '',
+  '### Lists',
+  '',
+  '- A tight item',
+  '- Another tight item with *emphasis and `code inside it`*',
+  '  - A nested item',
+  '  - A second nested item',
+  '- A last tight item',
+  '',
+  '1. A loose item, written as its own paragraph so the list is loose.',
+  '',
+  '   It carries a second paragraph inside the same item.',
+  '',
+  '2. The second loose item.',
+  '',
+  '> A quotation with **strong text** inside it.',
+  '>',
+  '> > A nested quotation that keeps its own flow.',
+  '',
+  '## Tables',
+  '',
+  '| Plan | [Seats](https://example.com/seats) | Price |',
+  '| :--- | :---: | ---: |',
+  '| Starter | 3 | $20.00 |',
+  '| Team, with the longer description that should wrap inside its cell rather than push the table wider | 25 | $180.00 |',
+  '',
+  '| Region | Requests | p50 | p95 | p99 | Errors | Saturation | Owner | Notes |',
+  '| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |',
+  '| us-east-1 | 1,204,331 | 41ms | 120ms | 410ms | 0.02% | 61% | platform-reliability | steady after the cache change |',
+  '| eu-west-2 | 801,992 | 38ms | 131ms | 455ms | 0.04% | 57% | platform-reliability | one noisy neighbour on Tuesday |',
+  '',
+  '## Code',
+  '',
+  '```ts',
+  'const seat = 20',
+  '```',
+  '',
+  '```ts',
+  'export function priceFor(plan: Plan, seats: number): number {',
+  '  const base = plan.kind === "team" ? 180 : 20',
+  '  const extra = Math.max(0, seats - plan.included)',
+  '  return base + extra * plan.perSeat',
+  '}',
+  '',
+  'export const plans = [',
+  '  { kind: "starter", included: 3, perSeat: 7 },',
+  '  { kind: "team", included: 25, perSeat: 6 },',
+  ']',
+  '```',
+  '',
+  'The failing call was `src/components/assistant-ui/elements/markdown-text.tsx:defaultComponents.code.isCodeBlock.fallback` in the build log, a long identifier that stays inline.',
+  '',
+  '## Prices and math',
+  '',
+  'The starter plan is $20 and the team plan is $180, so ten extra seats cost $60. The marginal price is $p(s) = 6s$ and the total is',
+  '',
+  '$$',
+  'T(s) = 180 + 6\\,\\max(0, s - 25)',
+  '$$',
+  '',
+  '## Diagram',
+  '',
+  '```mermaid',
+  'flowchart LR',
+  '  Draft --> Review --> Release',
+  '```',
+  '',
+  '[^1]: The review from November 22.',
+].join('\n')
+
+function DesignOracleMarkdownStory() {
+  const messages: ThreadMessageLike[] = [
+    {
+      id: 'design-oracle-F12-human',
+      role: 'user',
+      content: [{ type: 'text', text: ORACLE_HUMAN_MARKDOWN }],
+    },
+    {
+      id: 'design-oracle-F12-short',
+      role: 'assistant',
+      status: { type: 'complete', reason: 'stop' },
+      content: [{ type: 'text', text: ORACLE_SHORT_ANSWER }],
+    },
+    {
+      id: 'design-oracle-F12-ask',
+      role: 'user',
+      content: [{ type: 'text', text: 'And the long version, please.' }],
+    },
+    {
+      id: 'design-oracle-F12-long',
+      role: 'assistant',
+      status: { type: 'complete', reason: 'stop' },
+      content: [{ type: 'text', text: ORACLE_LONG_ANSWER }],
+    },
+  ]
+  const runtime = useExternalStoreRuntime({
+    messages,
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  return (
+    <div data-appearance-fixture="F12">
+      <AssistantRuntimeProvider runtime={runtime}>
+        <TheoremPartRenderers />
+        <div className="h-dvh">
+          <Thread autoFocus={false} />
+        </div>
+      </AssistantRuntimeProvider>
+    </div>
+  )
+}
+
 const ORACLE_RTL_CONTENT = [
   'مرحبا، هذا نص تجريبي للتحقق من اتجاه القراءة والمحاذاة في الواجهة.',
   '日本語の文章も表示し、ラテン文字と日本語のフォールバックが混在する状態を確認します。',
@@ -1384,6 +1545,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
     />
   ),
   'design-oracle-error': threadStory('unfinished'),
+  'design-oracle-markdown': DesignOracleMarkdownStory,
   'design-oracle-navigation': () => (
     <div data-appearance-fixture="F08">
       <ShellCompareStory />
@@ -1431,6 +1593,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'review-card': ReviewCardStory,
   'shell-compare': ShellCompareStory,
   'populated-shell': PopulatedShellStory,
+  'new-chat': NewChatStory,
   'command-live': CommandTerminalLiveStory,
   'view-cells': CellsTerminalStory,
   'present-view': ViewStory,

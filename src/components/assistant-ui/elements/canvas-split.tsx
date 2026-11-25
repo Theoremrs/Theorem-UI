@@ -1,7 +1,8 @@
 "use client";
 
 import type { ComponentProps } from "react";
-import { CheckIcon, CopyIcon, FileTextIcon, XIcon } from "lucide-react";
+import { CopyIcon, FileTextIcon, XIcon } from "lucide-react";
+import { Icon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { field, ghostButton, mono, paper } from "./surfaces";
 
@@ -117,7 +118,7 @@ export function CanvasSplitHeader({
       >
         {saved ? (
           <span className="flex items-center gap-1">
-            <CheckIcon className="size-3" />
+            <Icon.Check className="size-3" />
             saved
           </span>
         ) : (

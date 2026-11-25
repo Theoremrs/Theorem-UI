@@ -60,6 +60,24 @@ export const TEXT_RECIPES = {
     tracking: 'normal',
     scale: 'content',
   },
+  // A table in a reply: a step under the prose around it (16px on a 24px
+  // line beside 17/27), its header set apart by weight, not size.
+  'prose.table': {
+    family: 'text',
+    size: 1,
+    lineHeight: 1.5,
+    weight: 400,
+    tracking: 'normal',
+    scale: 'content',
+  },
+  'prose.table-header': {
+    family: 'text',
+    size: 1,
+    lineHeight: 1.5,
+    weight: 500,
+    tracking: 'normal',
+    scale: 'content',
+  },
   'composer.content': {
     family: 'human',
     size: 1,
