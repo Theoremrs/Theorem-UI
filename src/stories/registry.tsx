@@ -1238,11 +1238,20 @@ const PRESENT_TREE = {
     },
     {
       _type: 'Table',
-      columns: [{ label: 'Surface' }, { label: 'State' }, { label: 'Owner' }],
+      columns: [
+        { label: 'Surface', priority: 'primary' },
+        {
+          label: 'State',
+          format: { kind: 'badge', tones: { Ready: 'success', Review: 'warning' } },
+        },
+        { label: 'Checks', format: { kind: 'number' } },
+        { label: 'Week', format: { kind: 'delta', unit: '%', decimals: 1 } },
+        { label: 'Owner' },
+      ],
       rows: [
-        ['Composer', 'Ready', 'UI'],
-        ['Runtime', 'Streaming', 'Core'],
-        ['Connections', 'Review', 'Platform'],
+        ['Composer', 'Ready', 48, 4.2, 'UI'],
+        ['Runtime', 'Streaming', 61, 0, 'Core'],
+        ['Connections', 'Review', 19, -2.5, 'Platform'],
       ],
     },
     {

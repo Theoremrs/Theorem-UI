@@ -884,12 +884,21 @@
   font-weight: inherit;
 }
 
-/* Tables belong to the document: an opaque quiet surface (so no ambient
-   layer shows under the figures) with light rules and a modest header,
-   scrolling sideways in their own container when wider than the column. */
+/* Tables belong to the document and wear the code block's paper: its ground
+   under the figures (opaque, so no ambient layer shows through) and its
+   header's tint across the column names. The popover they stood on before
+   is the darkest paper in Stone's light, so the table sank below the page.
+   Rules are the separator softened into that ground, between rows and
+   between columns, and the table scrolls sideways in its own container
+   when wider than the column. */
 .aui-md-table-wrapper {
-  background: var(--popover);
-  border: var(--appearance-border) solid var(--line-separator);
+  --table-rule: color-mix(
+    in oklab,
+    var(--line-separator) 50%,
+    var(--surface-code)
+  );
+  background: var(--surface-code);
+  border: var(--appearance-border) solid var(--table-rule);
   border-radius: var(--appearance-radius-artifact);
   overflow: hidden;
 }
@@ -897,13 +906,13 @@
   scrollbar-width: thin;
 }
 .aui-md-table .aui-md-thead {
-  background: color-mix(in oklab, var(--ink) 3%, var(--popover));
-}
-.aui-md-table .aui-md-thead .aui-md-tr {
-  border-block-end: var(--appearance-border) solid var(--line-separator);
+  background: var(--surface-code-gutter);
 }
 .aui-md-table .aui-md-tr {
-  border-block-end: var(--appearance-border) solid var(--line-separator);
+  border-block-end: var(--appearance-border) solid var(--table-rule);
+}
+.aui-md-table :is(.aui-md-td, .aui-md-th) + :is(.aui-md-td, .aui-md-th) {
+  border-inline-start: var(--appearance-border) solid var(--table-rule);
 }
 /* A column aligned right holds figures: their digits line up. */
 .aui-md-table :is(.aui-md-td, .aui-md-th)[style*='right'] {
@@ -911,6 +920,45 @@
 }
 .aui-md-table .aui-md-tbody .aui-md-tr:last-child {
   border-block-end: 0;
+}
+
+/* A composed reply's Table (assistant-ui's data-table element) is the same
+   document table: code paper, the header's tint, the softened rules, and
+   column names in the reading face rather than the element's mono. Its
+   narrow cards sit on that paper too. */
+[data-slot='data-table'] {
+  --table-rule: color-mix(
+    in oklab,
+    var(--line-separator) 50%,
+    var(--surface-code)
+  );
+  background: var(--surface-code);
+  border: var(--appearance-border) solid var(--table-rule);
+  border-radius: var(--appearance-radius-artifact);
+}
+[data-slot='data-table'] thead {
+  background: var(--surface-code-gutter);
+  border-block-end: var(--appearance-border) solid var(--table-rule);
+}
+[data-slot='data-table'] th {
+  font: 500 0.8125rem / 1.25rem var(--font-sans);
+  letter-spacing: normal;
+  color: var(--ink-muted);
+}
+[data-slot='data-table'] tbody tr:not(:last-child) {
+  border-block-end: var(--appearance-border) solid var(--table-rule);
+}
+[data-slot='data-table'] :is(th, td) + :is(th, td) {
+  border-inline-start: var(--appearance-border) solid var(--table-rule);
+}
+[data-slot='data-table'] td {
+  color: var(--ink);
+}
+[data-slot='data-table'] [data-tone='good'] {
+  color: color-mix(in oklab, var(--success) 70%, var(--ink));
+}
+[data-slot='data-table'] [data-tone='bad'] {
+  color: color-mix(in oklab, var(--destructive) 70%, var(--ink));
 }
 
 .aui-shiki :is(pre, code),

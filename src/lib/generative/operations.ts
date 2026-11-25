@@ -40,6 +40,13 @@ function presentSchema(): Record<string, unknown> {
         if (key === 'description' || key === 'title' || key === 'default') continue
         out[key] = strip(entry)
       }
+      // An enum already names its values, `properties` already makes an
+      // object, and an object's keys are always strings: each says nothing
+      // the rest of the schema does not. The top level keeps its type.
+      if (Array.isArray(out.enum)) delete out.type
+      if (out.type === 'object' && out.properties) delete out.type
+      if (JSON.stringify(out.propertyNames) === '{"type":"string"}')
+        delete out.propertyNames
       return out
     }
     return value
