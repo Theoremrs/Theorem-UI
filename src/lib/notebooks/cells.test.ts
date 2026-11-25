@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { FRAME_BUILTINS, blockingCells, cellProblems, transpileCell } from './cells'
+import { FRAME_BUILTINS, blockingCells, cellParts, cellProblems, transpileCell } from './cells'
 
 describe('a view read before it runs', () => {
   test('a cell that assigns another cell\'s value is told about mutable, not about its first line', () => {
@@ -68,6 +68,25 @@ describe('a view read before it runs', () => {
         '{ const timer = setTimeout(() => {}, 10); invalidation.then(() => clearTimeout(timer)); return localStorage === undefined }',
       ]),
     ).toEqual([])
+  })
+
+  test('several Observable declarations in one cell are read as one each, and what reads them is clean', () => {
+    const inputs = 'viewof alpha = Inputs.range([0, 2], {\n  value: 1\n})\nviewof gamma = Inputs.range([0, 2], {value: 0.5})\n\nrate = alpha * gamma'
+    expect(cellParts(inputs)).toEqual([
+      'viewof alpha = Inputs.range([0, 2], {\n  value: 1\n})',
+      'viewof gamma = Inputs.range([0, 2], {value: 0.5})',
+      'rate = alpha * gamma',
+    ])
+    expect(cellProblems([inputs, 'Plot.lineY([alpha, gamma, rate]).plot()'])).toEqual([])
+  })
+
+  test('a cell that compiles stays whole, and one no run of lines makes compile keeps its error', () => {
+    expect(cellParts('const a = 1\nconst b = a + 1\nb * 2')).toEqual(['const a = 1\nconst b = a + 1\nb * 2'])
+    expect(cellParts('# Heading\n\ntext', 'md')).toEqual(['# Heading\n\ntext'])
+    expect(cellParts('const = 1\nviewof k = Inputs.range([0, 1])')).toEqual(['const = 1\nviewof k = Inputs.range([0, 1])'])
+    expect(cellProblems(['viewof k = Inputs.range([0, 1])\nconst = 1', 'k'])).toEqual([
+      expect.stringMatching(/^Cell 1 does not parse: /),
+    ])
   })
 
   test('the builtins named here are every name notebook-kit\'s library defines', async () => {

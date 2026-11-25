@@ -88,38 +88,67 @@ function describeCell(value: unknown, outputs: ReadonlyArray<string>, root: Elem
   return described.length > MAX_CELL_SHOWS ? `${described.slice(0, MAX_CELL_SHOWS - 1)}…` : described
 }
 
+/** A failure's message, and how to write what the cell meant when the fault is a known one. */
+function remedied(error: unknown, builtins: ReadonlySet<string>): string {
+  const message = error instanceof Error ? error.message : String(error)
+  // `import {Inputs} from "@observablehq/inputs"` asks the package for an export it does not have.
+  const missing = /^export '([\w$]+)' not found$/.exec(message)?.[1]
+  if (!missing || !builtins.has(missing)) return message
+  const told = `${message}: \`${missing}\` is already defined in every cell, without an import`
+  if (error instanceof Error) error.message = told
+  return told
+}
+
+/** One declaration's outcome, of the cell it is part of. */
+type PartOutcome = { stage: CellStatus['stage']; error?: string; shows?: string }
+
 /**
- * The inspector's observer for a cell, which also tells the page when the cell
- * fails, as the frame's uncaught errors are: the inspector shows the failure
- * in the cell and catches it, so the bridge would not hear. That covers a body
- * that throws and a name the cell reads that nothing defines. A failure the
- * cell inherits from a cell it reads is the same error, told once. How each
- * cell first settles is told too (`CELL_STATUS_EVENT`), with what it shows,
+ * The inspector's observer for one declaration of a cell (a cell holds
+ * several when it is several Observable declarations in a row), which also
+ * tells the page when the cell fails, as the frame's uncaught errors are: the
+ * inspector shows the failure in the cell and catches it, so the bridge would
+ * not hear. That covers a body that throws and a name the cell reads that
+ * nothing defines. A failure the cell inherits from a cell it reads is the
+ * same error, told once. How each cell first settles is told too
+ * (`CELL_STATUS_EVENT`), once all its declarations have, with what they show,
  * so the page knows when the notebook's first outputs are on screen.
  */
-function reporting(cellId: string, told: WeakSet<object>, settled: Set<string>): typeof observe {
-  const settle = (stage: CellStatus['stage'], detail: Pick<CellStatus, 'error' | 'shows'>) => {
-    if (settled.has(cellId)) return
+function reporting(
+  cellId: string,
+  parts: Array<PartOutcome | undefined>,
+  part: number,
+  told: WeakSet<object>,
+  settled: Set<string>,
+  builtins: ReadonlySet<string>,
+): typeof observe {
+  const settle = (outcome: PartOutcome) => {
+    if (settled.has(cellId) || parts[part]) return
+    parts[part] = outcome
+    if (parts.some((each) => !each)) return
     settled.add(cellId)
-    window.dispatchEvent(new CustomEvent<CellStatus>(CELL_STATUS_EVENT, { detail: { cell: cellId, stage, ...detail } }))
+    const failed = parts.find((each) => each!.stage === 'failed')
+    const detail = failed
+      ? { stage: 'failed' as const, error: failed.error }
+      : { stage: 'ready' as const, shows: parts.map((each) => each!.shows).join('; ') }
+    window.dispatchEvent(new CustomEvent<CellStatus>(CELL_STATUS_EVENT, { detail: { cell: cellId, ...detail } }))
   }
   return (state, definition) => {
     const observer = observe(state, definition)
     const { fulfilled, rejected } = observer
     observer.fulfilled = function (value: unknown) {
       fulfilled.call(this, value)
-      if (!settled.has(cellId)) settle('ready', { shows: describeCell(value, definition.outputs ?? [], state.root) })
+      settle({ stage: 'ready', shows: describeCell(value, definition.outputs ?? [], state.root) })
     }
     // The failure is told before the status, so a page that waits for every
     // cell to settle has heard why one failed.
     observer.rejected = function (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = remedied(error, builtins)
       if (typeof error !== 'object' || error === null || !told.has(error)) {
         if (typeof error === 'object' && error !== null) told.add(error)
         window.dispatchEvent(new ErrorEvent('error', { error, message: `Cell ${cellId}: ${message}` }))
       }
       rejected.call(this, error)
-      settle('failed', { error: message })
+      settle({ stage: 'failed', error: message })
     }
     return observer
   }
@@ -200,7 +229,7 @@ export function start(
       Object.hasOwn(modules, specifier) ? modules[specifier]!() : import(/* @vite-ignore */ remote),
   })
   const root = options.root ?? document.querySelector('main') ?? document.body
-  const notebook = new NotebookRuntime({
+  const builtins = {
     ...library,
     width: widthOf(root),
     theme,
@@ -210,21 +239,35 @@ export function start(
       Promise.all([library.d3(), library.Plot()]).then(([d3, Plot]) =>
         createViews(d3, Plot, options.saved),
       ),
-  })
+  }
+  const notebook = new NotebookRuntime(builtins)
   computeWithoutPaint(notebook.runtime as unknown as Scheduled)
+  const names = new Set(Object.keys(builtins))
   const told = new WeakSet<object>()
   const settled = new Set<string>()
-  for (const cell of cells) {
-    const element = document.createElement('div')
-    element.className = 'cell'
-    element.dataset.cellId = cell.id
-    element.dataset.kind = cell.kind
-    root.append(element)
+  // A cell's declarations arrive in a row with its id; each shows in a part of the cell's element.
+  const counts = new Map<string, number>()
+  for (const cell of cells) counts.set(cell.id, (counts.get(cell.id) ?? 0) + 1)
+  const elements = new Map<string, { element: HTMLDivElement; parts: Array<PartOutcome | undefined> }>()
+  cells.forEach((cell, index) => {
+    let entry = elements.get(cell.id)
+    if (!entry) {
+      const element = document.createElement('div')
+      element.className = 'cell'
+      element.dataset.cellId = cell.id
+      element.dataset.kind = cell.kind
+      root.append(element)
+      entry = { element, parts: [] }
+      elements.set(cell.id, entry)
+    }
+    const part = entry.parts.push(undefined) - 1
+    const many = counts.get(cell.id)! > 1
+    const target = many ? entry.element.appendChild(document.createElement('div')) : entry.element
     notebook.define(
-      { root: element, expanded: [], variables: [] },
-      { ...cell, id: cells.indexOf(cell) },
-      reporting(cell.id, told, settled),
+      { root: target, expanded: [], variables: [] },
+      { ...cell, id: index },
+      reporting(cell.id, entry.parts, part, told, settled, names),
     )
-  }
+  })
   return notebook
 }

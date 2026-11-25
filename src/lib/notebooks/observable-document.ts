@@ -20,7 +20,7 @@ import { hostedAppDocument } from '@/lib/blocks/hosted-app'
 import { chartTheme } from '@/lib/blocks/sandbox/theme'
 import type { ThemeState } from '@/lib/blocks/sandbox/theme'
 import type { AppSelection } from '@/lib/blocks/sandbox/protocol'
-import { transpileCell } from './cells'
+import { cellParts, transpileCell } from './cells'
 import type { ObservableCell, ObservableNotebook } from './forms'
 import { inlineCode, notebookPage, scriptJson } from './page'
 
@@ -35,8 +35,9 @@ const remoteOf = (specifier: string) =>
 
 /**
  * A cell's `import("d3")` as the frame resolves it: from the bundle, which
- * holds the import map's modules, or else from where notebook-kit resolves it
- * (a URL as written, `npm:` and bare names from jsDelivr).
+ * holds the import map's modules (by a bare name or `npm:` and that name), or
+ * else from where notebook-kit resolves it (a URL as written, `npm:` and bare
+ * names from jsDelivr).
  */
 function pointImports(body: string, imports: Set<string>): string {
   const out = new MagicString(body)
@@ -45,22 +46,25 @@ function pointImports(body: string, imports: Set<string>): string {
       const { source } = node as AcornNode & { source: AcornNode & { value?: unknown } }
       out.overwrite(node.start, source.start, '__theoremImport(')
       if (typeof source.value !== 'string') return
-      imports.add(source.value)
+      // `npm:d3` is the bundle's `d3` when the bundle holds it, as a bare name is.
+      const held = source.value.replace(/^npm:/, '')
+      if (held !== source.value) out.overwrite(source.start, source.end, JSON.stringify(held))
+      imports.add(held)
       out.appendLeft(source.end, `, ${JSON.stringify(remoteOf(source.value))}`)
     },
   })
   return out.toString()
 }
 
-/** One cell's definition, as the source of an object literal. */
-function compileCell(
-  cell: ObservableCell,
+/** One declaration's definition, as the source of an object literal. */
+function compilePart(
+  meta: { id: string; kind: 'js' | 'md' },
+  source: string,
   index: number,
   imports: Set<string>,
 ): string {
-  const meta = { id: cell.id, kind: cell.kind }
   try {
-    const compiled = transpileCell(cell.source, index, cell.kind)
+    const compiled = transpileCell(source, index, meta.kind)
     const definition = {
       ...meta,
       inputs: compiled.inputs ?? [],
@@ -76,6 +80,16 @@ function compileCell(
     const message = (error as Error).message
     return `{...${scriptJson({ ...meta, inputs: [], outputs: [], autodisplay: true })}, body: () => { throw new SyntaxError(${scriptJson(message)}) }}`
   }
+}
+
+/** A cell's definitions, one per declaration it holds (cellParts), each carrying the cell's id. */
+function compileCell(
+  cell: ObservableCell,
+  index: number,
+  imports: Set<string>,
+): Array<string> {
+  const meta = { id: cell.id, kind: cell.kind }
+  return cellParts(cell.source, cell.kind).map((part) => compilePart(meta, part, index, imports))
 }
 
 /** What a saved view was saved with, which its views start from (sandbox/views.ts). */
@@ -109,7 +123,7 @@ export type ObservableRun = Omit<ObservableNotebook, 'form' | 'data'> & {
 function compileNotebook(notebook: ObservableRun, saved?: SavedView) {
   const imports = new Set<string>()
   const cells = notebook.cells
-    .map((cell, index) => compileCell(cell, index, imports))
+    .flatMap((cell, index) => compileCell(cell, index, imports))
     .join(',\n')
   const options = `{ data: ${scriptJson(notebook.data ?? {})}${saved ? `, saved: ${scriptJson(saved)}` : ''} }`
   return {
@@ -215,7 +229,8 @@ export function observableSource(
   const sources = [
     ...(notebook.data ? [constant('data', notebook.data)] : []),
     constant('theme', chartTheme(theme)),
-    ...notebook.cells,
+    // Notebook Kit takes one Observable declaration to a cell.
+    ...notebook.cells.flatMap((cell) => cellParts(cell.source, cell.kind).map((source) => ({ ...cell, source }))),
   ]
   return serialize(
     toNotebook({

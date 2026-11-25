@@ -39,6 +39,36 @@ export function transpileCell(source: string, id: number, kind: 'js' | 'md' = 'j
   }
 }
 
+/** Whether a source compiles in either dialect. */
+function compiles(source: string): boolean {
+  try {
+    transpileCell(source, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A JavaScript cell as the declarations it holds. A cell that compiles is
+ * one part. One that compiles in neither dialect but is several Observable
+ * declarations in a row (`viewof a = ...` then `viewof b = ...`), which
+ * Observable JavaScript takes one to a cell, is split at the line where each
+ * next declaration starts: the shortest run of whole lines that compiles is
+ * a part, and the rest is split the same way. What no run of lines makes
+ * compile stays one part, and shows its error.
+ */
+export function cellParts(source: string, kind: 'js' | 'md' = 'js'): Array<string> {
+  if (kind !== 'js' || compiles(source)) return [source]
+  const lines = source.split('\n')
+  for (let end = 1; end < lines.length; end++) {
+    const head = lines.slice(0, end).join('\n')
+    if (head.trim() && compiles(head))
+      return [head, ...cellParts(lines.slice(end).join('\n').replace(/^\s*\n/, ''))]
+  }
+  return [source]
+}
+
 /** A parse error, with how to write what the cell meant when the fault is a known one. */
 function withRemedy(error: unknown): unknown {
   if (!(error instanceof Error)) return error
@@ -95,51 +125,54 @@ type CellSource = string | { source: string; kind?: 'js' | 'md' }
  */
 export function cellProblems(given: ReadonlyArray<CellSource>): Array<string> {
   const problems: Array<string> = []
-  const cells = given.map((cell) => (typeof cell === 'string' ? cell : cell.source))
-  const compiled: Array<Compiled | undefined> = given.map((cell, index) => {
-    try {
-      return typeof cell === 'string'
-        ? transpileCell(cell, index)
-        : transpileCell(cell.source, index, cell.kind ?? 'js')
-    } catch (error) {
-      problems.push(`Cell ${index + 1} does not parse: ${error instanceof Error ? error.message : String(error)}`)
-      return undefined
-    }
+  // Each cell's declarations (cellParts), compiled; a part that does not
+  // compile is reported and read as defining and reading nothing.
+  const parts = given.map((cell, index) => {
+    const { source, kind = 'js' } = typeof cell === 'string' ? { source: cell } : cell
+    return cellParts(source, kind).map((part): { source: string; compiled?: Compiled } => {
+      try {
+        return { source: part, compiled: transpileCell(part, index, kind) }
+      } catch (error) {
+        problems.push(`Cell ${index + 1} does not parse: ${error instanceof Error ? error.message : String(error)}`)
+        return { source: part, compiled: undefined }
+      }
+    })
   })
+  const each = (visit: (part: { source: string; compiled: Compiled }, index: number) => void) =>
+    parts.forEach((cell, index) => cell.forEach((part) => part.compiled && visit(part as { source: string; compiled: Compiled }, index)))
+  const readBy = (name: string, except: number) =>
+    parts.some((cell, at) => at !== except && cell.some((part) => part.compiled?.inputs?.includes(name)))
   const definers = new Map<string, Array<number>>()
-  compiled.forEach((cell, index) => {
-    if (!cell) return
-    for (const name of definedBy(cell)) definers.set(name, [...(definers.get(name) ?? []), index + 1])
+  each(({ compiled }, index) => {
+    for (const name of definedBy(compiled)) definers.set(name, [...(definers.get(name) ?? []), index + 1])
   })
   for (const [name, at] of definers)
     if (at.length > 1 && !name.includes('$'))
       problems.push(`Cells ${at.join(' and ')} each define \`${name}\`; one cell defines each name.`)
   // An input bound without `viewof` or `view()` is the element, not its value:
   // a cell that reads it gets NaN or "[object HTMLFormElement]", and no error.
-  compiled.forEach((cell, index) => {
-    const name = /^\s*(?:const\s+)?([A-Za-z_$][\w$]*)\s*=\s*Inputs\.\w+\(/.exec(cells[index] ?? '')?.[1]
-    if (!cell || !name || !definedBy(cell).includes(name)) return
-    if (compiled.some((other, at) => at !== index && other?.inputs?.includes(name)))
-      problems.push(
-        `Cell ${index + 1} binds \`${name}\` to the input element, so cells that read \`${name}\` get the element, not its value: write \`viewof ${name} = Inputs...\` or \`const ${name} = view(Inputs...)\`.`,
-      )
+  each(({ source, compiled }, index) => {
+    const name = /^\s*(?:const\s+)?([A-Za-z_$][\w$]*)\s*=\s*Inputs\.\w+\(/.exec(source)?.[1]
+    if (!name || !definedBy(compiled).includes(name) || !readBy(name, index)) return
+    problems.push(
+      `Cell ${index + 1} binds \`${name}\` to the input element, so cells that read \`${name}\` get the element, not its value: write \`viewof ${name} = Inputs...\` or \`const ${name} = view(Inputs...)\`.`,
+    )
   })
   // A cell `name = ...` displays what it defines, so the input `view()`
   // showed is replaced by its value as soon as it has one.
-  compiled.forEach((cell, index) => {
-    const name = /^\s*([A-Za-z_$][\w$]*)\s*=\s*view\(/.exec(cells[index] ?? '')?.[1]
-    if (cell && name && definedBy(cell).includes(name))
+  each(({ source, compiled }, index) => {
+    const name = /^\s*([A-Za-z_$][\w$]*)\s*=\s*view\(/.exec(source)?.[1]
+    if (name && definedBy(compiled).includes(name))
       problems.push(
         `Cell ${index + 1} shows \`${name}\`'s value in place of its input, as a cell \`${name} = ...\` displays what it defines: write \`const ${name} = view(Inputs...)\` or \`viewof ${name} = Inputs...\`.`,
       )
   })
-  compiled.forEach((cell, index) => {
-    if (!cell) return
-    for (const name of new Set(cell.inputs ?? []))
+  each(({ compiled }, index) => {
+    for (const name of new Set(compiled.inputs ?? []))
       if (!definers.has(name) && !FRAME_BUILTINS.has(name) && !(name in globalThis))
         problems.push(`Cell ${index + 1} reads \`${written(name)}\`, which no cell defines.`)
   })
-  return problems
+  return [...new Set(problems)]
 }
 
 /**
@@ -150,19 +183,22 @@ export function cellProblems(given: ReadonlyArray<CellSource>): Array<string> {
  * indexes into `cells`; a root nothing waits on is left out.
  */
 export function blockingCells(cells: ReadonlyArray<string>, pending: ReadonlyArray<number>): Map<number, Array<number>> {
-  const compiled = cells.map((source, index) => {
-    try {
-      return transpileCell(source, index)
-    } catch {
-      return undefined
-    }
-  })
+  // Each cell's declarations compiled (cellParts); one that does not compile defines and reads nothing.
+  const compiled = cells.map((source, index) =>
+    cellParts(source).flatMap((part) => {
+      try {
+        return [transpileCell(part, index)]
+      } catch {
+        return []
+      }
+    }),
+  )
   const waiting = new Set(pending)
   const definer = new Map<string, number>()
-  compiled.forEach((cell, index) => cell && definedBy(cell).forEach((name) => definer.set(name, index)))
+  compiled.forEach((cell, index) => cell.forEach((part) => definedBy(part).forEach((name) => definer.set(name, index))))
   const waitsOn = (index: number) =>
     new Set(
-      (compiled[index]?.inputs ?? []).flatMap((name) => {
+      (compiled[index] ?? []).flatMap((part) => part.inputs ?? []).flatMap((name) => {
         const at = definer.get(name)
         return at !== undefined && at !== index && waiting.has(at) ? [at] : []
       }),

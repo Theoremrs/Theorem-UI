@@ -436,3 +436,73 @@ test('a cell imports @theorem/ui from the bundle, and its controls reach the age
   started.runtime.dispose()
   await waitFor(() => !registered.size)
 }, 120_000)
+
+test('a cell of several Observable declarations runs each, reports once, and feeds the cells that read them', async () => {
+  const statuses: Array<CellStatus> = []
+  const listen = (event: Event) => statuses.push((event as CustomEvent<CellStatus>).detail)
+  window.addEventListener(CELL_STATUS_EVENT, listen)
+  try {
+    const main = await run({
+      title: 'Rates',
+      cells: [
+        {
+          id: 'rates',
+          kind: 'js',
+          source: 'viewof alpha = Inputs.range([0, 2], {value: 1, step: 0.5})\nviewof gamma = Inputs.range([0, 2], {value: 0.5, step: 0.5})',
+        },
+        { id: 'product', kind: 'js', source: '`product ${alpha * gamma}`' },
+      ],
+    })
+    const product = main.querySelector('[data-cell-id="product"]')!
+    await waitFor(() => product.textContent.includes('product 0.5'))
+    await waitFor(() => statuses.length === 2)
+    expect(statuses.map((status) => [status.cell, status.stage])).toEqual([['rates', 'ready'], ['product', 'ready']])
+    const ranges = main.querySelectorAll<HTMLInputElement>('[data-cell-id="rates"] input[type="range"]')
+    expect(ranges).toHaveLength(2)
+    ranges[1]!.value = '2'
+    ranges[1]!.dispatchEvent(new Event('input', { bubbles: true }))
+    await waitFor(() => product.textContent.includes('product 2'))
+  } finally {
+    window.removeEventListener(CELL_STATUS_EVENT, listen)
+  }
+})
+
+test('importing a builtin from a package that lacks it says the builtin needs no import', async () => {
+  const statuses: Array<CellStatus> = []
+  const listen = (event: Event) => statuses.push((event as CustomEvent<CellStatus>).detail)
+  const quiet = (event: ErrorEvent) => event.preventDefault()
+  window.addEventListener(CELL_STATUS_EVENT, listen)
+  window.addEventListener('error', quiet)
+  try {
+    await run({ title: 'Imported', cells: [{ id: 'i', kind: 'js', source: 'import {Inputs} from "@observablehq/inputs"' }] })
+    await waitFor(() => statuses.length === 1)
+    expect(statuses[0]!.error).toBe("export 'Inputs' not found: `Inputs` is already defined in every cell, without an import")
+  } finally {
+    window.removeEventListener(CELL_STATUS_EVENT, listen)
+    window.removeEventListener('error', quiet)
+  }
+})
+
+test('an npm: import of a module the bundle holds is the bundle\'s, as its bare name is', async () => {
+  const main = await run({
+    title: 'Npm',
+    cells: [
+      { id: 'imported', kind: 'js', source: 'import * as I from "npm:@observablehq/inputs"' },
+      { id: 'shown', kind: 'js', source: '`range ${typeof I.range}`' },
+    ],
+  })
+  const shown = main.querySelector('[data-cell-id="shown"]')!
+  await waitFor(() => shown.textContent.includes('range function'))
+  expect(notebookCellsScript({ title: 'Npm', cells: [{ id: 'i', kind: 'js', source: 'import * as I from "npm:@observablehq/inputs"' }] })).toContain(
+    '__theoremImport("@observablehq/inputs", "https://cdn.jsdelivr.net/npm/@observablehq/inputs/+esm")',
+  )
+})
+
+test('a downloaded notebook gives each Observable declaration its own cell, as Notebook Kit takes them', () => {
+  const source = observableSource(
+    { form: 'observable', title: 'Rates', cells: [{ id: 'r', kind: 'js', source: 'viewof a = Inputs.range([0, 1])\nviewof b = Inputs.range([0, 1])' }] },
+    LIGHT,
+  )
+  expect(source).toMatch(/javascript" pinned="">\s*viewof a = Inputs\.range\(\[0, 1\]\)\s*<\/script>/)
+  expect(source).toMatch(/javascript" pinned="">\s*viewof b = Inputs\.range\(\[0, 1\]\)\s*<\/script>/)
+})
