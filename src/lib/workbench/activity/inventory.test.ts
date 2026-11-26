@@ -54,7 +54,7 @@ describe('inventory', () => {
       organization: org([]),
       terminals: [
         { workspace: 'w', session: 's1', label: 'zsh', exitCode: 0 },
-        { workspace: 'w', session: 's2', label: 'Claude Code', runId: 'run-7' },
+        { workspace: 'w', session: 's2', label: 'Claude Code', runId: 'run-7', exitCode: null },
       ],
     })
     expect(inv.entries).toMatchObject([

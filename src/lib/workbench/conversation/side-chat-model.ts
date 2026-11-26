@@ -21,6 +21,8 @@ export interface SideChatModel {
    * stop asked for before it does.
    */
   detach?: () => void
+  /** A view shows this side chat again: turns read from here on, and a stop reaches Theorem. */
+  attach?: () => void
 }
 
 /**
@@ -60,12 +62,18 @@ export async function* untilDetached<T>(
  */
 export function detaching(): {
   detach: () => void
+  attach: () => void
   signal: (outer: AbortSignal) => AbortSignal
   read: <T>(source: AsyncIterable<T>) => AsyncGenerator<T, void>
 } {
-  const detached = new AbortController()
+  // Each attachment has its own controller: a detach ends the reads begun under it, and a
+  // later attach (a remount) starts a new one rather than staying silent.
+  let detached = new AbortController()
   return {
     detach: () => detached.abort(),
+    attach: () => {
+      if (detached.signal.aborted) detached = new AbortController()
+    },
     signal: (outer) => stopUnlessDetached(outer, detached.signal),
     read: (source) => untilDetached(source, detached.signal),
   }
@@ -128,6 +136,7 @@ export async function createSideChatModel(
   return {
     threadId: () => threadId,
     detach: detached.detach,
+    attach: detached.attach,
     adapter: {
       async *run(options) {
         if (!threadId) await create()

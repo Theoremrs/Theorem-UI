@@ -74,6 +74,18 @@ describe('activity projection', () => {
     expect(p.apply(ev({ source: 'thread', resource: 't1', seq: 2 }))).toBe('needs_snapshot')
   })
 
+  test("after a loss, the owner's snapshot at the same seq settles the entry", () => {
+    const p = createActivityProjection()
+    p.apply(ev({ kind: 'snapshot', seq: 5, state: { execution: 'running' } }))
+    p.lost('terminal')
+    p.recovering('terminal')
+    expect(p.apply(ev({ kind: 'snapshot', seq: 5, state: { execution: 'running' } }))).toBe('applied')
+    expect(p.get('terminal:w/s1')?.observation).toBe('current')
+    expect(p.apply(ev({ seq: 6, state: { execution: 'succeeded' } }))).toBe('applied')
+    // A current entry still drops the repeat.
+    expect(p.apply(ev({ kind: 'snapshot', seq: 6 }))).toBe('duplicate')
+  })
+
   test('a snapshot without a waiting reason clears the old one', () => {
     const p = createActivityProjection()
     p.apply(ev({ kind: 'snapshot', state: { execution: 'waiting', waiting: { for: 'approval', ref: 'r1' } } }))

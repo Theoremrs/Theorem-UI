@@ -4338,3 +4338,43 @@ fn an_agent_that_names_no_panel_is_refused_when_two_could_be_meant() {
     // Naming the panel settles it.
     claim(&mut r.m, &first);
 }
+
+#[test]
+fn a_refused_agent_open_grants_no_claim_on_the_persons_retry() {
+    let m = coding_model(true);
+    let mut r = Rig {
+        id: PanelInstanceId::new("unset"),
+        m,
+    };
+    let (_, fx) = act(
+        &mut r.m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix it","option":"claude"}"#),
+    );
+    r.id = shell_id(&r.m);
+    let open = fx[0].clone();
+    r.answer(
+        &open,
+        Outcome::Refused {
+            code: "busy".into(),
+            reason: "try again".into(),
+        },
+        None,
+    );
+    // The person retries from the failed pane, and the open succeeds.
+    update(&mut r.m, Msg::Dock(DockMsg::FocusPanel(r.id.clone())));
+    let fx = r.key(Key::Enter);
+    let retry = fx
+        .iter()
+        .find(|e| matches!(e.body, EffectBody::TerminalOpen(_)))
+        .cloned()
+        .expect("Enter retries the open");
+    let fx = r.accept_attach(&retry, opened(1, 1, 80, 24, "created"));
+    r.settle_resize(fx);
+    r.send(coding_listing());
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"y"}"#));
+    assert!(fx.is_empty(), "{fx:?}");
+    refused_with(&outcome, "holds no input claim");
+}

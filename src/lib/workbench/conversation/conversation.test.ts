@@ -1702,7 +1702,14 @@ describe('side chat', () => {
     expect(
       await t.conversation.sideChat({ ...base('r'), reopen: 'remote-1' }),
     ).toMatchObject({ outcome: 'refused', code: 'invalid_request' })
-    const done = await t.conversation.sideChat({ ...base('r2'), reopen: 'stored-9' })
+    expect(
+      await t.conversation.sideChat({ ...base('r2'), reopen: 'stored-9' }),
+    ).toMatchObject({ outcome: 'refused', code: 'unknown_side_chat' })
+    const first = await t.conversation.sideChat(base('r3'))
+    if (first.outcome !== 'accepted') throw new Error(first.outcome)
+    t.stored.threadId = 'stored-9'
+    first.value.close()
+    const done = await t.conversation.sideChat({ ...base('r4'), reopen: 'stored-9' })
     expect(done.outcome).toBe('accepted')
     expect(t.opens.at(-1)).toMatchObject({ reopen: 'stored-9' })
   })

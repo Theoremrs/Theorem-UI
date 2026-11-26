@@ -814,6 +814,7 @@ impl ProcessPanel {
         match c.outcome {
             Outcome::Accepted => {
                 let Some(CompletionPayload::Terminal(t)) = c.payload else {
+                    self.grant = None;
                     self.stage = Stage::Failed(Failure {
                         kind: FailureKind::Failed,
                         reason: "The host accepted the open but named no session.".into(),
@@ -848,6 +849,8 @@ impl ProcessPanel {
                 });
             }
             Outcome::Refused { code, reason } => {
+                // An open that did not happen grants no one: a retry is the person's.
+                self.grant = None;
                 let kind = if code == "terminal_backend_unavailable" {
                     FailureKind::Unavailable
                 } else {
@@ -861,6 +864,7 @@ impl ProcessPanel {
                 });
             }
             Outcome::Failed { reason } => {
+                self.grant = None;
                 self.stage = Stage::Failed(Failure {
                     kind: FailureKind::Failed,
                     reason,
@@ -1085,7 +1089,10 @@ impl ProcessPanel {
     /// `shell.hand_back` (human only): the person ends their takeover. No
     /// agent holds the terminal afterwards until one claims it again.
     fn hand_back(&mut self, cx: &mut Ctx) {
-        let Some(b) = self.bound() else { return };
+        let Some(b) = self.bound() else {
+            cx.refuse("This shell is not attached to a terminal.");
+            return;
+        };
         if !self.catalog.control().hand_back(&control_key(b)) {
             cx.refuse("No agent was stopped from typing into this terminal.");
         }
@@ -1542,7 +1549,7 @@ pub(crate) fn control_key(b: &Bound) -> crate::control::Key {
 /// The person's own input reached the terminal: an agent holding its claim
 /// stops (IN-03), and the pane says so.
 fn took_over(catalog: &Catalog, b: &mut Bound) {
-    if catalog.control().person_input(&control_key(b)) {
+    if catalog.control().person_input(&control_key(b), b.epoch) {
         b.notice = Some(Note::new(
             Tone::Warning,
             "You took over from the agent. It sends no more input here until you hand it back.",

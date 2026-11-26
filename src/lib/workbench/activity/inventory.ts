@@ -115,7 +115,7 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
 
   if (!inputs.terminals) gaps.push('Terminal sessions have not been listed.')
   for (const row of inputs.terminals ?? []) {
-    const exited = row.state === 'exited' || row.exitCode !== undefined
+    const exited = row.state === 'exited' || row.exitCode != null
     entries.push(
       entry({
         source: 'terminal',

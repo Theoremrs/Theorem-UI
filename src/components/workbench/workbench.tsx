@@ -509,8 +509,9 @@ export function Workbench({
   // changes" pattern, so the switch happens in the same render).
   const ownSideChats = () => ({
     projectId,
-    chats: createSideChats((request) =>
-      createSideChatModel(projectId, request),
+    chats: createSideChats(
+      (request) => createSideChatModel(projectId, request),
+      projectId,
     ),
   })
   const [side, setSide] = useState(ownSideChats)

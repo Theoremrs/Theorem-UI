@@ -396,6 +396,8 @@ export interface SideRuntime {
 
 /** What makes side-chat runtimes: a second instance of the factory the main runtime came from. */
 export interface SideChats {
+  /** What the side chats are kept under, such as their project; closed ones reopen only under it. */
+  key?: string
   /** `from` is the main conversation's stored thread, present for `continued` and `forked`. */
   open: (request: {
     scope: SideChatScope
@@ -556,7 +558,9 @@ export function createConversation({
     { base: Omit<SideChatInfo, 'threadId'>; threadId: () => string | undefined }
   >()
   /** Closed side chats, kept so they can be reopened; at most `DETACHED_LIMIT`, newest first. */
-  const detachedKey = `theorem.workbench.sideChats.${workspaceId}`
+  const detachedKey = `theorem.workbench.sideChats.${workspaceId}${sideChats?.key ? `.${sideChats.key}` : ''}`
+  /** Threads a reopen is in progress for, so a second one is refused before the first lands. */
+  const reopening = new Set<string>()
   const readDetached = (): SideChatInfo[] => {
     try {
       const parsed: unknown = JSON.parse(storage?.getItem(detachedKey) ?? '[]')
@@ -1694,11 +1698,24 @@ export function createConversation({
           'invalid_request',
           "A side chat reopens its own stored thread, never the main conversation's",
         )
-      if (reopen !== undefined && [...info.values()].some((i) => i.threadId() === reopen))
+      if (
+        reopen !== undefined &&
+        (reopening.has(reopen) ||
+          [...info.values()].some((i) => i.threadId() === reopen))
+      )
         return refused(
           answers,
           'conflict',
           'That side chat is already open',
+        )
+      if (
+        reopen !== undefined &&
+        !readDetached().some((entry) => entry.threadId === reopen)
+      )
+        return refused(
+          answers,
+          'unknown_side_chat',
+          'Only a side chat closed here can be reopened',
         )
       if (!reopen && scope !== 'fresh' && !from)
         return refused(
@@ -1707,6 +1724,7 @@ export function createConversation({
           `A ${scope} side chat starts from the main conversation's stored thread, and this one has none yet`,
         )
       let side: SideRuntime
+      if (reopen) reopening.add(reopen)
       try {
         side = await sideChats.open({
           scope,
@@ -1715,6 +1733,8 @@ export function createConversation({
         })
       } catch (error) {
         return failure(answers, error, false)
+      } finally {
+        if (reopen) reopening.delete(reopen)
       }
       if (disposed) {
         side.close()

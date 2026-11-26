@@ -28,6 +28,8 @@ export function createSideChats(
     from?: string
     reopen?: string
   }) => Promise<SideChatModel>,
+  /** The project these side chats make their threads in: closed ones are kept per project. */
+  key?: string,
 ): {
   sideChats: SideChats
   Hosts: () => ReactNode
@@ -44,7 +46,10 @@ export function createSideChats(
   function Host({ entry }: { entry: Entry }) {
     // Before the runtime's own teardown, which aborts its run: a layout cleanup declared first
     // runs ahead of every other cleanup here, so that abort no longer reaches Theorem.
-    useLayoutEffect(() => () => entry.model.detach?.(), [entry])
+    useLayoutEffect(() => {
+      entry.model.attach?.()
+      return () => entry.model.detach?.()
+    }, [entry])
     const runtime = useLocalRuntime(entry.model.adapter, {
       adapters: { history: entry.model.history },
     })
@@ -72,6 +77,7 @@ export function createSideChats(
   return {
     Hosts,
     sideChats: {
+      ...(key ? { key } : {}),
       open: async (request) => {
         if (mounted === 0) throw new Error('No side chat host is mounted')
         const model = await makeModel(request)

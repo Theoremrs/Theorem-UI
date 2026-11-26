@@ -123,7 +123,13 @@ export function createActivityProjection(): ActivityProjection {
       const known = entries.get(key)
       if (known && event.epoch < known.epoch) return 'stale_epoch'
       const sameEpoch = known !== undefined && event.epoch === known.epoch
-      if (sameEpoch && event.seq <= known.seq) return 'duplicate'
+      // A snapshot is canonical: after a loss it may repeat the last seq and still settle it.
+      const settles =
+        event.kind === 'snapshot' &&
+        sameEpoch &&
+        event.seq === known.seq &&
+        (known.gap || known.observation !== 'current')
+      if (sameEpoch && event.seq <= known.seq && !settles) return 'duplicate'
       if (event.kind === 'change') {
         if (!known) return 'needs_snapshot'
         if (!sameEpoch) {

@@ -42,8 +42,9 @@ pub(crate) enum Holder {
     /// An agent run holds a claim.
     Agent(Claim),
     /// The person typed while an agent held it, and has not handed it back.
-    /// `from` is the run whose claim the person's input ended.
-    Person { from: String },
+    /// `from` is the run whose claim the person's input ended. A rebind
+    /// (a newer `epoch`) ends the takeover with the binding it was made on.
+    Person { from: String, epoch: u64 },
 }
 
 /// Why an agent may not type now. The text is what the agent is told.
@@ -57,6 +58,8 @@ pub(crate) enum Refusal {
     Person,
     /// The claim was for an older binding of this terminal.
     Stale,
+    /// The run was seen working and has since stopped.
+    Ended,
 }
 
 impl Refusal {
@@ -75,6 +78,7 @@ impl Refusal {
             Self::Stale => "This run's input claim was for an earlier binding of this terminal. \
                  Ask for a new one with code.claim before sending more input."
                 .into(),
+            Self::Ended => "This run is no longer working, so it can take no input claim.".into(),
         }
     }
 }
@@ -88,12 +92,18 @@ pub(crate) struct Control {
     /// page does not report) keeps its claim until it is released, the
     /// person takes over, or the terminal is rebound.
     seen_working: BTreeSet<String>,
+    /// Runs that were seen working and left the set: they claim nothing more.
+    ended: BTreeSet<String>,
 }
 
 impl Control {
     /// Issue `run` a claim on `key` at `epoch`. A run that already holds a
     /// claim for this epoch gets the same one back.
     pub(crate) fn claim(&mut self, key: Key, run: &str, epoch: u64) -> Result<Claim, Refusal> {
+        if self.ended.contains(run) {
+            return Err(Refusal::Ended);
+        }
+        self.fence_person(&key, epoch);
         match self.held.get(&key) {
             Some(Holder::Person { .. }) => return Err(Refusal::Person),
             Some(Holder::Agent(c)) if c.run == run && c.epoch == epoch => return Ok(c.clone()),
@@ -115,6 +125,7 @@ impl Control {
 
     /// Whether `run` may send input to `key` at `epoch` now.
     pub(crate) fn check(&mut self, key: &Key, run: &str, epoch: u64) -> Result<(), Refusal> {
+        self.fence_person(key, epoch);
         match self.held.get(key) {
             None => Err(Refusal::NoClaim),
             Some(Holder::Person { .. }) => Err(Refusal::Person),
@@ -136,13 +147,27 @@ impl Control {
     /// The person typed into `key`. An agent's claim ends and the person
     /// holds the terminal until they hand it back. With no agent claim the
     /// person's typing changes nothing here.
-    pub(crate) fn person_input(&mut self, key: &Key) -> bool {
-        if let Some(Holder::Agent(c)) = self.held.get(key) {
-            let from = c.run.clone();
-            self.held.insert(key.clone(), Holder::Person { from });
-            return true;
+    pub(crate) fn person_input(&mut self, key: &Key, epoch: u64) -> bool {
+        match self.held.get(key) {
+            Some(Holder::Agent(c)) if c.epoch == epoch => {
+                let from = c.run.clone();
+                self.held.insert(key.clone(), Holder::Person { from, epoch });
+                true
+            }
+            // A claim for an older binding was already fenced; it holds nothing to stop.
+            Some(Holder::Agent(_)) => {
+                self.held.remove(key);
+                false
+            }
+            _ => false,
         }
-        false
+    }
+
+    /// A takeover ends with the binding it was made on.
+    fn fence_person(&mut self, key: &Key, epoch: u64) {
+        if matches!(self.held.get(key), Some(Holder::Person { epoch: at, .. }) if *at < epoch) {
+            self.held.remove(key);
+        }
     }
 
     /// The person hands the terminal back. No agent holds it afterwards; an
@@ -167,6 +192,10 @@ impl Control {
         let ended: BTreeSet<String> = self.seen_working.difference(&now).cloned().collect();
         self.held
             .retain(|_, holder| !matches!(holder, Holder::Agent(c) if ended.contains(&c.run)));
+        self.ended.extend(ended);
+        for run in &now {
+            self.ended.remove(run);
+        }
         self.seen_working = now;
     }
 
@@ -174,6 +203,7 @@ impl Control {
     pub(crate) fn describe(&self, key: &Key, epoch: u64) -> &'static str {
         match self.held.get(key) {
             None => "agent input: no claim",
+            Some(Holder::Person { epoch: at, .. }) if *at < epoch => "agent input: no claim",
             Some(Holder::Person { .. }) => "agent input: stopped, the person took over",
             Some(Holder::Agent(c)) if c.epoch != epoch => "agent input: no claim",
             Some(Holder::Agent(_)) => "agent input: claimed",
@@ -216,7 +246,7 @@ mod tests {
     fn the_persons_input_stops_the_agent_until_handed_back() {
         let mut c = Control::default();
         c.claim(key("t"), "r1", 1).unwrap();
-        assert!(c.person_input(&key("t")));
+        assert!(c.person_input(&key("t"), 1));
         assert_eq!(c.check(&key("t"), "r1", 1), Err(Refusal::Person));
         assert_eq!(c.claim(key("t"), "r1", 1), Err(Refusal::Person));
         assert_eq!(c.claim(key("t"), "r2", 1), Err(Refusal::Person));
@@ -229,7 +259,7 @@ mod tests {
     #[test]
     fn the_persons_typing_with_no_agent_claim_locks_nothing() {
         let mut c = Control::default();
-        assert!(!c.person_input(&key("t")));
+        assert!(!c.person_input(&key("t"), 1));
         assert!(c.claim(key("t"), "r1", 1).is_ok());
     }
 
@@ -267,5 +297,31 @@ mod tests {
         assert!(!c.release(&key("t"), "r2"));
         assert!(c.release(&key("t"), "r1"));
         assert_eq!(c.check(&key("t"), "r1", 1), Err(Refusal::NoClaim));
+    }
+
+    #[test]
+    fn a_takeover_ends_with_its_binding() {
+        let mut c = Control::default();
+        c.claim(key("t"), "r1", 1).unwrap();
+        assert!(c.person_input(&key("t"), 1));
+        assert_eq!(c.claim(key("t"), "r1", 1), Err(Refusal::Person));
+        assert!(c.claim(key("t"), "r1", 2).is_ok());
+    }
+
+    #[test]
+    fn the_persons_typing_does_not_revive_a_fenced_claim() {
+        let mut c = Control::default();
+        c.claim(key("t"), "r1", 1).unwrap();
+        assert!(!c.person_input(&key("t"), 2));
+        assert!(c.claim(key("t"), "r2", 2).is_ok());
+    }
+
+    #[test]
+    fn a_run_that_stopped_working_claims_nothing_more() {
+        let mut c = Control::default();
+        c.working_runs(&["r1".into()]);
+        c.working_runs(&[]);
+        assert_eq!(c.claim(key("t"), "r1", 1), Err(Refusal::Ended));
+        assert!(c.claim(key("t"), "r2", 1).is_ok());
     }
 }
