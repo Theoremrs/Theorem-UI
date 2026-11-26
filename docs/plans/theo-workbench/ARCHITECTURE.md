@@ -2,20 +2,23 @@
 
 Decisions taken at the end of Gate 0, from the five inventories in `gate-0/`. Each decision names the evidence it rests on. Where the spec and the checkout disagree, the disagreement is listed in section 11 rather than settled silently.
 
-## 1. What is being replaced, and where it mounts
+## 1. Where the workbench mounts
 
 No route is named Theo. The page the spec calls "the web Theo route" is chat mode: `/`, `/c/$threadId` and `/projects/$projectId`, drawn by `ChatLayout` (`src/routes/_chat.tsx`) and `ChatShell` (`src/components/shell/chat-shell.tsx`). `/ide` is the Theia page that Gate 6 retires. (`gate-0/versions-and-owners.md` section 2.)
 
-| Kept as is | Replaced in chat mode |
-|---|---|
-| TanStack routes, the sign-in gate, `TheoremRuntimeProvider` (`_chat.tsx:62-93`) | `<SheetSplit>` (`chat-shell.tsx:417`): the conversation sidebar (`GlassPanel` -> `ContextPanel`) and the dockview dock |
-| The outer rail (`chat-shell.tsx:399`) and the sheet frame | The React thread and composer as the drawn surface (their runtime stays, see section 6) |
-| Notes, Pages, Vault, Spaces and Canvas modes, which keep `SheetSplit` and dockview | |
-| `ProjectHome` at `/projects/$projectId` | |
+*Amended 2026-11-26 by [SPEC-UNIFIED-AGENT-EXPERIENCE-1.0](SPEC-UNIFIED-AGENT-EXPERIENCE-1.0.md) Section 5.1.* This section said the workbench mounts in place of `SheetSplit` in chat mode and replaces the chat interior, including its dockview dock. The checkout had already moved away from that, and the amendment makes the current arrangement the rule: dockview owns the application's composition, and the workbench is a revealable major surface with its own inner layout (UX-01). The evidence is in [the Gate 0 ownership map](gate-0/unified-agent-ownership-map.md), section 1.
 
-The workbench mounts as one React component, `Workbench`, in place of `SheetSplit` when the mode is chat. It fills the sheet; there is no card inside a page.
+| Layout owner | Owns | Source |
+|---|---|---|
+| dockview (`DockShell`, `src/components/shell/dock.tsx`) | The sheet: conversation, the sidebar and the side panels for artifacts, notes, files, delegations and reviews, in every mode | `dock.tsx:770-843` |
+| Placement rules (`src/components/workbench/placement.ts`), drawn by `WorkbenchDock` | Where the workbench sits: closed, `full`, `side` (drawer or docked) or `bottom` (always a drawer) | `placement.ts:5-45`, `workbench-dock.tsx:462-500` |
+| `workbench-dock` (section 2) | Every pane inside the workbench | `model.rs:891-914`, `workbench-dock/src/doc.rs:11-25` |
 
-Until the Theo pane reaches parity (end of Gate 4) the workbench is opt-in per browser: `localStorage['theorem-ui:workbench'] = '1'` or `?workbench=1`. The existing shell, its e2e scenarios and its oracles keep running unchanged meanwhile. The switch flips to default at the Gate 4 exit and is deleted, with the classic chat interior, at Gate 6. It is a delivery switch, not a product setting.
+Kept as is: TanStack routes, the sign-in gate and `TheoremRuntimeProvider` (`_chat.tsx:62-93`); the outer rail; the sheet frame and `SheetSplit` with its dockview dock in every mode, chat included; `ProjectHome` at `/projects/$projectId`.
+
+`DesktopShell` (`chat-shell.tsx`) draws the sheet frame and `WorkbenchDock` as siblings in one row, so moving the workbench between placements keeps the mounted workspace. `full` hides the sheet without unmounting it (only in chat mode); `side` and `bottom` sit beside or over whichever mode is showing, and then the core hides the workbench's own Theo group on screen because the sheet beside it already shows the conversation (`model.rs:715-752`). The workbench mounts on its first showing and stays mounted, hidden, while closed, so its runs and terminals carry on. It fills its own surface in every placement; there is no card inside a page.
+
+Until the Theo pane reaches parity (end of Gate 4) the workbench is opt-in per browser: `localStorage['theorem-ui:workbench'] = '1'` or `?workbench=1`. The existing shell, its e2e scenarios and its oracles keep running unchanged meanwhile. The switch flips to default at the Gate 4 exit and is deleted at Gate 6. It is a delivery switch, not a product setting. Under the 2026-11-26 amendment the sheet and its dockview composition are not deleted with it; what Gate 6 retires is Theia (spec Section 15).
 
 Project and conversation navigation, which the sidebar carried, is the Threads panel (the first tab of the left dock, the one a fresh layout shows) and the palette actions beside it: the panel lists the account's projects and threads and the Herdr sessions, and picking a thread returns to Theo while picking a session opens it as a terminal tab beside Theo. The header switchers this paragraph once promised are not built (spec 4.1).
 
@@ -183,7 +186,7 @@ References are committed first as `evidence/refs/<component>@<pin>.png`, capture
 
 1. **"Theo route" is chat mode.** Inferred from spec 4.1 and 15; recorded here because nothing in the source is named Theo.
 2. **The Herdr terminal path is not on backend `main`.** It exists on `feat/herdr-live-adoption` (`828ac52848`), 31 commits ahead of and 323 behind `main`; the only PR to `main` (#1021) is open, conflicting and carries only the first slice. Nothing documents a deployed host built from it. Gate 2's local proof can run against a host built from that branch; AC cases that need a deployed Herdr host wait on the stack landing and a deploy, both outside this repository.
-3. **The shell already has a layout owner.** dockview-react 8.6.1 owns the dock in every mode. The spec is explicit that the workbench starts from Herdr's layout, so inside chat mode the Rust dock replaces dockview; other modes keep it. Openers that today target dockview panels (`useArtifactView`, `useNoteView`, `useWorkspaceFileView`, `useFileDock`, `useDelegationDock`, `useReviewDock`) are routed to workbench panels while the workbench is mounted.
+3. **The shell already has a layout owner.** dockview-react 8.6.1 owns the dock in every mode. *Amended 2026-11-26 ([SPEC-UNIFIED-AGENT-EXPERIENCE-1.0](SPEC-UNIFIED-AGENT-EXPERIENCE-1.0.md) Section 5.1):* dockview keeps that role in chat mode too, and the Rust dock owns only the panes inside the workbench surface, which dockview's shell reveals (section 1). This item previously said the Rust dock replaces dockview inside chat mode; that is withdrawn. The openers that target dockview panels (`useArtifactView`, `useNoteView`, `useWorkspaceFileView`, `useFileDock`, `useDelegationDock`, `useReviewDock`) keep their dockview targets. Revealing a resource inside the workbench goes through one reveal operation that names the resource and the client (companion CP-02, CP-03, API-10), which Gate 2 of the companion adds; until then the openers are not rerouted. The ownership map lists what each opener opens (`gate-0/unified-agent-ownership-map.md`, section 2.3).
 4. **Account customization is partly present.** Layouts and named compositions have an account owner (`/api/workbench/v1`). Appearance and keybindings do not: appearance is `localStorage`, and no keybinding registry exists. R35 needs either those fields in the workbench record's opaque payload (no backend change, since the payload is opaque) or a preferences extension. The first is chosen: appearance choices and keybindings that are safe to sync travel in the workbench record.
 5. **Residual live-adoption defects on the Herdr branch** (unbounded opening drain, no subscription when the core is unavailable at open, closed subscription not renewed, relabel-out not released, minted-id write failure ignored) are backend work; R30 is not met by the branch as it stands (`terminal-path.md` 7).
 6. **The frontend vendors two SDK versions** (alpha.5 for the app, alpha.3 plus a terminal patch for Theia). The workbench uses alpha.5 and one typed adapter for the terminal fields it lacks; the alpha.3 patch goes away with Theia.

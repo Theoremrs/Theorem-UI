@@ -11,7 +11,7 @@ Each requirement identifies its responsible boundary and corresponding [acceptan
 **Owner:** Route/build owners  
 **Acceptance:** AC-01, AC-60
 
-The release MUST replace the web Theo interior. Native Theo, Platinum, native docking and native packaging MUST NOT become implementation tasks or acceptance dependencies. Required host repairs serving the web client remain in scope.
+The release MUST deliver the web Theo workbench as a major surface of the web application (amended 2026-11-26 by [SPEC-UNIFIED-AGENT-EXPERIENCE-1.0](SPEC-UNIFIED-AGENT-EXPERIENCE-1.0.md) Section 5.1; this previously read "replace the web Theo interior"). Native Theo, Platinum, native docking and native packaging MUST NOT become implementation tasks or acceptance dependencies. Required host repairs serving the web client remain in scope.
 
 ## R02 — One operation and resource owner
 
@@ -32,7 +32,7 @@ ELY Markdown and the initial ELY-derived Changes presentation MUST be ported to 
 **Owner:** Web shell  
 **Acceptance:** AC-01, AC-03, AC-55
 
-The workbench MUST occupy the Theo route interior while retaining outer application navigation and access to projects/conversations. The replacement MUST NOT require a second permanent Theia surface.
+The workbench MUST be reachable from the chat route as a revealable major surface (full, side or bottom) while retaining outer application navigation, the conversation sheet and access to projects/conversations. Dockview owns that composition; the workbench's own dock owns its panes (amended 2026-11-26 by [SPEC-UNIFIED-AGENT-EXPERIENCE-1.0](SPEC-UNIFIED-AGENT-EXPERIENCE-1.0.md) Section 5.1 and UX-01; this previously required the workbench to occupy the Theo route interior). The replacement MUST NOT require a second permanent Theia surface.
 
 ## R05 — One dock and panel registry
 
@@ -202,6 +202,8 @@ Attach/replay/reset MUST bind environment, terminal session, backend and generat
 
 Any view attached to a terminal MAY type, paste and resize it; the latest resize wins. There are no observers, no takeover and no lease generation: the owner removed exclusive control on 2026-11-16 because one person's several views of a terminal must never lock each other out (a stale attachment left by a reloaded page held the lease and locked the live page out). Input aimed at a terminal the host has since rebound MUST be refused `stale_epoch`, and the view MUST re-attach. Renderer replies to terminal queries are discarded on Herdr terminals, where Herdr Core answers queries itself; on a native PTY only the view that last typed or resized answers. Browser focus alone MUST NOT grant remote execution rights.
 
+*Open conflict (2026-11-26):* the unified agent experience companion (IN-02, IN-03, `UAE-AC-07`) expects explicit terminal control with a lease, fencing and reacquisition. This requirement removed the lease. Until the owner decides between them, R28 stands as written and `UAE-AC-07` stays not run; see the [Gate 0 ownership map](gate-0/unified-agent-ownership-map.md), section 7, item 1.
+
 ## R29 — Detach is not terminate
 
 **Owner:** Resource lifecycle  
@@ -341,6 +343,31 @@ Logical launches/mutations MUST have stable identities where the protocol suppor
 **Acceptance:** AC-02, AC-07, AC-41, AC-45, AC-59, AC-61
 
 Alternate panel presentations MUST use versioned descriptors, explicit capabilities and existing extension/runtime policies. The workbench MUST not introduce arbitrary eval, another plugin VM, or raw SDK credentials to achieve customization. Unknown panel versions MUST fail safely and preserve bindings for recovery.
+
+## Cross-references to the unified agent experience companion
+
+[SPEC-UNIFIED-AGENT-EXPERIENCE-1.0](SPEC-UNIFIED-AGENT-EXPERIENCE-1.0.md) extends this workbench; it does not replace any requirement here. Where both apply, the companion's requirement is added to the R-ID below, and its acceptance cases are recorded in [acceptance-cases.json](acceptance-cases.json) as `UAE-AC-01` to `UAE-AC-24`. The [Gate 0 ownership map](gate-0/unified-agent-ownership-map.md) holds the source evidence.
+
+| Requirement | Companion IDs it now carries | Note |
+|---|---|---|
+| R01, R04 | UX-01, DR-01 to DR-04 | Placement amended: the workbench is a revealable major surface; Dockview composes the application |
+| R02 | OW-01, OW-02, ID-03 | The activity model is a read model over these owners, never another executor |
+| R05 | UX-01, WS-06, API-01, API-08 | One workbench registry; no second registry for agent-visible actions |
+| R07 | UX-02, CP-01, CP-03 | Opening and selecting have no execution effect |
+| R14, R15 | AR-11, RC-03 | Saved means acknowledged; uncertain outcomes stay uncertain |
+| R20, R21 | IN-01 | Explicit message recipient, drafts per target |
+| R24, R25, R31 | 8.3 (external terminal agents), RC-01 | Execution profiles are not agents (ID-01) |
+| R27, R28 | IN-02, IN-03, API-05, UI-05 | Conflict: R28 lets any view type and resize; the companion requires one owner-issued controller claim. Open decision, see the ownership map section 7 |
+| R29, R36 | UX-02, IN-06, RC-02, AR-12 | Close view detaches; Stop is separate. Side-chat `Host` unmount still cancels (ownership map 2.5) |
+| R30 | OW-02, EV-02 | Inventory and cursor reconciliation |
+| R32 | ST-01, 8.3 | Program reports stay reported state |
+| R33 | EV-03, EV-04 | Bounded queues; late results keyed by binding generation |
+| R34 | API-05, API-09, API-10 | Actor identity on every effect; the companion adds client identity |
+| R35 | OW-04 | Account-synced arrangements; local geometry and input stay local |
+| R37 | AR-01 to AR-13, UI-01 | Durable artifact resolution builds on the durable-artifacts plan, not a new registry |
+| R38, R39 | UI-02 to UI-04 | |
+| R41 | UI-06, 12.1 | |
+| R47 | API-07, RC-03 | |
 
 ## Release evidence rules
 
