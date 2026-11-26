@@ -1,10 +1,11 @@
-// SOURCING: @tanstack/react-query (read and save), lib/theorem/passthrough's theoremJson (the native organization routes the SDK does not wrap yet). The record is Theorem's organization (GET /v1/theorem/organization, PUT /v1/theorem/organization/profile); this file only reads and writes it (Unified Agent Experience Gate 0 decision 2, ownership map section 5).
+// SOURCING: @tanstack/react-query (read and save), lib/theorem/client's mutate (the CSRF and idempotency headers every mutation carries), lib/theorem/passthrough's theoremJson (the native organization routes the SDK does not wrap yet). The record is Theorem's organization (GET /v1/theorem/organization, PUT /v1/theorem/organization/profile); this file only reads and writes it (Unified Agent Experience Gate 0 decision 2, ownership map section 5).
 import {
   queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
+import { mutate } from './client'
 import { isNotServed, theoremJson } from './passthrough'
 
 const ORGANIZATION = '/v1/theorem/organization'
@@ -144,10 +145,13 @@ export async function saveAgentProfile(
   expectedRevision: number,
 ): Promise<AgentIdentity> {
   return identityOf(
-    await theoremJson<AgentOrganization>(`${ORGANIZATION}/profile`, {
-      method: 'PUT',
-      body: { profile, expected_revision: expectedRevision },
-    }),
+    await mutate((headers) =>
+      theoremJson<AgentOrganization>(`${ORGANIZATION}/profile`, {
+        method: 'PUT',
+        body: { profile, expected_revision: expectedRevision },
+        headers,
+      }),
+    ),
   )
 }
 
