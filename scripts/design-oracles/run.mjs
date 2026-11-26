@@ -36,7 +36,7 @@ const routeSlug = new URL(ORIGIN).pathname.split('/').filter(Boolean).at(-1) ?? 
 if ((runAllViewports || has('--all-fixtures')) && !has('--matrix-child') && !has('--fixtures-child')) {
   const base = process.argv[1]
   const viewports = runAllViewports ? ['1024x768', '1440x900', '1920x1080', '320x720', '390x844'] : [widthArg]
-  const fixtureRoutes = has('--all-fixtures') ? ['design-oracle-empty','design-oracle-long','design-oracle-preview','design-oracle-content','design-oracle-draft','design-oracle-stream','design-oracle-failure','design-oracle-navigation','design-oracle-reflow','design-oracle-rtl','design-oracle-continuity'] : [null]
+  const fixtureRoutes = has('--all-fixtures') ? ['design-oracle-empty','design-oracle-long','design-oracle-preview','design-oracle-content','design-oracle-draft','design-oracle-stream','design-oracle-failure','design-oracle-navigation','design-oracle-reflow','design-oracle-rtl','design-oracle-continuity','design-oracle-markdown'] : [null]
   let code = 0
   for (const route of fixtureRoutes) for (const viewport of viewports) {
     const target = route ? new URL(`/story/${route}`, ORIGIN).href : ORIGIN
@@ -103,6 +103,8 @@ const RECIPE_REFERENCE = {
   prose: { size: 17 / 16, lineHeight: 27 / 17, weight: 400, family: 'IBM Plex Sans', scale: 'content' },
   'prose.human': { size: 1, lineHeight: 26 / 16, weight: 400, family: 'Manrope', scale: 'content' },
   'composer.content': { size: 1, lineHeight: 1.5, weight: 400, family: 'Manrope', scale: 'content' },
+  'prose.table': { size: 1, lineHeight: 1.5, weight: 400, family: 'IBM Plex Sans', scale: 'content' },
+  'prose.table-header': { size: 1, lineHeight: 1.5, weight: 500, family: 'IBM Plex Sans', scale: 'content' },
   'ui.label': { size: 0.875, lineHeight: 20 / 14, weight: 400, family: 'IBM Plex Sans', scale: 'ui', tracking: 0.01 },
   'ui.section': { size: 0.875, lineHeight: 20 / 14, weight: 500, family: 'IBM Plex Sans', scale: 'ui', tracking: 0.01 },
   'ui.group': { size: 0.9375, lineHeight: 20 / 15, weight: 600, family: 'IBM Plex Sans', scale: 'ui' },

@@ -1,4 +1,4 @@
-// SOURCING: @milkdown/crepe (Markdown that formats as it is typed: marks, headings, lists, quotes, links and their tooltip, CodeMirror code blocks, the selection toolbar, the placeholder) over the note editor's Markdown round trip in notes/crepe-markdown; assistant-ui's headless composer seams (unstable_useComposerInput for the text and its disabled state, unstable_useTriggerPopoverRootContextOptional and unstable_useTriggerPopoverAriaProps for the / menu, useThreadViewportStore for the jump to the latest message); mdast-util-to-markdown's own link handler
+// SOURCING: @milkdown/crepe (Markdown that formats as it is typed: marks, headings, lists, quotes, links and their tooltip, CodeMirror code blocks whose language VS Code's detector fills in when none is typed (chat/code-language), the selection toolbar, the placeholder) over the note editor's Markdown round trip in notes/crepe-markdown; assistant-ui's headless composer seams (unstable_useComposerInput for the text and its disabled state, unstable_useTriggerPopoverRootContextOptional and unstable_useTriggerPopoverAriaProps for the / menu, useThreadViewportStore for the jump to the latest message); mdast-util-to-markdown's own link handler
 //
 // The composer's input as a Crepe editor. assistant-ui's ComposerPrimitive.Input
 // is a text area with no seam for another editor, and nothing upstream joins
@@ -48,6 +48,7 @@ import {
   openCodeFence,
   pasteMarkdownCode,
 } from './composer-code'
+import { codeLanguagePlugin } from './code-language'
 import { composerDirectivesPlugin } from './composer-directives'
 import { serializeComposerText } from './composer-markdown'
 import { isLongPaste, pastedTextFile, takesPastedText } from './pasted-text'
@@ -92,10 +93,6 @@ const composerCodeTheme = Prec.highest([
     '.cm-activeLine': {
       boxShadow: 'inset 2px 0 var(--line-control)',
       backgroundColor: 'transparent',
-    },
-    '.cm-gutters, .cm-activeLineGutter': {
-      color: 'var(--ink-muted)',
-      backgroundColor: 'var(--popover)',
     },
     '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection, .cm-searchMatch, .cm-selectionMatch, &.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket':
       {
@@ -321,6 +318,8 @@ function Editor({
         )
         // A tool, skill or @ pick reads as a chip of its label while it is written.
         .use($prose(() => composerDirectivesPlugin()))
+        // A fence opened without a language word takes the one its code reads as.
+        .use($prose(() => codeLanguagePlugin()))
       // An empty line is an empty line, not a `<br />`, and a dropped or
       // pasted file is an attachment, not an image in the text.
       void crepe.editor.remove(remarkPreserveEmptyLinePlugin)

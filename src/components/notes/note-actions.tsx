@@ -15,7 +15,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from '@/components/coss/menu'
-import { menuItem, menuPopup } from '@/components/shell/sidebar'
+import { ChromeMenuPopup, menuItem } from '@/components/shell/chrome-menu'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { describeError } from '@/lib/theorem/client'
 import { useMoveNote, useNoteFolders } from '@/lib/theorem/note-folders'
@@ -207,7 +207,7 @@ function MoveToFolder({ documentId }: { documentId: string }) {
             sideOffset={4}
             className="z-50"
           >
-            <Menu.Popup className={`min-w-44 ${menuPopup}`}>
+            <ChromeMenuPopup className="min-w-44">
               <Menu.RadioGroup
                 value={current}
                 onValueChange={(value) => {
@@ -234,7 +234,7 @@ function MoveToFolder({ documentId }: { documentId: string }) {
                   </Menu.RadioItem>
                 ))}
               </Menu.RadioGroup>
-            </Menu.Popup>
+            </ChromeMenuPopup>
           </Menu.Positioner>
         </Menu.Portal>
       </Menu.Root>

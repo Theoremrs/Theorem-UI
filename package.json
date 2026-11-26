@@ -7,6 +7,9 @@
     "#/*": "./src/*"
   },
   "scripts": {
+    "oracle:feedback": "node packages/design-feedback/cli.mjs",
+    "test:design-feedback": "node --test packages/design-feedback/test/*.test.mjs tests/design-feedback/*.test.mjs",
+    "e2e:design-feedback": "node --test scripts/e2e/app-design-feedback.mjs",
     "e2e:stack": "node scripts/e2e/stack.mjs",
     "e2e:review": "node scripts/e2e/review.mjs",
     "e2e:models": "node scripts/e2e/models.mjs",
@@ -59,7 +62,7 @@
     "@assistant-ui/core": "0.3.36",
     "@assistant-ui/generative-ui": "^0.0.11",
     "@assistant-ui/react": "0.15.36",
-    "@assistant-ui/react-markdown": "^0.14.23",
+    "@assistant-ui/react-markdown": "^0.14.26",
     "@assistant-ui/react-mcp": "^0.1.28",
     "@assistant-ui/store": "^0.3.23",
     "@base-ui/react": "^1.9.0",
@@ -136,6 +139,7 @@
     "@tsrs/wasm": "0.23.0-ts7.1.0-beta",
     "@uiw/react-codemirror": "4.25.12",
     "@vscode/codicons": "0.0.45",
+    "@vscode/vscode-languagedetection": "1.0.23",
     "@xyflow/react": "12.12.0",
     "acorn": "8.19.0",
     "acorn-walk": "8.3.5",
@@ -299,6 +303,7 @@
     "@paper-design/shaders@0.0.82": "patches/@paper-design%2Fshaders@0.0.82.patch",
     "@pierre/diffs@1.6.1": "patches/@pierre%2Fdiffs@1.6.1.patch",
     "nitro@3.0.260903-beta": "patches/nitro@3.0.260903-beta.patch",
-    "@milkdown/components@7.22.3": "patches/@milkdown%2Fcomponents@7.22.3.patch"
+    "@milkdown/components@7.22.3": "patches/@milkdown%2Fcomponents@7.22.3.patch",
+    "@vscode/vscode-languagedetection@1.0.23": "patches/@vscode%2Fvscode-languagedetection@1.0.23.patch"
   }
 }

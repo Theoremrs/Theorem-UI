@@ -1,5 +1,7 @@
 // SOURCING: src/stories/fake-theorem's route map, answered from the committed fixtures (the artifact host and notebook outputs from fixtures/notebook-parts). Reviews keep their state in memory so the pane's draft and submit can be scripted; so do project context and its Library (fixtures/project-context).
 import type { Theorem } from '@/lib/theorem/client'
+import { applyPlacement } from '@/lib/theorem/organization'
+import type { PlacementChange } from '@/lib/theorem/organization'
 import type { LibraryItem } from '@/lib/theorem/project-context'
 import type { Review, ReviewResponse } from '@/lib/theorem/reviews'
 import type { FakeRoutes } from './fake-theorem'
@@ -276,6 +278,22 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
     },
     [`POST ${BASE}/library/uploads/:uploadId/retain`]: () => ({ retained: true }),
     [`GET ${BASE}/organization`]: () => organization,
+    // A thread dragged into a project or out of every project stays where it was put.
+    [`POST ${BASE}/threads/:threadId/placement`]: async ({ threadId }, request) => {
+      const change = (await request.json()) as PlacementChange
+      const index = organization.threads.findIndex((t) => t.threadId === threadId)
+      if (index < 0) return missing()
+      const atMs = Date.now()
+      const thread = {
+        ...organization.threads[index]!,
+        memberships: applyPlacement(organization.threads[index]!.memberships, change, atMs),
+      }
+      organization.threads[index] = thread
+      return {
+        thread,
+        event: { eventId: `story-${atMs}`, atMs, actor: 'user', kind: change.add?.length ? 'joined' : 'left', threadId },
+      }
+    },
     [`GET ${BASE}/runs/${POINTING_RUN}/delegations`]: () => ({
       delegations: [pointingDelegation],
     }),

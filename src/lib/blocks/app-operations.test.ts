@@ -43,6 +43,7 @@ function host(overrides: Partial<AppOperationHost> = {}) {
     runMs?: number
     picture?: boolean
     cells?: ReadonlyArray<string>
+    design?: boolean
   }> = []
   const loaded: Array<string> = []
   const notebooks: Array<ObservableNotebook> = []
@@ -239,6 +240,39 @@ describe('answering a check', () => {
     ])
   })
 
+  test('design feedback is requested explicitly and returned unchanged', async () => {
+    const design: AppInspection['design'] = {
+      status: 'unavailable',
+      reason: 'The App did not return design measurements.',
+    }
+    const page = host({
+      inspect: async (_html, options) => ({
+        ...CLEAN,
+        ...(options?.design ? { design } : {}),
+      }),
+    })
+    const answer = await answerAppRequest(
+      request({ html: '<p>Draft</p>', design: true }),
+      page.host,
+    )
+    expect(answer).toEqual({ outcome: 'applied', result: { ...CLEAN, design } })
+    const ordinary = host()
+    await answerAppRequest(request({ html: '<p>Draft</p>' }), ordinary.host)
+    await answerAppRequest(
+      request({ html: '<p>Draft</p>', design: 'yes' }),
+      ordinary.host,
+    )
+    await answerAppRequest(
+      request({ html: '<p>Draft</p>', design: true }),
+      ordinary.host,
+    )
+    expect(ordinary.inspected).toEqual([
+      { html: '<p>Draft</p>' },
+      { html: '<p>Draft</p>' },
+      { html: '<p>Draft</p>', design: true },
+    ])
+  })
+
   test('the operation tells the turn what a check takes within what a turn admits', () => {
     const [check] = APP_OPERATIONS
     expect(Object.keys(check.inputSchema.properties)).toEqual([
@@ -247,6 +281,7 @@ describe('answering a check', () => {
       'documentId',
       'runMs',
       'picture',
+      'design',
       'library',
       'file',
     ])

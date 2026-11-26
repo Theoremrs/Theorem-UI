@@ -6,6 +6,8 @@ import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { Toolbar, ToolbarButton } from '@/components/coss/toolbar'
 import { Icon } from '@/components/icons'
+import { useChromeMenuGlass } from '@/components/shell/chrome-menu'
+import { cn } from '@/lib/utils'
 import { pulsesSince, signalOf } from '@/lib/life/energy'
 import type { Reading } from '@/lib/life/energy'
 import { PATTERNS, PATTERN_LABELS } from '@/lib/life/patterns'
@@ -60,11 +62,12 @@ const isFieldSpace = (target: EventTarget, field: Element) =>
   target.closest(CHAT_CONTENT) === null
 
 /**
- * The blocks of a conversation whose words the field keeps clear of. Code
- * sits on its own opaque block, which covers the field instead.
+ * The blocks of a conversation whose words the field keeps clear of, display
+ * math and a diagram's labels and shapes among them. Code sits on its own
+ * opaque block, which covers the field instead.
  */
 const TEXT_BLOCKS =
-  '[data-message-id] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote, th, td, dt, dd, summary):not(figure[data-code-block] *)'
+  '[data-message-id] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote, th, td, dt, dd, summary, .katex-display, [data-aui-mermaid-svg] svg):not(figure[data-code-block] *)'
 
 /** How far the quiet reaches past the ends of a line: a cell and a half, so the field resumes a word's width away. */
 const LINE_REACH = 14
@@ -107,8 +110,6 @@ const FieldAbove = createContext(false)
 const menuItem =
   'data-highlighted:bg-hover data-disabled:opacity-50 flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-sm outline-none select-none'
 
-const menuPopup =
-  'bg-popover text-popover-foreground shadow-popover border-separator min-w-48 origin-(--transform-origin) rounded-lg border p-1 outline-none transition-[opacity,scale] duration-100 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0'
 
 /**
  * A Game of Life behind the conversation, livelier the harder the model works.
@@ -347,10 +348,12 @@ function LifeMenu({ game }: { game: LifeGame | undefined }) {
   const shown = useLifeShown()
   const { population, pace } = useLifeCounts()
   const set = useLifeControls.setState
+  const { attach: attachGlass, className: glassClass } = useChromeMenuGlass()
+  const { attach: attachSubGlass, className: subGlassClass } = useChromeMenuGlass()
   return (
     <ContextMenu.Portal>
       <ContextMenu.Positioner className="z-50">
-        <ContextMenu.Popup className={menuPopup}>
+        <ContextMenu.Popup ref={attachGlass} className={cn('min-w-48', glassClass)}>
           {game && (
             <>
               <ContextMenu.Group>
@@ -391,7 +394,7 @@ function LifeMenu({ game }: { game: LifeGame | undefined }) {
                 </ContextMenu.SubmenuTrigger>
                 <ContextMenu.Portal>
                   <ContextMenu.Positioner className="z-50" alignOffset={-4}>
-                    <ContextMenu.Popup className={menuPopup}>
+                    <ContextMenu.Popup ref={attachSubGlass} className={cn('min-w-48', subGlassClass)}>
                       <ContextMenu.RadioGroup
                         value={brush}
                         onValueChange={(value) => isBrush(value) && set({ brush: value })}

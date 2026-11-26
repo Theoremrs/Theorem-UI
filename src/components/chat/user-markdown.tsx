@@ -4,11 +4,18 @@ import type { Root, Text } from 'mdast'
 import { decodeString } from 'micromark-util-decode-string'
 import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
+import { createContext, useContext } from 'react'
 import type { HTMLAttributes, MouseEvent } from 'react'
-import remarkGfm from 'remark-gfm'
 import type { Plugin } from 'unified'
 import { SKIP, visit } from 'unist-util-visit'
 import { createDirectiveText } from '@/components/assistant-ui/elements/directive-text'
+import {
+  InlineCode,
+  MARKDOWN_REMARK,
+  markdownElements,
+  markdownRehype,
+  preprocessMarkdown,
+} from '@/components/chat/markdown-elements'
 import { useOpenDocumentHandler } from '@/components/crm/open-document'
 import { parseRecordItemId } from '@/components/records/model'
 import { appearancePair } from '@/lib/appearance-policy'
@@ -82,7 +89,8 @@ const USER_DIRECTIVE = new RegExp(
 /** A character Markdown can escape with a backslash. */
 const ESCAPABLE = /[!-/:-@[-`{-~]/
 /** A character reference, such as `&#58;` or `&amp;`. */
-const REFERENCE = /^&(?:#\d{1,7}|#[xX][\da-fA-F]{1,6}|[A-Za-z][A-Za-z\d]{0,31});/
+const REFERENCE =
+  /^&(?:#\d{1,7}|#[xX][\da-fA-F]{1,6}|[A-Za-z][A-Za-z\d]{0,31});/
 
 /**
  * The text Markdown decodes `raw` to, with the source offset each character
@@ -92,7 +100,7 @@ const REFERENCE = /^&(?:#\d{1,7}|#[xX][\da-fA-F]{1,6}|[A-Za-z][A-Za-z\d]{0,31});
 function decodeWithSource(raw: string) {
   let text = ''
   const from: number[] = []
-  for (let i = 0; i < raw.length; ) {
+  for (let i = 0; i < raw.length;) {
     const char = raw[i]!
     if (char === '\\' && ESCAPABLE.test(raw[i + 1] ?? '')) {
       text += raw[i + 1]
@@ -143,7 +151,9 @@ const remarkUserTools: Plugin<[], Root> = () => (tree, file) => {
     for (const match of node.value.matchAll(USER_DIRECTIVE)) {
       const from = match.index
       const to = from + match[0].length
-      const titles = match.indices!.slice(1).filter((span) => span !== undefined)
+      const titles = match
+        .indices!.slice(1)
+        .filter((span) => span !== undefined)
       const syntax = (at: number) =>
         !titles.some(([first, last]) => at >= first && at < last)
       let plain = true
@@ -157,7 +167,10 @@ const remarkUserTools: Plugin<[], Root> = () => (tree, file) => {
       parts.push({
         type: 'text',
         value: match[0],
-        data: { hName: 'span', hProperties: { 'data-user-directive': match[0] } },
+        data: {
+          hName: 'span',
+          hProperties: { 'data-user-directive': match[0] },
+        },
       })
       cursor = to
     }
@@ -169,10 +182,32 @@ const remarkUserTools: Plugin<[], Root> = () => (tree, file) => {
   })
 }
 
+/** Set inside a fenced block, so its code is the block's and not inline. */
+const InCodeBlock = createContext(false)
+
 const components: Components = {
-  p: ({ node: _node, ...props }) => <p data-appearance-recipe="prose" {...appearancePair('primary', 'user-message')} {...props} />,
-  a: ({ node: _node, ...props }) => <a {...appearancePair('link', 'user-message')} {...props} />,
-  code: ({ node: _node, ...props }) => <code data-appearance-recipe="code" {...appearancePair('code', 'popover')} {...props} />,
+  ...markdownElements('human'),
+  pre: ({ node: _node, ...props }) => (
+    <InCodeBlock.Provider value>
+      <pre
+        className="bg-popover overflow-x-auto rounded-lg p-3 text-[0.9em]"
+        {...props}
+      />
+    </InCodeBlock.Provider>
+  ),
+  code: function Code(props) {
+    const block = useContext(InCodeBlock)
+    if (!block) return <InlineCode voice="human" {...props} />
+    const { node: _node, ...rest } = props
+    return (
+      <code
+        data-appearance-recipe="code"
+        {...appearancePair('primary', 'popover')}
+        className="whitespace-pre"
+        {...rest}
+      />
+    )
+  },
 
   span: ({ node, children, ...props }) => {
     const directive = node?.properties['data-user-directive']
@@ -191,14 +226,22 @@ const components: Components = {
   ),
 }
 
+const HUMAN_REMARK = [...MARKDOWN_REMARK, remarkUserTools]
+const HUMAN_REHYPE = markdownRehype('human')
+
+/**
+ * The person's sent turn: the reply's elements and math in their own voice
+ * (Manrope at their own line), with chips for their tool, skill and @ picks.
+ */
 export function UserMarkdown({ text }: { text: string }) {
   return (
-    <div className="aui-user-markdown whitespace-normal [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:ps-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:ps-5 [&_li]:my-1 [&_blockquote]:my-2 [&_blockquote]:border-s-2 [&_blockquote]:border-separator [&_blockquote]:ps-3 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-popover [&_pre]:p-3 [&_pre]:text-[0.9em] [&_code]:bg-popover [&_code]:text-ink [&_code]:font-mono [&_pre_code]:whitespace-pre [&_a]:text-link [&_a]:underline [&_a]:underline-offset-2 [&_:is(h1,h2,h3,h4,h5,h6)]:my-2 [&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold [&>:first-child]:mt-0 [&>:last-child]:mb-0">
+    <div className="aui-user-markdown whitespace-normal">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkUserTools]}
+        remarkPlugins={HUMAN_REMARK}
+        rehypePlugins={HUMAN_REHYPE}
         components={components}
       >
-        {text}
+        {preprocessMarkdown(text)}
       </ReactMarkdown>
     </div>
   )
