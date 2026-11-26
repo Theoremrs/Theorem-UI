@@ -9,6 +9,7 @@ import { useKitStage } from '@/lib/kit/stage'
 import { FACE_OPERATIONS } from '@/lib/face/operations'
 import { useFaceStage } from '@/lib/face/store'
 import { WORKBENCH_OPERATIONS } from '@/lib/workbench/agent/operations'
+import { PYTHON_OPERATIONS } from '@/lib/python/operations'
 import { clientSurfaceTurnOptions } from '@/lib/theorem/client-surface'
 import type { AppInspection } from './app-inspect'
 import { libraryDeclarations } from './check/theorem-app.generated'
@@ -87,6 +88,7 @@ describe('the operations a turn declares', () => {
     expect(clientSurfaceTurnOptions()).toEqual({
       clientOperations: [
         ...APP_OPERATIONS,
+        ...PYTHON_OPERATIONS,
         ...WORKBENCH_OPERATIONS,
         ...GENERATIVE_OPERATIONS,
       ],
@@ -99,23 +101,27 @@ describe('the operations a turn declares', () => {
       expect(options.clientOperations).toEqual([
         ...KIT_OPERATIONS,
         ...APP_OPERATIONS,
+        ...PYTHON_OPERATIONS,
         ...WORKBENCH_OPERATIONS,
         ...GENERATIVE_OPERATIONS,
       ])
-      // Theorem admits at most 16 operations for a run.
-      expect(options.clientOperations.length).toBeLessThanOrEqual(16)
+      // Theorem admits at most 20 operations for a run.
+      expect(options.clientOperations.length).toBeLessThanOrEqual(20)
       // With Theo on screen too, every surface is declared and still within it.
       useFaceStage.setState({ mounted: true })
       const everything = clientSurfaceTurnOptions().clientOperations
       expect(everything).toEqual([
         ...KIT_OPERATIONS,
         ...APP_OPERATIONS,
+        ...PYTHON_OPERATIONS,
         ...FACE_OPERATIONS,
         ...WORKBENCH_OPERATIONS,
         ...GENERATIVE_OPERATIONS,
       ])
-      expect(everything.length).toBeLessThanOrEqual(16)
-      expect(new Set(everything.map(({ name }) => name)).size).toBe(everything.length)
+      expect(everything.length).toBeLessThanOrEqual(20)
+      expect(new Set(everything.map(({ name }) => name)).size).toBe(
+        everything.length,
+      )
     } finally {
       useKitStage.setState({ mounted: false })
       useFaceStage.setState({ mounted: false })

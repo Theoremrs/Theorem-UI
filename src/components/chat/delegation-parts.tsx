@@ -39,6 +39,7 @@ import {
   useSpecialistRun,
 } from '@/lib/theorem/delegations'
 import { useSpecialistAppRequests } from '@/lib/blocks/app-operations'
+import { useSpecialistPythonRequests } from '@/lib/python/operations'
 import type {
   ChangeAdmission,
   ChangeSetEntry,
@@ -703,6 +704,7 @@ function SpecialistPage({
 }) {
   const { message, error } = useSpecialistRun(runId)
   useSpecialistAppRequests(runId, message)
+  useSpecialistPythonRequests(runId, message)
   if (!error) return null
   return (
     <p role="alert" className="px-4 pb-4 text-xs text-error-ink">
