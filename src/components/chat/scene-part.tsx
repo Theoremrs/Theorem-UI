@@ -1,4 +1,4 @@
-// SOURCING: the platform's <dialog> (open in the reply, showModal() to expand into the top layer) and postMessage to the scene page; React layout effects for the frame's lifetime as block-frame.tsx does; ui/button for the card's controls
+// SOURCING: the platform's <dialog> (open in the reply, showModal() to expand into the top layer) and postMessage to the scene page; React layout effects for the frame's lifetime as block-frame.tsx does; ui/button for the card's controls; TanStack Router's useRouter({ warn: false }) (as save-as-page.tsx reads it) to reach a kept scene's own chat
 //
 // A reply's interactive scene, drawn in the reply. The frame is made with its
 // address set and the listener in place before it is added to the page, as
@@ -28,6 +28,7 @@ import {
   useState,
 } from 'react'
 import { useAui, useAuiState } from '@assistant-ui/react'
+import { useRouter } from '@tanstack/react-router'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -416,6 +417,55 @@ export function SceneInConversation({
           : undefined
       }
     />
+  )
+}
+
+/**
+ * A scene kept open in a panel while another chat is on screen. Ask and Fix
+ * write to a conversation, and the one under this panel is not the scene's,
+ * so both are left off; the strip above it names that and goes to the scene's
+ * own chat, where both work.
+ */
+export function SceneFromElsewhere({
+  scene,
+  threadId,
+}: {
+  scene: Scene
+  /** The conversation the scene came from. */
+  threadId: string
+}) {
+  const theme = useSceneTheme()
+  // Absent outside a router: a fixture or a surface that cannot navigate.
+  const router = useRouter({ warn: false }) as
+    ReturnType<typeof useRouter> | undefined
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        data-slot="scene-elsewhere"
+        className="flex items-center gap-3 border-b border-separator px-4 py-2"
+      >
+        <p className="min-w-0 flex-1 text-xs text-ink-muted">
+          From another chat. Ask and Fix work there.
+        </p>
+        {router && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="shrink-0 pointer-coarse:min-h-11"
+            onClick={() =>
+              void router.navigate({
+                to: '/c/$threadId',
+                params: { threadId },
+              })
+            }
+          >
+            Go to its chat
+          </Button>
+        )}
+      </div>
+      <SceneCard scene={scene} theme={theme} placement="panel" />
+    </div>
   )
 }
 

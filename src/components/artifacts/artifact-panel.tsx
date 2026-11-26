@@ -11,7 +11,12 @@ import { ArtifactActions } from './artifact-actions'
 import { fillsPanel, isLive } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
 import { ArtifactReferrer } from './artifact-referrer'
-import { shownRevision, useArtifactView, viewOf } from './artifact-view'
+import {
+  ArtifactElsewhere,
+  shownRevision,
+  useArtifactView,
+  viewOf,
+} from './artifact-view'
 import { thingProps } from '@/lib/face/things'
 
 export { download } from './artifact-actions'
@@ -127,38 +132,40 @@ export function ArtifactPanel({
           fills ? 'flex flex-col' : 'overflow-y-auto',
         )}
       >
-        <div
-          className={cn(
-            fills
-              ? 'flex min-h-0 flex-1 flex-col'
-              : 'mx-auto w-full max-w-(--appearance-expanded-measure) px-6 py-6',
-          )}
-        >
-          {/* The newest slot stays mounted while an older revision is shown,
+        <ArtifactElsewhere.Provider value={threadId}>
+          <div
+            className={cn(
+              fills
+                ? 'flex min-h-0 flex-1 flex-col'
+                : 'mx-auto w-full max-w-(--appearance-expanded-measure) px-6 py-6',
+            )}
+          >
+            {/* The newest slot stays mounted while an older revision is shown,
               so the look back costs nothing on the way back. A passive body
               keeps its unsaved edit; a live interactive one is already kept
               by its answer, so this slot only refers there. */}
-          <div
-            hidden={!latest}
-            className={cn(fills && latest && 'min-h-0 flex-1')}
-          >
-            {liveNewest ? (
-              <ArtifactReferrer artifact={newest} threadId={threadId} />
-            ) : (
-              <ArtifactView artifact={newest} distance="interactive" latest />
+            <div
+              hidden={!latest}
+              className={cn(fills && latest && 'min-h-0 flex-1')}
+            >
+              {liveNewest ? (
+                <ArtifactReferrer artifact={newest} threadId={threadId} />
+              ) : (
+                <ArtifactView artifact={newest} distance="interactive" latest />
+              )}
+            </div>
+            {!latest && (
+              <div className={cn(fills && 'min-h-0 flex-1')}>
+                <ArtifactView
+                  key={artifact.revision}
+                  artifact={artifact}
+                  distance="interactive"
+                  latest={false}
+                />
+              </div>
             )}
           </div>
-          {!latest && (
-            <div className={cn(fills && 'min-h-0 flex-1')}>
-              <ArtifactView
-                key={artifact.revision}
-                artifact={artifact}
-                distance="interactive"
-                latest={false}
-              />
-            </div>
-          )}
-        </div>
+        </ArtifactElsewhere.Provider>
       </div>
     </section>
   )

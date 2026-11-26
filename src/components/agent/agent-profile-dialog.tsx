@@ -61,7 +61,9 @@ export function AgentProfileDialog() {
   const { open, setOpen } = useAgentProfileDialog()
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-lg">
+      {/* Bounded to the viewport and scrolling inside, so with the character section open the
+          name, close and Save stay reachable on a short screen. */}
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain sm:max-w-lg">
         {/* Mounted with each opening, so it starts from the profile as it stands now. */}
         {open && <ProfileBody onDone={() => setOpen(false)} />}
       </DialogContent>

@@ -1,6 +1,7 @@
 // SOURCING: ui/button; focusInlineArtifact (inline-artifact) is the existing
-// way to bring an already-mounted live instance forward, and useOpenMode
-// (shell/modes) the existing way to reach its conversation from another mode.
+// way to bring an already-mounted live instance forward, and TanStack Router's
+// useRouter({ warn: false }) (as save-as-page.tsx reads it) the way to reach its
+// conversation, absent on a surface with no router.
 //
 // A live App belongs to the answer that ran it: that answer mounts exactly
 // one runtime (artifact-message.tsx). A panel mounting a second would start
@@ -9,10 +10,10 @@
 // it, and brings the answer's instance forward. Nothing here runs it: no
 // frame, no document read — even the App preview is left out, because a
 // preview frame re-executes the App's startup.
-import { useNavigate } from '@tanstack/react-router'
+import { useRouter } from '@tanstack/react-router'
 import { useCallback, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { useOpenMode } from '@/components/shell/modes'
+import { useShell } from '@/components/shell/shell-state'
 import type { TheoremArtifact } from './artifact-model'
 import { focusInlineArtifact } from './inline-artifact'
 
@@ -27,8 +28,9 @@ export function ArtifactReferrer({
   /** The conversation the App ran in, when the panel was kept open from another chat. */
   threadId?: string
 }) {
-  const openMode = useOpenMode()
-  const navigate = useNavigate()
+  // Absent outside a router: a full-screen phone panel or a fixture.
+  const router = useRouter({ warn: false }) as
+    ReturnType<typeof useRouter> | undefined
   const [away, setAway] = useState(false)
   const going = useRef(false)
   const reveal = useCallback(async () => {
@@ -43,13 +45,21 @@ export function ArtifactReferrer({
       // from another page, another mode has it behind, or the dock restored
       // it. Go to the conversation first, then focus once its live instance
       // is mounted; never start the App here.
+      // The App's own conversation when the panel was kept from another chat,
+      // else the conversation chat mode shows.
+      const target = threadId ?? useShell.getState().chatThreadId
+      // Surfaces without a router cannot navigate; still try to focus
+      // whatever is already mounted.
       try {
-        await (threadId
-          ? navigate({ to: '/c/$threadId', params: { threadId } })
-          : openMode('chat'))
+        if (router)
+          await (target
+            ? router.navigate({
+                to: '/c/$threadId',
+                params: { threadId: target },
+              })
+            : router.navigate({ to: '/' }))
       } catch {
-        // Surfaces without a router (a full-screen phone panel, a fixture)
-        // cannot navigate; still try to focus whatever is already mounted.
+        // A navigation that fails still leaves the focus attempt below.
       }
       for (let frame = 0; frame < ANSWER_FRAMES; frame++) {
         await new Promise<void>((resolve) =>
@@ -64,7 +74,7 @@ export function ArtifactReferrer({
     } finally {
       going.current = false
     }
-  }, [artifact.partId, openMode, navigate, threadId])
+  }, [artifact.partId, router, threadId])
   return (
     <section
       data-slot="artifact-referrer"

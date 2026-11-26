@@ -6,7 +6,12 @@
 // From Theorem's outputs to cabinet cards, and from a card to the bounded
 // source its preview reads. Reading a source never opens or switches a
 // session (§9.3): the thread is read, not shown.
-import { readArtifact } from '@/components/artifacts/artifact-model'
+import type { ThreadMessage } from '@assistant-ui/react'
+import { toAssistantMessages } from '@theoremharness/sdk/assistant-ui'
+import {
+  readArtifact,
+  threadArtifacts,
+} from '@/components/artifacts/artifact-model'
 import type { TheoremArtifact } from '@/components/artifacts/artifact-model'
 import { theorem } from '@/lib/theorem/client'
 import type { OutputCategory, ProjectOutput } from '@/lib/theorem/organization'
@@ -171,26 +176,34 @@ export async function readArtifactRevision(
   return undefined
 }
 
+/**
+ * Every artifact a stored conversation holds, each with its revisions in patch order, read in place.
+ * The stored messages go through the same conversion and the same reader the open conversation
+ * uses (threadArtifacts), so both part formats, artifact parts and saved scene parts, resolve the
+ * same way here as on screen.
+ */
+export async function readThreadArtifacts(
+  threadId: string,
+): Promise<ReadonlyMap<string, readonly TheoremArtifact[]>> {
+  const { messages, thread } = await theorem().chat.threads.get({ threadId })
+  return storedArtifacts(messages, thread)
+}
+
+/** Every artifact in a conversation's stored messages, read as the conversation on screen reads them. */
+export function storedArtifacts(
+  ...stored: Parameters<typeof toAssistantMessages>
+): ReadonlyMap<string, readonly TheoremArtifact[]> {
+  return threadArtifacts(
+    toAssistantMessages(...stored) as unknown as ThreadMessage[],
+  )
+}
+
 /** Every revision of an artifact its session holds, in patch order, read in place. */
 export async function readArtifactVersions(
   threadId: string,
   artifactId: string,
 ): Promise<TheoremArtifact[]> {
-  const { messages } = await theorem().chat.threads.get({ threadId })
-  const versions: TheoremArtifact[] = []
-  // As the conversation lists them (threadArtifacts): only what the agent's answers carry.
-  for (const message of messages) {
-    if ((message as { role?: string }).role !== 'assistant') continue
-    for (const part of (message as { parts?: unknown[] }).parts ?? []) {
-      const artifact = readArtifact(part)
-      if (
-        artifact?.artifactId === artifactId &&
-        !versions.some((v) => v.revision === artifact.revision)
-      )
-        versions.push(artifact)
-    }
-  }
-  return versions.sort((a, b) => a.patchSequence - b.patchSequence)
+  return [...((await readThreadArtifacts(threadId)).get(artifactId) ?? [])]
 }
 
 /** The newest revision of an artifact its session holds, read in place. */

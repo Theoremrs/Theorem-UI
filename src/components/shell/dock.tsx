@@ -25,7 +25,9 @@ import { ArtifactPanel } from '@/components/artifacts/artifact-panel'
 import { useThreadArtifacts } from '@/components/artifacts/artifact-model'
 import { useArtifactView, viewOf } from '@/components/artifacts/artifact-view'
 import type { ArtifactViewState } from '@/components/artifacts/artifact-view'
-import { readArtifactVersions } from '@/components/cabinet/catalog'
+import { readThreadArtifacts } from '@/components/cabinet/catalog'
+import { panelView, viewParams } from './artifact-panel-params'
+import type { ArtifactPanelParams } from './artifact-panel-params'
 import { Icon } from '@/components/icons'
 import {
   LinksPanel,
@@ -141,27 +143,6 @@ function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
     </div>
   )
 }
-type ArtifactPanelParams = {
-  artifactId: string
-  /** The conversation it came from; absent for a chat not saved when it opened. */
-  threadId?: string
-  /** 'true' while it stays open across chats. */
-  keep?: string
-}
-
-/**
- * The view an artifact panel records about itself in the layout, so a saved layout restores it
- * with the conversation it came from and whether it stays open.
- */
-function panelView(params: ArtifactPanelParams): ArtifactViewState {
-  return {
-    threadId: params.threadId,
-    follow: true,
-    revision: undefined,
-    keep: params.keep === 'true',
-  }
-}
-
 function ArtifactDockPanel({
   api,
   containerApi,
@@ -172,12 +153,15 @@ function ArtifactDockPanel({
   // An artifact kept open from another chat reads its revisions from that chat (AR-03).
   const elsewhere = origin !== undefined && origin !== onScreen
   const here = useThreadArtifacts().get(artifactId)
+  // One read per originating conversation, shared by every panel kept from it; each panel takes
+  // its own artifact's revisions from that snapshot.
   const remote = useQuery({
-    queryKey: ['theorem', 'artifact-versions', origin, artifactId],
-    queryFn: () => readArtifactVersions(origin ?? '', artifactId),
+    queryKey: ['theorem', 'thread-artifacts', origin],
+    queryFn: () => readThreadArtifacts(origin ?? ''),
     enabled: elsewhere,
     // Its own chat is not on screen to stream new revisions here, so following reads again.
     refetchInterval: elsewhere ? 15_000 : false,
+    select: (artifacts) => artifacts.get(artifactId),
   })
   const versions = elsewhere ? remote.data : here
   const title = versions?.at(-1)?.title
@@ -509,10 +493,9 @@ function openSide(
   openBeside(api, sized, THREAD, 0.55)
 }
 function openArtifact(api: DockviewApi, artifactId: string) {
-  const { threadId, keep } = viewOf(
-    useArtifactView.getState().views,
-    artifactId,
-  )
+  const view = viewOf(useArtifactView.getState().views, artifactId)
+  const { threadId, keep } = view
+  const { follow, revision } = viewParams(view)
   openSide(api, {
     id: artifactPanelId(artifactId),
     component: 'artifact',
@@ -520,6 +503,8 @@ function openArtifact(api: DockviewApi, artifactId: string) {
       artifactId,
       ...(threadId && { threadId }),
       ...(keep && { keep: 'true' }),
+      ...(follow && { follow }),
+      ...(revision !== undefined && { revision }),
     },
     title: 'Artifact',
   })
@@ -533,11 +518,17 @@ function updateArtifactParams(
 ) {
   const panel = api.getPanel(artifactPanelId(artifactId))
   if (!panel) return
-  const { keep, threadId, ...rest } = change(
-    panel.params as ArtifactPanelParams,
+  const current = panel.params as ArtifactPanelParams
+  const { keep, threadId, follow, revision, ...rest } = change(current)
+  if (
+    keep === current.keep &&
+    threadId === current.threadId &&
+    follow === current.follow &&
+    revision === current.revision
   )
+    return
   // Dockview merges parameters, so an absent key is written as undefined to remove it.
-  panel.api.updateParameters({ ...rest, threadId, keep })
+  panel.api.updateParameters({ ...rest, threadId, keep, follow, revision })
 }
 
 function openDelegation(api: DockviewApi, delegationId: string, title: string) {
@@ -734,9 +725,22 @@ export function DockShell({
       if (artifactId)
         restored[artifactId] = panelView(panel.params as ArtifactPanelParams)
     }
-    useArtifactView.setState((s) => ({
-      views: { ...restored, ...s.views },
-    }))
+    // The layout is the record of this dock's views: views left in memory from another project or
+    // an earlier mount do not shadow it.
+    useArtifactView.setState({ views: restored })
+    // Following and the chosen revision are saved on each panel, so a reload restores them.
+    const unsubscribe = useArtifactView.subscribe((state, previous) => {
+      if (state.views === previous.views) return
+      for (const [artifactId, view] of Object.entries(state.views)) {
+        const before = previous.views[artifactId]
+        if (before?.follow === view.follow && before.revision === view.revision)
+          continue
+        updateArtifactParams(dock, artifactId, (params) => ({
+          ...params,
+          ...viewParams(view),
+        }))
+      }
+    })
     useArtifactView.setState({
       dock: {
         kept: (artifactId, keep) =>
@@ -794,6 +798,7 @@ export function DockShell({
       ...springMaximize(dock),
     ]
     return () => {
+      unsubscribe()
       for (const listener of listeners) listener.dispose()
       useArtifactView.setState({ dock: undefined })
       useNoteView.setState({ dock: undefined })

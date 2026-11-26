@@ -8,6 +8,13 @@ import { create } from 'zustand'
  */
 export const ArtifactPlacement = createContext<'panel' | 'inline'>('panel')
 
+/**
+ * The conversation a panel's artifact came from, set while that panel is kept open with another
+ * chat on screen. An artifact's actions that write to its conversation (a scene's Ask and Fix)
+ * read it so they never reach the chat on screen instead.
+ */
+export const ArtifactElsewhere = createContext<string | undefined>(undefined)
+
 /** The desktop dock, which hosts each open artifact as its own panel. */
 export type ArtifactDock = {
   open: (artifactId: string) => void
