@@ -2235,8 +2235,9 @@
       "procedure": "Repeatedly open a compact entry using double-click, keyboard, and touch-equivalent controls; expand and restore.",
       "required_observations": "Assert unchanged run/resource IDs and no extra launch request.",
       "status": "not_run",
-      "blocker": "No typed reveal operation or compact activity entry yet; ownership map 2.3.",
-      "evidence": []
+      "blocker": "Needs a browser pass on a deployed stack: double-click, keyboard and touch on the compact entry, and the reveal of a terminal or side chat inside the workspace. The compact entry is TSX, not the spec's Ratatui component.",
+      "evidence": [],
+      "progress": "Gate 2 (branch claude/unified-agent-gate-2): src/components/activity/activity-view.tsx gives a compact preview above the composer, a bottom or right drawer and an expanded full view over one arrangement keyed by owner resource. Open work reveals the existing thread (navigation only) or the workspace, and starts nothing; activity-view.test.tsx asserts no write request on repeated opening and that expand and restore keep the selected key."
     },
     {
       "id": "UAE-AC-04",
@@ -2274,8 +2275,9 @@
       "procedure": "Type a draft for agent A while viewing B and receiving output from C.",
       "required_observations": "Confirm recipient, draft, focus, order, and scroll remain unchanged; subsequent submission reaches A once.",
       "status": "not_run",
-      "blocker": "Needs multiple real runs with independent drafts; Gate 1 inventory not built.",
-      "evidence": []
+      "blocker": "Needs multiple real runs with independent drafts on a live stack; draft recipient retention lives in the conversation, not in this view.",
+      "evidence": [],
+      "progress": "Gate 2: owner events never change the selection, order or focus in the activity view (arrangement.test.ts, activity-view.test.tsx)."
     },
     {
       "id": "UAE-AC-06",
@@ -2532,8 +2534,9 @@
       "procedure": "Narrow and widen the container; expand the composer; use keyboard, screen reader semantics, touch, and reduced motion.",
       "required_observations": "Preserve arrangement, usable input, readable state, and equivalent actions.",
       "status": "not_run",
-      "blocker": "Compact and drawer surfaces are not built; screen reader pass also needs manual assistive technology.",
-      "evidence": []
+      "blocker": "No real browser layout, touch, reduced motion or screen reader pass yet: this machine cannot download a browser, so the design-feedback capture of the four agent-activity stories has not run.",
+      "evidence": [],
+      "progress": "Gate 2: placement follows the measured container (a right drawer shows at the bottom below 720px without overwriting the saved choice), the view ends above the measured composer, every state is named in text, every double-click has an Open work button, the resize edge steps with the arrow keys, and Escape closes only from the view's own chrome. Covered by arrangement.test.ts and activity-view.test.tsx in happy-dom."
     },
     {
       "id": "UAE-AC-20",

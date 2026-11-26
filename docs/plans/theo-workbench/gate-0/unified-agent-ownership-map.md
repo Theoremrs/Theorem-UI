@@ -175,6 +175,13 @@ The question each decision answered is kept so later readers see what was weighe
 | 2.5 side-chat lifetime | Close, a project switch and a `Hosts` unmount detach (stop reading, never cancel). Only the side chat's own Stop cancels. A closed side chat with a stored thread is kept in session storage and listed as detached; the picker reopens it on its own thread (`SideChatOpen.reopen`), resuming a live run through history. | The record is per browser tab session. A thread-level "side chat of" mark in Theorem would let any client list them. |
 | 2.1 run inventory | `src/lib/workbench/activity/`: a read model with per-resource ordering, dedupe by source, resource, epoch and seq, gap handling that waits for a snapshot, stale observation, and view generations against late results; an inventory from the organization read, terminal listings, side chats and delegations that always states its gaps. | Theorem has no project-wide run list (backend). Nothing mounts the activity view yet; Gate 2's drawer is its first surface. |
 
+## 7b. Gate 2 status (2026-11-26)
+
+| Gap | What Gate 2 built | Still open |
+| --- | --- | --- |
+| 2.3 reveal and surfaces | `src/components/activity/activity-view.tsx`: one arrangement shown as a compact preview above the composer, a bottom or right drawer, and an expanded full view, opened from the command palette (Agent activity). Open work navigates to an existing thread or shows the workspace; it never launches. The view sits inside the sheet frame, ends above the measured composer, goes inert with the sheet, and returns focus to its opener on close. | The compact entry is TSX, not the spec's Ratatui component. Expand shows the view's own full layout, not the Rust workbench with the same selection. No agent-initiated reveal, pinning or comparison split yet. |
+| 2.1 run inventory, mounted | `use-activity.ts` reads the organization always and, while the view is open, the workspace's own terminal listing and side-chat record, lent through `sources.ts` while the workbench is mounted. `arrangement.ts` keeps insertion order, saved manual order and removals per project and scope, leaves finished work in place marked as no longer listed, and never moves the selection on an owner event. | Delegated runs are not listed (they are read per run). Without the workbench mounted, terminals and side chats are absent, and the view says so. |
+
 ## 8. Overlap note
 
 A separate local working session titled "Extensible connected workspace spec" may cover some of the same ground. It was not readable from here; compare before Gate 1 starts.
