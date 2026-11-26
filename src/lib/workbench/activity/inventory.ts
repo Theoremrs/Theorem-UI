@@ -23,6 +23,9 @@ export interface SideChatRow {
   detached?: boolean
 }
 
+/** What a side chat closed here, with its thread kept, says about itself. */
+export const DETACHED_SIDE_CHAT = 'Closed here; reopen it from the workspace'
+
 /** A delegated specialist run the page follows. */
 export interface DelegationRow {
   runId: string
@@ -130,18 +133,29 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
 
   if (!inputs.terminals) gaps.push('Terminal sessions have not been listed.')
   for (const row of inputs.terminals ?? []) {
-    const exited = row.state === 'exited' || row.exitCode != null
+    // Only a session the host says is running is live; exited, lost or any other word is not.
+    const live =
+      row.state === 'running' ||
+      (row.state === undefined && row.exitCode == null)
+    const detail =
+      row.exitCode != null
+        ? `Program exited with code ${row.exitCode}`
+        : row.state === 'exited'
+          ? 'Program exited'
+          : row.state === 'lost'
+            ? 'The host lost this terminal'
+            : !live && row.state
+              ? `The host reports it ${row.state}`
+              : undefined
     entries.push(
       entry({
         source: 'terminal',
         resource: `${row.workspace}/${row.session}`,
         label: row.label,
         // A program's exit says how the program ended, not whether an agent's assignment did.
-        execution: exited ? 'unknown' : 'running',
+        execution: live ? 'running' : 'unknown',
         reported: true,
-        ...(exited && row.exitCode != null
-          ? { detail: `Program exited with code ${row.exitCode}` }
-          : {}),
+        ...(detail ? { detail } : {}),
         ...(row.runId ? { runId: row.runId } : {}),
       }),
     )
@@ -155,7 +169,7 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
         resource: chat.threadId ?? chat.conversationId,
         label: 'Side chat',
         execution: chat.running ? 'running' : 'unknown',
-        ...(chat.detached ? { detail: 'Closed here; reopen to see it' } : {}),
+        ...(chat.detached ? { detail: DETACHED_SIDE_CHAT } : {}),
       }),
     )
   }
@@ -172,16 +186,24 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
       }),
     )
 
-  // A side chat's thread is also a thread: keep the thread's own row, once.
+  // A side chat's thread is also a thread: keep the thread's own row, once, saying it is a side
+  // chat. That is how a side chat with a run going shows: its thread is running.
   const seen = new Set<string>()
   const threads = new Set(
     entries.filter((e) => e.source === 'thread').map((e) => e.resource),
   )
-  const unique = entries.filter((e) => {
-    if (e.source === 'sideChat' && threads.has(e.resource)) return false
-    if (seen.has(e.key)) return false
+  const openSideChats = new Set(
+    (inputs.sideChats ?? []).flatMap((chat) =>
+      chat.threadId && !chat.detached ? [chat.threadId] : [],
+    ),
+  )
+  const unique = entries.flatMap((e) => {
+    if (e.source === 'sideChat' && threads.has(e.resource)) return []
+    if (seen.has(e.key)) return []
     seen.add(e.key)
-    return true
+    return e.source === 'thread' && openSideChats.has(e.resource) && !e.detail
+      ? [{ ...e, detail: 'A side chat open in the workspace' }]
+      : [e]
   })
   return { entries: unique, completeness: { complete: false, gaps } }
 }

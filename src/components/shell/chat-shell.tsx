@@ -397,6 +397,7 @@ function DesktopShell(route: DockRoute) {
   // The row the workbench writes its sizes to (workbench-dock.tsx), kept as
   // the element so the workbench has it in its first layout effects.
   const [frame, setFrame] = useState<HTMLDivElement | null>(null)
+  const [sheetFrame, setSheetFrame] = useState<HTMLDivElement | null>(null)
   const savedFocus = useRef<HTMLElement | null>(null)
   const previousPlacement = useRef(placement)
   useLayoutEffect(() => {
@@ -470,6 +471,7 @@ function DesktopShell(route: DockRoute) {
             'relative my-(--sheet-inset) me-(--sheet-inset) min-h-0 min-w-0 flex-1 data-[covered]:opacity-40',
             dockedSide && 'me-0',
           )}
+          ref={setSheetFrame}
           data-appearance-part="sheet-frame"
           data-covered={covered || undefined}
           hidden={full}
@@ -513,11 +515,12 @@ function DesktopShell(route: DockRoute) {
               </div>
             )}
           </div>
+          {/* Agent activity overlays the sheet without reflowing it, ending above the composer;
+              the sheet's own inert and hidden states cover it too. */}
+          {!vault && (
+            <ActivityView projectId={route.projectId} frame={sheetFrame} />
+          )}
         </div>
-        {/* Agent activity overlays the sheet without reflowing it, ending above the composer. */}
-        {!full && !vault && (
-          <ActivityView projectId={route.projectId} frame={frame} />
-        )}
         {workbenchMounted && (
           <WorkbenchDock placement={requestedPlacement} frame={frame}>
             {({ shown, companion }) => (

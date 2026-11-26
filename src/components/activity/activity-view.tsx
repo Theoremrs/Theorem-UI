@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import {
   effectivePlacement,
   effectiveSize,
+  RIGHT_MIN_WIDTH,
   SIZE,
   useActivityView,
 } from '@/lib/workbench/activity/arrangement'
@@ -19,6 +20,7 @@ import type {
   ArrangedItem,
   DrawerPlacement,
 } from '@/lib/workbench/activity/arrangement'
+import { DETACHED_SIDE_CHAT } from '@/lib/workbench/activity/inventory'
 import type { ActivityEntry } from '@/lib/workbench/activity/projection'
 import type { ActivitySource } from '@/lib/workbench/activity/sources'
 import { useActivity } from '@/lib/workbench/activity/use-activity'
@@ -140,13 +142,15 @@ function revealWorkspace() {
  * its conversation; a terminal or side chat shows the workspace, whose own side-chat list reopens
  * a closed side chat.
  */
-function useOpenWork(source: ActivitySource | undefined) {
+function useOpenWork(projectId: string, source: ActivitySource | undefined) {
   const navigate = useNavigate()
   const [notice, setNotice] = useState<string>()
   const open = async (entry: ActivityEntry, listed: boolean) => {
     setNotice(undefined)
     if (entry.source === 'thread') {
-      if (entry.projectId) useShell.getState().setProjectId(entry.projectId)
+      // A thread filed in the project shown now opens there; only one from elsewhere moves the shell.
+      if (entry.projectId && !entry.projects?.includes(projectId))
+        useShell.getState().setProjectId(entry.projectId)
       await navigate({
         to: '/c/$threadId',
         params: { threadId: entry.resource },
@@ -162,7 +166,11 @@ function useOpenWork(source: ActivitySource | undefined) {
     revealWorkspace()
     // A closed side chat reopens from the workspace's own side-chat list, where the workspace's
     // conversation owner keeps it, so the drawer never opens a second copy of it.
-    if (entry.source === 'sideChat' && listed && entry.detail)
+    if (
+      entry.source === 'sideChat' &&
+      listed &&
+      entry.detail === DETACHED_SIDE_CHAT
+    )
       setNotice('Reopen it from the side chat list in the workspace.')
   }
   return { open, notice }
@@ -173,11 +181,13 @@ function IconButton({
   onClick,
   children,
   pressed,
+  disabled,
 }: {
   label: string
   onClick: () => void
   children: ReactNode
   pressed?: boolean
+  disabled?: boolean
 }) {
   return (
     <button
@@ -186,8 +196,9 @@ function IconButton({
       aria-label={label}
       title={label}
       aria-pressed={pressed}
+      disabled={disabled}
       onClick={onClick}
-      className="grid size-8 place-items-center rounded-md text-ink-muted outline-focus hover:bg-hover hover:text-ink focus-visible:outline-2 aria-pressed:bg-selected aria-pressed:text-ink"
+      className="grid size-8 disabled:opacity-40 place-items-center rounded-md text-ink-muted outline-focus hover:bg-hover hover:text-ink focus-visible:outline-2 aria-pressed:bg-selected aria-pressed:text-ink"
     >
       {children}
     </button>
@@ -427,8 +438,13 @@ function ActivityCompact({
   const shown = items.filter(active)
   if (!shown.length) return null
   const waiting = shown.filter((i) => i.entry.execution === 'waiting').length
-  const summary =
-    `${shown.length} working` + (waiting ? `, ${waiting} waiting for you` : '')
+  const working = shown.length - waiting
+  const summary = [
+    working ? `${working} working` : '',
+    waiting ? `${waiting} waiting for you` : '',
+  ]
+    .filter(Boolean)
+    .join(', ')
   return (
     <section
       aria-label="Agent activity preview"
@@ -451,6 +467,7 @@ function ActivityCompact({
           <span className="truncate">{summary}</span>
         </button>
         <button
+          data-activity-return=""
           type="button"
           onClick={(event) => view.openView({ origin: event.currentTarget })}
           className="shrink-0 rounded-md px-2 py-1 text-xs text-ink-muted outline-focus hover:bg-hover hover:text-ink focus-visible:outline-2"
@@ -501,7 +518,7 @@ export function ActivityView({
   const clearance = useComposerClearance(frame)
   const width = useWidth(frame)
   const region = useRef<HTMLElement>(null)
-  const { open: openWork, notice } = useOpenWork(source)
+  const { open: openWork, notice } = useOpenWork(projectId, source)
   const [frameHeight, setFrameHeight] = useState(800)
   useLayoutEffect(() => {
     if (!frame) return
@@ -625,14 +642,15 @@ export function ActivityView({
           {!view.expanded && (
             <IconButton
               label={
-                view.placement === 'bottom'
-                  ? 'Show on the right'
-                  : 'Show at the bottom'
+                placement === 'right'
+                  ? 'Show at the bottom'
+                  : width < RIGHT_MIN_WIDTH
+                    ? 'Too narrow to show on the right'
+                    : 'Show on the right'
               }
+              disabled={placement === 'bottom' && width < RIGHT_MIN_WIDTH}
               onClick={() =>
-                view.setPlacement(
-                  view.placement === 'bottom' ? 'right' : 'bottom',
-                )
+                view.setPlacement(placement === 'right' ? 'bottom' : 'right')
               }
             >
               <Icon.Columns className="size-4" />

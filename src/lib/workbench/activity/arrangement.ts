@@ -29,7 +29,13 @@ export const inScope = (
   projectId: string,
 ) => scope === 'all' || !entry.projects || entry.projects.includes(projectId)
 
-const runOf = (entry: ActivityEntry) => entry.runId ?? ''
+/**
+ * What a removal remembers about the work. A run's id where the owner gives one; otherwise its state,
+ * so a terminal or side chat with no run comes back once its state changes or it leaves and returns.
+ */
+const runOf = (entry: ActivityEntry) => entry.runId ?? `~${entry.execution}`
+/** A removed row whose run-less work stopped being listed: anything listed under that key later is new. */
+const LEFT = '~left'
 
 /**
  * The rows to show after the owners' latest listing. Rows keep their places; new work joins at the
@@ -46,6 +52,9 @@ export function arrange(
   const same = previous.projectId === projectId && previous.scope === scope
   const removed = same ? { ...previous.removed } : {}
   const current = new Map<string, ActivityEntry>()
+  const listedKeys = new Set(entries.map((entry) => entry.key))
+  for (const [key, marker] of Object.entries(removed))
+    if (!listedKeys.has(key) && marker.startsWith('~')) removed[key] = LEFT
   for (const entry of entries) {
     if (!inScope(entry, scope, projectId)) continue
     const gone = removed[entry.key]
@@ -199,6 +208,14 @@ export const useActivityView = create<ActivityViewState>()(
         const { origin } = get()
         set({ open: false, expanded: false, origin: null })
         if (origin?.isConnected) origin.focus({ preventScroll: true })
+        // An opener inside the compact preview was unmounted with it: focus its remounted
+        // counterpart once it renders again.
+        else if (origin)
+          requestAnimationFrame(() =>
+            document
+              .querySelector<HTMLElement>('[data-activity-return]')
+              ?.focus({ preventScroll: true }),
+          )
       },
       setExpanded: (expanded) => set({ expanded }),
       setPlacement: (placement) => set({ placement }),

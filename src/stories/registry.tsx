@@ -848,7 +848,6 @@ function PlanCardStory() {
   )
 }
 
-/** The same plan from Theorem's copy, one root claimed and the other deviating, at the reading width. */
 /**
  * Agent activity over a stand-in sheet: a conversation column with a composer at its foot, so the
  * view's placement above the composer shows. The fake Theorem serves the organization fixture, where
@@ -896,6 +895,7 @@ function activityStory(state: Partial<ReturnType<typeof useActivityView.getState
   }
 }
 
+/** The same plan from Theorem's copy, one root claimed and the other deviating, at the reading width. */
 function PlanCardUnderWayStory() {
   return (
     <div className="mx-auto w-full max-w-(--spacing-reading) px-4 py-4">

@@ -48,10 +48,13 @@ export const useCommandPalette = create<{
   open: boolean
   /** What had focus when the palette opened, so a command can hand focus back to it. */
   origin: HTMLElement | null
+  /** A command's step that waits until the dialog has closed. */
+  afterClose: (() => void) | null
   setOpen: (open: boolean) => void
 }>()((set) => ({
   open: false,
   origin: null,
+  afterClose: null,
   setOpen: (open) =>
     set(
       open
@@ -152,12 +155,17 @@ function useGroups(close: () => void): Group[] {
             keywords: 'agents runs work running waiting drawer workspace',
             Mark: Icon.Agent,
             run: () => {
-              // The palette's own trigger is gone once it closes: focus returns to what had it before.
+              // Opened once the dialog has finished closing and handed focus back, so the
+              // view's own focus move is the last one. Close returns focus to what the palette had.
               const origin = useCommandPalette.getState().origin
+              useCommandPalette.setState({
+                afterClose: () => {
+                  const view = useActivityView.getState()
+                  if (view.open) view.close()
+                  else view.openView({ origin })
+                },
+              })
               close()
-              const view = useActivityView.getState()
-              if (view.open) view.close()
-              else view.openView({ origin })
             },
           },
           ...SETTINGS_GROUPS.flatMap(({ sections }) =>
@@ -225,7 +233,16 @@ export function CommandPalette() {
   const open = useCommandPalette((s) => s.open)
   const setOpen = useCommandPalette((s) => s.setOpen)
   return (
-    <CommandDialog open={open} onOpenChange={setOpen}>
+    <CommandDialog
+      open={open}
+      onOpenChange={setOpen}
+      onOpenChangeComplete={(isOpen) => {
+        if (isOpen) return
+        const { afterClose } = useCommandPalette.getState()
+        useCommandPalette.setState({ afterClose: null })
+        afterClose?.()
+      }}
+    >
       <CommandDialogPortal>
         <CommandDialogBackdrop />
         <CommandDialogViewport>

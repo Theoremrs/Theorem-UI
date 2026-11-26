@@ -197,3 +197,31 @@ describe('activity view state', () => {
     other.remove()
   })
 })
+
+describe('removing work with no run id', () => {
+  const term = (execution: ActivityEntry['execution']) =>
+    entry('w/1', {
+      source: 'terminal',
+      projects: undefined,
+      projectId: undefined,
+      execution,
+    })
+
+  test('stays out while its state holds, and comes back when the state changes', () => {
+    const first = arrange(empty, [term('unknown')], at)
+    const removed = removeFrom(first, 'terminal:w/1')
+    expect(arrange(removed, [term('unknown')], at).order).toEqual([])
+    expect(arrange(removed, [term('running')], at).order).toEqual([
+      'terminal:w/1',
+    ])
+  })
+
+  test('comes back after it leaves the listing and returns', () => {
+    const removed = removeFrom(
+      arrange(empty, [term('running')], at),
+      'terminal:w/1',
+    )
+    const left = arrange(removed, [], at)
+    expect(arrange(left, [term('running')], at).order).toEqual(['terminal:w/1'])
+  })
+})

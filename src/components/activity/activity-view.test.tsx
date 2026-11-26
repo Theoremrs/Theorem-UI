@@ -125,6 +125,45 @@ test('a click selects without navigating; Open work reveals the thread and start
   expect(region(container)).not.toBeNull()
 })
 
+test('a thread filed in the project shown now opens there, even when pinned elsewhere', async () => {
+  const filed: ThreadEntry = {
+    ...thread('m'),
+    homeProjectId: 'q',
+    memberships: [
+      { projectId: 'q', pinned: true, atMs: 1 },
+      { projectId: 'p', pinned: false, atMs: 2 },
+    ] as ThreadEntry['memberships'],
+  }
+  useShell.setState({ projectId: 'p' })
+  const { container, router } = await mount([filed])
+  act(() => useActivityView.getState().openView({ origin: null }))
+  const open = await waitFor(() =>
+    container.querySelector<HTMLButtonElement>(
+      '[aria-label="Open work: Thread m"]',
+    ),
+  )
+  await act(async () => open.click())
+  await waitFor(() => router.state.location.pathname === '/c/m')
+  expect(useShell.getState().projectId).toBe('p')
+})
+
+test('closing after Show all returns focus to the preview’s Show all', async () => {
+  const { container } = await mount([thread('a')])
+  const show = await waitFor(() =>
+    container.querySelector<HTMLButtonElement>('[data-activity-return]'),
+  )
+  show.focus()
+  await act(async () => show.click())
+  await waitFor(() => region(container))
+  await act(async () => {
+    useActivityView.getState().close()
+    await Bun.sleep(40)
+  })
+  expect(document.activeElement?.hasAttribute('data-activity-return')).toBe(
+    true,
+  )
+})
+
 test('double-clicking a drawer row opens its work, like the Open work action', async () => {
   const { container, router } = await mount([thread('a')])
   act(() => useActivityView.getState().openView({ origin: null }))
