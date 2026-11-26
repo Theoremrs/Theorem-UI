@@ -9,6 +9,7 @@
 // it, and brings the answer's instance forward. Nothing here runs it: no
 // frame, no document read — even the App preview is left out, because a
 // preview frame re-executes the App's startup.
+import { useNavigate } from '@tanstack/react-router'
 import { useCallback, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useOpenMode } from '@/components/shell/modes'
@@ -18,8 +19,16 @@ import { focusInlineArtifact } from './inline-artifact'
 /** How long to wait for the answer to mount after reaching its conversation. */
 const ANSWER_FRAMES = 60
 
-export function ArtifactReferrer({ artifact }: { artifact: TheoremArtifact }) {
+export function ArtifactReferrer({
+  artifact,
+  threadId,
+}: {
+  artifact: TheoremArtifact
+  /** The conversation the App ran in, when the panel was kept open from another chat. */
+  threadId?: string
+}) {
   const openMode = useOpenMode()
+  const navigate = useNavigate()
   const [away, setAway] = useState(false)
   const going = useRef(false)
   const reveal = useCallback(async () => {
@@ -35,7 +44,9 @@ export function ArtifactReferrer({ artifact }: { artifact: TheoremArtifact }) {
       // it. Go to the conversation first, then focus once its live instance
       // is mounted; never start the App here.
       try {
-        await openMode('chat')
+        await (threadId
+          ? navigate({ to: '/c/$threadId', params: { threadId } })
+          : openMode('chat'))
       } catch {
         // Surfaces without a router (a full-screen phone panel, a fixture)
         // cannot navigate; still try to focus whatever is already mounted.
@@ -53,7 +64,7 @@ export function ArtifactReferrer({ artifact }: { artifact: TheoremArtifact }) {
     } finally {
       going.current = false
     }
-  }, [artifact.partId, openMode])
+  }, [artifact.partId, openMode, navigate, threadId])
   return (
     <section
       data-slot="artifact-referrer"

@@ -171,6 +171,25 @@ export async function readArtifactRevision(
   return undefined
 }
 
+/** Every revision of an artifact its session holds, in patch order, read in place. */
+export async function readArtifactVersions(
+  threadId: string,
+  artifactId: string,
+): Promise<TheoremArtifact[]> {
+  const { messages } = await theorem().chat.threads.get({ threadId })
+  const versions: TheoremArtifact[] = []
+  for (const message of messages)
+    for (const part of (message as { parts?: unknown[] }).parts ?? []) {
+      const artifact = readArtifact(part)
+      if (
+        artifact?.artifactId === artifactId &&
+        !versions.some((v) => v.revision === artifact.revision)
+      )
+        versions.push(artifact)
+    }
+  return versions.sort((a, b) => a.patchSequence - b.patchSequence)
+}
+
 /** The newest revision of an artifact its session holds, read in place. */
 export async function readLatestArtifact(
   threadId: string,
