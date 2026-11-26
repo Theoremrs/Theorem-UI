@@ -267,4 +267,41 @@ describe('owners not read this time', () => {
     useActivityView.getState().sync([term], 'p')
     expect(useActivityView.getState().arranged?.order).toEqual(['terminal:w/1'])
   })
+  test('a saved order survives listings that come before its owners are read', () => {
+    useActivityView.setState({
+      arranged: undefined,
+      saved: {},
+      scope: 'project',
+    })
+    const view = useActivityView.getState()
+    view.sync([entry('a'), term], 'p')
+    view.move('terminal:w/1', -1)
+    // A reload: the arrangement in memory is gone, the saved order stays.
+    useActivityView.setState({ arranged: undefined })
+    // Threads load first; the terminal listing is still on its way.
+    useActivityView
+      .getState()
+      .sync([entry('a')], 'p', new Set(['thread'] as const))
+    useActivityView.getState().sync([entry('a'), term], 'p')
+    expect(useActivityView.getState().arranged?.order).toEqual([
+      'terminal:w/1',
+      'thread:a',
+    ])
+  })
+
+  test('moving a row steps over a place still waiting for its owner', () => {
+    const waiting = arrange(
+      { ...empty, order: ['terminal:w/1', 'thread:a', 'thread:b'] },
+      [entry('a'), entry('b')],
+      { ...at, read: new Set(['thread'] as const) },
+    )
+    expect(waiting.order).toEqual(['terminal:w/1', 'thread:a', 'thread:b'])
+    expect(waiting.items['terminal:w/1']).toBeUndefined()
+    expect(moveIn(waiting, 'thread:b', -1).order).toEqual([
+      'terminal:w/1',
+      'thread:b',
+      'thread:a',
+    ])
+    expect(moveIn(waiting, 'thread:a', -1)).toBe(waiting)
+  })
 })

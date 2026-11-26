@@ -315,12 +315,19 @@ test('work that finishes under focus keeps its row and the preview until focus l
   await act(async () => {
     client.setQueryData(organizationKey, organization([thread('a', false)]))
   })
-  await waitFor(() =>
-    container
-      .querySelector('[aria-label="Agent activity preview"]')
-      ?.textContent?.includes('Nothing working now'),
-  )
+  const settled = await waitFor(() => {
+    const now = container.querySelector<HTMLElement>(
+      '[aria-label="Agent activity preview"]',
+    )
+    return now?.textContent.includes('Nothing working now') ? now : null
+  })
   expect(document.activeElement).toBe(row(container, 'thread:a'))
+  // The summary's mark says idle, not working, once nothing is.
+  expect(
+    settled
+      .querySelector('[aria-expanded] [data-activity-tone]')
+      ?.getAttribute('data-activity-tone'),
+  ).toBe('idle')
 })
 
 test('a mounted view counts as a host, so commands can open it', async () => {
