@@ -28,7 +28,7 @@ const loadModel = () =>
               .default,
           weightsLoaderFunc: async () => {
             const { default: weights } =
-              await import('@vscode/vscode-languagedetection/model/group1-shard1of1.bin?inline')
+              await import('@vscode/vscode-languagedetection/model/group1-shard1of1.bin?url&inline')
             return (await fetch(weights)).arrayBuffer()
           },
         }),

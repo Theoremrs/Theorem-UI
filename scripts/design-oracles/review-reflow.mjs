@@ -212,20 +212,27 @@ try {
   await settle()
   const rtl = await page.evaluate(() => {
     const p = document.querySelector('[data-appearance-part=prose-track]'),
-      e = document.querySelector('[data-appearance-part=editor-track]')
+      e = document.querySelector('[data-appearance-part=editor-track]'),
+      c = document.querySelector('[data-appearance-part=composer]')
     return {
       direction: getComputedStyle(p).direction,
       prose: p.getBoundingClientRect().toJSON(),
       editor: e.getBoundingClientRect().toJSON(),
+      composer: c.getBoundingClientRect().toJSON(),
       text: p.textContent,
       pageWidth: document.documentElement.scrollWidth,
     }
   })
+  // The thread composer is now wider than the reply track. Its center,
+  // rather than its logical start edge, aligns with the reply in RTL.
+  const center = ({ left, right }) => (left + right) / 2
   check(
     'RTL and CJK content reflows with logical track alignment',
     rtl.direction === 'rtl' &&
       rtl.pageWidth <= 320 &&
-      Math.abs(rtl.prose.right - rtl.editor.right) <= 1 &&
+      rtl.composer.width > rtl.prose.width &&
+      Math.abs(center(rtl.prose) - center(rtl.composer)) <= 1 &&
+      Math.abs(center(rtl.prose) - center(rtl.editor)) <= 1 &&
       /日本語/.test(rtl.text),
     rtl,
   )
