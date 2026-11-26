@@ -42,6 +42,7 @@ function pickerGroups(
   starred: readonly string[],
   byRef: ReadonlyMap<string, ModelOption>,
   catalog: readonly ModelOption[],
+  unavailable: readonly ModelOption[],
 ): Group[] {
   // A star can outlive its catalog row, and a row that's gone can't run.
   const picks = starred.flatMap((ref) => byRef.get(ref) ?? [])
@@ -50,6 +51,11 @@ function pickerGroups(
     : { label: 'Models', items: [...catalog] }
   return [
     { label: 'Default', items: [DEFAULT_ITEM] },
+    // A seat whose model has left the catalog stays in the room, listed here so
+    // it can be seen and given up; the room never drops it on its own.
+    ...(unavailable.length
+      ? [{ label: 'Unavailable', items: [...unavailable] }]
+      : []),
     ...(listed.items.length ? [listed] : []),
   ]
 }
@@ -74,11 +80,14 @@ function PickerOption({
   model,
   defaultName,
   seated,
+  unavailable,
 }: {
   model: ModelOption
   defaultName?: string
   /** Whether this model is what a turn runs on right now. */
   seated: boolean
+  /** The seat is held, but Theorem's catalog no longer lists its model. */
+  unavailable: boolean
 }) {
   return (
     // The row is the room's door, opened the same way by keyboard as by pointer:
@@ -94,6 +103,11 @@ function PickerOption({
           {model.name}
           {!model.ref && defaultName && (
             <span className="text-xs text-ink-muted">{defaultName}</span>
+          )}
+          {unavailable && (
+            <span className="text-xs text-ink-muted">
+              Unavailable — press to remove
+            </span>
           )}
         </span>
         {model.contextLength && (
@@ -111,7 +125,9 @@ function PickerOption({
  * a checked row means its model holds a seat in this conversation: picking one
  * adds that agent, picking it again gives the seat up. Two or more checked
  * models make a conversation of peers, each bound to one model, which the next
- * turn runs with.
+ * turn runs with. A seated model the catalog no longer lists keeps its seat,
+ * and the turns it leads, until the person presses its row to give it up: the
+ * picker says it is unavailable rather than changing the room for them.
  *
  * The effort footer stays where it was, for one participant: it belongs to the
  * lead — the seat the last pick acted on — which is what `useEffectiveRef`
@@ -139,21 +155,30 @@ export function ModelPicker() {
     () => new Map(catalog.map((model) => [model.ref, model])),
     [catalog],
   )
-  const groups = useMemo(
-    () => pickerGroups(starred, byRef, catalog),
-    [starred, byRef, catalog],
-  )
   const seats = useMemo(
     () => participants.map((participant) => refOf(participant.model)),
     [participants],
   )
-  // A model this Theorem can no longer run cannot hold a seat: the room gives
-  // it up rather than refusing every turn that follows.
-  useEffect(() => {
-    if (!list || !seats.length) return
-    const running = seats.filter((ref) => byRef.has(ref))
-    if (running.length !== seats.length) setRoster(running)
-  }, [list, seats, byRef, setRoster])
+  // A seat whose model the catalog does not carry is named as it was admitted.
+  const stubOf = useMemo(() => {
+    const labels = new Map(
+      participants.map((part) => [refOf(part.model), part.label]),
+    )
+    return (ref: string) => modelStub(ref, labels.get(ref))
+  }, [participants])
+  // Seats this Theorem can no longer run. Only a catalog that loaded says so:
+  // one that failed to load says nothing about any model.
+  const unavailable = useMemo(
+    () =>
+      list
+        ? new Set(seats.filter((ref) => !byRef.has(ref)))
+        : new Set<string>(),
+    [list, seats, byRef],
+  )
+  const groups = useMemo(
+    () => pickerGroups(starred, byRef, catalog, [...unavailable].map(stubOf)),
+    [starred, byRef, catalog, unavailable, stubOf],
+  )
   // A browser-wide pick this Theorem can no longer run would refuse every turn,
   // as it did before there were rooms.
   useEffect(() => {
@@ -163,15 +188,21 @@ export function ModelPicker() {
   // an unseated conversation runs on — this browser's pick, then Theorem's
   // default.
   const shown = useMemo(() => {
-    if (seats.length)
-      return seats.map((ref) => byRef.get(ref) ?? modelStub(ref))
+    if (seats.length) return seats.map((ref) => byRef.get(ref) ?? stubOf(ref))
     if (picked) return [byRef.get(picked) ?? modelStub(picked)]
     return [DEFAULT_ITEM]
-  }, [seats, picked, byRef])
+  }, [seats, picked, byRef, stubOf])
   // What Theorem's choice resolves to, so the person knows what an unpinned turn runs on.
   const defaultModel = list?.defaultRef ? byRef.get(list.defaultRef) : undefined
   const defaultName = defaultModel?.name
-  const label = pickerLabel(shown, defaultName)
+  const label = pickerLabel(
+    shown.map((model) =>
+      unavailable.has(model.ref)
+        ? { ...model, name: `${model.name} (unavailable)` }
+        : model,
+    ),
+    defaultName,
+  )
   const name = shown.length > 1 ? `Models: ${label}` : `Model: ${label}`
   // The mark of each model in charge; the default takes the mark of what
   // Theorem's choice resolves to. A long room draws its first seats and counts
@@ -219,6 +250,7 @@ export function ModelPicker() {
       <ComboboxTrigger
         aria-label={name}
         data-model-picker-trigger=""
+        data-unavailable={unavailable.size ? '' : undefined}
         {...appearancePair('secondary', 'composer')}
         className="flex size-8 shrink-0 items-center justify-center rounded-md text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
       >
@@ -283,12 +315,20 @@ export function ModelPicker() {
                     model={model}
                     defaultName={defaultName}
                     seated={shown.some((row) => row.ref === model.ref)}
+                    unavailable={unavailable.has(model.ref)}
                   />
                 )}
               </ComboboxCollection>
             </ComboboxGroup>
           )}
         </ComboboxList>
+        {unavailable.size > 0 && (
+          <p role="status" className="px-3 py-2 text-sm text-ink-muted">
+            {[...unavailable].map((ref) => stubOf(ref).name).join(', ')}{' '}
+            {unavailable.size > 1 ? 'are' : 'is'} no longer available. The seat
+            is kept until you remove it from the list.
+          </p>
+        )}
         {/* A room the person changed somewhere else, or could not change here. */}
         {rosterIssue && (
           <p role="alert" className="px-3 py-2 text-sm text-ink-muted">

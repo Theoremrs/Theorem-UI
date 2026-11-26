@@ -2,6 +2,7 @@
 import { create } from 'zustand'
 import { useAuiState } from '@assistant-ui/react'
 import { useEffect, useMemo } from 'react'
+import { TheoremError } from '@theoremharness/sdk'
 import { describeError, hasStatus, mutate, theorem } from './client'
 import { isNotServed, theoremJson } from './passthrough'
 
@@ -51,6 +52,8 @@ export type ParticipantRun = {
   participantId: string
   runId: string
   cursor: number
+  /** The branch the run answers on; a thread that predates branch-scoped runs says none. */
+  branchId?: string
 }
 
 /** A conversation's roster: who is in the room, and what revision it stands at. */
@@ -119,7 +122,13 @@ const parseRun = (raw: unknown): ParticipantRun | undefined => {
   const participantId = text(row?.participantId)
   const runId = text(row?.runId)
   if (!participantId || !runId) return undefined
-  return { participantId, runId, cursor: count(row?.cursor) ?? 0 }
+  const branchId = text(row?.branchId)
+  return {
+    participantId,
+    runId,
+    cursor: count(row?.cursor) ?? 0,
+    ...(branchId ? { branchId } : {}),
+  }
 }
 
 /**
@@ -221,6 +230,11 @@ type RosterState = {
   read: (conversation: string, remoteId: string, roster: Roster) => void
   /** The roster a write delivered, which replaces what this browser held. */
   confirm: (conversation: string, roster: Roster, raced: boolean) => void
+  /**
+   * Another browser moved the roster first: its room replaces this browser's
+   * unwritten one, and nothing is written until the person edits again.
+   */
+  moved: (conversation: string, roster: Roster, message: string) => void
   refused: (conversation: string, message: string) => void
   addModel: (conversation: string, ref: string, label?: string) => void
   removeParticipant: (conversation: string, participantId: string) => void
@@ -389,6 +403,29 @@ export const useRoster = create<RosterState>()((set) => ({
             lead: leadOf(roster.participants),
             unsaved: false,
             error: undefined,
+          },
+        },
+      }
+    }),
+
+  moved: (conversation, roster, message) =>
+    set((state) => {
+      const before = entryOf(state, conversation)
+      const lead = roster.participants.some(
+        (part) => part.participantId === before.lead,
+      )
+        ? before.lead
+        : roster.participants[0]?.participantId
+      return {
+        ...state,
+        byConversation: {
+          ...state.byConversation,
+          [conversation]: {
+            ...before,
+            roster,
+            lead,
+            unsaved: false,
+            error: message,
           },
         },
       }
@@ -568,13 +605,18 @@ async function putRoster(
  * fields reads as an empty room and is not asked again. Returns the read when
  * there is one, so a caller waiting on it can.
  */
+const rosterReads = new Map<string, Promise<void>>()
+
 export function readConversationRoster(
   conversation: string,
   remoteId: string | undefined,
 ): Promise<void> | undefined {
-  if (!remoteId || useRoster.getState().reads[remoteId]) return undefined
+  if (!remoteId) return undefined
+  const inFlight = rosterReads.get(remoteId)
+  if (inFlight) return inFlight
+  if (useRoster.getState().reads[remoteId] === 'read') return undefined
   useRoster.getState().beginRead(remoteId)
-  return fetchRoster(remoteId)
+  const read = fetchRoster(remoteId)
     .then((roster) => useRoster.getState().read(conversation, remoteId, roster))
     .catch((error: unknown) =>
       // A Theorem that does not serve a roster is not asked again: its thread
@@ -582,7 +624,39 @@ export function readConversationRoster(
       // mount.
       useRoster.getState().endRead(remoteId, !isNotServed(error)),
     )
+    .finally(() => rosterReads.delete(remoteId))
+    .then(() => undefined)
+  rosterReads.set(remoteId, read)
+  return read
 }
+
+/**
+ * Reads the conversation's roster again and takes it, keeping seats chosen here
+ * and not written yet. For after something that changes the room Theorem holds
+ * without this browser editing it, such as stopping a participant.
+ */
+export async function rereadConversationRoster(
+  conversation: string,
+  remoteId: string,
+): Promise<void> {
+  useRoster
+    .getState()
+    .read(conversation, remoteId, await fetchRoster(remoteId))
+}
+
+/** What the person is told when the room they edited had already changed. */
+const MOVED =
+  'The room changed somewhere else, so your change was not saved. It now shows the room as it stands; make your change again.'
+
+/**
+ * A 409 that says the roster revision moved. Other conflicts — a participant
+ * still working, a reused idempotency key — are refusals of this write, not
+ * a stale view, and re-reading the roster would not answer them.
+ */
+const isRevisionConflict = (error: unknown) =>
+  hasStatus(error, 409) &&
+  error instanceof TheoremError &&
+  record(error.body)?.code === 'chat_revision_conflict'
 
 /** Where each conversation's writes queue up, so one is on its way at a time. */
 const queues = new Map<string, Promise<void>>()
@@ -591,9 +665,13 @@ const queues = new Map<string, Promise<void>>()
  * Brings the conversation's thread up to what this browser holds: one write at a
  * time, the room as it stands when the write goes out. A seat chosen while a
  * write was on its way is not lost — the revision that write moved to is taken,
- * and the newer room follows against it. A revision Theorem did not expect is
- * re-read and the write retried explicitly, never overwritten. A refused write
- * says why and leaves the change waiting, so the next edit tries again. A
+ * and the newer room follows against it. A revision Theorem did not expect
+ * means another browser changed the room first: the room is re-read and shown,
+ * this browser's unwritten change is dropped with a word saying so, and nothing
+ * is resent until the person edits again — a whole-room write must never
+ * overwrite what it did not see. Any other refusal, including a 409 for a
+ * participant still working, says why and leaves the change waiting, so the next
+ * edit tries again. A
  * conversation with no thread keeps its roster client-side and writes nothing.
  */
 async function drain(conversation: string) {
@@ -605,10 +683,8 @@ async function drain(conversation: string) {
     // What this write sent, so a seat chosen while it was away is told apart
     // from one Theorem has now taken.
     const sent = entry.edits
-    const applied = async (expectedRosterRevision: number) =>
-      putRoster(remoteId, expectedRosterRevision, seats)
     try {
-      const roster = await applied(entry.roster.revision)
+      const roster = await putRoster(remoteId, entry.roster.revision, seats)
       useRoster
         .getState()
         .confirm(
@@ -617,26 +693,21 @@ async function drain(conversation: string) {
           useRoster.getState().byConversation[conversation]?.edits !== sent,
         )
     } catch (error) {
-      if (!hasStatus(error, 409)) {
+      if (!isRevisionConflict(error)) {
         useRoster.getState().refused(conversation, describeError(error))
         return
       }
-      // Someone else moved the roster: take the revision the thread now holds
-      // and send this room against it, once more.
+      // Another browser moved the roster first. The list this browser sent
+      // replaces the whole room, so sending it again against the new revision
+      // would undo that browser's change. The room as the thread holds it is
+      // shown instead, and the person decides again.
       try {
-        const { revision } = await fetchRoster(remoteId)
-        const roster = await applied(revision)
-        useRoster
-          .getState()
-          .confirm(
-            conversation,
-            roster,
-            useRoster.getState().byConversation[conversation]?.edits !== sent,
-          )
-      } catch (retryError) {
-        useRoster.getState().refused(conversation, describeError(retryError))
-        return
+        const roster = await fetchRoster(remoteId)
+        useRoster.getState().moved(conversation, roster, MOVED)
+      } catch (readError) {
+        useRoster.getState().refused(conversation, describeError(readError))
       }
+      return
     }
   }
 }

@@ -222,13 +222,13 @@ async function* runEvents(
   }
 }
 
-type RunParts = {
+export type RunParts = {
   parts: ReadonlyMap<string, Theorem.StoredPart>
   /** The terminal event, once the run has ended. */
   ended?: string
 }
 
-function addRunEvent(run: RunParts, event: Theorem.RunEvent): RunParts {
+export function addRunEvent(run: RunParts, event: Theorem.RunEvent): RunParts {
   if (event.sourceEventType === 'CHAT.MESSAGE.PART') {
     const part = event.payload.part as Record<string, unknown> | undefined
     if (typeof part?.partId !== 'string' || typeof part.type !== 'string')
@@ -247,7 +247,7 @@ function addRunEvent(run: RunParts, event: Theorem.RunEvent): RunParts {
     : run
 }
 
-const runStatus = (ended: string | undefined): MessageStatus =>
+export const runStatus = (ended: string | undefined): MessageStatus =>
   ended === undefined
     ? { type: 'running' }
     : ended === 'RUN.CLOSED'
@@ -275,22 +275,31 @@ export function useSpecialistRun(runId: string) {
     retry: false,
   })
   const run = query.data
-  const message = useMemo((): ThreadMessage | undefined => {
-    if (!run?.parts.size) return undefined
-    const [like] = toAssistantMessages([
-      {
-        schema: 'theorem.chat.message.v1',
-        messageId: runId,
-        tenantId: '',
-        threadId: '',
-        originBranchId: '',
-        role: 'assistant',
-        parts: [...run.parts.values()],
-        createdAtMs: 0,
-      },
-    ])
-    const status = runStatus(run.ended)
-    return like && fromThreadMessageLike({ ...like, status }, runId, status)
-  }, [run, runId])
+  const message = useMemo(() => run && runMessage(runId, run), [run, runId])
   return { message, error: query.error }
+}
+
+/**
+ * One run's parts as the assistant message they build, with the chat's own part
+ * mapping; nothing until the run has said something.
+ */
+export function runMessage(
+  runId: string,
+  run: RunParts,
+): ThreadMessage | undefined {
+  if (!run.parts.size) return undefined
+  const [like] = toAssistantMessages([
+    {
+      schema: 'theorem.chat.message.v1',
+      messageId: runId,
+      tenantId: '',
+      threadId: '',
+      originBranchId: '',
+      role: 'assistant',
+      parts: [...run.parts.values()],
+      createdAtMs: 0,
+    },
+  ])
+  const status = runStatus(run.ended)
+  return like && fromThreadMessageLike({ ...like, status }, runId, status)
 }

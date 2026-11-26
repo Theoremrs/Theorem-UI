@@ -71,6 +71,9 @@ import { RefusedSend } from './send-recovery'
 import { generationTurnOptions, requestedEffort, useGenerationOverrides } from './generation'
 import { saveThreadGeneration, takeThreadGeneration } from './thread-generation'
 import { modelTurnOptions } from './models'
+import { noteThread } from './peer-runs'
+import { PeerSendRefused, sendToRoom, settleRoom } from './peer-send'
+import type { Room } from './peer-send'
 import { bindRunInput } from './run-input-runtime'
 
 import { toHistoryMessages } from './message-history'
@@ -183,6 +186,28 @@ function chatAdapterFor(
 }
 
 /**
+ * What a user turn says as text: the text parts, with a passage quoted from a
+ * reply put ahead of them, since the turn must still carry what the question
+ * is about. The SDK's adapter takes text turns; what else they carry goes as
+ * upload ids.
+ */
+function turnContent(user: ChatModelRunOptions['messages'][number]) {
+  const content = user.content.filter((part) => part.type === 'text')
+  // A quote carried in from a reply rides the message's metadata; the text
+  // turn must still carry the passage, or the question loses its subject.
+  // Older saved turns and test fixtures may carry no metadata at all.
+  const custom = (user as { metadata?: { custom?: unknown } }).metadata?.custom
+  const quoteText = (custom as { quote?: { text?: string } } | undefined)?.quote
+    ?.text
+  const quoted =
+    quoteText && !content.some((part) => part.text.includes(quoteText))
+      ? [{ type: 'text' as const, text: `> ${quoteText.replace(/\n/g, '\n> ')}` }]
+      : []
+  const all = [...quoted, ...content]
+  return { content: all, text: all.map((part) => part.text).join('\n') }
+}
+
+/**
  * An edit or regenerate in assistant-ui carries a local id for the user turn.
  * Map it onto the durable message at the same position of the selected branch
  * so the SDK issues edit/retry against Theorem instead of appending a new turn.
@@ -203,23 +228,11 @@ async function alignWithDurableBranch(
     : slot?.role === 'user'
       ? slot.messageId
       : user.id
-  // The SDK's adapter takes text turns; what they carry goes as upload ids.
-  const content = user.content.filter((part) => part.type === 'text')
-  // A quote carried in from a reply rides the message's metadata; the text
-  // turn must still carry the passage, or the question loses its subject.
-  // Older saved turns and test fixtures may carry no metadata at all.
-  const custom = (user as { metadata?: { custom?: unknown } }).metadata?.custom
-  const quoteText = (custom as { quote?: { text?: string } } | undefined)?.quote
-    ?.text
-  const quoted =
-    quoteText && !content.some((part) => part.text.includes(quoteText))
-      ? [{ type: 'text' as const, text: `> ${quoteText.replace(/\n/g, '\n> ')}` }]
-      : []
-  const text = [...quoted, ...content].map((part) => part.text).join('\n')
+  const { content, text } = turnContent(user)
   return {
     messages: [
       ...messages.slice(0, -1),
-      { ...user, id, content: [...quoted, ...content], attachments: [] },
+      { ...user, id, content, attachments: [] },
     ],
     uploadIds: turnUploads(
       text,
@@ -401,6 +414,7 @@ const loadedForResume = new Map<
 async function durableHistory(threadId: string) {
   const snapshot = await theorem().chat.threads.get({ threadId })
   takeThreadGeneration(snapshot.thread)
+  noteThread(snapshot.thread)
   const { lastRun, pendingTurn } = snapshot.thread
   const unanswered = snapshot.messages.at(-1)?.role === 'user' && !pendingTurn
   const runId =
@@ -655,6 +669,70 @@ export async function* runTurn(
   }
 }
 /**
+ * Sends one turn to every participant of the conversation's room. Theorem
+ * keeps the message once and starts a run for each participant; those runs are
+ * followed where they are drawn, each as its own reply, so this turn's own
+ * reply is empty and marked, and the thread draws nothing for it. A send that
+ * cannot go to the room gives the text back, and says why; it never goes to a
+ * single model in the room's place.
+ */
+export async function* peerTurn(
+  threadId: string,
+  options: ChatModelRunOptions,
+  room: Room,
+  accepted: () => void,
+  /** Puts a message's text back where the person can send it again. */
+  restore: (text: string) => void,
+): AsyncGenerator<ChatModelRunResult, void> {
+  const user = options.messages.at(-1)
+  if (user?.role !== 'user') throw new Error('A Theorem turn must end with a user message')
+  const { text } = turnContent(user)
+  let delivered = false
+  try {
+    if (pendingSendKey(threadId))
+      throw new PeerSendRefused(
+        'Your message was not sent. A previous message is awaiting recovery. Reload this conversation to resume it.',
+      )
+    await titleUntitledThread(threadId, options.messages)
+    const configured = options.runConfig.custom?.theoremTurnOptions
+    const sent = await sendToRoom({
+      threadId,
+      text,
+      uploadIds: turnUploads(
+        text,
+        user.attachments.map((attachment) => attachment.id),
+        undefined,
+      ),
+      options:
+        configured && typeof configured === 'object'
+          ? (configured as Record<string, unknown>)
+          : {},
+      room,
+      signal: options.abortSignal,
+    })
+    delivered = true
+    accepted()
+    yield {
+      content: [],
+      status: { type: 'complete', reason: 'stop' },
+      metadata: {
+        custom: {
+          theoremPeerSend: {
+            messageId: sent.messageId,
+            runIds: sent.started.map((run) => run.runId),
+          },
+        },
+      },
+    }
+  } catch (error) {
+    // Nothing reached the room, or the person stopped the send: either way the
+    // text is still theirs. A message the room has taken is not given back.
+    if (!delivered) restore(text)
+    throw error
+  }
+}
+
+/**
  * A turn's steps, then how long they took. assistant-ui stamps a live reply
  * when its run begins and records no end, so this is what lets the reply say
  * how long the person waited; a reply read from history has its stored time.
@@ -691,6 +769,11 @@ function useTheoremThreadRuntime() {
           const { id: localId, remoteId: existingId } = aui.threadListItem.getState()
           const isNew = !existingId
           const { remoteId } = await aui.threadListItem.initialize()
+          // The room this conversation has, if it has several seats: a send to it goes to every participant, or fails with its text given back.
+          const sentText = options.messages.at(-1)?.content.map((part) => part.type === 'text' ? part.text : '').join('\n') ?? ''
+          const restore = (text: string) => { holdRefusedText(remoteId, text); giveBackRefusedText(aui) }
+          let room: Room | undefined
+          try { room = await settleRoom(localId, remoteId) } catch (error) { restore(sentText); throw error }
           // A new chat's response settings were kept as a draft until it had a thread to belong to.
           if (isNew) useGenerationOverrides.getState().adopt(remoteId)
           // The override belongs on the thread; what is not there yet goes with the turn below.
@@ -708,11 +791,12 @@ function useTheoremThreadRuntime() {
             ...options,
             runConfig:{...options.runConfig,custom:{...custom,theoremTurnOptions:{...configured,...added}}},
           } : options
-          const turn = runTurn(remoteId,composed,modelTurnOptions,()=>{
+          const accepted = ()=>{
             // Recovery replays its saved request; only a newly accepted send consumes these references.
             if (!given) useComposerReferences.setState(state=>({references:state.references.filter(reference=>!references.includes(reference))}))
             consumePendingStyle(remoteId, style.responseStyle, queryClient)
-          })
+          }
+          const turn = room ? peerTurn(remoteId,composed,room,accepted,restore) : runTurn(remoteId,composed,modelTurnOptions,accepted)
           for await (const step of timed(turn)) {
             // Plan stays on until a plan is written; the turn that writes one turns it off for this conversation.
             if (draftedPlan(step)) usePlanning.getState().set(remoteId,false)
@@ -958,10 +1042,16 @@ export function TheoremRuntimeProvider({
       try {
         await refreshConversation(
           runtime.thread,
-          () => theorem().chat.threads.get(
-            { threadId: id },
-            { abortSignal: request.signal, timeoutInSeconds: 10, maxRetries: 0 },
-          ),
+          async () => {
+            const snapshot = await theorem().chat.threads.get(
+              { threadId: id },
+              { abortSignal: request.signal, timeoutInSeconds: 10, maxRetries: 0 },
+            )
+            // The runs participants hold change while the visible thread is
+            // idle: it has no single live run to wait on.
+            noteThread(snapshot.thread)
+            return snapshot
+          },
           cursor,
           active,
         )

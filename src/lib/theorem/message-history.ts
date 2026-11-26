@@ -33,7 +33,70 @@ function sentReferences(messages: Parameters<typeof toAssistantMessages>[0]) {
   return sent
 }
 
+/** What a stored reply says of who wrote it, in a conversation with a room. */
+export type ReplyAuthor = {
+  participantId: string
+  label: string
+  actorId?: string
+}
+
+/** Where a reply's author is put on its metadata, for the thread to name it by. */
+export const AUTHOR_METADATA = 'theoremAuthor'
+
+/**
+ * The participant each stored reply was written by, as the message's routing
+ * recorded it at admission (the SDK's message type predates the field). A
+ * message with no routing, or one a person sent, has no participant author.
+ */
+function repliesAuthors(messages: Parameters<typeof toAssistantMessages>[0]) {
+  const authors = new Map<string, ReplyAuthor>()
+  for (const message of messages) {
+    const author = (
+      message as { routing?: { author?: Record<string, unknown> } }
+    ).routing?.author
+    if (
+      message.role !== 'assistant' ||
+      author?.kind !== 'participant' ||
+      typeof author.participantId !== 'string' ||
+      typeof author.label !== 'string'
+    )
+      continue
+    authors.set(message.messageId, {
+      participantId: author.participantId,
+      label: author.label,
+      ...(typeof author.actorId === 'string' ? { actorId: author.actorId } : {}),
+    })
+  }
+  return authors
+}
+
 export function toHistoryMessages(
+  ...args: Parameters<typeof toAssistantMessages>
+): ReturnType<typeof toAssistantMessages> {
+  const authors = repliesAuthors(args[0])
+  return withReplyAuthors(historyMessages(...args), authors)
+}
+
+function withReplyAuthors(
+  messages: ReturnType<typeof toAssistantMessages>,
+  authors: ReadonlyMap<string, ReplyAuthor>,
+): ReturnType<typeof toAssistantMessages> {
+  if (!authors.size) return messages
+  return messages.map((message) => {
+    const author = message.id ? authors.get(message.id) : undefined
+    return author && message.role === 'assistant'
+      ? {
+          ...message,
+          metadata: {
+            ...message.metadata,
+            custom: { ...message.metadata?.custom, [AUTHOR_METADATA]: author },
+          },
+        }
+      : message
+  })
+}
+
+function historyMessages(
   ...args: Parameters<typeof toAssistantMessages>
 ): ReturnType<typeof toAssistantMessages> {
   const sent = sentReferences(args[0])

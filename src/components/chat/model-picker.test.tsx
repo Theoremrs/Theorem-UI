@@ -179,3 +179,63 @@ test("giving up every seat leaves the room to Theorem's default", async () => {
   // A draft with no model of its own runs on Theorem's default, not a pick.
   expect(pickedModel()).toBeUndefined()
 })
+
+const GONE = 'provider/vendor/gone'
+const trigger = (container: HTMLElement) => container.querySelector('[data-model-picker-trigger]') as HTMLElement
+
+test('a seated model that left the catalog keeps its seat and its turns', async () => {
+  const room = useRoster.getState()
+  room.addModel('DEFAULT_THREAD_ID', 'provider/vendor/available', 'Available')
+  room.addModel('DEFAULT_THREAD_ID', GONE, 'Gone')
+  const { container } = await models(false)
+  await act(async () => {})
+
+  // The seat is not given up behind the person's back, and a turn still runs on
+  // the model it was seated with rather than on another one.
+  expect(seated().map((part) => refOf(part.model))).toEqual(['provider/vendor/available', GONE])
+  expect(trigger(container).getAttribute('aria-label')).toBe('Models: Available, Gone (unavailable)')
+  expect(pickedModel()).toEqual({ provider: 'provider', model: 'vendor/gone' })
+})
+
+test('an unavailable seat is shown in the list, said to be unavailable, and given up by keyboard', async () => {
+  useRoster.getState().addModel('DEFAULT_THREAD_ID', GONE, 'Gone')
+  const { container } = await models(false)
+  await click(trigger(container))
+
+  const unavailable = await row('Gone')
+  expect(unavailable.getAttribute('aria-checked')).toBe('true')
+  expect(unavailable.textContent).toContain('Unavailable')
+  expect(document.body.textContent).toContain('no longer available')
+  expect(seated().map((part) => refOf(part.model))).toEqual([GONE])
+
+  await act(async () => {
+    ;(document.querySelector('[data-slot="combobox-input"]') as HTMLElement).focus()
+  })
+  // Walk the list with the arrow keys until the unavailable row is the one
+  // highlighted, then press it out of the room.
+  for (let steps = 0; steps < 4 && !unavailable.hasAttribute('data-highlighted'); steps += 1) await press('ArrowDown')
+  expect(unavailable.hasAttribute('data-highlighted')).toBe(true)
+  await press('Enter')
+
+  expect(seated()).toEqual([])
+  expect(trigger(container).getAttribute('aria-label')).toBe('Model: Default model')
+})
+
+test('an unavailable seat can be replaced without losing the other seats', async () => {
+  useRoster.getState().addModel('DEFAULT_THREAD_ID', GONE, 'Gone')
+  useRoster.getState().addModel('DEFAULT_THREAD_ID', 'provider/vendor/second', 'Second')
+  const { container } = await models(false)
+  await click(trigger(container))
+  await click(await row('Gone'))
+  await click(await row('Available'))
+
+  expect(seated().map((part) => refOf(part.model))).toEqual(['provider/vendor/second', 'provider/vendor/available'])
+})
+
+test("an account pick the catalog no longer lists is still dropped when no room holds a seat", async () => {
+  usePickedModels.getState().select(GONE)
+  await models(false)
+  await act(async () => {})
+
+  expect(usePickedModels.getState().selected).toBeUndefined()
+})

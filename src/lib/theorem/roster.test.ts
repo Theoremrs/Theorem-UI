@@ -70,9 +70,14 @@ async function theoremWith(
       addedAtMs: 1_700_000_000_000,
     })),
   }),
-  conflict = false,
+  /**
+   * The first write is refused as stale, because another browser moved the
+   * thread to this roster in the meantime.
+   */
+  moved?: { held: unknown[]; revision: number },
   gate: Promise<void> | undefined = undefined,
 ) {
+  let current = { held, revision }
   const routes: FakeRoutes = {
     'GET /api/chat/v1/bootstrap': () => ({ csrfToken: 'csrf', tenantId: 't' }),
     'GET /api/chat/v1/threads/:threadId': () => {
@@ -80,9 +85,9 @@ async function theoremWith(
       return {
         thread: {
           threadId: 't1',
-          revision,
-          rosterRevision: revision,
-          participants: held,
+          revision: current.revision,
+          rosterRevision: current.revision,
+          participants: current.held,
           activeRuns: [],
         },
         messages: [],
@@ -101,17 +106,19 @@ async function theoremWith(
       })
       // Held open so a seat can be chosen while the write is on its way.
       await gate
-      if (conflict && written.length === 1)
+      if (moved && written.length === 1) {
+        current = moved
         return new Response(
           JSON.stringify({
-            code: 'roster_revision_stale',
-            title: 'The roster moved.',
+            code: 'chat_revision_conflict',
+            title: 'The chat changed before this mutation was committed',
           }),
           {
             status: 409,
             headers: { 'content-type': 'application/problem+json' },
           },
         )
+      }
       const result = applied(body)
       // A refusal comes back as a Response; a roster the thread applied as a body.
       return result instanceof Response ? result : { roster: result }
@@ -423,25 +430,74 @@ describe('the write', () => {
     expect(useRoster.getState().byConversation.c1?.roster.revision).toBe(4)
   })
 
-  test('a revision that moved under the edit is re-read and the write retried against it', async () => {
+  test("a revision that moved under the edit is refreshed, never overwritten: the person edits again", async () => {
+    // Another browser added C while this one held [B] at revision 3.
     await theoremWith(
       [wire('ptc_b', 'openrouter', 'a/b', 'B')],
       3,
       undefined,
-      true,
+      {
+        held: [
+          wire('ptc_b', 'openrouter', 'a/b', 'B'),
+          wire('ptc_c', 'openrouter', 'c/d', 'C'),
+        ],
+        revision: 4,
+      },
     )
     open('c1', 't1')
     await readConversationRoster('c1', 't1')
     useRoster.getState().removeParticipant('c1', 'ptc_b')
     await saveRoster('c1')
-    // The thread is refused once, read again for its revision, then the same
-    // seats go up against it.
-    expect(written.map((write) => write.body.expectedRosterRevision)).toEqual([
-      3, 3,
-    ])
+
+    // The stale whole-room list was sent once and not sent again: replaying it
+    // against revision 4 would have removed C along with B.
+    expect(written.map((write) => write.body.expectedRosterRevision)).toEqual([3])
     expect(reads).toBe(2)
+    const entry = useRoster.getState().byConversation.c1
+    // The thread's room stands, the discarded edit is said, and nothing waits.
+    expect(seats('c1').map((part) => part.participantId)).toEqual(['ptc_b', 'ptc_c'])
+    expect(entry?.roster.revision).toBe(4)
+    expect(entry?.unsaved).toBe(false)
+    expect(entry?.error).toContain('changed somewhere else')
+
+    // Only a new, explicit edit writes, from the room the person now sees.
+    useRoster.getState().removeParticipant('c1', 'ptc_b')
+    await saveRoster('c1')
+    expect(written).toHaveLength(2)
+    expect(written[1]?.body.expectedRosterRevision).toBe(4)
+    expect(written[1]?.body.participants).toEqual([
+      { participantId: 'ptc_c', model: { provider: 'openrouter', model: 'c/d' }, label: 'C' },
+    ])
+  })
+
+  test('a 409 that is not a moved revision keeps its refusal and is not retried', async () => {
+    await theoremWith(
+      [wire('ptc_b', 'openrouter', 'a/b', 'B')],
+      3,
+      () =>
+        new Response(
+          JSON.stringify({
+            code: 'chat_roster_active_binding',
+            title: 'A participant is still working',
+          }),
+          {
+            status: 409,
+            headers: { 'content-type': 'application/problem+json' },
+          },
+        ),
+    )
+    open('c1', 't1')
+    await readConversationRoster('c1', 't1')
+    useRoster.getState().removeParticipant('c1', 'ptc_b')
+    await saveRoster('c1')
+
+    expect(written).toHaveLength(1)
+    expect(reads).toBe(1)
+    const entry = useRoster.getState().byConversation.c1
+    expect(entry?.error).toContain('A participant is still working')
+    // The person's change stands and waits; nothing resent it on its own.
     expect(seats('c1')).toEqual([])
-    expect(useRoster.getState().byConversation.c1?.error).toBeUndefined()
+    expect(entry?.unsaved).toBe(true)
   })
 
   test('a refused write says so and keeps the change waiting', async () => {
@@ -528,7 +584,7 @@ describe('the write', () => {
     const held = new Promise<void>((resolve) => {
       release = resolve
     })
-    await theoremWith([], 0, undefined, false, held)
+    await theoremWith([], 0, undefined, undefined, held)
     open('c1', 't1')
     await readConversationRoster('c1', 't1')
     const roster = useRoster.getState()

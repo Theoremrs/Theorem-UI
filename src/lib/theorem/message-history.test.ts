@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { CONTEXT_REFERENCES_METADATA, toHistoryMessages, hasTheoremError } from './message-history'
+import { AUTHOR_METADATA, CONTEXT_REFERENCES_METADATA, toHistoryMessages, hasTheoremError } from './message-history'
 import type { Theorem } from './client'
 
 function assistant(id: string, parts: Theorem.StoredPart[]): Theorem.Message {
@@ -55,4 +55,69 @@ test('a stored user message brings back the references it was sent with, on its 
   const [withReferences, without] = toHistoryMessages([asked, plain])
   expect(withReferences?.metadata?.custom?.[CONTEXT_REFERENCES_METADATA]).toEqual([reference])
   expect(without?.metadata?.custom?.[CONTEXT_REFERENCES_METADATA]).toBeUndefined()
+})
+
+const said = (text: string) => [
+  { partId: 'text', type: 'text', payload: { text } },
+]
+/** A reply as a room stores it: the participant that wrote it is in its routing. */
+const byParticipant = (
+  id: string,
+  participantId: string,
+  label: string,
+  text: string,
+) =>
+  ({
+    ...assistant(id, said(text)),
+    routing: {
+      author: {
+        kind: 'participant',
+        participantId,
+        actorId: `agent:${participantId}`,
+        model: { provider: 'p', model: label },
+        label,
+      },
+      audience: { kind: 'everyone' },
+      delivery: 'passive',
+      rosterRevision: 3,
+    },
+  }) as Theorem.Message
+
+test('each stored reply of a room keeps the participant that wrote it, and none is merged', () => {
+  const messages = toHistoryMessages([
+    byParticipant('a', 'ptc_a', 'Alpha', 'The cache is stale.'),
+    byParticipant('b', 'ptc_b', 'Beta', 'The index is wrong.'),
+  ])
+  expect(messages).toHaveLength(2)
+  expect(
+    messages.map(
+      (m) =>
+        (m.metadata?.custom as Record<string, { label: string }>)[
+          AUTHOR_METADATA
+        ]?.label,
+    ),
+  ).toEqual(['Alpha', 'Beta'])
+  expect(messages.map((m) => m.id)).toEqual(['a', 'b'])
+})
+
+test("a reply with no participant author, or a person's message, is not given one", () => {
+  const [plain, person] = toHistoryMessages([
+    assistant('plain', said('Hi.')),
+    {
+      ...assistant('person', said('Hello')),
+      role: 'user',
+      routing: {
+        author: { kind: 'person' },
+        audience: { kind: 'everyone' },
+        delivery: 'wake',
+        rosterRevision: 3,
+      },
+    } as unknown as Theorem.Message,
+  ])
+  expect(
+    (plain!.metadata?.custom as Record<string, unknown>)?.[AUTHOR_METADATA],
+  ).toBeUndefined()
+  expect(
+    (person!.metadata?.custom as Record<string, unknown>)?.[AUTHOR_METADATA],
+  ).toBeUndefined()
 })

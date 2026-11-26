@@ -26,6 +26,7 @@ import {
 import { CitationSources } from '@/components/chat/citation-sources'
 import { ComposerEditor } from '@/components/chat/composer-editor'
 import { Composer, composerSurface } from '@/components/chat/composer'
+import { PeerRunStreams } from '@/components/chat/peer-runs'
 import type { ComposerLayout, ComposerSlots } from '@/components/chat/composer'
 import { ReadAloud } from '@/components/chat/read-aloud'
 import {
@@ -323,6 +324,8 @@ const ThreadRoot: FC<{
 
           <ThreadReviewCards />
 
+          <PeerRunStreams />
+
           <ThreadPrimitive.ViewportFooter
             ref={footerRef}
             className={cn(
@@ -419,7 +422,13 @@ const ThreadMessage: FC = () => {
   const role = useAuiState((s) => s.message.role)
   const isEditing = useAuiState((s) => s.message.composer.isEditing)
   const isSpoken = useAuiState((s) => s.message.metadata.modality === 'voice')
+  // A send to a room has no reply of its own: each participant's run is drawn
+  // as the reply it is, so the turn's empty marker draws nothing.
+  const isRoomSend = useAuiState(
+    (s) => s.message.metadata.custom.theoremPeerSend !== undefined,
+  )
 
+  if (isRoomSend) return null
   if (isEditing) return <EditComposer />
   if (isSpoken) return <SpokenMessage />
   if (role === 'user') return <UserMessage />
@@ -804,6 +813,12 @@ const AssistantMessage: FC = () => {
     ThreadComponentsContext,
   )
   const surface = useKitSurface()
+  // A reply a participant of a room wrote is named for that participant.
+  const author = useAuiState(
+    (s) =>
+      (s.message.metadata.custom.theoremAuthor as { label?: string } | undefined)
+        ?.label,
+  )
   const ACTION_BAR_PT = 'pt-1.5'
   // Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
   const ACTION_BAR_HEIGHT = `min-h-7.5 ${ACTION_BAR_PT}`
@@ -826,7 +841,7 @@ const AssistantMessage: FC = () => {
         <FaceSlot />
       </div>
       <div className="appearance-message-prose min-w-0">
-        <AssistantMessageContent speaker="Theorem" />
+        <AssistantMessageContent speaker={author ?? 'Theorem'} />
 
         <div
           data-slot="aui_assistant-message-footer"
