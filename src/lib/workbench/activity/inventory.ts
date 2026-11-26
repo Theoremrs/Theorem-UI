@@ -151,7 +151,7 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
       entry({
         source: 'terminal',
         resource: `${row.workspace}/${row.session}`,
-        label: row.label,
+        label: shownText(row.label) || 'Terminal',
         // A program's exit says how the program ended, not whether an agent's assignment did.
         execution: live ? 'running' : 'unknown',
         reported: true,
@@ -206,4 +206,28 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
       : [e]
   })
   return { entries: unique, completeness: { complete: false, gaps } }
+}
+
+/**
+ * A program names its own terminal, so its label is untrusted text shown
+ * outside the terminal grid. Control characters and invisible direction or
+ * formatting marks are removed, as Rex's Program Status Protocol asks of
+ * anything a terminal shows from a program's report.
+ */
+export function shownText(text: string): string {
+  return Array.from(text)
+    .filter((char) => !hidden(char.codePointAt(0) ?? 0))
+    .join('')
+    .trim()
+}
+
+function hidden(code: number): boolean {
+  return (
+    code <= 0x1f ||
+    (code >= 0x7f && code <= 0x9f) ||
+    (code >= 0x200b && code <= 0x200f) ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2060 && code <= 0x2069) ||
+    code === 0xfeff
+  )
 }

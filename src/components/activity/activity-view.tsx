@@ -21,7 +21,10 @@ import type {
   DrawerPlacement,
 } from '@/lib/workbench/activity/arrangement'
 import { DETACHED_SIDE_CHAT } from '@/lib/workbench/activity/inventory'
-import type { ActivityEntry } from '@/lib/workbench/activity/projection'
+import type {
+  ActivityEntry,
+  WaitingFor,
+} from '@/lib/workbench/activity/projection'
 import type { ActivitySource } from '@/lib/workbench/activity/sources'
 import { useActivity } from '@/lib/workbench/activity/use-activity'
 
@@ -39,9 +42,7 @@ export function statusText(item: ArrangedItem): string {
   const words = (() => {
     switch (entry.execution) {
       case 'waiting':
-        return entry.waiting?.for === 'approval'
-          ? 'Waiting for your approval'
-          : 'Waiting'
+        return waitingWords[entry.waiting?.for ?? 'other']
       case 'running':
         return entry.reported ? 'Running, by its own report' : 'Working'
       case 'queued':
@@ -62,6 +63,62 @@ export function statusText(item: ArrangedItem): string {
     }
   })()
   return words + catching
+}
+
+// Rex's status protocol says what a blocked program waits on (approval, an
+// answer, a sign-in); the text says which, so no symbol has to.
+const waitingWords: Record<WaitingFor, string> = {
+  approval: 'Waiting for your approval',
+  input: 'Waiting for your answer',
+  dependency: 'Waiting on other work',
+  capacity: 'Waiting for capacity',
+  other: 'Waiting',
+}
+
+/** Which quiet mark a row carries. The status text always says the same. */
+export function toneOf(
+  item: ArrangedItem,
+): 'working' | 'waiting' | 'ended' | 'idle' {
+  if (!item.listed) return 'ended'
+  switch (item.entry.execution) {
+    case 'waiting':
+      return 'waiting'
+    case 'running':
+    case 'queued':
+    case 'starting':
+      return 'working'
+    case 'succeeded':
+    case 'failed':
+    case 'cancelled':
+    case 'interrupted':
+      return 'ended'
+    default:
+      return 'idle'
+  }
+}
+
+/** A small mark beside the row, like Rex's tab-header indicators: decoration only. */
+function ToneMark({
+  tone,
+  className,
+}: {
+  tone: ReturnType<typeof toneOf>
+  className?: string
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      data-activity-tone={tone}
+      className={cn(
+        'size-2 shrink-0 rounded-full',
+        tone === 'working' && 'bg-accent motion-safe:animate-pulse',
+        tone === 'waiting' && 'bg-attention',
+        tone === 'ended' && 'border border-separator',
+        tone === 'idle' && 'bg-separator',
+        className,
+      )}
+    />
+  )
 }
 
 const sourceWord: Record<ActivityEntry['source'], string> = {
@@ -236,14 +293,26 @@ function Row({
           onHeaderOpen ? onHeaderOpen(event.currentTarget) : onOpen()
         }
         className={cn(
-          'flex min-w-0 flex-1 flex-col items-start rounded-md px-2 py-1.5 text-start outline-focus focus-visible:outline-2',
+          'flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1.5 text-start outline-focus focus-visible:outline-2',
           selected ? 'bg-selected' : 'hover:bg-hover',
         )}
       >
-        <span className="w-full truncate text-sm text-ink">{entry.label}</span>
-        <span className="w-full truncate text-xs text-ink-muted">
-          {sourceWord[entry.source]}
-          {projectLabel ? ` in ${projectLabel}` : ''} · {statusText(item)}
+        <ToneMark tone={toneOf(item)} className="mt-1.5" />
+        {/* Rex's row anatomy: the name, a quieter line saying what it is
+            doing, and where it lives at the far end. */}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="flex w-full items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate text-sm text-ink">
+              {entry.label}
+            </span>
+            <span className="shrink-0 text-xs text-ink-faint">
+              {sourceWord[entry.source]}
+              {projectLabel ? ` in ${projectLabel}` : ''}
+            </span>
+          </span>
+          <span className="w-full truncate text-xs text-ink-muted">
+            {statusText(item)}
+          </span>
         </span>
       </button>
       <button
@@ -464,6 +533,9 @@ function ActivityCompact({
           ) : (
             <Icon.ChevronUp className="size-3.5 shrink-0" />
           )}
+          {/* Like Rex's session picker: one quiet mark for the strongest
+              state, waiting over working, with the words beside it. */}
+          <ToneMark tone={waiting ? 'waiting' : 'working'} />
           <span className="truncate">{summary}</span>
         </button>
         <button

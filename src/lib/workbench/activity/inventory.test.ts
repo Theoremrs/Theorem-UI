@@ -1,7 +1,7 @@
 // SOURCING: none — bun:test over ./inventory with organization reads built by hand
 import { describe, expect, test } from 'bun:test'
 import type { OrganizationRead, ThreadEntry } from '@/lib/theorem/organization'
-import { buildInventory } from './inventory'
+import { buildInventory, shownText } from './inventory'
 
 const thread = (
   id: string,
@@ -148,5 +148,12 @@ describe('inventory', () => {
     expect(inv.entries[0]?.detail).toBe('A side chat open in the workspace')
     expect(inv.entries[1]?.detail).toContain('reopen')
     expect(inv.entries[2]?.parentRunId).toBe('r')
+  })
+})
+
+describe('shownText', () => {
+  test('a terminal label loses control and invisible direction marks', () => {
+    expect(shownText('  build\u0007 ‮gnirts‬ ')).toBe('build gnirts')
+    expect(shownText('​')).toBe('')
   })
 })
