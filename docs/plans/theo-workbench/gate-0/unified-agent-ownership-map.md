@@ -190,6 +190,19 @@ The question each decision answered is kept so later readers see what was weighe
 | 2.6 artifact view state | `artifact-view.ts` records each panel's view as separate choices: follow the newest, the revision shown when not following, and keep open across chats. A chosen revision stays fixed while newer ones arrive, with a quiet "Newer version" action. | One view per artifact (the panel id is the artifact id); two views of the same artifact side by side are not possible. |
 | 2.6 reopen after changing chats | A kept panel survives a chat change and a saved layout, records its origin conversation on the panel, and reads revisions from it (`readArtifactVersions`). A live App there refers to its answer and goes to that chat. | The runtime host (AR-08 to AR-12) is not built: a live App still runs only in its answer, as the referral guard requires. |
 
+## 7d. Gates 4 and 5: what they wait on (2026-11-26)
+
+Neither gate is started. Each exit needs a backend capability that does not exist yet, and one needs an owner decision first.
+
+| Gate | Needs | Why it cannot start from the UI |
+| --- | --- | --- |
+| 4 template export | A package format (schema version, agent identity and lineage, profile, role and model requirements, asset references) and an export route on the organization. | The organization is the only agent record, so a template is the organization's definition plus its profile. Building the package is small once the format is agreed. |
+| 4 import as a copy | A second agent identity to mint (PT-03). | The record holds one agent per organization (Gate 0 decision 2 leaves "more than one agent" to Gate 3, and it is still open). A copy cannot get a new identity with lineage until the organization can hold more than one agent, or a copy makes a new organization. That is the owner's choice. |
+| 4 selected memory | Memory scoping on reads, writes, retrieval and export per agent (DB-04), and an export that includes payloads or names them as dependencies (PT-02). | No per-agent memory scope or memory export route exists. |
+| 4 host-supplied store and standalone embedded Rusty Red | Provider resolution in the order DB-03 sets, with a failed explicit binding kept and shown. | Backend provider binding; nothing for the UI to show yet. |
+| 5 second knowledge provider and evaluation forks | A materially different retrieval provider declaring its capabilities (DB-05), and isolated candidate forks from one snapshot (11.3). | Backend. |
+| 5 advanced arrangements | Two views of one artifact side by side, remote handoff, cross-window presentation. | Waits on the runtime host (AR-08 to AR-12), which Gate 3 deferred; today one panel per artifact. |
+
 ## 8. Overlap note
 
 A separate local working session titled "Extensible connected workspace spec" may cover some of the same ground. It was not readable from here; compare before Gate 1 starts.
