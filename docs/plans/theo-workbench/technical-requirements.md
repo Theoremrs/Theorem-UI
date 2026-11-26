@@ -202,7 +202,7 @@ Attach/replay/reset MUST bind environment, terminal session, backend and generat
 
 Any view attached to a terminal MAY type, paste and resize it; the latest resize wins. There are no observers, no takeover and no lease generation: the owner removed exclusive control on 2026-11-16 because one person's several views of a terminal must never lock each other out (a stale attachment left by a reloaded page held the lease and locked the live page out). Input aimed at a terminal the host has since rebound MUST be refused `stale_epoch`, and the view MUST re-attach. Renderer replies to terminal queries are discarded on Herdr terminals, where Herdr Core answers queries itself; on a native PTY only the view that last typed or resized answers. Browser focus alone MUST NOT grant remote execution rights.
 
-*Open conflict (2026-11-26):* the unified agent experience companion (IN-02, IN-03, `UAE-AC-07`) expects explicit terminal control with a lease, fencing and reacquisition. This requirement removed the lease. Until the owner decides between them, R28 stands as written and `UAE-AC-07` stays not run; see the [Gate 0 ownership map](gate-0/unified-agent-ownership-map.md), section 7, item 1.
+*Settled 2026-11-26 (Gate 0 decision 1):* the unified agent experience companion asked for a control lease (IN-02, IN-03). The owner chose no lease, so this requirement stands as written. The companion's remaining rule is between the person and agents: an agent's input needs an owner-issued claim, and the person's input stops further agent input until the person releases it. See the [Gate 0 ownership map](gate-0/unified-agent-ownership-map.md), section 7, item 1.
 
 ## R29 — Detach is not terminate
 
@@ -357,7 +357,7 @@ Alternate panel presentations MUST use versioned descriptors, explicit capabilit
 | R14, R15 | AR-11, RC-03 | Saved means acknowledged; uncertain outcomes stay uncertain |
 | R20, R21 | IN-01 | Explicit message recipient, drafts per target |
 | R24, R25, R31 | 8.3 (external terminal agents), RC-01 | Execution profiles are not agents (ID-01) |
-| R27, R28 | IN-02, IN-03, API-05, UI-05 | Conflict: R28 lets any view type and resize; the companion requires one owner-issued controller claim. Open decision, see the ownership map section 7 |
+| R27, R28 | IN-02, IN-03, API-05, UI-05 | Settled: no lease, R28 stands for the person's views; agents need an owner-issued claim that the person's input overrides (ownership map section 7, item 1) |
 | R29, R36 | UX-02, IN-06, RC-02, AR-12 | Close view detaches; Stop is separate. Side-chat `Host` unmount still cancels (ownership map 2.5) |
 | R30 | OW-02, EV-02 | Inventory and cursor reconciliation |
 | R32 | ST-01, 8.3 | Program reports stay reported state |
