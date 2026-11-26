@@ -123,6 +123,38 @@ try {
     await input.evaluate((el) => document.activeElement === el),
   )
   await load('Empty')
+  await input.click()
+  await page.keyboard.type('```')
+  await page.keyboard.press('Enter')
+  await code.waitFor()
+  const python = [
+    'from pathlib import Path',
+    '',
+    'def read_lines(path: Path) -> list[str]:',
+    '    with path.open("r", encoding="utf-8") as stream:',
+    '        return [line.strip() for line in stream if line.strip()]',
+    '',
+    'if __name__ == "__main__":',
+    '    for line in read_lines(Path("notes.txt")):',
+    '        print(line)',
+  ].join('\n')
+  await page.keyboard.insertText(python)
+  const detected = await page
+    .waitForFunction(() =>
+      document
+        .querySelector('[data-testid="draft"]')
+        .textContent.startsWith('```python\n'),
+    )
+    .then(
+      () => true,
+      () => false,
+    )
+  check(
+    'a bare fence loads the detector and adds the inferred language',
+    detected && (await draft()) === `\`\`\`python\n${python}\n\`\`\``,
+    await draft(),
+  )
+  await load('Empty')
   await page.getByRole('button', { name: 'Insert code block' }).click()
   await code.waitFor()
   check(
