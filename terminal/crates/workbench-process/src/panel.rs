@@ -843,6 +843,9 @@ impl ProcessPanel {
                 self.stage = Stage::Bound(Box::new(b));
             }
             Outcome::Uncertain { reason } => {
+                // Whether the open happened is unknown, so it grants no one:
+                // the run claims again once the terminal shows as open.
+                self.grant = None;
                 self.stage = Stage::Opening(Opening {
                     uncertain: Some(reason),
                     ..op
@@ -878,8 +881,8 @@ impl ProcessPanel {
     // ---- host -----------------------------------------------------------
 
     fn on_host(&mut self, message: HostMessage, cx: &mut Ctx) {
-        if let HostMessage::FollowedRuns { runs } = &message {
-            self.catalog.control().working_runs(runs);
+        if let HostMessage::RunsEnded { runs } = &message {
+            self.catalog.control().runs_ended(runs);
             cx.invalidate();
             return;
         }

@@ -368,6 +368,8 @@ export interface Conversation {
   followedRuns: () => string[]
   /** Delivers the followed runs when the set changes, never when it is the same again. */
   onFollowedRuns: (listener: (runs: string[]) => void) => () => void
+  /** Delivers the runs seen to finish here: ones that left the set while the same thread stayed open. */
+  onRunsEnded: (listener: (runs: string[]) => void) => () => void
   /** Whether a model can be picked here. */
   canPickModel: boolean
   dispose: () => void
@@ -1178,13 +1180,26 @@ export function createConversation({
     const joined = workingRuns(runtime.thread.getState().messages)
     return joined ? joined.split(' ') : []
   }
+  const endedListeners = new Set<(runs: string[]) => void>()
   let announcedRuns = runsNow().join(' ')
+  let announcedThread = threadKey()
   function announceRuns() {
     if (disposed) return
     const runs = runsNow()
-    if (runs.join(' ') === announcedRuns) return
+    const thread = threadKey()
+    const before = announcedRuns
+    const sameThread = thread === announcedThread
+    announcedThread = thread
+    if (runs.join(' ') === before) return
     announcedRuns = runs.join(' ')
     for (const listener of [...runsListeners]) listener(runs)
+    // Runs that left the set while the same thread stayed open finished. A switch to another
+    // thread only takes its runs out of view, so it ends nothing.
+    const ended = sameThread
+      ? (before ? before.split(' ') : []).filter((run) => !runs.includes(run))
+      : []
+    if (ended.length)
+      for (const listener of [...endedListeners]) listener(ended)
   }
 
   const offThread = runtime.thread.subscribe(() => {
@@ -1689,10 +1704,17 @@ export function createConversation({
           'missing_capability',
           'This host makes no second runtime for a side chat',
         )
-      const scope = request.scope ?? 'fresh'
-      const from = runtime.threads.mainItem.getState().remoteId
+      const main = runtime.threads.mainItem.getState().remoteId
       const reopen = request.reopen
-      if (reopen !== undefined && (!reopen || reopen === from))
+      // A reopened chat keeps the scope and origin it was opened with, whatever thread the
+      // main conversation shows now.
+      const closedHere =
+        reopen !== undefined
+          ? readDetached().find((entry) => entry.threadId === reopen)
+          : undefined
+      const scope = closedHere?.scope ?? request.scope ?? 'fresh'
+      const from = reopen !== undefined ? closedHere?.from : main
+      if (reopen !== undefined && (!reopen || reopen === main))
         return refused(
           answers,
           'invalid_request',
@@ -1708,10 +1730,7 @@ export function createConversation({
           'conflict',
           'That side chat is already open',
         )
-      if (
-        reopen !== undefined &&
-        !readDetached().some((entry) => entry.threadId === reopen)
-      )
+      if (reopen !== undefined && !closedHere)
         return refused(
           answers,
           'unknown_side_chat',
@@ -1913,6 +1932,10 @@ export function createConversation({
     onFollowedRuns(listener) {
       runsListeners.add(listener)
       return () => void runsListeners.delete(listener)
+    },
+    onRunsEnded(listener) {
+      endedListeners.add(listener)
+      return () => void endedListeners.delete(listener)
     },
     onModels(listener) {
       modelListeners.add(listener)

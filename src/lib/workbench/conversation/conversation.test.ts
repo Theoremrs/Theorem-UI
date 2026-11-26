@@ -1714,6 +1714,23 @@ describe('side chat', () => {
     expect(t.opens.at(-1)).toMatchObject({ reopen: 'stored-9' })
   })
 
+  test('a reopened side chat keeps the scope and origin it was opened with', async () => {
+    const t = withSide()
+    const first = await t.conversation.sideChat({ ...base('r1'), scope: 'continued' })
+    if (first.outcome !== 'accepted') throw new Error(first.outcome)
+    t.stored.threadId = 'stored-9'
+    first.value.close()
+    // The main conversation moves on before the chat is reopened, with no scope given.
+    t.main.stub.remoteId = 'remote-2'
+    const done = await t.conversation.sideChat({ ...base('r2'), reopen: 'stored-9' })
+    if (done.outcome !== 'accepted') throw new Error(done.outcome)
+    expect(t.opens.at(-1)).toEqual({ scope: 'continued', from: 'remote-1', reopen: 'stored-9' })
+    done.value.close()
+    expect(t.conversation.sideChats()).toEqual([
+      expect.objectContaining({ scope: 'continued', from: 'remote-1', threadId: 'stored-9' }),
+    ])
+  })
+
   test('disposing the owner closes every side chat', async () => {
     const t = withSide()
     await t.conversation.sideChat(base('r1'))

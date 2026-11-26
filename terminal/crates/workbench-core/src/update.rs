@@ -667,6 +667,13 @@ impl Model {
         if !terminal {
             return;
         }
+        // Runs that finished before this panel existed: a claim it is asked
+        // for must still be refused to them.
+        if let Some(message) = self.retained.ended_runs() {
+            self.call(id, Mode::Silent, |p, cx| {
+                p.update(PanelMsg::Host(message), cx)
+            });
+        }
         let Some((_, message)) = self.retained.sessions.iter().find(|(w, _)| *w == workspace)
         else {
             return;
@@ -968,6 +975,12 @@ impl Model {
                 // Only the panel the action is for: the one named, else the
                 // focused one. A panel of that kind elsewhere is not guessed.
                 let target = match on {
+                    // A panel named that does not exist is said so, as it is
+                    // for Create, Start and Destroy, not told to focus one.
+                    Some(panel) if !self.panels.contains_key(&panel) => {
+                        self.notify(Notice::Refused(Refusal::UnknownPanel(panel)));
+                        return vec![];
+                    }
                     Some(panel) => self
                         .panels
                         .get(&panel)
@@ -2456,9 +2469,10 @@ impl Model {
                 self.follow.runs = runs;
                 self.dirty = true;
             }
-            // Panels hear it too: a shell ends the input claims of runs that
-            // stopped working (Gate 0 decision 1). It names no resource, so it
-            // goes to every panel, and is no edit for Follow the agent.
+            return vec![];
+        }
+        if let HostMessage::RunsEnded { runs } = &message {
+            self.retained.keep_ended_runs(runs);
         }
         if let HostMessage::WorkspaceChanged {
             workspace,
@@ -2856,6 +2870,7 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         | TerminalSessions { .. }
         | ThreadsChanged { .. }
         | FollowedRuns { .. }
+        | RunsEnded { .. }
         | SearchPage { .. }
         | DiagnosticsSet { .. }
         | DiagnosticsCleared { .. }

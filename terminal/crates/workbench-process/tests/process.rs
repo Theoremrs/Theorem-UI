@@ -4259,30 +4259,34 @@ fn the_persons_input_stops_the_agent_until_they_hand_it_back() {
 }
 
 #[test]
-fn a_claim_ends_when_its_run_stops_working() {
+fn a_claim_ends_when_its_run_finishes() {
     let mut r = coding_rig();
     let id = r.id.as_str().to_owned();
     claim(&mut r.m, &id);
-    r.host(HostMessage::FollowedRuns {
-        runs: vec!["run-7".into()],
+    // Another run finishing changes nothing for this one.
+    r.host(HostMessage::RunsEnded {
+        runs: vec!["run-1".into()],
     });
     let (outcome, _) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
     assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
 
-    r.host(HostMessage::FollowedRuns { runs: vec![] });
+    r.host(HostMessage::RunsEnded {
+        runs: vec!["run-7".into()],
+    });
     let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
     assert!(fx.is_empty(), "{fx:?}");
     refused_with(&outcome, "holds no input claim");
 }
 
 #[test]
-fn a_run_never_reported_working_keeps_its_claim() {
+fn leaving_the_followed_conversation_ends_no_claim() {
     let mut r = coding_rig();
     let id = r.id.as_str().to_owned();
     claim(&mut r.m, &id);
     r.host(HostMessage::FollowedRuns {
-        runs: vec!["run-1".into()],
+        runs: vec!["run-7".into()],
     });
+    // The person opened another chat: the run is out of view, not finished.
     r.host(HostMessage::FollowedRuns { runs: vec![] });
     let (outcome, _) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
     assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
@@ -4314,6 +4318,34 @@ fn the_agent_that_starts_a_coding_session_holds_its_claim() {
     assert!(!fx.is_empty());
     let (outcome, _) = act_as(&mut r.m, "run-9", "code.claim", Some(&id), None);
     refused_with(&outcome, "run-7 holds");
+}
+
+#[test]
+fn a_run_that_finished_before_its_shell_existed_gets_no_claim() {
+    let m = coding_model(true);
+    let mut r = Rig {
+        id: PanelInstanceId::new("unset"),
+        m,
+    };
+    // Said while no shell panel existed to hear it.
+    r.host(HostMessage::RunsEnded {
+        runs: vec!["run-7".into()],
+    });
+    let (outcome, fx) = act(
+        &mut r.m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix it","option":"claude"}"#),
+    );
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    r.id = shell_id(&r.m);
+    let open = fx[0].clone();
+    let fx = r.accept_attach(&open, opened(1, 1, 80, 24, "created"));
+    r.settle_resize(fx);
+    r.send(coding_listing());
+    let id = r.id.as_str().to_owned();
+    let (outcome, _) = act(&mut r.m, "code.claim", Some(&id), None);
+    refused_with(&outcome, "no longer working");
 }
 
 #[test]
