@@ -118,9 +118,9 @@ function rgb(value) {
   }
   const match = value.match(/^rgba?\(([^)]+)\)$/i)
   if (!match) return null
-  const values = match[1].replace(/\s*\/\s*/, ',').split(/[\s,]+/).filter(Boolean)
+  const values = match[1].replace('/', ',').split(/[\s,]+/).filter(Boolean)
   if (![3, 4].includes(values.length)) return null
-  const component = (part, scale) => /^[-+]?\d*\.?\d+(?:e[-+]?\d+)?%?$/i.test(part)
+  const component = (part, scale) => /^[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[-+]?\d+)?%?$/i.test(part)
     ? Number.parseFloat(part) / (part.endsWith('%') ? 100 : scale) : NaN
   if (values.length === 4 && component(values[3], 1) !== 1) return null
   const channels = values.slice(0, 3).map((part) => component(part, 255))
