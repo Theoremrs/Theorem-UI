@@ -4410,3 +4410,38 @@ fn a_refused_agent_open_grants_no_claim_on_the_persons_retry() {
     assert!(fx.is_empty(), "{fx:?}");
     refused_with(&outcome, "holds no input claim");
 }
+
+#[test]
+fn an_agent_open_the_person_leaves_grants_no_claim_on_their_next_open() {
+    let m = coding_model(true);
+    let mut r = Rig {
+        id: PanelInstanceId::new("unset"),
+        m,
+    };
+    let (outcome, _) = act(
+        &mut r.m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix it","option":"claude"}"#),
+    );
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    r.id = shell_id(&r.m);
+    // The person stops waiting for the agent's open.
+    update(&mut r.m, Msg::Dock(DockMsg::FocusPanel(r.id.clone())));
+    let fx = r.key(Key::Esc);
+    assert_eq!(kinds(&fx), ["abandon"]);
+    // Then opens a shell of their own from the chooser, and it succeeds.
+    for _ in 0..4 {
+        r.key(Key::Down);
+    }
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["open"]);
+    let open = fx[0].clone();
+    let fx = r.accept_attach(&open, opened(1, 1, 80, 24, "created"));
+    r.settle_resize(fx);
+    r.send(coding_listing());
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"y"}"#));
+    assert!(fx.is_empty(), "{fx:?}");
+    refused_with(&outcome, "holds no input claim");
+}

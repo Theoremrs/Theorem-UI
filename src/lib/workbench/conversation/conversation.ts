@@ -1982,6 +1982,7 @@ export function createConversation({
       attachmentListeners.clear()
       modelListeners.clear()
       runsListeners.clear()
+      endedListeners.clear()
     },
   }
 }

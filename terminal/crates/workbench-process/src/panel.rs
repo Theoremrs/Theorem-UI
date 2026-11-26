@@ -76,10 +76,6 @@ pub struct ProcessPanel {
     /// current state, but a process that started is said so.
     abandoned: BTreeSet<EffectId>,
     pending_focus: Option<bool>,
-    /// The agent run whose `code.start` opened this pane's terminal: it is
-    /// issued an input claim once the terminal is bound (IN-02: a terminal
-    /// started for someone grants them control as part of its creation).
-    grant: Option<String>,
 }
 
 fn plain_char(key: &KeyInput) -> Option<char> {
@@ -118,7 +114,6 @@ impl ProcessPanel {
             deferred: vec![],
             abandoned: BTreeSet::new(),
             pending_focus: None,
-            grant: None,
         }
     }
 
@@ -243,7 +238,15 @@ impl ProcessPanel {
         )
     }
 
-    fn open(&mut self, cx: &mut Ctx, choice: Choice, follows: Option<String>) {
+    /// Opens a terminal from a choice. `grant` names the agent run the open is
+    /// for, issued an input claim once bound; a person's open grants no one.
+    fn open(
+        &mut self,
+        cx: &mut Ctx,
+        choice: Choice,
+        follows: Option<String>,
+        grant: Option<String>,
+    ) {
         let (cols, rows) = self.size();
         // Open and attach are one effect: the pane names its attachment now
         // and the answer carries it back.
@@ -286,6 +289,7 @@ impl ProcessPanel {
                     prefix,
                     attachment,
                     operation,
+                    grant,
                 });
             }
             Err(error) => {
@@ -364,6 +368,7 @@ impl ProcessPanel {
                         backend: p.backend,
                         argv: p.argv.clone(),
                     },
+                    None,
                     None,
                 );
             }
@@ -452,7 +457,7 @@ impl ProcessPanel {
             return;
         };
         match failure.intent {
-            Intent::Open(choice) => self.open(cx, choice, None),
+            Intent::Open(choice) => self.open(cx, choice, None, None),
             Intent::Attach { session, backend } => self.attach_to(cx, session, backend),
         }
     }
@@ -567,7 +572,7 @@ impl ProcessPanel {
         };
         self.back_to_chooser(cx, None);
         match choice {
-            Some(choice) => self.open(cx, choice, Some(old)),
+            Some(choice) => self.open(cx, choice, Some(old), None),
             None => {
                 self.note = Some(format!(
                     "{old} is not running. Choose a profile to start a new shell; it is a different process."
@@ -814,7 +819,6 @@ impl ProcessPanel {
         match c.outcome {
             Outcome::Accepted => {
                 let Some(CompletionPayload::Terminal(t)) = c.payload else {
-                    self.grant = None;
                     self.stage = Stage::Failed(Failure {
                         kind: FailureKind::Failed,
                         reason: "The host accepted the open but named no session.".into(),
@@ -837,7 +841,7 @@ impl ProcessPanel {
                 b.profile = Some(op.choice);
                 b.follows = op.follows;
                 b.opened(cx, &t);
-                if let Some(run) = self.grant.take() {
+                if let Some(run) = &op.grant {
                     let _ = self.catalog.control().claim(control_key(&b), &run, b.epoch);
                 }
                 self.stage = Stage::Bound(Box::new(b));
@@ -845,15 +849,14 @@ impl ProcessPanel {
             Outcome::Uncertain { reason } => {
                 // Whether the open happened is unknown, so it grants no one:
                 // the run claims again once the terminal shows as open.
-                self.grant = None;
                 self.stage = Stage::Opening(Opening {
                     uncertain: Some(reason),
+                    grant: None,
                     ..op
                 });
             }
             Outcome::Refused { code, reason } => {
                 // An open that did not happen grants no one: a retry is the person's.
-                self.grant = None;
                 let kind = if code == "terminal_backend_unavailable" {
                     FailureKind::Unavailable
                 } else {
@@ -867,7 +870,6 @@ impl ProcessPanel {
                 });
             }
             Outcome::Failed { reason } => {
-                self.grant = None;
                 self.stage = Stage::Failed(Failure {
                     kind: FailureKind::Failed,
                     reason,
@@ -1008,7 +1010,7 @@ impl ProcessPanel {
             return;
         };
         argv.push(task);
-        self.grant = match cx.actor() {
+        let grant = match cx.actor() {
             Actor::Agent { run_id } => Some(run_id.clone()),
             Actor::Human => None,
         };
@@ -1018,7 +1020,7 @@ impl ProcessPanel {
             backend: p.backend,
             argv: Some(argv),
         };
-        self.open(cx, choice, None);
+        self.open(cx, choice, None, grant);
         if !matches!(self.stage, Stage::Opening(_)) {
             let why = self.note.clone().unwrap_or_else(|| "Not started.".into());
             cx.refuse(why);
