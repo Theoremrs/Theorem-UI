@@ -174,3 +174,43 @@ test('unsupported glyph and background paint cannot produce contrast passes', { 
     assert.equal(inspectDesign(current).findings.find((entry) => entry.rule === 'coverage').status, 'unknown')
   })
 })
+
+test('wrapping rows are counted, and a given canvas and scheme are what is measured against', { skip: !executablePath }, async (t) => {
+  const loaded = await dependency('playwright-core')
+  const { chromium } = loaded.default ?? loaded
+  const browser = await chromium.launch({ executablePath, headless: true,
+    args: process.env.DESIGN_FEEDBACK_TEST_NO_SANDBOX === '1' ? ['--no-sandbox'] : [] })
+  t.after(() => browser.close())
+  const page = await browser.newPage({ viewport: { width: 800, height: 600 } })
+  await page.setContent(`<!doctype html><style>
+    body { margin: 0; color: #ddd; font: 16px/24px Arial, sans-serif; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; width: 330px; align-items: center; }
+    .chips > span { width: 100px; height: 28px; }
+    .chips > span.tall { height: 40px; }
+    #grid { display: grid; grid-template-columns: repeat(2, 100px); width: 200px; }
+    #grid > i { height: 20px; }
+    #single { display: flex; gap: 8px; }
+  </style><body>
+    <div id="lone" class="chips"><span>1 cup</span><span class="tall">2 tbsp</span><span>1 tsp</span><span>100 g</span><b style="position:absolute">over</b></div>
+    <div id="even" class="chips"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span></div>
+    <div id="grid"><i></i><i></i><i></i></div>
+    <div id="single"><span>one row</span><span>only</span></div>
+    <p id="plain">Light text on the page behind a transparent document.</p>
+  </body>`)
+  const observation = validateObservation(await page.evaluate(collectDesignObservations, { canvas: '#1c1d1e', colorScheme: 'dark' }))
+  const find = (id) => observation.elements.find((element) => element.id === `id:${id}`)
+  assert.equal(observation.capture.colorScheme, 'dark')
+  assert.deepEqual(find('lone').wrap, { kind: 'flex', rows: [3, 1] })
+  assert.deepEqual(find('even').wrap, { kind: 'flex', rows: [3, 3] })
+  assert.deepEqual(find('grid').wrap, { kind: 'grid', rows: [2, 1] })
+  assert.equal(find('single').wrap, undefined)
+  assert.equal(find('plain').text.background, 'rgb(28, 29, 30)')
+  assert.equal(find('plain').text.paintStatus, 'resolved')
+  const report = inspectDesign(observation)
+  const wrapped = (id) => report.findings.find((entry) => entry.elementId === `id:${id}` && entry.rule === 'layout.lone-wrapped-item')
+  assert.equal(wrapped('lone').status, 'review')
+  assert.deepEqual(wrapped('lone').measured.rows, [3, 1])
+  assert.equal(wrapped('even').status, 'pass')
+  assert.equal(wrapped('grid').status, 'review')
+  assert.equal(report.findings.find((entry) => entry.elementId === 'id:plain' && entry.rule === 'color.text-contrast').status, 'pass')
+})

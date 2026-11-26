@@ -46,7 +46,7 @@ export const APP_OPERATIONS = [
     // One operation for both, since a send admits sixteen and Kit, the face,
     // the workbench and the present one take the rest (client-surface.ts).
     description:
-      "Builds and checks an App in the person's browser. Pass `html` (a complete App document as it would be published) or `artifact` (another form as write_app takes it) to check a draft, or `documentId` to check one as saved. Returns whether it built, build, type and runtime problems by file, line and column, its text, and `outline`: each thing on the page by role, name, state and the source that made it. `design: true` adds measurements of the page as drawn: text contrast against its real background, overflowing text, and text and controls under size targets, each located in the source, with what was not measured. `picture: true` adds an approximate image, if you read images. It runs hidden with empty state and an in-memory database. Pass `library` instead to read the declarations an App is checked against: window.theorem, @theorem/ui, @theorem/runtime, @theorem/spatial, @theorem/annotate (the files, index.d.ts or `file`, and a `digest`). Read what you use instead of guessing its shape.",
+      "Builds and checks an App in the person's browser. Pass `html` (a complete App document as it would be published) or `artifact` (another form as write_app takes it) to check a draft, or `documentId` to check one as saved. Returns whether it built, build, type and runtime problems by file, line and column, its text, and `outline`: each thing on the page by role, name, state and the source that made it. `design: true` adds measurements of the page as drawn, in light and dark: text contrast on its real background, overflowing text, an item alone on a wrapped last row, small controls, each located in the source, with what was not measured. `picture: true` adds an approximate image, if you read images. It runs hidden with empty state and an in-memory database. Pass `library` instead to read the declarations an App is checked against: window.theorem, @theorem/ui, @theorem/runtime, @theorem/spatial, @theorem/annotate (the files, index.d.ts or `file`, and a `digest`). Read what you use instead of guessing its shape.",
     effect: 'read',
     inputSchema: {
       type: 'object',
@@ -85,7 +85,7 @@ export const APP_OPERATIONS = [
         design: {
           type: 'boolean',
           description:
-            'Collect live sandbox DOM geometry and styles, then return design issues: each rule, status and authority with what was measured and expected once, how many elements have it and where (source place, else selector), plus pass/fail counts and coverage. Requires runMs > 0; defaults to false.',
+            'Collect live sandbox DOM geometry and styles in the light and the dark theme, then return design issues: each rule, status and authority with what was measured and expected once, how many elements have it, where (source place, else selector) and, when found in only one theme, `schemes`; plus pass/fail counts per scheme and coverage. Requires runMs > 0; defaults to false.',
         },
         library: {
           type: 'string',

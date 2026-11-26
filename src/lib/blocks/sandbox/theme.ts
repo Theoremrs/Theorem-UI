@@ -206,7 +206,8 @@ export const APP_TOKENS = {
 export function readAppTheme(
   root: HTMLElement = document.documentElement,
 ): AppTheme {
-  const style = getComputedStyle(root)
+  // The root's own window, so a root in another document is read as styled there.
+  const style = (root.ownerDocument.defaultView ?? window).getComputedStyle(root)
   const tokens: Record<string, string> = {}
   for (const [name, token] of Object.entries(APP_TOKENS)) {
     const value = style.getPropertyValue(`--${token}`).trim()

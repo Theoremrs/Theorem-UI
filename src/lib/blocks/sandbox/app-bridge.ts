@@ -117,17 +117,24 @@ const context = connectToPage().then((port) => {
   // Measured at once, after the run: fonts still loading are reported as
   // such, and a timer here would be throttled past the host's deadline
   // whenever the person's tab is in the background.
+  // A transition started by a theme change is ended first, so its colours are
+  // the ones the App settles on rather than the ones it is leaving.
   serve<SandboxMethods, 'frame.design'>(
     rpc,
     'frame.design',
-    ({ captureId }) =>
-      collectDesignObservations({
+    ({ captureId, scheme, canvas }) => {
+      for (const animation of document.getAnimations())
+        if (animation instanceof CSSTransition) animation.finish()
+      return collectDesignObservations({
         captureId,
         evidenceKind: 'rendered-artifact',
         maxElements: 300,
         maxNodes: 5000,
         maxTextLength: 160,
-      }),
+        colorScheme: scheme,
+        canvas,
+      })
+    },
   )
   observeHeight((height, fills) => {
     void call<PageMethods, 'frame.resize'>(rpc, 'frame.resize', { height, fills })

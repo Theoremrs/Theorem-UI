@@ -131,6 +131,20 @@ test('report fields do not forward unknown payload keys', () => {
   assert.equal(rule(report, 'type.line-height').expected.injected, undefined)
 })
 
+test('a lone item wrapped under fuller rows is reviewed, and malformed rows are rejected', () => {
+  const container = (id, rows) => element(id, { tag: 'div', text: undefined, wrap: { kind: 'flex', rows } })
+  const report = inspectDesign(observation([container('lone', [3, 3, 1]), container('even', [2, 2]), container('stacked', [1, 1, 1])]))
+  const wrapped = (id) => report.findings.find((finding) => finding.rule === 'layout.lone-wrapped-item' && finding.elementId === id)
+  assert.equal(wrapped('lone').status, 'review')
+  assert.deepEqual(wrapped('lone').measured.rows, [3, 3, 1])
+  assert.ok(wrapped('lone').repair)
+  assert.equal(wrapped('even').status, 'pass')
+  assert.equal(wrapped('stacked').status, 'pass')
+  assert.throws(() => validateObservation(observation([container('one', [4])])), /2 to 64 rows/)
+  assert.throws(() => validateObservation(observation([container('empty', [2, 0])])), /at least one item/)
+  assert.throws(() => validateObservation(observation([element('bad', { wrap: { kind: 'table', rows: [2, 1] } })])), /flex, grid/)
+})
+
 test('geometry separates document movement, size, added/removed identity, and unchanged', () => {
   const before = observation([element('moved'), element('resized'), element('removed'), element('steady')])
   const after = structuredClone(before)

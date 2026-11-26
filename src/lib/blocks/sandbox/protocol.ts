@@ -434,9 +434,13 @@ export interface SandboxMethods {
     params: Record<string, never>
     result: { html: string; outline: string; page?: PageAttributes } | null
   }
-  /** Live DOM measurements, validated by the host before evaluation. */
+  /**
+   * Live DOM measurements, validated by the host before evaluation: in the
+   * scheme the frame was last handed, with `canvas` the colour the page
+   * paints behind it.
+   */
   'frame.design': {
-    params: { captureId: string }
+    params: { captureId: string; scheme?: 'light' | 'dark'; canvas?: string }
     result: unknown
   }
 }

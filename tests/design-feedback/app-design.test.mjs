@@ -6,6 +6,7 @@ import {
   APP_DESIGN_MAX_ISSUES,
   APP_DESIGN_MAX_NODES,
   APP_DESIGN_MAX_PLACES,
+  schemesDesignFeedback,
   unavailableDesign,
 } from '../../src/lib/blocks/app-design.ts'
 
@@ -41,7 +42,8 @@ test('sandbox DOM observations produce localized evaluated feedback', () => {
     issue.status === 'fail' && issue.authority === 'standard' &&
     issue.rule === 'color.text-contrast' && issue.at.includes('main.tsx:12:3')))
   assert.ok(result.report.issues.every((issue) => issue.status !== 'pass'))
-  assert.ok(result.report.summary.pass > 0)
+  assert.deepEqual(result.schemes, ['light'])
+  assert.ok(result.report.summary.light.pass > 0)
 })
 
 test('a missing, stale or wrong-kind capture never becomes a clean report', () => {
@@ -109,7 +111,7 @@ test('bounded reports retain omission counts and uncertainty', () => {
   assert.ok(result.report.omittedIssues > 0)
   assert.equal(result.report.coverage.complete, false)
   assert.equal(result.report.coverage.omitted, 20)
-  assert.ok(result.report.summary.fail >= 100)
+  assert.ok(result.report.summary.light.fail >= 100)
 })
 
 test('unavailability is explicit and bounded', () => {
@@ -128,4 +130,52 @@ test('sandbox capture metadata is copied by field rather than forwarding hidden 
   assert.deepEqual(result.capture.viewport, { width: 1024, height: 768, dpr: 1 })
   assert.deepEqual(result.capture.document, { width: 1024, height: 768 })
   assert.ok(new TextEncoder().encode(JSON.stringify(result)).length < 128 * 1024)
+})
+
+test('an App measured in both schemes lists a shared issue once and names the scheme of one found in only one', () => {
+  const light = observation()
+  light.elements.push({
+    id: 'id:chips', selector: '#chips', identity: 'explicit', tag: 'div', source: 'main.tsx:30:5',
+    rect: { x: 24, y: 60, width: 330, height: 64 }, viewportRect: { x: 24, y: 60, width: 330, height: 64 },
+    interactive: false, disabled: false, wrap: { kind: 'flex', rows: [3, 1] },
+  })
+  light.coverage.nodesSeen = light.coverage.elementsMeasured = light.elements.length
+  const dark = structuredClone(light)
+  dark.capture.id = 'artifact-check-dark'
+  dark.capture.colorScheme = 'dark'
+  // Readable in dark: light grey on near black.
+  dark.elements[0].text.background = 'rgb(28, 29, 30)'
+  const result = schemesDesignFeedback([
+    { scheme: 'light', captureId: 'artifact-check', value: light },
+    { scheme: 'dark', captureId: 'artifact-check-dark', value: dark },
+  ])
+  assert.equal(result.status, 'measured')
+  assert.deepEqual(result.schemes, ['light', 'dark'])
+  assert.equal(result.unmeasured, undefined)
+  assert.ok(result.report.summary.light.fail > 0)
+  assert.equal(result.report.summary.dark.fail, 0)
+  const contrast = result.report.issues.find((issue) => issue.rule === 'color.text-contrast')
+  assert.deepEqual(contrast.schemes, ['light'])
+  const lone = result.report.issues.filter((issue) => issue.rule === 'layout.lone-wrapped-item')
+  assert.equal(lone.length, 1)
+  assert.equal(lone[0].schemes, undefined)
+  assert.equal(lone[0].count, 1)
+  assert.deepEqual(lone[0].at, ['main.tsx:30:5'])
+  assert.ok(result.report.coverage.limitations.some((item) => item.includes('script')))
+})
+
+test('a scheme that was not measured is named with its reason, and a capture in the wrong scheme is refused', () => {
+  const partial = schemesDesignFeedback([
+    { scheme: 'light', captureId: 'artifact-check', value: observation() },
+    { scheme: 'dark', reason: 'The App did not answer the dark design measurement within 5 s.' },
+  ])
+  assert.equal(partial.status, 'measured')
+  assert.deepEqual(partial.schemes, ['light'])
+  assert.equal(partial.unmeasured.scheme, 'dark')
+  assert.ok(partial.report.issues.every((issue) => issue.schemes === undefined))
+  const mislabelled = schemesDesignFeedback([
+    { scheme: 'dark', captureId: 'artifact-check', value: observation() },
+  ])
+  assert.equal(mislabelled.status, 'unavailable')
+  assert.match(mislabelled.reason, /scheme/)
 })

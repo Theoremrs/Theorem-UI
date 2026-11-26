@@ -6,8 +6,12 @@
 import { z } from 'zod'
 import { documentAppDatabases, openInMemory } from './app-db'
 import * as checker from './app-checker'
-import { appDesignFeedback, unavailableDesign } from './app-design'
-import type { AppDesignFeedback } from './app-design'
+import { schemesDesignFeedback, unavailableDesign } from './app-design'
+import type {
+  AppDesignFeedback,
+  DesignScheme,
+  SchemeMeasurement,
+} from './app-design'
 import { PICTURE_WIDTH, pictureOf } from './app-picture'
 import type { AppPicture } from './app-picture'
 import { AppBuildError, appSourcesOf } from './app-source'
@@ -29,6 +33,8 @@ import type {
   PageAttributes,
   SandboxMethods,
 } from './sandbox/protocol'
+import { readAppTheme } from './sandbox/theme'
+import type { AppTheme } from './sandbox/theme'
 
 /** How a notebook's cells stood when its run ended, by id. */
 export interface CellOutcomes {
@@ -145,6 +151,55 @@ const declarationsOf = (html: string) =>
   )
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+/** How long a copy of the page's stylesheets has to load, to read a scheme it is not showing. */
+const STYLES_MS = 3_000
+
+/** The scheme the page shows now. */
+const pageScheme = (): DesignScheme =>
+  document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+
+/**
+ * The page's look in a scheme: read from the page when it shows it, else
+ * from the page's own stylesheets in a hidden document whose root carries
+ * the page's root attributes in that scheme. The page itself is never
+ * switched, so the person sees nothing change.
+ */
+async function appThemeIn(scheme: DesignScheme): Promise<AppTheme | undefined> {
+  if (scheme === pageScheme()) return readAppTheme()
+  const frame = document.createElement('iframe')
+  frame.setAttribute('aria-hidden', 'true')
+  frame.tabIndex = -1
+  frame.style.cssText =
+    'position:fixed;left:0;top:0;width:0;height:0;border:0;visibility:hidden;pointer-events:none'
+  document.body.append(frame)
+  try {
+    const copy = frame.contentDocument
+    if (!copy) return undefined
+    const root = copy.documentElement
+    for (const { name, value } of document.documentElement.attributes)
+      root.setAttribute(name, value)
+    root.classList.toggle('dark', scheme === 'dark')
+    root.style.setProperty('color-scheme', scheme)
+    const loads: Array<Promise<unknown>> = []
+    for (const node of document.querySelectorAll(
+      'style, link[rel~="stylesheet"]',
+    )) {
+      const clone = copy.importNode(node, true) as HTMLElement
+      // The copy is the hidden document's element, so it is told by its name.
+      if (clone.localName === 'link')
+        loads.push(
+          new Promise((resolve) => {
+            clone.onload = clone.onerror = resolve
+          }),
+        )
+      copy.head.append(clone)
+    }
+    await Promise.race([Promise.all(loads), wait(STYLES_MS)])
+    return readAppTheme(root)
+  } finally {
+    frame.remove()
+  }
+}
 
 /** Elements that start a new line when a page is read as text. */
 const LINE = new Set(
@@ -305,30 +360,67 @@ async function run(
         carried = last.data.page
       }
       if (designed) {
-        const captureId = crypto.randomUUID()
-        const observed = await Promise.race([
-          connection.connected
-            .then((rpc) =>
-              call<SandboxMethods, 'frame.design'>(rpc, 'frame.design', {
-                captureId,
-              }),
-            )
-            .then(
-              (value) => ({ value }),
-              (error: unknown) => ({
-                failed: error instanceof Error ? error.message : String(error),
-              }),
-            ),
-          wait(DESIGN_MS).then(() => ({ late: true })),
-        ])
-        design =
-          'value' in observed
-            ? appDesignFeedback(observed.value, captureId)
-            : unavailableDesign(
-                'late' in observed
-                  ? `The App did not answer the design measurement within ${DESIGN_MS / 1000} s.`
-                  : `The App's design measurement failed: ${observed.failed}`,
-              )
+        // Measured in the scheme the page shows, then in the other one: an
+        // App is seen in both, and one that reads well in one may not in the
+        // other. Each measurement is against the page's background in it.
+        const first = pageScheme()
+        const measurements: Array<SchemeMeasurement> = []
+        for (const scheme of [
+          first,
+          first === 'dark' ? 'light' : 'dark',
+        ] as const) {
+          const theme = await appThemeIn(scheme)
+          if (!theme) {
+            measurements.push({
+              scheme,
+              reason: `The page's ${scheme} theme could not be read.`,
+            })
+            continue
+          }
+          frame.style.setProperty('color-scheme', scheme)
+          const captureId = crypto.randomUUID()
+          const observed = await Promise.race([
+            connection.connected
+              .then(async (rpc) => {
+                await call<SandboxMethods, 'theme.changed'>(
+                  rpc,
+                  'theme.changed',
+                  theme,
+                )
+                return call<SandboxMethods, 'frame.design'>(
+                  rpc,
+                  'frame.design',
+                  {
+                    captureId,
+                    scheme,
+                    ...(theme.tokens.background
+                      ? { canvas: theme.tokens.background }
+                      : {}),
+                  },
+                )
+              })
+              .then(
+                (value) => ({ value }),
+                (error: unknown) => ({
+                  failed:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              ),
+            wait(DESIGN_MS).then(() => ({ late: true })),
+          ])
+          measurements.push(
+            'value' in observed
+              ? { scheme, captureId, value: observed.value }
+              : {
+                  scheme,
+                  reason:
+                    'late' in observed
+                      ? `The App did not answer the ${scheme} design measurement within ${DESIGN_MS / 1000} s.`
+                      : `The App's ${scheme} design measurement failed: ${observed.failed}`,
+                },
+          )
+        }
+        design = schemesDesignFeedback(measurements)
       }
     }
   } finally {

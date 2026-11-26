@@ -22,6 +22,20 @@ export function collectDesignObservations(options = {}) {
   const segmenter = typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null
   if (!segmenter) limitations.add('Intl.Segmenter is unavailable; reading-measure grapheme counts are not measured.')
+  const colorScheme = ['light', 'dark'].includes(options.colorScheme) ? options.colorScheme
+    : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  // What the embedding page paints behind a transparent document, resolved to
+  // the browser's own computed form. Without it, text with no opaque
+  // background of its own has an unresolved contrast.
+  let canvas = null
+  if (typeof options.canvas === 'string' && options.canvas.length <= 256 && CSS.supports('color', options.canvas)) {
+    const probe = document.createElement('span')
+    probe.style.color = options.canvas
+    document.documentElement.append(probe)
+    canvas = getComputedStyle(probe).color
+    probe.remove()
+    limitations.add('Text with no opaque background of its own is measured against the colour the embedding page paints behind the document.')
+  }
   const bounded = (value, length = 512) => String(value ?? '').slice(0, length)
   const cssEscape = (value) => CSS.escape(String(value))
   const styleCache = new Map()
@@ -123,7 +137,10 @@ export function collectDesignObservations(options = {}) {
         else if (alpha !== 0) reasons.add('Background is not transparent or opaque sRGB.')
       }
     }
-    if (background === null) reasons.add('No explicit opaque background; the canvas or embedding page supplies it.')
+    if (background === null) {
+      if (canvas !== null && alphaOf(canvas) === 1) background = canvas
+      else reasons.add('No explicit opaque background; the canvas or embedding page supplies it.')
+    }
     return { background, paintStatus: reasons.size ? 'unknown' : 'resolved', paintReasons: [...reasons] }
   }
   const directText = (element) => [...element.childNodes]
@@ -169,6 +186,28 @@ export function collectDesignObservations(options = {}) {
       readingMeasureEligible,
       averageGraphemesPerLine: tops.length && readingMeasureEligible ? graphemeCount / tops.length : null,
     }
+  }
+  // How the in-flow items of a wrapping row container fall into rows: a row
+  // ends where an item starts below every item before it.
+  const wrapOf = (element, style) => {
+    const flex = ['flex', 'inline-flex'].includes(style.display)
+    const grid = ['grid', 'inline-grid'].includes(style.display)
+    if (!(flex && ['row', 'row-reverse'].includes(style.flexDirection) && style.flexWrap !== 'nowrap') && !grid) return undefined
+    const rows = []
+    let bottom = -Infinity
+    for (const child of element.children) {
+      const childStyle = styleOf(child)
+      if (childStyle.display === 'none' || ['absolute', 'fixed'].includes(childStyle.position)) continue
+      const box = child.getBoundingClientRect()
+      if (!(box.width > 0 && box.height > 0)) continue
+      if (!rows.length || box.top >= bottom - 0.5) {
+        if (rows.length >= 64) return undefined
+        rows.push(0)
+        bottom = box.bottom
+      } else bottom = Math.max(bottom, box.bottom)
+      rows[rows.length - 1]++
+    }
+    return rows.length > 1 ? { kind: flex ? 'flex' : 'grid', rows } : undefined
   }
   const elements = []
   const walker = document.createTreeWalker(document.documentElement, NodeFilter.SHOW_ELEMENT)
@@ -220,6 +259,7 @@ export function collectDesignObservations(options = {}) {
       scrollWidth: element.scrollWidth,
       scrollHeight: element.scrollHeight,
     } : undefined
+    const wrap = wrapOf(element, style)
     const observation = {
       ...identity,
       tag: element.localName,
@@ -232,6 +272,7 @@ export function collectDesignObservations(options = {}) {
       ...(source ? { source: bounded(source) } : {}),
       ...(text ? { text } : {}),
       ...(overflow ? { overflow } : {}),
+      ...(wrap ? { wrap } : {}),
     }
     elements.push(observation)
   }
@@ -253,7 +294,7 @@ export function collectDesignObservations(options = {}) {
         width: Math.max(root.scrollWidth, body?.scrollWidth ?? 0, innerWidth),
         height: Math.max(root.scrollHeight, body?.scrollHeight ?? 0, innerHeight),
       },
-      colorScheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+      colorScheme,
       reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
       fontsStatus: document.fonts?.status ?? 'unavailable',
     },

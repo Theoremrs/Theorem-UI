@@ -39,6 +39,8 @@ export interface DesignElement {
     scrollWidth: number
     scrollHeight: number
   }
+  /** Items per row of a wrapping flex row or a grid, top row first. */
+  wrap?: { kind: 'flex' | 'grid'; rows: number[] }
 }
 export interface DesignCoverage {
   nodesSeen: number
