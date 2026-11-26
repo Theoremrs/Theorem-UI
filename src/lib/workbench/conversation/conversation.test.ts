@@ -1571,6 +1571,7 @@ describe('side chat', () => {
         }),
       },
       workspaceId: 'w1',
+      storage: createMemoryStorage(),
       schedule: () => () => undefined,
     })
     return {
@@ -1660,7 +1661,7 @@ describe('side chat', () => {
     expect((await t.conversation.sideChat(base('r'))).outcome).toBe('accepted')
   })
 
-  test('lists the side chats open now with their scope and, once it exists, their stored thread; a closed one is gone', async () => {
+  test('lists the side chats open now with their scope and, once it exists, their stored thread; a closed one is kept to reopen', async () => {
     const t = withSide()
     expect(t.conversation.sideChats()).toEqual([])
     const done = await t.conversation.sideChat({
@@ -1677,7 +1678,57 @@ describe('side chat', () => {
       threadId: 'stored-9',
     })
     done.value.close()
+    expect(t.conversation.sideChats()).toEqual([
+      {
+        conversationId: 'side-1',
+        scope: 'continued',
+        from: 'remote-1',
+        threadId: 'stored-9',
+        detached: true,
+      },
+    ])
+  })
+
+  test('a side chat closed before it had a stored thread is not kept', async () => {
+    const t = withSide()
+    const done = await t.conversation.sideChat(base('r'))
+    if (done.outcome !== 'accepted') throw new Error(done.outcome)
+    done.value.close()
     expect(t.conversation.sideChats()).toEqual([])
+  })
+
+  test("reopening names a side chat's own thread, never the main one", async () => {
+    const t = withSide()
+    expect(
+      await t.conversation.sideChat({ ...base('r'), reopen: 'remote-1' }),
+    ).toMatchObject({ outcome: 'refused', code: 'invalid_request' })
+    expect(
+      await t.conversation.sideChat({ ...base('r2'), reopen: 'stored-9' }),
+    ).toMatchObject({ outcome: 'refused', code: 'unknown_side_chat' })
+    const first = await t.conversation.sideChat(base('r3'))
+    if (first.outcome !== 'accepted') throw new Error(first.outcome)
+    t.stored.threadId = 'stored-9'
+    first.value.close()
+    const done = await t.conversation.sideChat({ ...base('r4'), reopen: 'stored-9' })
+    expect(done.outcome).toBe('accepted')
+    expect(t.opens.at(-1)).toMatchObject({ reopen: 'stored-9' })
+  })
+
+  test('a reopened side chat keeps the scope and origin it was opened with', async () => {
+    const t = withSide()
+    const first = await t.conversation.sideChat({ ...base('r1'), scope: 'continued' })
+    if (first.outcome !== 'accepted') throw new Error(first.outcome)
+    t.stored.threadId = 'stored-9'
+    first.value.close()
+    // The main conversation moves on before the chat is reopened, with no scope given.
+    t.main.stub.remoteId = 'remote-2'
+    const done = await t.conversation.sideChat({ ...base('r2'), reopen: 'stored-9' })
+    if (done.outcome !== 'accepted') throw new Error(done.outcome)
+    expect(t.opens.at(-1)).toEqual({ scope: 'continued', from: 'remote-1', reopen: 'stored-9' })
+    done.value.close()
+    expect(t.conversation.sideChats()).toEqual([
+      expect.objectContaining({ scope: 'continued', from: 'remote-1', threadId: 'stored-9' }),
+    ])
   })
 
   test('disposing the owner closes every side chat', async () => {

@@ -12,6 +12,7 @@ import { createConversation } from './conversation'
 import type { Conversation } from './conversation'
 import { conversationRuntimeOf } from './runtime'
 import { createSideChats } from './side-chats'
+import { detaching } from './side-chat-model'
 import type { SideChatModel } from './side-chat-model'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -20,14 +21,23 @@ let root: Root | undefined
 afterEach(() => {
   if (root) act(() => root?.unmount())
   root = undefined
+  globalThis.sessionStorage?.clear()
 })
 
 const base = (requestId: string) => ({ workspaceId: 'w1', requestId })
 
-/** A model whose turns wait until the signal aborts, and that records what it was sent. */
-function model(sent: string[], aborted: { count: number }): SideChatModel {
-  let threadId: string | undefined
-  const adapter: ChatModelAdapter = {
+/**
+ * A model whose turns wait until the signal aborts (an abort stands for Theorem cancelling the
+ * run), that records what it was sent, and that detaches the way the real one does.
+ */
+function model(
+  sent: string[],
+  aborted: { count: number },
+  reopen?: string,
+): SideChatModel {
+  let threadId: string | undefined = reopen
+  const detached = detaching()
+  const turn: ChatModelAdapter = {
     async *run({ messages, abortSignal }) {
       threadId ??= 'durable-side'
       const last = messages.at(-1)?.content[0]
@@ -45,8 +55,17 @@ function model(sent: string[], aborted: { count: number }): SideChatModel {
       )
     },
   }
+  const adapter: ChatModelAdapter = {
+    async *run(options) {
+      const abortSignal = detached.signal(options.abortSignal)
+      const steps = turn.run({ ...options, abortSignal })
+      if (Symbol.asyncIterator in steps) yield* detached.read(steps)
+      else yield await steps
+    },
+  }
   return {
     adapter,
+    detach: detached.detach,
     history: {
       load: async () => ({ messages: [] }),
       append: async () => undefined,
@@ -61,7 +80,18 @@ function mount(
   aborted: { count: number },
   historyAsked: string[] = [],
 ) {
-  const side = createSideChats(async () => model(sideSent, aborted))
+  return mountWith(
+    createSideChats(async () => model(sideSent, aborted)),
+    mainSent,
+    historyAsked,
+  )
+}
+
+function mountWith(
+  side: ReturnType<typeof createSideChats>,
+  mainSent: string[] = [],
+  historyAsked: string[] = [],
+) {
   const mainAdapter: ChatModelAdapter = {
     async *run({ messages }) {
       const last = messages.at(-1)?.content[0]
@@ -107,7 +137,7 @@ function mount(
   return { conversation, side }
 }
 
-test("a side chat's sends never reach the main thread, and closing it ends its run", async () => {
+test("a side chat's sends never reach the main thread, and closing it leaves its run working", async () => {
   const mainSent: string[] = []
   const sideSent: string[] = []
   const aborted = { count: 0 }
@@ -144,7 +174,81 @@ test("a side chat's sends never reach the main thread, and closing it ends its r
   expect(sideSent).toEqual(['aside'])
 
   await act(async () => chat.close())
+  expect(aborted.count).toBe(0)
+  // The closed side chat stays listed to reopen, on its own stored thread.
+  expect(conversation.sideChats()).toEqual([
+    {
+      conversationId: chat.conversationId,
+      scope: 'fresh',
+      threadId: 'durable-side',
+      detached: true,
+    },
+  ])
+})
+
+test("only a stop asked of the side chat's own conversation cancels its run", async () => {
+  const aborted = { count: 0 }
+  const { conversation } = mount([], [], aborted)
+  let opened: Awaited<ReturnType<Conversation['sideChat']>> | undefined
+  await act(async () => {
+    opened = await conversation.sideChat(base('r1'))
+  })
+  if (opened?.outcome !== 'accepted') throw new Error(String(opened?.outcome))
+  const chat = opened.value
+  await act(async () => {
+    await chat.conversation.send({
+      ...base('r2'),
+      clientMessageId: 'c1',
+      text: 'aside',
+    })
+  })
+  let stopped: Awaited<ReturnType<Conversation['stop']>> | undefined
+  await act(async () => {
+    stopped = await chat.conversation.stop(base('r3'))
+  })
+  expect(stopped?.outcome).toBe('accepted')
   expect(aborted.count).toBe(1)
+  await act(async () => chat.close())
+})
+
+test('a closed side chat reopens on its own thread, and never as the main one', async () => {
+  const sideSent: string[] = []
+  const reopened: (string | undefined)[] = []
+  const aborted = { count: 0 }
+  const side = createSideChats(async (request) => {
+    reopened.push(request.reopen)
+    return model(sideSent, aborted, request.reopen)
+  })
+  const { conversation } = mountWith(side)
+  let opened: Awaited<ReturnType<Conversation['sideChat']>> | undefined
+  await act(async () => {
+    opened = await conversation.sideChat(base('r1'))
+  })
+  if (opened?.outcome !== 'accepted') throw new Error(String(opened?.outcome))
+  const first = opened.value
+  await act(async () => {
+    await first.conversation.send({
+      ...base('r2'),
+      clientMessageId: 'c1',
+      text: 'aside',
+    })
+  })
+  await act(async () => first.close())
+
+  let again: Awaited<ReturnType<Conversation['sideChat']>> | undefined
+  await act(async () => {
+    again = await conversation.sideChat({ ...base('r3'), reopen: 'durable-side' })
+  })
+  expect(again?.outcome).toBe('accepted')
+  expect(reopened).toEqual([undefined, 'durable-side'])
+  // Open again, so it is listed once and not as closed.
+  expect(conversation.sideChats().filter((c) => c.detached)).toEqual([])
+  expect(
+    await conversation.sideChat({ ...base('r4'), reopen: 'durable-side' }),
+  ).toMatchObject({ outcome: 'refused', code: 'conflict' })
+  expect(aborted.count).toBe(0)
+  const shown = again
+  if (shown?.outcome === 'accepted') await act(async () => shown.value.close())
 })
 
 test('a side chat with no durable thread yet asks for no history, then asks for its own', async () => {

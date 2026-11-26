@@ -132,6 +132,7 @@ export function createConversationPort({
           const done = await conversation.sideChat({
             requestId,
             ...(effect.payload.scope ? { scope: effect.payload.scope } : {}),
+            ...(effect.payload.reopen ? { reopen: effect.payload.reopen } : {}),
           })
           if (done.outcome !== 'accepted') return reply(done)
           const chat = done.value
@@ -146,9 +147,14 @@ export function createConversationPort({
           const stopModels = chat.conversation.onModels((state) =>
             emit(modelsMessage(project, id, state)),
           )
+          // A side chat's run ends claims the way a main turn's does.
+          const stopEnded = chat.conversation.onRunsEnded((runs) =>
+            emit({ type: 'runsEnded', runs }),
+          )
           const stop = () => {
             stopSnapshots()
             stopModels()
+            stopEnded()
           }
           sides.set(id, { chat, stop })
           emit(sideMessage(id, chat.conversation.snapshot()))
@@ -327,12 +333,17 @@ export function createConversationPort({
         listener({ type: 'followedRuns', runs })
       followed(conversation.followedRuns())
       const offRuns = conversation.onFollowedRuns(followed)
+      // Runs seen to finish end their terminal input claims (Gate 0 decision 1).
+      const offEnded = conversation.onRunsEnded((runs) =>
+        listener({ type: 'runsEnded', runs }),
+      )
       return () => {
         listeners.delete(listener)
         off()
         offAttachments()
         offModels()
         offRuns()
+        offEnded()
       }
     },
   }

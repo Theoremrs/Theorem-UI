@@ -1,6 +1,6 @@
 // SOURCING: @assistant-ui/react useLocalRuntime (a runtime is hook-only, so each side chat is a mounted component, the way the terminal drawer's per-session Agent is); React useSyncExternalStore for the list of mounted side chats
 import { useLocalRuntime } from '@assistant-ui/react'
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import type {
   ConversationRuntime,
@@ -18,13 +18,18 @@ interface Entry {
 
 /**
  * Side chats for one mounted `Hosts`. `open` makes a second assistant-ui runtime over the
- * same factory as the main one; `close` unmounts it, which cancels its run and drops it.
+ * same factory as the main one; `close` unmounts it and drops it. Closing, a project switch
+ * and an unmount detach: the run keeps working on its own thread, and `open` with `reopen`
+ * shows it again. Only a stop asked of the side chat's own conversation cancels its run.
  */
 export function createSideChats(
   makeModel: (request: {
     scope: SideChatScope
     from?: string
+    reopen?: string
   }) => Promise<SideChatModel>,
+  /** The project these side chats make their threads in: closed ones are kept per project. */
+  key?: string,
 ): {
   sideChats: SideChats
   Hosts: () => ReactNode
@@ -39,14 +44,17 @@ export function createSideChats(
   }
 
   function Host({ entry }: { entry: Entry }) {
+    // Before the runtime's own teardown, which aborts its run: a layout cleanup declared first
+    // runs ahead of every other cleanup here, so that abort no longer reaches Theorem.
+    useLayoutEffect(() => {
+      entry.model.attach?.()
+      return () => entry.model.detach?.()
+    }, [entry])
     const runtime = useLocalRuntime(entry.model.adapter, {
       adapters: { history: entry.model.history },
     })
     useEffect(() => {
       entry.ready(ownConversation(runtime, entry.model))
-      return () => {
-        if (runtime.thread.getState().isRunning) runtime.thread.cancelRun()
-      }
     }, [runtime, entry])
     return null
   }
@@ -69,6 +77,7 @@ export function createSideChats(
   return {
     Hosts,
     sideChats: {
+      ...(key ? { key } : {}),
       open: async (request) => {
         if (mounted === 0) throw new Error('No side chat host is mounted')
         const model = await makeModel(request)
@@ -80,7 +89,10 @@ export function createSideChats(
               resolve({
                 runtime,
                 threadId: model.threadId,
-                close: () => set(entries.filter((e) => e !== entry)),
+                close: () => {
+                  model.detach?.()
+                  set(entries.filter((e) => e !== entry))
+                },
               }),
           }
           set([...entries, entry])

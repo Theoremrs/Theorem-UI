@@ -324,12 +324,18 @@ export interface Conversation {
    * Nothing sent to it reaches this one's runtime. Closing it disposes its conversation and its runtime.
    */
   sideChat: (
-    request: Request & { scope?: SideChatScope },
+    request: Request & {
+      scope?: SideChatScope
+      /** A side chat's own stored thread to show again, with any run still working there. */
+      reopen?: string
+    },
   ) => Promise<Completion<SideChat>>
   /**
-   * The side chats open now, oldest first. Theorem keeps no mark that tells a side chat's thread from any
-   * other thread (a forked or continued thread looks the same whoever made it), so this is the session's
-   * own list: after a reload it is empty, and a side chat's durable thread remains in the thread list.
+   * The side chats open now, oldest first, then the ones closed here whose thread can be reopened
+   * (`detached`), most recently closed first. Theorem keeps no mark that tells a side chat's thread from
+   * any other thread (a forked or continued thread looks the same whoever made it), so this is the
+   * session's own record, kept in its storage: a new tab starts with none, and a side chat's durable
+   * thread remains in the thread list either way.
    */
   sideChats: () => SideChatInfo[]
   /** Whether this host can make the second runtime a side chat needs. */
@@ -362,6 +368,8 @@ export interface Conversation {
   followedRuns: () => string[]
   /** Delivers the followed runs when the set changes, never when it is the same again. */
   onFollowedRuns: (listener: (runs: string[]) => void) => () => void
+  /** Delivers the runs seen to finish here: ones that left the set while the same thread stayed open. */
+  onRunsEnded: (listener: (runs: string[]) => void) => () => void
   /** Whether a model can be picked here. */
   canPickModel: boolean
   dispose: () => void
@@ -376,6 +384,9 @@ export interface Conversation {
  */
 export type SideChatScope = 'fresh' | 'continued' | 'forked'
 
+/** How many closed side chats the session keeps to reopen. */
+const DETACHED_LIMIT = 20
+
 /** A runtime made for a side chat, and how to end it. */
 export interface SideRuntime {
   runtime: ConversationRuntime
@@ -387,10 +398,14 @@ export interface SideRuntime {
 
 /** What makes side-chat runtimes: a second instance of the factory the main runtime came from. */
 export interface SideChats {
+  /** What the side chats are kept under, such as their project; closed ones reopen only under it. */
+  key?: string
   /** `from` is the main conversation's stored thread, present for `continued` and `forked`. */
   open: (request: {
     scope: SideChatScope
     from?: string
+    /** A side chat's own stored thread to show again; its history loads and a live run resumes. */
+    reopen?: string
   }) => Promise<SideRuntime>
 }
 
@@ -410,6 +425,11 @@ export interface SideChatInfo {
   from?: string
   /** The side chat's own stored thread, once it has one. */
   threadId?: string
+  /**
+   * Closed here while its thread stays, and any run there kept working: open it again with
+   * `sideChat({ reopen: threadId })`. Kept in the session's storage, so a reload still lists it.
+   */
+  detached?: boolean
 }
 
 export interface ConversationOptions {
@@ -539,6 +559,38 @@ export function createConversation({
     SideChat,
     { base: Omit<SideChatInfo, 'threadId'>; threadId: () => string | undefined }
   >()
+  /** Closed side chats, kept so they can be reopened; at most `DETACHED_LIMIT`, newest first. */
+  const detachedKey = `theorem.workbench.sideChats.${workspaceId}${sideChats?.key ? `.${sideChats.key}` : ''}`
+  /** Threads a reopen is in progress for, so a second one is refused before the first lands. */
+  const reopening = new Set<string>()
+  const readDetached = (): SideChatInfo[] => {
+    try {
+      const parsed: unknown = JSON.parse(storage?.getItem(detachedKey) ?? '[]')
+      return Array.isArray(parsed)
+        ? parsed.filter(
+            (entry): entry is SideChatInfo =>
+              typeof entry === 'object' &&
+              entry !== null &&
+              typeof (entry as SideChatInfo).threadId === 'string' &&
+              typeof (entry as SideChatInfo).conversationId === 'string',
+          )
+        : []
+    } catch {
+      return []
+    }
+  }
+  const writeDetached = (list: SideChatInfo[]) => {
+    try {
+      if (list.length)
+        storage?.setItem(
+          detachedKey,
+          JSON.stringify(list.slice(0, DETACHED_LIMIT)),
+        )
+      else storage?.removeItem(detachedKey)
+    } catch {
+      // Storage full or refused: the side chat's thread is still in the thread list.
+    }
+  }
   const listeners = new Set<(snapshot: ConversationSnapshot) => void>()
   let disposed = false
   let pending: (() => void) | undefined
@@ -1128,13 +1180,26 @@ export function createConversation({
     const joined = workingRuns(runtime.thread.getState().messages)
     return joined ? joined.split(' ') : []
   }
+  const endedListeners = new Set<(runs: string[]) => void>()
   let announcedRuns = runsNow().join(' ')
+  let announcedThread = threadKey()
   function announceRuns() {
     if (disposed) return
     const runs = runsNow()
-    if (runs.join(' ') === announcedRuns) return
+    const thread = threadKey()
+    const before = announcedRuns
+    const sameThread = thread === announcedThread
+    announcedThread = thread
+    if (runs.join(' ') === before) return
     announcedRuns = runs.join(' ')
     for (const listener of [...runsListeners]) listener(runs)
+    // Runs that left the set while the same thread stayed open finished. A switch to another
+    // thread only takes its runs out of view, so it ends nothing.
+    const ended = sameThread
+      ? (before ? before.split(' ') : []).filter((run) => !runs.includes(run))
+      : []
+    if (ended.length)
+      for (const listener of [...endedListeners]) listener(ended)
   }
 
   const offThread = runtime.thread.subscribe(() => {
@@ -1639,19 +1704,56 @@ export function createConversation({
           'missing_capability',
           'This host makes no second runtime for a side chat',
         )
-      const scope = request.scope ?? 'fresh'
-      const from = runtime.threads.mainItem.getState().remoteId
-      if (scope !== 'fresh' && !from)
+      const main = runtime.threads.mainItem.getState().remoteId
+      const reopen = request.reopen
+      // A reopened chat keeps the scope and origin it was opened with, whatever thread the
+      // main conversation shows now.
+      const closedHere =
+        reopen !== undefined
+          ? readDetached().find((entry) => entry.threadId === reopen)
+          : undefined
+      const scope = closedHere?.scope ?? request.scope ?? 'fresh'
+      const from = reopen !== undefined ? closedHere?.from : main
+      if (reopen !== undefined && (!reopen || reopen === main))
+        return refused(
+          answers,
+          'invalid_request',
+          "A side chat reopens its own stored thread, never the main conversation's",
+        )
+      if (
+        reopen !== undefined &&
+        (reopening.has(reopen) ||
+          [...info.values()].some((i) => i.threadId() === reopen))
+      )
+        return refused(
+          answers,
+          'conflict',
+          'That side chat is already open',
+        )
+      if (reopen !== undefined && !closedHere)
+        return refused(
+          answers,
+          'unknown_side_chat',
+          'Only a side chat closed here can be reopened',
+        )
+      if (!reopen && scope !== 'fresh' && !from)
         return refused(
           answers,
           'not_stored',
           `A ${scope} side chat starts from the main conversation's stored thread, and this one has none yet`,
         )
       let side: SideRuntime
+      if (reopen) reopening.add(reopen)
       try {
-        side = await sideChats.open({ scope, ...(from ? { from } : {}) })
+        side = await sideChats.open({
+          scope,
+          ...(from ? { from } : {}),
+          ...(reopen ? { reopen } : {}),
+        })
       } catch (error) {
         return failure(answers, error, false)
+      } finally {
+        if (reopen) reopening.delete(reopen)
       }
       if (disposed) {
         side.close()
@@ -1674,12 +1776,25 @@ export function createConversation({
         close() {
           if (closed) return
           closed = true
+          const kept = info.get(chat)
+          const stored = kept?.threadId()
+          if (kept && stored)
+            writeDetached([
+              {
+                ...kept.base,
+                threadId: stored,
+                detached: true,
+              },
+              ...readDetached().filter((entry) => entry.threadId !== stored),
+            ])
           sides.delete(chat)
           info.delete(chat)
           conversation.dispose()
           side.close()
         },
       }
+      if (reopen)
+        writeDetached(readDetached().filter((entry) => entry.threadId !== reopen))
       sides.add(chat)
       info.set(chat, {
         base: {
@@ -1818,6 +1933,10 @@ export function createConversation({
       runsListeners.add(listener)
       return () => void runsListeners.delete(listener)
     },
+    onRunsEnded(listener) {
+      endedListeners.add(listener)
+      return () => void endedListeners.delete(listener)
+    },
     onModels(listener) {
       modelListeners.add(listener)
       return () => {
@@ -1830,12 +1949,18 @@ export function createConversation({
     canSwitchBranch:
       services.history !== undefined && services.selectBranch !== undefined,
 
-    sideChats: () =>
-      [...sides].map((chat) => {
+    sideChats: () => {
+      const open = [...sides].map((chat) => {
         const { base, threadId } = info.get(chat)!
         const stored = threadId()
         return { ...base, ...(stored ? { threadId: stored } : {}) }
-      }),
+      })
+      const shown = new Set(open.map((chat) => chat.threadId))
+      return [
+        ...open,
+        ...readDetached().filter((entry) => !shown.has(entry.threadId)),
+      ]
+    },
 
     dispose() {
       if (disposed) return
@@ -1857,6 +1982,7 @@ export function createConversation({
       attachmentListeners.clear()
       modelListeners.clear()
       runsListeners.clear()
+      endedListeners.clear()
     },
   }
 }

@@ -2650,11 +2650,29 @@ impl TheoPanel {
     /// Ask the owner for a side chat of the scope the person chose. The effect
     /// names the project and no thread: the owner makes the id.
     fn new_side_chat(&mut self, scope: SideChatScope, cx: &mut Ctx) -> Result<(), String> {
+        self.open_side_chat(SideChatOpen { scope: Some(scope), reopen: None }, cx)
+    }
+
+    /// Ask the owner to show a closed side chat's thread again. Its run, if
+    /// one still works there, was never stopped by the close.
+    fn reopen_side_chat(&mut self, chat: &SideChatInfo, cx: &mut Ctx) -> Result<(), String> {
+        let Some(thread) = chat.thread_id.clone() else {
+            return Err("that side chat has no stored thread to reopen".into());
+        };
+        self.open_side_chat(
+            SideChatOpen {
+                scope: Some(chat.scope),
+                reopen: Some(thread),
+            },
+            cx,
+        )
+    }
+
+    fn open_side_chat(&mut self, open: SideChatOpen, cx: &mut Ctx) -> Result<(), String> {
         if self.side_project().is_none() {
             return Err("the project is not known yet".into());
         }
         let resource = self.resource();
-        let open = SideChatOpen { scope: Some(scope) };
         match cx.emit(|id| Effect::new(id, resource, EffectBody::ConversationSideChat(open))) {
             Ok(id) => {
                 self.tracked.insert(id, Tracked::NewSideChat);
@@ -2702,6 +2720,10 @@ impl TheoPanel {
                 let Some(chat) = self.existing.get(at).cloned() else {
                     return;
                 };
+                if chat.detached {
+                    let _ = self.reopen_side_chat(&chat, cx);
+                    return;
+                }
                 if self.side_project().is_none() {
                     return;
                 }
@@ -4606,7 +4628,11 @@ impl ChooserRow {
             ),
             Self::Existing(at) => match existing.get(at) {
                 Some(chat) => (
-                    format!("Join {}", visible(&chat.conversation_id)),
+                    format!(
+                        "{} {}",
+                        if chat.detached { "Reopen" } else { "Join" },
+                        visible(&chat.conversation_id)
+                    ),
                     match chat.scope {
                         SideChatScope::Fresh => "a fresh side chat",
                         SideChatScope::Continued => "continues the main conversation",
@@ -5748,6 +5774,7 @@ mod tests {
                     scope: theorem_workbench_core::effect::SideChatScope::Forked,
                     from: Some("t1".into()),
                     thread_id: None,
+                    detached: false,
                 }],
             },
         ));
@@ -5759,6 +5786,50 @@ mod tests {
         r.enter();
         r.show(4, "side-9", json!({"messages": [user("s1", "side words")]}));
         assert!(r.drawn().contains("side words"), "{}", r.drawn());
+    }
+
+    #[test]
+    fn a_closed_side_chat_is_reopened_on_its_own_thread_when_chosen() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.send(Msg::Action {
+            id: ActionId::new("side-chat.choose"),
+            actor: Actor::Human,
+        });
+        r.send(Msg::Tick);
+        let list = r
+            .seen
+            .iter()
+            .find(|e| matches!(e.body, EffectBody::ConversationSideList))
+            .cloned()
+            .expect("the chooser asks which side chats exist");
+        let mut done = Completion::new(list.id, list.resource.clone(), Outcome::Accepted);
+        done.payload = Some(CompletionPayload::ConversationSideList(
+            theorem_workbench_core::completion::ConversationSideList {
+                chats: vec![theorem_workbench_core::completion::SideChatInfo {
+                    conversation_id: "side-9".into(),
+                    scope: theorem_workbench_core::effect::SideChatScope::Fresh,
+                    from: None,
+                    thread_id: Some("thread-side".into()),
+                    detached: true,
+                }],
+            },
+        ));
+        r.send(Msg::Completion(done));
+        assert!(r.drawn().contains("Reopen side-9"), "{}", r.drawn());
+        let before = r.seen.len();
+        for _ in 0..3 {
+            r.key(Key::Down, Mods::NONE);
+        }
+        r.enter();
+        let open = r.seen[before..]
+            .iter()
+            .find_map(|e| match &e.body {
+                EffectBody::ConversationSideChat(open) => Some(open.clone()),
+                _ => None,
+            })
+            .expect("choosing a closed side chat asks to reopen it");
+        assert_eq!(open.reopen.as_deref(), Some("thread-side"));
     }
 
     #[test]

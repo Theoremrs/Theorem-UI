@@ -31,11 +31,59 @@ void mock.module('@/lib/theorem/thread-origin', () => ({
     }
   },
 }))
-const { createSideChatModel } = await import('./side-chat-model')
+const { createSideChatModel, detaching } = await import('./side-chat-model')
 
 afterAll(() => {
   void mock.module('@/lib/theorem/client', () => actualClient)
   void mock.module('@/lib/theorem/thread-origin', () => actualOrigin)
+})
+
+describe('detaching', () => {
+  test('a detach ends the read at once and keeps a later abort from reaching the run', async () => {
+    const d = detaching()
+    const outer = new AbortController()
+    const signal = d.signal(outer.signal)
+    let finished = false
+    async function* run() {
+      try {
+        yield 1
+        await new Promise(() => undefined)
+        yield 2
+      } finally {
+        finished = true
+      }
+    }
+    const seen: number[] = []
+    const reading = (async () => {
+      for await (const step of d.read(run())) seen.push(step)
+    })()
+    await Promise.resolve()
+    d.detach()
+    await reading
+    outer.abort()
+    expect(seen).toEqual([1])
+    expect(signal.aborted).toBe(false)
+    void finished
+  })
+
+  test('before a detach, a stop reaches the run', () => {
+    const d = detaching()
+    const outer = new AbortController()
+    const signal = d.signal(outer.signal)
+    outer.abort()
+    expect(signal.aborted).toBe(true)
+  })
+
+  test('a reopened side chat makes no thread and names its own', async () => {
+    created.length = 0
+    const model = await createSideChatModel('p1', {
+      scope: 'forked',
+      from: 'main-thread',
+      reopen: 'side-thread',
+    })
+    expect(created).toEqual([])
+    expect(model.threadId()).toBe('side-thread')
+  })
 })
 
 describe('side chat model', () => {

@@ -934,6 +934,11 @@ pub struct SideChatInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub thread_id: Option<String>,
+    /// Closed here while its thread stays: choosing it reopens that thread,
+    /// with any run still working there, instead of joining an open chat.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<bool>", optional))]
+    pub detached: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

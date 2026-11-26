@@ -16,7 +16,7 @@
 use ratatui::layout::Rect;
 
 use crate::arrangement::ArrangementNotice;
-use crate::ids::Actor;
+use crate::ids::{Actor, PanelInstanceId};
 use crate::model::{Model, Notice};
 use crate::registry::Refusal;
 use crate::theme::Theme;
@@ -81,6 +81,17 @@ pub(crate) fn describe(notice: &Notice) -> Option<(String, NoticeSeverity)> {
         Notice::Refused(Refusal::UnknownPanel(panel)) => (
             format!("There is no open panel \"{}\".", panel.as_str()),
             Error,
+        ),
+        Notice::Refused(Refusal::AmbiguousTarget { candidates }) => (
+            format!(
+                "More than one panel could be meant; name one of: {}.",
+                candidates
+                    .iter()
+                    .map(PanelInstanceId::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Warning,
         ),
         Notice::Refused(Refusal::UnknownAction(id)) => {
             (format!("There is no action \"{}\".", id.as_str()), Error)

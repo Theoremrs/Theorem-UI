@@ -3842,6 +3842,13 @@ fn agent() -> Actor {
     }
 }
 
+/// Take the input claim for run `run-7` on `panel`, as an agent must before it types.
+fn claim(m: &mut Model, panel: &str) {
+    let (outcome, fx) = act(m, "code.claim", Some(panel), None);
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    assert!(fx.is_empty(), "a claim emits nothing: {fx:?}");
+}
+
 fn coding_profile(available: bool) -> TerminalProfileInfo {
     TerminalProfileInfo {
         id: "Claude Code (Herdr)".into(),
@@ -3941,6 +3948,7 @@ fn code_send_pastes_then_presses_enter_and_code_stop_sends_ctrl_c() {
     r.send(coding_listing());
     r.live();
     let id = r.id.as_str().to_owned();
+    claim(&mut r.m, &id);
     let (outcome, fx) = act(
         &mut r.m,
         "code.send",
@@ -4039,6 +4047,7 @@ fn code_send_steers_an_adopted_coding_session_the_host_names() {
     r.send(coding_listing());
     r.live();
     let id = r.id.as_str().to_owned();
+    claim(&mut r.m, &id);
     let (outcome, fx) = act(
         &mut r.m,
         "code.send",
@@ -4062,6 +4071,7 @@ fn code_send_and_stop_follow_a_coding_program_started_inside_an_existing_shell()
     row.command = Some("/usr/local/bin/claude".into());
     r.send(listing("w", vec![row]));
     let id = r.id.as_str().to_owned();
+    claim(&mut r.m, &id);
     let (outcome, effects) = act(
         &mut r.m,
         "code.send",
@@ -4141,4 +4151,297 @@ fn the_terminal_node_leads_with_the_process_state_and_keeps_the_last_sixty_rows(
     assert_eq!(rows.len(), 60, "{shown}");
     assert!(shown.contains("row 100"), "{shown}");
     assert!(!rows.iter().any(|row| row.trim() == "row 1"), "{shown}");
+}
+
+// ---- 6. who may type: the agent's input claim ------------------------------
+
+/// `act` for a run other than `run-7`.
+fn act_as(
+    m: &mut Model,
+    run: &str,
+    action: &str,
+    panel: Option<&str>,
+    args: Option<&str>,
+) -> (AgentOutcome, Vec<Effect>) {
+    let msg = match agent_request(action, run, panel, args) {
+        Ok(msg) => msg,
+        Err(refused) => return (refused, vec![]),
+    };
+    m.capture_notices();
+    let effects = update(m, msg);
+    let notices = m.take_captured();
+    let acted = m.take_acted_panel();
+    (
+        agent_outcome(&notices, effects.len(), acted.as_ref()),
+        effects,
+    )
+}
+
+fn refused_with(outcome: &AgentOutcome, words: &str) {
+    let AgentOutcome::Refused { reason, .. } = outcome else {
+        panic!("accepted: {outcome:?}")
+    };
+    assert!(reason.contains(words), "{reason}");
+}
+
+fn coding_rig() -> Rig {
+    let mut r = rig();
+    r.send(coding_listing());
+    r.live();
+    r
+}
+
+#[test]
+fn an_agent_types_nothing_into_a_terminal_without_a_claim() {
+    let mut r = coding_rig();
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
+    assert!(fx.is_empty(), "{fx:?}");
+    refused_with(&outcome, "holds no input claim");
+    let (outcome, fx) = act(&mut r.m, "code.stop", Some(&id), None);
+    assert!(fx.is_empty(), "{fx:?}");
+    refused_with(&outcome, "holds no input claim");
+}
+
+#[test]
+fn one_agent_holds_the_claim_at_a_time_until_it_releases() {
+    let mut r = coding_rig();
+    let id = r.id.as_str().to_owned();
+    claim(&mut r.m, &id);
+    claim(&mut r.m, &id);
+    let (outcome, _) = act_as(&mut r.m, "run-9", "code.claim", Some(&id), None);
+    refused_with(&outcome, "run-7 holds");
+    let (outcome, fx) = act_as(
+        &mut r.m,
+        "run-9",
+        "code.send",
+        Some(&id),
+        Some(r#"{"input":"ls"}"#),
+    );
+    assert!(fx.is_empty(), "{fx:?}");
+    refused_with(&outcome, "run-7 holds");
+
+    let (outcome, _) = act(&mut r.m, "code.release", Some(&id), None);
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    let (outcome, _) = act_as(&mut r.m, "run-9", "code.claim", Some(&id), None);
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+}
+
+#[test]
+fn the_persons_input_stops_the_agent_until_they_hand_it_back() {
+    let mut r = coding_rig();
+    let id = r.id.as_str().to_owned();
+    claim(&mut r.m, &id);
+
+    // The person types: their key goes through and the agent is stopped.
+    let fx = r.key(Key::Char('x'));
+    assert_eq!(kinds(&fx), vec!["input"], "{fx:?}");
+    assert!(fx.iter().all(|e| e.actor == Actor::Human));
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
+    assert!(fx.is_empty(), "{fx:?}");
+    refused_with(&outcome, "taken over");
+    let (outcome, _) = act(&mut r.m, "code.claim", Some(&id), None);
+    refused_with(&outcome, "taken over");
+
+    // An agent cannot hand it back for the person.
+    let (outcome, _) = act(&mut r.m, "shell.hand_back", Some(&id), None);
+    assert!(matches!(outcome, AgentOutcome::Refused { .. }), "{outcome:?}");
+
+    let fx = r.send(Msg::Action {
+        id: ActionId::new("shell.hand_back"),
+        actor: Actor::Human,
+    });
+    assert!(fx.is_empty(), "{fx:?}");
+    claim(&mut r.m, &id);
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    assert_eq!(kinds(&fx), vec!["input", "input"]);
+}
+
+#[test]
+fn a_claim_ends_when_its_run_finishes() {
+    let mut r = coding_rig();
+    let id = r.id.as_str().to_owned();
+    claim(&mut r.m, &id);
+    // Another run finishing changes nothing for this one.
+    r.host(HostMessage::RunsEnded {
+        runs: vec!["run-1".into()],
+    });
+    let (outcome, _) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+
+    r.host(HostMessage::RunsEnded {
+        runs: vec!["run-7".into()],
+    });
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
+    assert!(fx.is_empty(), "{fx:?}");
+    refused_with(&outcome, "holds no input claim");
+}
+
+#[test]
+fn leaving_the_followed_conversation_ends_no_claim() {
+    let mut r = coding_rig();
+    let id = r.id.as_str().to_owned();
+    claim(&mut r.m, &id);
+    r.host(HostMessage::FollowedRuns {
+        runs: vec!["run-7".into()],
+    });
+    // The person opened another chat: the run is out of view, not finished.
+    r.host(HostMessage::FollowedRuns { runs: vec![] });
+    let (outcome, _) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+}
+
+#[test]
+fn the_agent_that_starts_a_coding_session_holds_its_claim() {
+    let m = coding_model(true);
+    let mut r = Rig {
+        id: PanelInstanceId::new("unset"),
+        m,
+    };
+    let (outcome, fx) = act(
+        &mut r.m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix it","option":"claude"}"#),
+    );
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    r.id = shell_id(&r.m);
+    let open = fx[0].clone();
+    let fx = r.accept_attach(&open, opened(1, 1, 80, 24, "created"));
+    r.settle_resize(fx);
+    // The host lists the session it made under the coding profile.
+    r.send(coding_listing());
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"y"}"#));
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    assert!(!fx.is_empty());
+    let (outcome, _) = act_as(&mut r.m, "run-9", "code.claim", Some(&id), None);
+    refused_with(&outcome, "run-7 holds");
+}
+
+#[test]
+fn a_run_that_finished_before_its_shell_existed_gets_no_claim() {
+    let m = coding_model(true);
+    let mut r = Rig {
+        id: PanelInstanceId::new("unset"),
+        m,
+    };
+    // Said while no shell panel existed to hear it.
+    r.host(HostMessage::RunsEnded {
+        runs: vec!["run-7".into()],
+    });
+    let (outcome, fx) = act(
+        &mut r.m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix it","option":"claude"}"#),
+    );
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    r.id = shell_id(&r.m);
+    let open = fx[0].clone();
+    let fx = r.accept_attach(&open, opened(1, 1, 80, 24, "created"));
+    r.settle_resize(fx);
+    r.send(coding_listing());
+    let id = r.id.as_str().to_owned();
+    let (outcome, _) = act(&mut r.m, "code.claim", Some(&id), None);
+    refused_with(&outcome, "no longer working");
+}
+
+#[test]
+fn an_agent_that_names_no_panel_is_refused_when_two_could_be_meant() {
+    let mut r = coding_rig();
+    let first = r.id.as_str().to_owned();
+    update(
+        &mut r.m,
+        Msg::Action {
+            id: ActionId::new("shell.choose"),
+            actor: Actor::Human,
+        },
+    );
+    assert_eq!(shells(&r.m), 2);
+    let (outcome, fx) = act(&mut r.m, "code.claim", None, None);
+    assert!(fx.is_empty());
+    let AgentOutcome::Refused { code, reason } = &outcome else {
+        panic!("accepted: {outcome:?}")
+    };
+    assert_eq!(*code, RefusalCode::AmbiguousTarget);
+    assert!(reason.contains(&first), "{reason}");
+    // Naming the panel settles it.
+    claim(&mut r.m, &first);
+}
+
+#[test]
+fn a_refused_agent_open_grants_no_claim_on_the_persons_retry() {
+    let m = coding_model(true);
+    let mut r = Rig {
+        id: PanelInstanceId::new("unset"),
+        m,
+    };
+    let (_, fx) = act(
+        &mut r.m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix it","option":"claude"}"#),
+    );
+    r.id = shell_id(&r.m);
+    let open = fx[0].clone();
+    r.answer(
+        &open,
+        Outcome::Refused {
+            code: "busy".into(),
+            reason: "try again".into(),
+        },
+        None,
+    );
+    // The person retries from the failed pane, and the open succeeds.
+    update(&mut r.m, Msg::Dock(DockMsg::FocusPanel(r.id.clone())));
+    let fx = r.key(Key::Enter);
+    let retry = fx
+        .iter()
+        .find(|e| matches!(e.body, EffectBody::TerminalOpen(_)))
+        .cloned()
+        .expect("Enter retries the open");
+    let fx = r.accept_attach(&retry, opened(1, 1, 80, 24, "created"));
+    r.settle_resize(fx);
+    r.send(coding_listing());
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"y"}"#));
+    assert!(fx.is_empty(), "{fx:?}");
+    refused_with(&outcome, "holds no input claim");
+}
+
+#[test]
+fn an_agent_open_the_person_leaves_grants_no_claim_on_their_next_open() {
+    let m = coding_model(true);
+    let mut r = Rig {
+        id: PanelInstanceId::new("unset"),
+        m,
+    };
+    let (outcome, _) = act(
+        &mut r.m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix it","option":"claude"}"#),
+    );
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    r.id = shell_id(&r.m);
+    // The person stops waiting for the agent's open.
+    update(&mut r.m, Msg::Dock(DockMsg::FocusPanel(r.id.clone())));
+    let fx = r.key(Key::Esc);
+    assert_eq!(kinds(&fx), ["abandon"]);
+    // Then opens a shell of their own from the chooser, and it succeeds.
+    for _ in 0..4 {
+        r.key(Key::Down);
+    }
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["open"]);
+    let open = fx[0].clone();
+    let fx = r.accept_attach(&open, opened(1, 1, 80, 24, "created"));
+    r.settle_resize(fx);
+    r.send(coding_listing());
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"y"}"#));
+    assert!(fx.is_empty(), "{fx:?}");
+    refused_with(&outcome, "holds no input claim");
 }

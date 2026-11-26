@@ -470,6 +470,11 @@ pub enum Refusal {
     InvalidArgs {
         reason: String,
     },
+    /// An agent named no panel and more than one could be meant. Nothing was
+    /// done; the agent names one of these next time (API-06).
+    AmbiguousTarget {
+        candidates: Vec<PanelInstanceId>,
+    },
 }
 
 /// An action resolved against the registry and the host's capabilities.
