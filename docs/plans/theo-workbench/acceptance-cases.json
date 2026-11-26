@@ -2178,6 +2178,441 @@
           ]
         }
       ]
+    },
+    {
+      "id": "UAE-AC-01",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-01",
+      "title": "One agent identity across assignments",
+      "requirements": [
+        "ID-01",
+        "WS-03",
+        "AG-01",
+        "R27"
+      ],
+      "oracle_class": "live owner/provider",
+      "delivery_gate": "Gate 1 and Gate 3",
+      "procedure": "Start two assignments for one named agent and another unrelated assignment.",
+      "required_observations": "Preserve one agent identity, distinct run IDs, accurate grouping, and no invented collaboration.",
+      "status": "not_run",
+      "blocker": "No durable agent identity or project-level run list exists at c1a0e4b26; see gate-0 ownership map 2.1 and 5.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-02",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-02",
+      "title": "Native side chat, delegated specialist and external terminal observed together",
+      "requirements": [
+        "OW-01–02",
+        "ST-01",
+        "API-01–03",
+        "R29",
+        "R36"
+      ],
+      "oracle_class": "live owner/provider",
+      "delivery_gate": "Gate 1",
+      "procedure": "Observe a native side chat, a delegated specialist, and an external terminal session together.",
+      "required_observations": "Each uses its existing owner; instrumented and uninstrumented states remain distinguishable.",
+      "status": "not_run",
+      "blocker": "No activity projection over conversation, delegation and terminal owners yet; ownership map 2.1.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-03",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-03",
+      "title": "Compact entry opens and restores without a new launch",
+      "requirements": [
+        "CP-01–04",
+        "DR-03",
+        "UX-02",
+        "R04"
+      ],
+      "oracle_class": "browser interaction",
+      "delivery_gate": "Gate 2",
+      "procedure": "Repeatedly open a compact entry using double-click, keyboard, and touch-equivalent controls; expand and restore.",
+      "required_observations": "Assert unchanged run/resource IDs and no extra launch request.",
+      "status": "not_run",
+      "blocker": "No typed reveal operation or compact activity entry yet; ownership map 2.3.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-04",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-04",
+      "title": "Closing a view does not stop work; Stop is explicit",
+      "requirements": [
+        "IN-06–07",
+        "RC-01–02",
+        "R28",
+        "R33"
+      ],
+      "oracle_class": "live owner/provider",
+      "delivery_gate": "Gate 1",
+      "procedure": "Close and reopen a running side-chat view and a terminal view after more output occurs.",
+      "required_observations": "Verify work continued. Separately Stop and verify acknowledgment, affected child scope, and final outcome.",
+      "status": "not_run",
+      "blocker": "Side-chat Host unmount cancels the chat (side-chats.tsx:45-50); ownership map 2.5.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-05",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-05",
+      "title": "Draft recipient, focus and order stay fixed under background output",
+      "requirements": [
+        "UX-04",
+        "IN-01",
+        "WS-02",
+        "R28"
+      ],
+      "oracle_class": "browser interaction",
+      "delivery_gate": "Gate 2",
+      "procedure": "Type a draft for agent A while viewing B and receiving output from C.",
+      "required_observations": "Confirm recipient, draft, focus, order, and scroll remain unchanged; subsequent submission reaches A once.",
+      "status": "not_run",
+      "blocker": "Needs multiple real runs with independent drafts; Gate 1 inventory not built.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-06",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-06",
+      "title": "Agent command reaches the exact terminal or nothing",
+      "requirements": [
+        "API-05–07",
+        "R25",
+        "R28"
+      ],
+      "oracle_class": "deterministic reducer/replay plus live owner/provider",
+      "delivery_gate": "Gate 1",
+      "procedure": "Issue an agent command to an exact terminal while the user changes focus.",
+      "required_observations": "The target remains fixed. Try a duplicate label and a deleted ID; no input reaches a fallback pane.",
+      "status": "not_run",
+      "blocker": "Terminal refusals other than stale_epoch flatten to failed; no typed fallback-free target check yet; ownership map 2.4.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-07",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-07",
+      "title": "Terminal control lease, fencing and reacquisition",
+      "requirements": [
+        "IN-02–03",
+        "UI-05",
+        "R27",
+        "R28"
+      ],
+      "oracle_class": "live owner/provider",
+      "delivery_gate": "Gate 1 and Gate 2",
+      "procedure": "Take terminal control, select/copy output, close the controlling view, and disconnect a client.",
+      "required_observations": "Verify lease release/expiry, stale-controller fencing, explicit reacquisition, and no process kill.",
+      "status": "not_run",
+      "blocker": "Decision needed: the workbench removed the control lease on 2026-11-16 (R28 any view types) while this case expects a lease; ownership map 7 item 1.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-08",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-08",
+      "title": "Agent-created auxiliary work keeps the user's geometry and focus",
+      "requirements": [
+        "IN-04",
+        "API-10",
+        "R07"
+      ],
+      "oracle_class": "browser interaction",
+      "delivery_gate": "Gate 2",
+      "procedure": "Create auxiliary work while the user reads.",
+      "required_observations": "Preserve visible geometry and focus. An explicit show-beside instruction can place it deliberately; closing agent-created views leaves user-retained views intact.",
+      "status": "not_run",
+      "blocker": "No agent-initiated reveal path or retention marker on views; ownership map 2.3.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-09",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-09",
+      "title": "Duplicate, out-of-order and gapped events reconcile without stale content",
+      "requirements": [
+        "EV-01–04",
+        "ST-02",
+        "R24",
+        "R31"
+      ],
+      "oracle_class": "deterministic reducer/replay",
+      "delivery_gate": "Gate 1",
+      "procedure": "Deliver duplicate/out-of-order events, equal offsets on different resources/epochs, a cursor gap, and a late view response.",
+      "required_observations": "Reconcile without losing valid output, duplicating events, applying stale content, or launching work.",
+      "status": "not_run",
+      "blocker": "Activity projection and per-resource cursors are not built; existing terminal epoch handling covers only part of this.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-10",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-10",
+      "title": "Lost response to accepted input is reconciled from its receipt",
+      "requirements": [
+        "RC-03",
+        "API-07",
+        "R25"
+      ],
+      "oracle_class": "live owner/provider",
+      "delivery_gate": "Gate 1",
+      "procedure": "Lose the response to an accepted terminal input or external effect.",
+      "required_observations": "Inspect its receipt/outcome and reconcile; do not blindly resend.",
+      "status": "not_run",
+      "blocker": "No receipt lookup for terminal input exists in the SDK alpha.10 surface; ownership map 6.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-11",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-11",
+      "title": "Observation loss marks state stale and recovers truthfully",
+      "requirements": [
+        "ST-01–03",
+        "RC-01",
+        "R31",
+        "R33"
+      ],
+      "oracle_class": "live owner/provider",
+      "delivery_gate": "Gate 1",
+      "procedure": "Disconnect the observation channel while the host continues.",
+      "required_observations": "Mark the display stale, recover current state, and keep stopped/completed/unknown outcomes accurate.",
+      "status": "not_run",
+      "blocker": "Needs a live host and the Gate 1 activity projection; no deployed host on the cloud runner.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-12",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-12",
+      "title": "Client refresh and host restart report reconnect, resume or ended accurately",
+      "requirements": [
+        "RC-01–03",
+        "OW-03–04",
+        "R33",
+        "R34"
+      ],
+      "oracle_class": "live owner/provider",
+      "delivery_gate": "Gate 1",
+      "procedure": "Refresh a client, then separately restart an execution host.",
+      "required_observations": "Demonstrate which resources reconnect, which resume through supported checkpoints, and which ended. Restored panes never masquerade as resumed runs.",
+      "status": "not_run",
+      "blocker": "Needs a live host restart fault and per-provider continuation capability records, which are not enumerated yet.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-13",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-13",
+      "title": "Artifact opens by exact or current revision from message, run and project",
+      "requirements": [
+        "AR-01–05",
+        "R37"
+      ],
+      "oracle_class": "live owner/provider",
+      "delivery_gate": "Gate 3",
+      "procedure": "Open an artifact from a historical message, a producing run, and a project.",
+      "required_observations": "Verify exact versus current revision semantics and resolution after switching chats.",
+      "status": "not_run",
+      "blocker": "Artifact resolution is thread-only at c1a0e4b26; ownership map 2.6 and the durable-artifacts plan.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-14",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-14",
+      "title": "One live App survives presentation moves without duplicate startup",
+      "requirements": [
+        "AR-08–12",
+        "R37"
+      ],
+      "oracle_class": "browser interaction",
+      "delivery_gate": "Gate 3",
+      "procedure": "Change a live App parameter; move inline → docked → expanded → restored; inspect source; close/reopen.",
+      "required_observations": "Count startup executions and verify retained state and runtime identity.",
+      "status": "not_run",
+      "blocker": "Runtime attachment is owned by the message subtree (ArtifactReferrer); ownership map 2.7.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-15",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-15",
+      "title": "Old revision view stays fixed while a new revision commits",
+      "requirements": [
+        "AR-03–06",
+        "R37"
+      ],
+      "oracle_class": "deterministic reducer/replay plus browser interaction",
+      "delivery_gate": "Gate 3",
+      "procedure": "Commit a new revision while an old view is selected.",
+      "required_observations": "Keep the old view fixed; distinguish panel retention from revision selection; deliberately compare and follow current work.",
+      "status": "not_run",
+      "blocker": "No per-view revision or presentation state yet; ownership map 3.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-16",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-16",
+      "title": "Invalid streamed source keeps the last valid result",
+      "requirements": [
+        "AR-10–11",
+        "R37"
+      ],
+      "oracle_class": "deterministic reducer/replay",
+      "delivery_gate": "Gate 3",
+      "procedure": "Stream temporarily invalid source into an executable artifact.",
+      "required_observations": "Retain the last valid result and accurate running revision; update only through the supported runtime operation.",
+      "status": "not_run",
+      "blocker": "Depends on the Gate 3 runtime host independent of the answer/panel boundary.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-17",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-17",
+      "title": "Targeted artifact selection with base revision reconciles or refuses precisely",
+      "requirements": [
+        "AR-07",
+        "AR-13",
+        "R37"
+      ],
+      "oracle_class": "deterministic reducer/replay plus live owner/provider",
+      "delivery_gate": "Gate 3",
+      "procedure": "Send a selected chart entity/text range with its base revision; concurrently edit the artifact.",
+      "required_observations": "Reconcile or refuse precisely, preserving drafts and accepted edits without overwriting another object.",
+      "status": "not_run",
+      "blocker": "No targeted selection or base-revision send path exists yet.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-18",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-18",
+      "title": "One genuine decision is presented once with no demand queue",
+      "requirements": [
+        "UX-05–06",
+        "IN-05",
+        "R30"
+      ],
+      "oracle_class": "browser interaction",
+      "delivery_gate": "Gate 2",
+      "procedure": "Produce ordinary waiting/failure transitions and one genuine decision request.",
+      "required_observations": "Update local activity; present the one decision once; add no demand queue, extra questions, priority sorting, or focus takeover.",
+      "status": "not_run",
+      "blocker": "Needs the Gate 1 activity projection to produce real waiting, failure and decision transitions.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-19",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-19",
+      "title": "Responsive, keyboard, screen reader, touch and reduced motion equivalence",
+      "requirements": [
+        "DR-01–04",
+        "UI-01–05",
+        "R14",
+        "R15",
+        "R20",
+        "R21"
+      ],
+      "oracle_class": "browser interaction plus manual assistive technology",
+      "delivery_gate": "Gate 2",
+      "procedure": "Narrow and widen the container; expand the composer; use keyboard, screen reader semantics, touch, and reduced motion.",
+      "required_observations": "Preserve arrangement, usable input, readable state, and equivalent actions.",
+      "status": "not_run",
+      "blocker": "Compact and drawer surfaces are not built; screen reader pass also needs manual assistive technology.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-20",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-20",
+      "title": "Performance workloads and sustained session",
+      "requirements": [
+        "UI-06",
+        "Section 12.1",
+        "R38",
+        "R39"
+      ],
+      "oracle_class": "live owner/provider (instrumented load)",
+      "delivery_gate": "Gate 2",
+      "procedure": "Run the documented performance workloads and sustained session.",
+      "required_observations": "Record input/reveal latency, memory/queue behavior, stream gaps, and preview cadence.",
+      "status": "not_run",
+      "blocker": "Reference-device performance is not measured; spec Section 12.1 workloads need a live stack.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-21",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-21",
+      "title": "Renamed agent survives a new run and a client restart",
+      "requirements": [
+        "AG-01–05",
+        "R27"
+      ],
+      "oracle_class": "live owner/provider",
+      "delivery_gate": "Gate 3",
+      "procedure": "Rename/customize an agent, run it again, and restart the client.",
+      "required_observations": "Verify durable identity, saved characteristics, unchanged active-run configuration, and accurate attribution.",
+      "status": "not_run",
+      "blocker": "No durable agent-profile authority exists; Gate 0 proposes the Theorem backend organization service as owner, pending Travis's decision (ownership map 5 and 7 item 2).",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-22",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-22",
+      "title": "Configured provider failure keeps its binding and scoped retrieval",
+      "requirements": [
+        "DB-01–05"
+      ],
+      "oracle_class": "live owner/provider (fault injection)",
+      "delivery_gate": "Gate 4",
+      "procedure": "Fail an explicitly configured provider and exercise concurrent runs/scoped retrieval.",
+      "required_observations": "Preserve the binding; do not create empty fallback memory or leak another agent's data.",
+      "status": "not_run",
+      "blocker": "Portable state gate; no second provider and no agent-scoped memory binding exist yet.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-23",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-23",
+      "title": "Template and selected memory export/import with lineage",
+      "requirements": [
+        "PT-01–04"
+      ],
+      "oracle_class": "live owner/provider",
+      "delivery_gate": "Gate 4",
+      "procedure": "Export/import a template and selected memory with external payloads.",
+      "required_observations": "Check lineage, required bindings, missing-object handling, and independence from window geometry.",
+      "status": "not_run",
+      "blocker": "Portable state gate; export/import is not designed beyond the spec.",
+      "evidence": []
+    },
+    {
+      "id": "UAE-AC-24",
+      "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+      "spec_case": "AC-24",
+      "title": "Two provider configurations evaluated from one fixed snapshot",
+      "requirements": [
+        "Section 11.3"
+      ],
+      "oracle_class": "live owner/provider",
+      "delivery_gate": "Gate 5",
+      "procedure": "Evaluate two provider configurations from one fixed snapshot.",
+      "required_observations": "Verify candidate isolation, recorded differences, and unchanged source-agent memory.",
+      "status": "not_run",
+      "blocker": "Provider experiment gate; isolated evaluation forks do not exist yet.",
+      "evidence": []
     }
   ],
   "execution_record": {
@@ -2193,5 +2628,11 @@
     "test_fixture_identity": "real signed-in local stack with rustyred-thg-server, theorem-ide-host and herdr-core; AC-35/36 report and screenshots under $HOME/.theorem/e2e-pr123",
     "recorded_at": "2026-11-17",
     "tally": "37 pass, 25 not_run, 0 fail"
+  },
+  "companion_cases": {
+    "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
+    "id_prefix": "UAE-",
+    "note": "Cases from Section 14 of the unified agent experience companion. Their own spec numbers AC-01..AC-24 collide with this file's ids, so they are recorded as UAE-AC-01..UAE-AC-24 with spec_case naming the original number. The tally in execution_record counts workbench cases only. UAE-AC-01..21 gate the companion's first coherent release (Gates 0-3) as applicable to supported providers; UAE-AC-22..23 gate portable state; UAE-AC-24 gates provider experiments. A case needing live evidence stays not_run when only mocks or replay are available.",
+    "added": "2026-11-26, Gate 0, against c1a0e4b26"
   }
 }
