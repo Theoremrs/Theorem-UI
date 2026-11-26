@@ -324,12 +324,18 @@ export interface Conversation {
    * Nothing sent to it reaches this one's runtime. Closing it disposes its conversation and its runtime.
    */
   sideChat: (
-    request: Request & { scope?: SideChatScope },
+    request: Request & {
+      scope?: SideChatScope
+      /** A side chat's own stored thread to show again, with any run still working there. */
+      reopen?: string
+    },
   ) => Promise<Completion<SideChat>>
   /**
-   * The side chats open now, oldest first. Theorem keeps no mark that tells a side chat's thread from any
-   * other thread (a forked or continued thread looks the same whoever made it), so this is the session's
-   * own list: after a reload it is empty, and a side chat's durable thread remains in the thread list.
+   * The side chats open now, oldest first, then the ones closed here whose thread can be reopened
+   * (`detached`), most recently closed first. Theorem keeps no mark that tells a side chat's thread from
+   * any other thread (a forked or continued thread looks the same whoever made it), so this is the
+   * session's own record, kept in its storage: a new tab starts with none, and a side chat's durable
+   * thread remains in the thread list either way.
    */
   sideChats: () => SideChatInfo[]
   /** Whether this host can make the second runtime a side chat needs. */
@@ -376,6 +382,9 @@ export interface Conversation {
  */
 export type SideChatScope = 'fresh' | 'continued' | 'forked'
 
+/** How many closed side chats the session keeps to reopen. */
+const DETACHED_LIMIT = 20
+
 /** A runtime made for a side chat, and how to end it. */
 export interface SideRuntime {
   runtime: ConversationRuntime
@@ -391,6 +400,8 @@ export interface SideChats {
   open: (request: {
     scope: SideChatScope
     from?: string
+    /** A side chat's own stored thread to show again; its history loads and a live run resumes. */
+    reopen?: string
   }) => Promise<SideRuntime>
 }
 
@@ -410,6 +421,11 @@ export interface SideChatInfo {
   from?: string
   /** The side chat's own stored thread, once it has one. */
   threadId?: string
+  /**
+   * Closed here while its thread stays, and any run there kept working: open it again with
+   * `sideChat({ reopen: threadId })`. Kept in the session's storage, so a reload still lists it.
+   */
+  detached?: boolean
 }
 
 export interface ConversationOptions {
@@ -539,6 +555,36 @@ export function createConversation({
     SideChat,
     { base: Omit<SideChatInfo, 'threadId'>; threadId: () => string | undefined }
   >()
+  /** Closed side chats, kept so they can be reopened; at most `DETACHED_LIMIT`, newest first. */
+  const detachedKey = `theorem.workbench.sideChats.${workspaceId}`
+  const readDetached = (): SideChatInfo[] => {
+    try {
+      const parsed: unknown = JSON.parse(storage?.getItem(detachedKey) ?? '[]')
+      return Array.isArray(parsed)
+        ? parsed.filter(
+            (entry): entry is SideChatInfo =>
+              typeof entry === 'object' &&
+              entry !== null &&
+              typeof (entry as SideChatInfo).threadId === 'string' &&
+              typeof (entry as SideChatInfo).conversationId === 'string',
+          )
+        : []
+    } catch {
+      return []
+    }
+  }
+  const writeDetached = (list: SideChatInfo[]) => {
+    try {
+      if (list.length)
+        storage?.setItem(
+          detachedKey,
+          JSON.stringify(list.slice(0, DETACHED_LIMIT)),
+        )
+      else storage?.removeItem(detachedKey)
+    } catch {
+      // Storage full or refused: the side chat's thread is still in the thread list.
+    }
+  }
   const listeners = new Set<(snapshot: ConversationSnapshot) => void>()
   let disposed = false
   let pending: (() => void) | undefined
@@ -1641,7 +1687,20 @@ export function createConversation({
         )
       const scope = request.scope ?? 'fresh'
       const from = runtime.threads.mainItem.getState().remoteId
-      if (scope !== 'fresh' && !from)
+      const reopen = request.reopen
+      if (reopen !== undefined && (!reopen || reopen === from))
+        return refused(
+          answers,
+          'invalid_request',
+          "A side chat reopens its own stored thread, never the main conversation's",
+        )
+      if (reopen !== undefined && [...info.values()].some((i) => i.threadId() === reopen))
+        return refused(
+          answers,
+          'conflict',
+          'That side chat is already open',
+        )
+      if (!reopen && scope !== 'fresh' && !from)
         return refused(
           answers,
           'not_stored',
@@ -1649,7 +1708,11 @@ export function createConversation({
         )
       let side: SideRuntime
       try {
-        side = await sideChats.open({ scope, ...(from ? { from } : {}) })
+        side = await sideChats.open({
+          scope,
+          ...(from ? { from } : {}),
+          ...(reopen ? { reopen } : {}),
+        })
       } catch (error) {
         return failure(answers, error, false)
       }
@@ -1674,12 +1737,25 @@ export function createConversation({
         close() {
           if (closed) return
           closed = true
+          const kept = info.get(chat)
+          const stored = kept?.threadId()
+          if (kept && stored)
+            writeDetached([
+              {
+                ...kept.base,
+                threadId: stored,
+                detached: true,
+              },
+              ...readDetached().filter((entry) => entry.threadId !== stored),
+            ])
           sides.delete(chat)
           info.delete(chat)
           conversation.dispose()
           side.close()
         },
       }
+      if (reopen)
+        writeDetached(readDetached().filter((entry) => entry.threadId !== reopen))
       sides.add(chat)
       info.set(chat, {
         base: {
@@ -1830,12 +1906,18 @@ export function createConversation({
     canSwitchBranch:
       services.history !== undefined && services.selectBranch !== undefined,
 
-    sideChats: () =>
-      [...sides].map((chat) => {
+    sideChats: () => {
+      const open = [...sides].map((chat) => {
         const { base, threadId } = info.get(chat)!
         const stored = threadId()
         return { ...base, ...(stored ? { threadId: stored } : {}) }
-      }),
+      })
+      const shown = new Set(open.map((chat) => chat.threadId))
+      return [
+        ...open,
+        ...readDetached().filter((entry) => !shown.has(entry.threadId)),
+      ]
+    },
 
     dispose() {
       if (disposed) return

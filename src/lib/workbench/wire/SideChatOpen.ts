@@ -4,4 +4,8 @@ import type { SideChatScope } from "./SideChatScope";
 /**
  * The payload of `conversationSideChat`. An empty one is a fresh side chat.
  */
-export type SideChatOpen = { scope?: SideChatScope, };
+export type SideChatOpen = { scope?: SideChatScope, 
+/**
+ * A side chat's own stored thread to show again; never the main one.
+ */
+reopen?: string, };

@@ -132,6 +132,7 @@ export function createConversationPort({
           const done = await conversation.sideChat({
             requestId,
             ...(effect.payload.scope ? { scope: effect.payload.scope } : {}),
+            ...(effect.payload.reopen ? { reopen: effect.payload.reopen } : {}),
           })
           if (done.outcome !== 'accepted') return reply(done)
           const chat = done.value

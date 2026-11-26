@@ -8,4 +8,9 @@ export type SideChatInfo = { conversationId: string, scope: SideChatScope,
 /**
  * The conversation a continued or forked side chat started from.
  */
-from?: string, threadId?: string, };
+from?: string, threadId?: string, 
+/**
+ * Closed here while its thread stays: choosing it reopens that thread,
+ * with any run still working there, instead of joining an open chat.
+ */
+detached?: boolean, };
