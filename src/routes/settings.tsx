@@ -2,6 +2,7 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { SettingsLayout } from '@/components/settings/settings-frame'
 import { AgentProfileDialog } from '@/components/agent/agent-profile-dialog'
+import { OrganizationAgentsDialog } from '@/components/agent/organization-agents-dialog'
 import { CommandPalette } from '@/components/shell/command-palette'
 import { PreferencesSync } from '@/lib/theorem/models'
 
@@ -13,6 +14,7 @@ export const Route = createFileRoute('/settings')({
       <CommandPalette />
       {/* Mounted wherever the palette is, which opens it. */}
       <AgentProfileDialog />
+      <OrganizationAgentsDialog />
       <PreferencesSync />
       <Outlet />
     </SettingsLayout>

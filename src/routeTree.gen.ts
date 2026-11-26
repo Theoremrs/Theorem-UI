@@ -94,7 +94,11 @@ import { Route as DesktopWorkspaceWorkspaceIdTrustRouteImport } from './routes/d
 import { Route as SettingsObserveRunsRunIdRouteImport } from './routes/settings/observe/runs.$runId'
 import { Route as V1TheoremOrganizationIndexRouteImport } from './routes/v1/theorem/organization/index'
 import { Route as V1TheoremOrganizationProfileRouteImport } from './routes/v1/theorem/organization/profile'
+import { Route as V1TheoremOrganizationSettingsRouteImport } from './routes/v1/theorem/organization/settings'
 import { Route as V1TheoremAgentStreamSplatRouteImport } from './routes/v1/theorem/agent/stream/$'
+import { Route as V1TheoremOrganizationAgentsIndexRouteImport } from './routes/v1/theorem/organization/agents/index'
+import { Route as V1TheoremOrganizationAgentsSplatRouteImport } from './routes/v1/theorem/organization/agents/$'
+import { Route as V1TheoremOrganizationKnowledgeSplatRouteImport } from './routes/v1/theorem/organization/knowledge/$'
 
 const ChatRoute = ChatRouteImport.update({
   id: '/_chat',
@@ -544,10 +548,34 @@ const V1TheoremOrganizationProfileRoute =
     path: '/v1/theorem/organization/profile',
     getParentRoute: () => rootRouteImport,
   } as any)
+const V1TheoremOrganizationSettingsRoute =
+  V1TheoremOrganizationSettingsRouteImport.update({
+    id: '/v1/theorem/organization/settings',
+    path: '/v1/theorem/organization/settings',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const V1TheoremAgentStreamSplatRoute =
   V1TheoremAgentStreamSplatRouteImport.update({
     id: '/v1/theorem/agent/stream/$',
     path: '/v1/theorem/agent/stream/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const V1TheoremOrganizationAgentsIndexRoute =
+  V1TheoremOrganizationAgentsIndexRouteImport.update({
+    id: '/v1/theorem/organization/agents/',
+    path: '/v1/theorem/organization/agents/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const V1TheoremOrganizationAgentsSplatRoute =
+  V1TheoremOrganizationAgentsSplatRouteImport.update({
+    id: '/v1/theorem/organization/agents/$',
+    path: '/v1/theorem/organization/agents/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const V1TheoremOrganizationKnowledgeSplatRoute =
+  V1TheoremOrganizationKnowledgeSplatRouteImport.update({
+    id: '/v1/theorem/organization/knowledge/$',
+    path: '/v1/theorem/organization/knowledge/$',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -634,9 +662,13 @@ export interface FileRoutesByFullPath {
   '/desktop/workspace/$workspaceId/trust': typeof DesktopWorkspaceWorkspaceIdTrustRoute
   '/settings/observe/runs/$runId': typeof SettingsObserveRunsRunIdRoute
   '/v1/theorem/organization/profile': typeof V1TheoremOrganizationProfileRoute
+  '/v1/theorem/organization/settings': typeof V1TheoremOrganizationSettingsRoute
   '/desktop/workspace/$workspaceId/': typeof DesktopWorkspaceWorkspaceIdIndexRoute
   '/v1/theorem/organization/': typeof V1TheoremOrganizationIndexRoute
   '/v1/theorem/agent/stream/$': typeof V1TheoremAgentStreamSplatRoute
+  '/v1/theorem/organization/agents/$': typeof V1TheoremOrganizationAgentsSplatRoute
+  '/v1/theorem/organization/knowledge/$': typeof V1TheoremOrganizationKnowledgeSplatRoute
+  '/v1/theorem/organization/agents/': typeof V1TheoremOrganizationAgentsIndexRoute
 }
 export interface FileRoutesByTo {
   '/app-host': typeof AppHostRoute
@@ -720,9 +752,13 @@ export interface FileRoutesByTo {
   '/desktop/workspace/$workspaceId/trust': typeof DesktopWorkspaceWorkspaceIdTrustRoute
   '/settings/observe/runs/$runId': typeof SettingsObserveRunsRunIdRoute
   '/v1/theorem/organization/profile': typeof V1TheoremOrganizationProfileRoute
+  '/v1/theorem/organization/settings': typeof V1TheoremOrganizationSettingsRoute
   '/desktop/workspace/$workspaceId': typeof DesktopWorkspaceWorkspaceIdIndexRoute
   '/v1/theorem/organization': typeof V1TheoremOrganizationIndexRoute
   '/v1/theorem/agent/stream/$': typeof V1TheoremAgentStreamSplatRoute
+  '/v1/theorem/organization/agents/$': typeof V1TheoremOrganizationAgentsSplatRoute
+  '/v1/theorem/organization/knowledge/$': typeof V1TheoremOrganizationKnowledgeSplatRoute
+  '/v1/theorem/organization/agents': typeof V1TheoremOrganizationAgentsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -809,9 +845,13 @@ export interface FileRoutesById {
   '/desktop/workspace/$workspaceId/trust': typeof DesktopWorkspaceWorkspaceIdTrustRoute
   '/settings/observe/runs/$runId': typeof SettingsObserveRunsRunIdRoute
   '/v1/theorem/organization/profile': typeof V1TheoremOrganizationProfileRoute
+  '/v1/theorem/organization/settings': typeof V1TheoremOrganizationSettingsRoute
   '/desktop/workspace/$workspaceId/': typeof DesktopWorkspaceWorkspaceIdIndexRoute
   '/v1/theorem/organization/': typeof V1TheoremOrganizationIndexRoute
   '/v1/theorem/agent/stream/$': typeof V1TheoremAgentStreamSplatRoute
+  '/v1/theorem/organization/agents/$': typeof V1TheoremOrganizationAgentsSplatRoute
+  '/v1/theorem/organization/knowledge/$': typeof V1TheoremOrganizationKnowledgeSplatRoute
+  '/v1/theorem/organization/agents/': typeof V1TheoremOrganizationAgentsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -898,9 +938,13 @@ export interface FileRouteTypes {
     | '/desktop/workspace/$workspaceId/trust'
     | '/settings/observe/runs/$runId'
     | '/v1/theorem/organization/profile'
+    | '/v1/theorem/organization/settings'
     | '/desktop/workspace/$workspaceId/'
     | '/v1/theorem/organization/'
     | '/v1/theorem/agent/stream/$'
+    | '/v1/theorem/organization/agents/$'
+    | '/v1/theorem/organization/knowledge/$'
+    | '/v1/theorem/organization/agents/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/app-host'
@@ -984,9 +1028,13 @@ export interface FileRouteTypes {
     | '/desktop/workspace/$workspaceId/trust'
     | '/settings/observe/runs/$runId'
     | '/v1/theorem/organization/profile'
+    | '/v1/theorem/organization/settings'
     | '/desktop/workspace/$workspaceId'
     | '/v1/theorem/organization'
     | '/v1/theorem/agent/stream/$'
+    | '/v1/theorem/organization/agents/$'
+    | '/v1/theorem/organization/knowledge/$'
+    | '/v1/theorem/organization/agents'
   id:
     | '__root__'
     | '/_chat'
@@ -1072,9 +1120,13 @@ export interface FileRouteTypes {
     | '/desktop/workspace/$workspaceId/trust'
     | '/settings/observe/runs/$runId'
     | '/v1/theorem/organization/profile'
+    | '/v1/theorem/organization/settings'
     | '/desktop/workspace/$workspaceId/'
     | '/v1/theorem/organization/'
     | '/v1/theorem/agent/stream/$'
+    | '/v1/theorem/organization/agents/$'
+    | '/v1/theorem/organization/knowledge/$'
+    | '/v1/theorem/organization/agents/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1135,9 +1187,13 @@ export interface RootRouteChildren {
   DesktopWorkspaceWorkspaceIdTreeRoute: typeof DesktopWorkspaceWorkspaceIdTreeRoute
   DesktopWorkspaceWorkspaceIdTrustRoute: typeof DesktopWorkspaceWorkspaceIdTrustRoute
   V1TheoremOrganizationProfileRoute: typeof V1TheoremOrganizationProfileRoute
+  V1TheoremOrganizationSettingsRoute: typeof V1TheoremOrganizationSettingsRoute
   DesktopWorkspaceWorkspaceIdIndexRoute: typeof DesktopWorkspaceWorkspaceIdIndexRoute
   V1TheoremOrganizationIndexRoute: typeof V1TheoremOrganizationIndexRoute
   V1TheoremAgentStreamSplatRoute: typeof V1TheoremAgentStreamSplatRoute
+  V1TheoremOrganizationAgentsSplatRoute: typeof V1TheoremOrganizationAgentsSplatRoute
+  V1TheoremOrganizationKnowledgeSplatRoute: typeof V1TheoremOrganizationKnowledgeSplatRoute
+  V1TheoremOrganizationAgentsIndexRoute: typeof V1TheoremOrganizationAgentsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1737,11 +1793,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof V1TheoremOrganizationProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/v1/theorem/organization/settings': {
+      id: '/v1/theorem/organization/settings'
+      path: '/v1/theorem/organization/settings'
+      fullPath: '/v1/theorem/organization/settings'
+      preLoaderRoute: typeof V1TheoremOrganizationSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/v1/theorem/agent/stream/$': {
       id: '/v1/theorem/agent/stream/$'
       path: '/v1/theorem/agent/stream/$'
       fullPath: '/v1/theorem/agent/stream/$'
       preLoaderRoute: typeof V1TheoremAgentStreamSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/v1/theorem/organization/agents/': {
+      id: '/v1/theorem/organization/agents/'
+      path: '/v1/theorem/organization/agents'
+      fullPath: '/v1/theorem/organization/agents/'
+      preLoaderRoute: typeof V1TheoremOrganizationAgentsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/v1/theorem/organization/agents/$': {
+      id: '/v1/theorem/organization/agents/$'
+      path: '/v1/theorem/organization/agents/$'
+      fullPath: '/v1/theorem/organization/agents/$'
+      preLoaderRoute: typeof V1TheoremOrganizationAgentsSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/v1/theorem/organization/knowledge/$': {
+      id: '/v1/theorem/organization/knowledge/$'
+      path: '/v1/theorem/organization/knowledge/$'
+      fullPath: '/v1/theorem/organization/knowledge/$'
+      preLoaderRoute: typeof V1TheoremOrganizationKnowledgeSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -1906,19 +1990,15 @@ const rootRouteChildren: RootRouteChildren = {
   DesktopWorkspaceWorkspaceIdTreeRoute: DesktopWorkspaceWorkspaceIdTreeRoute,
   DesktopWorkspaceWorkspaceIdTrustRoute: DesktopWorkspaceWorkspaceIdTrustRoute,
   V1TheoremOrganizationProfileRoute: V1TheoremOrganizationProfileRoute,
+  V1TheoremOrganizationSettingsRoute: V1TheoremOrganizationSettingsRoute,
   DesktopWorkspaceWorkspaceIdIndexRoute: DesktopWorkspaceWorkspaceIdIndexRoute,
   V1TheoremOrganizationIndexRoute: V1TheoremOrganizationIndexRoute,
   V1TheoremAgentStreamSplatRoute: V1TheoremAgentStreamSplatRoute,
+  V1TheoremOrganizationAgentsSplatRoute: V1TheoremOrganizationAgentsSplatRoute,
+  V1TheoremOrganizationKnowledgeSplatRoute:
+    V1TheoremOrganizationKnowledgeSplatRoute,
+  V1TheoremOrganizationAgentsIndexRoute: V1TheoremOrganizationAgentsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

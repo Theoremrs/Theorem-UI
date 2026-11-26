@@ -1,5 +1,6 @@
 import { Outlet } from '@tanstack/react-router'
 import { AgentProfileDialog } from '@/components/agent/agent-profile-dialog'
+import { OrganizationAgentsDialog } from '@/components/agent/organization-agents-dialog'
 import { ArtifactLibraryPublication } from '@/components/artifacts/openui/publication'
 import { PreferencesSync } from '@/lib/theorem/models'
 import { TheoremRuntimeProvider } from '@/lib/theorem/runtime'
@@ -30,6 +31,7 @@ export default function SignedInChat({
       <CommandPalette />
       {/* Mounted wherever the palette is, which opens it. */}
       <AgentProfileDialog />
+      <OrganizationAgentsDialog />
       <PreferencesSync />
       <ArtifactLibraryPublication />
       <Outlet />
