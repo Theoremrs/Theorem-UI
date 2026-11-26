@@ -77,7 +77,13 @@ pub(crate) fn nodes(p: &ProcessPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
             retry.actions = vec![action("shell.start", true, None)];
             vec![alert, retry]
         }
-        Stage::Bound(b) => live(b, area, cx),
+        Stage::Bound(b) => {
+            let control = p
+                .catalog
+                .control()
+                .describe(&crate::panel::control_key(b), b.epoch);
+            live(b, area, cx, control)
+        }
     };
     // A node has one parent: whatever another node owns is not the root's.
     let owned: Vec<NodeId> = children
@@ -198,7 +204,7 @@ fn not_running(b: &Bound) -> &'static str {
     }
 }
 
-fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
+fn live(b: &Bound, area: Rect, cx: &ViewCtx, control: &str) -> Vec<Node> {
     let g = draw::geo(area);
     let mut status = Node::new("status", Aria::Status, &draw::status_line(b), g.header);
     status.state.busy = b.attaching() || b.end == EndAsk::Pending;
@@ -238,9 +244,18 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
             .join("\n"),
     );
     let (row, col) = b.screen.cursor_position();
+    let (cols, rows) = b.screen.size();
+    // API-03: what this is a read of. The text above is the emulated screen,
+    // not the raw output log, and a screen is evidence of what is shown, not
+    // a parsed result.
     let mut notes = vec![
         process_words(b),
         format!("Cursor at row {}, column {}.", row + 1, col + 1),
+        format!(
+            "Emulated screen of binding epoch {}, {cols} columns by {rows} rows.",
+            b.epoch
+        ),
+        format!("{}.", capitalise(control)),
     ];
     if !b.screen.cursor_visible() {
         notes.push("The program hid the cursor.".into());
@@ -342,4 +357,12 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
         out.push(fresh);
     }
     out
+}
+
+fn capitalise(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
 }

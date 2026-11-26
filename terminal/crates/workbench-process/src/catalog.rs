@@ -35,6 +35,9 @@ struct Inner {
 pub(crate) struct Catalog {
     inner: Rc<RefCell<Inner>>,
     nonce: Rc<str>,
+    /// Agent input claims, shared by the same panes as the listing, so every
+    /// view of a terminal sees one answer.
+    control: Rc<RefCell<crate::control::Control>>,
 }
 
 impl Catalog {
@@ -48,6 +51,7 @@ impl Catalog {
                 version: 0,
             })),
             nonce: Rc::from(load_nonce.into()),
+            control: Rc::default(),
         }
     }
 
@@ -71,6 +75,10 @@ impl Catalog {
 
     pub(crate) fn version(&self) -> u64 {
         self.inner.borrow().version
+    }
+
+    pub(crate) fn control(&self) -> std::cell::RefMut<'_, crate::control::Control> {
+        self.control.borrow_mut()
     }
 
     pub(crate) fn nonce(&self) -> &str {

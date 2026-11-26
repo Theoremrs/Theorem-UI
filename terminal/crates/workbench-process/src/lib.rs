@@ -8,6 +8,7 @@
 mod bound;
 mod catalog;
 mod chooser;
+mod control;
 mod draw;
 mod keys;
 mod panel;
@@ -26,6 +27,13 @@ use theorem_workbench_core::registry::{ActionDescriptor, ActionIntent, Registry,
 
 pub use panel::ProcessPanel;
 pub use styles::ProcessStyles;
+
+/// An agent run asks for the input claim on a shell's terminal.
+pub const ACTION_CODE_CLAIM: &str = "code.claim";
+/// An agent run gives its input claim up; the process keeps running.
+pub const ACTION_CODE_RELEASE: &str = "code.release";
+/// The person ends their takeover of a terminal an agent was typing into.
+pub const ACTION_SHELL_HAND_BACK: &str = "shell.hand_back";
 
 /// The registry kind this pane serves. It is the existing `shell` kind.
 pub const KIND: &str = "shell";
@@ -61,7 +69,7 @@ pub fn register(
 /// `shell.start` and `shell.end`. Each is a workflow a person otherwise
 /// reaches only by a key.
 pub fn actions() -> Vec<ActionDescriptor> {
-    use ActionIntent::{Create, Destroy, Start};
+    use ActionIntent::{Create, Destroy, Local, Start};
     vec![
         // The selected session row of the chooser.
         ActionDescriptor::new("shell.attach", "Attach to session", Create)
@@ -76,6 +84,13 @@ pub fn actions() -> Vec<ActionDescriptor> {
         // refused whatever it names.
         ActionDescriptor::new("shell.end.confirm", "Confirm end process", Destroy)
             .emits(EffectKind::TerminalEnd)
+            .human_only(),
+        // Agent input control (IN-02, IN-03, Gate 0 decision 1). There is no
+        // lease between the person's views; these arbitrate agent input.
+        // They change no host state, so they are local to the pane.
+        ActionDescriptor::new(ACTION_CODE_CLAIM, "Claim agent input", Local),
+        ActionDescriptor::new(ACTION_CODE_RELEASE, "Release agent input", Local),
+        ActionDescriptor::new(ACTION_SHELL_HAND_BACK, "Hand back to the agent", Local)
             .human_only(),
     ]
 }

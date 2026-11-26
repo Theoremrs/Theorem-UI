@@ -24,6 +24,9 @@ pub enum RefusalCode {
     /// The action's arguments were not what it takes: a missing task, an
     /// option it does not know, or arguments that are not JSON.
     InvalidArgs,
+    /// The agent named no panel and more than one could be meant; the reason
+    /// lists the candidates' panel ids (API-06). Nothing was done.
+    AmbiguousTarget,
 }
 
 /// What an action takes besides its id and its panel. Most actions take
@@ -158,6 +161,7 @@ pub fn agent_outcome(
             }
             Notice::Refused(Refusal::UnknownPanel(_)) => RefusalCode::UnknownPanel,
             Notice::Refused(Refusal::InvalidArgs { .. }) => RefusalCode::InvalidArgs,
+            Notice::Refused(Refusal::AmbiguousTarget { .. }) => RefusalCode::AmbiguousTarget,
             _ => continue,
         };
         let reason = crate::notice::describe(notice)

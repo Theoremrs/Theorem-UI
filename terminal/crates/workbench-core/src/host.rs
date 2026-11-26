@@ -514,8 +514,9 @@ pub enum HostMessage {
     },
     /// The runs whose edits Follow the agent shows: the working turn's run and
     /// the child runs of its delegations, as the page holds them now. The
-    /// whole set each time; empty when no turn works. Handled by the root and
-    /// sent to no panel.
+    /// whole set each time; empty when no turn works. Handled by the root
+    /// and also sent to every panel: a shell ends the agent input claims of
+    /// runs that left the set.
     FollowedRuns {
         runs: Vec<String>,
     },

@@ -15,7 +15,9 @@ use theorem_workbench_core::effect::{
     TerminalClaim, TerminalOpen,
 };
 use theorem_workbench_core::host::{ConnectionState, HostMessage};
-use theorem_workbench_core::ids::{ActionId, EffectId, Generation, ResourceRef, WorkspaceIdentity};
+use theorem_workbench_core::ids::{
+    ActionId, Actor, EffectId, Generation, ResourceRef, WorkspaceIdentity,
+};
 use theorem_workbench_core::semantics::Node;
 use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{Button, Ctx, Panel, PanelMsg, PanelPointer, PointerKind, ViewCtx};
@@ -74,6 +76,10 @@ pub struct ProcessPanel {
     /// current state, but a process that started is said so.
     abandoned: BTreeSet<EffectId>,
     pending_focus: Option<bool>,
+    /// The agent run whose `code.start` opened this pane's terminal: it is
+    /// issued an input claim once the terminal is bound (IN-02: a terminal
+    /// started for someone grants them control as part of its creation).
+    grant: Option<String>,
 }
 
 fn plain_char(key: &KeyInput) -> Option<char> {
@@ -112,6 +118,7 @@ impl ProcessPanel {
             deferred: vec![],
             abandoned: BTreeSet::new(),
             pending_focus: None,
+            grant: None,
         }
     }
 
@@ -451,6 +458,7 @@ impl ProcessPanel {
     }
 
     fn bound_key(&mut self, key: KeyInput, cx: &mut Ctx) {
+        let catalog = self.catalog.clone();
         let Some(b) = self.bound_mut() else { return };
         // A question waiting for a yes takes the keyboard.
         if b.end == EndAsk::Asking {
@@ -511,8 +519,9 @@ impl ProcessPanel {
         let Some(bytes) = encode_key(&event, &modes) else {
             return;
         };
-        if let Err(block) = b.send(cx, &bytes, InputKind::Human) {
-            b.notice = Some(block_note(&block));
+        match b.send(cx, &bytes, InputKind::Human) {
+            Ok(()) => took_over(&catalog, b),
+            Err(block) => b.notice = Some(block_note(&block)),
         }
     }
 
@@ -570,6 +579,7 @@ impl ProcessPanel {
     // ---- text and paste -------------------------------------------------
 
     fn on_text(&mut self, text: String, cx: &mut Ctx) {
+        let catalog = self.catalog.clone();
         let Some(b) = self.bound_mut() else { return };
         if b.end == EndAsk::Asking {
             return;
@@ -577,12 +587,14 @@ impl ProcessPanel {
         if b.gate().is_err() {
             return;
         }
-        if let Err(block) = b.send(cx, text.as_bytes(), InputKind::Human) {
-            b.notice = Some(block_note(&block));
+        match b.send(cx, text.as_bytes(), InputKind::Human) {
+            Ok(()) => took_over(&catalog, b),
+            Err(block) => b.notice = Some(block_note(&block)),
         }
     }
 
     fn on_paste(&mut self, text: String, cx: &mut Ctx) {
+        let catalog = self.catalog.clone();
         let Some(b) = self.bound_mut() else { return };
         if b.end == EndAsk::Asking {
             return;
@@ -591,8 +603,9 @@ impl ProcessPanel {
             return;
         }
         let bytes = encode_paste(&text, &b.screen.input_modes());
-        if let Err(block) = b.send(cx, &bytes, InputKind::Human) {
-            b.notice = Some(block_note(&block));
+        match b.send(cx, &bytes, InputKind::Human) {
+            Ok(()) => took_over(&catalog, b),
+            Err(block) => b.notice = Some(block_note(&block)),
         }
     }
 
@@ -823,6 +836,9 @@ impl ProcessPanel {
                 b.profile = Some(op.choice);
                 b.follows = op.follows;
                 b.opened(cx, &t);
+                if let Some(run) = self.grant.take() {
+                    let _ = self.catalog.control().claim(control_key(&b), &run, b.epoch);
+                }
                 self.stage = Stage::Bound(Box::new(b));
             }
             Outcome::Uncertain { reason } => {
@@ -858,6 +874,11 @@ impl ProcessPanel {
     // ---- host -----------------------------------------------------------
 
     fn on_host(&mut self, message: HostMessage, cx: &mut Ctx) {
+        if let HostMessage::FollowedRuns { runs } = &message {
+            self.catalog.control().working_runs(runs);
+            cx.invalidate();
+            return;
+        }
         if let HostMessage::ConnectionChanged { workspace, state } = &message
             && *workspace == self.identity.workspace
         {
@@ -930,6 +951,9 @@ impl ProcessPanel {
             ACTION_CODE_START => self.start_coding(cx),
             ACTION_CODE_SEND => self.type_coding(cx, true),
             ACTION_CODE_STOP => self.type_coding(cx, false),
+            crate::ACTION_CODE_CLAIM => self.claim_input(cx),
+            crate::ACTION_CODE_RELEASE => self.release_input(cx),
+            crate::ACTION_SHELL_HAND_BACK => self.hand_back(cx),
             _ => {}
         }
     }
@@ -977,6 +1001,10 @@ impl ProcessPanel {
             return;
         };
         argv.push(task);
+        self.grant = match cx.actor() {
+            Actor::Agent { run_id } => Some(run_id.clone()),
+            Actor::Human => None,
+        };
         let choice = Choice {
             id: p.id.clone(),
             label: p.label.clone(),
@@ -1019,10 +1047,56 @@ impl ProcessPanel {
         named.filter(|id| CODING_PROFILES.iter().any(|(_, label)| id == label))
     }
 
+    /// `code.claim`: an agent run asks for the input claim on this pane's
+    /// terminal. Issued unless the person took over or another run holds it.
+    fn claim_input(&mut self, cx: &mut Ctx) {
+        let Actor::Agent { run_id } = cx.actor().clone() else {
+            cx.refuse("code.claim is an agent's request; the person types without one.");
+            return;
+        };
+        let Some(b) = self.bound() else {
+            cx.refuse("This shell is not attached to a terminal.");
+            return;
+        };
+        let (key, epoch) = (control_key(b), b.epoch);
+        if let Err(refusal) = self.catalog.control().claim(key, &run_id, epoch) {
+            cx.refuse(refusal.text());
+        }
+        cx.invalidate();
+    }
+
+    /// `code.release`: the agent run gives its claim up. Ending a claim
+    /// never ends the process.
+    fn release_input(&mut self, cx: &mut Ctx) {
+        let Actor::Agent { run_id } = cx.actor().clone() else {
+            cx.refuse("code.release gives up an agent's claim; the person holds none.");
+            return;
+        };
+        let Some(b) = self.bound() else {
+            cx.refuse("This shell is not attached to a terminal.");
+            return;
+        };
+        if !self.catalog.control().release(&control_key(b), &run_id) {
+            cx.refuse("This run holds no input claim on this terminal.");
+        }
+        cx.invalidate();
+    }
+
+    /// `shell.hand_back` (human only): the person ends their takeover. No
+    /// agent holds the terminal afterwards until one claims it again.
+    fn hand_back(&mut self, cx: &mut Ctx) {
+        let Some(b) = self.bound() else { return };
+        if !self.catalog.control().hand_back(&control_key(b)) {
+            cx.refuse("No agent was stopped from typing into this terminal.");
+        }
+        cx.invalidate();
+    }
+
     /// `code.send` pastes the words and presses Enter; `code.stop` sends
     /// Ctrl-C, which asks the program to stop and never ends the process.
     fn type_coding(&mut self, cx: &mut Ctx, send: bool) {
         let coding = self.coding_profile();
+        let catalog = self.catalog.clone();
         let text = cx.args().input().map(str::to_owned);
         let Some(b) = self.bound_mut() else {
             cx.refuse("This shell is not attached to a terminal.");
@@ -1037,6 +1111,12 @@ impl ProcessPanel {
         }
         if b.end == EndAsk::Asking {
             cx.refuse("The person is being asked whether to end this process.");
+            return;
+        }
+        if let Actor::Agent { run_id } = cx.actor().clone()
+            && let Err(refusal) = catalog.control().check(&control_key(b), &run_id, b.epoch)
+        {
+            cx.refuse(refusal.text());
             return;
         }
         let bytes: Vec<Vec<u8>> = if send {
@@ -1448,5 +1528,24 @@ mod tests {
             terminal_name("Herdr shell", "n1.p.1"),
             terminal_name("Herdr shell", "n1.p.1")
         );
+    }
+}
+
+/// The control table's key for a bound terminal.
+pub(crate) fn control_key(b: &Bound) -> crate::control::Key {
+    crate::control::Key {
+        workspace: b.workspace.clone(),
+        session: b.session.clone(),
+    }
+}
+
+/// The person's own input reached the terminal: an agent holding its claim
+/// stops (IN-03), and the pane says so.
+fn took_over(catalog: &Catalog, b: &mut Bound) {
+    if catalog.control().person_input(&control_key(b)) {
+        b.notice = Some(Note::new(
+            Tone::Warning,
+            "You took over from the agent. It sends no more input here until you hand it back.",
+        ));
     }
 }

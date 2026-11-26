@@ -973,6 +973,10 @@ impl Model {
                         .get(&panel)
                         .is_some_and(|e| e.kind == kind && e.available)
                         .then_some(panel),
+                    None if !actor.is_human() => match self.agent_target(&[kind.as_str()]) {
+                        Ok(target) => target,
+                        Err(()) => return vec![],
+                    },
                     None => self.focus_owner().filter(|p| {
                         self.panels
                             .get(p)
@@ -991,7 +995,34 @@ impl Model {
                 })
             }
             ActionIntent::Create | ActionIntent::Start | ActionIntent::Destroy => {
-                let Some(target) = self.target_of_kind(&kind) else {
+                // The panel named, when one is (API-05: the caller's target
+                // is fixed at dispatch). An agent that names none gets the
+                // one panel of the kind, or is told the candidates; it never
+                // gets the person's focused one by default (API-06).
+                let target = match on {
+                    Some(panel) => match self.panels.get(&panel) {
+                        None => {
+                            self.notify(Notice::Refused(Refusal::UnknownPanel(panel)));
+                            return vec![];
+                        }
+                        Some(e) if e.kind != kind || !e.available => {
+                            self.notify(Notice::Refused(Refusal::Unavailable {
+                                reason: format!(
+                                    "Panel {} is not an available {title} panel.",
+                                    panel.as_str()
+                                ),
+                            }));
+                            return vec![];
+                        }
+                        Some(_) => Some(panel),
+                    },
+                    None if !actor.is_human() => match self.agent_target(&[kind.as_str()]) {
+                        Ok(target) => target,
+                        Err(()) => return vec![],
+                    },
+                    None => self.target_of_kind(&kind),
+                };
+                let Some(target) = target else {
                     self.notify(Notice::NoPanel(id));
                     return vec![];
                 };
@@ -1002,6 +1033,27 @@ impl Model {
                     Mode::Normal
                 };
                 self.call(&target, mode, |p, cx| p.update(PanelMsg::Action(id), cx))
+            }
+        }
+    }
+
+    /// The panel an agent's action is for when it named none: the one open,
+    /// available panel of `kinds`, or none when there is no such panel. With
+    /// more than one, the agent is refused with the candidates and nothing is
+    /// done (API-06); the person's focus never decides for it.
+    fn agent_target(&mut self, kinds: &[&str]) -> Result<Option<PanelInstanceId>, ()> {
+        let candidates: Vec<PanelInstanceId> = self
+            .panels
+            .iter()
+            .filter(|(_, e)| e.available && kinds.contains(&e.kind.as_str()))
+            .map(|(id, _)| id.clone())
+            .collect();
+        match candidates.len() {
+            0 => Ok(None),
+            1 => Ok(candidates.into_iter().next()),
+            _ => {
+                self.notify(Notice::Refused(Refusal::AmbiguousTarget { candidates }));
+                Err(())
             }
         }
     }
@@ -1795,7 +1847,17 @@ impl Model {
             }
             return effects;
         }
-        let Some(target) = on.or_else(|| self.focus_owner()) else {
+        let target = match on {
+            Some(panel) => Some(panel),
+            None if !self.acting.is_human() => {
+                match self.agent_target(&[SIDE_CHAT_KIND, SHELL_KIND]) {
+                    Ok(target) => target,
+                    Err(()) => return vec![],
+                }
+            }
+            None => self.focus_owner(),
+        };
+        let Some(target) = target else {
             self.notify(Notice::Refused(Refusal::Unavailable {
                 reason: format!(
                     "{} needs the side chat or shell panel to act on.",
@@ -2394,7 +2456,9 @@ impl Model {
                 self.follow.runs = runs;
                 self.dirty = true;
             }
-            return vec![];
+            // Panels hear it too: a shell ends the input claims of runs that
+            // stopped working (Gate 0 decision 1). It names no resource, so it
+            // goes to every panel, and is no edit for Follow the agent.
         }
         if let HostMessage::WorkspaceChanged {
             workspace,
