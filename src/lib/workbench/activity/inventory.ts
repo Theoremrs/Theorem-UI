@@ -69,7 +69,10 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
   ]
   const entries: ActivityEntry[] = []
   const entry = (
-    e: Omit<ActivityEntry, 'key' | 'observation' | 'observedAt' | 'epoch' | 'seq'>,
+    e: Omit<
+      ActivityEntry,
+      'key' | 'observation' | 'observedAt' | 'epoch' | 'seq'
+    >,
   ): ActivityEntry => ({
     ...e,
     key: keyOf(e.source, e.resource),
@@ -95,13 +98,25 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
             : 'unknown'
       // A thread with no run and no failure is at rest; it is not unfinished work.
       if (execution === 'unknown') continue
+      // The project it opens under, as organization's primaryProjectId picks it: pinned first, then oldest.
+      const [primary] = [...thread.memberships].sort(
+        (a, b) => Number(b.pinned) - Number(a.pinned) || a.atMs - b.atMs,
+      )
+      const projects = [
+        ...new Set([
+          thread.homeProjectId,
+          ...thread.memberships.map((m) => m.projectId),
+        ]),
+      ]
       entries.push(
         entry({
           source: 'thread',
           resource: thread.threadId,
-          label: thread.title,
+          label: thread.title || 'New chat',
           execution,
-          ...(review && review.kind === 'review'
+          projectId: primary?.projectId ?? thread.homeProjectId,
+          projects,
+          ...(review
             ? { waiting: { for: 'approval' as const, ref: review.reviewId } }
             : {}),
           ...(thread.attention.runId ? { runId: thread.attention.runId } : {}),

@@ -33,6 +33,8 @@ import {
   evidenceMessages,
   writingMessages,
 } from './fixtures/responses'
+import { ActivityView } from '@/components/activity/activity-view'
+import { useActivityView } from '@/lib/workbench/activity/arrangement'
 import { ArtifactPanel } from '@/components/artifacts/artifact-panel'
 import { useArtifactView } from '@/components/artifacts/artifact-view'
 import {
@@ -847,6 +849,53 @@ function PlanCardStory() {
 }
 
 /** The same plan from Theorem's copy, one root claimed and the other deviating, at the reading width. */
+/**
+ * Agent activity over a stand-in sheet: a conversation column with a composer at its foot, so the
+ * view's placement above the composer shows. The fake Theorem serves the organization fixture, where
+ * the Theorem project has one thread working and one waiting for approval.
+ */
+function activityStory(state: Partial<ReturnType<typeof useActivityView.getState>>) {
+  return function ActivityStory() {
+    const [frame, setFrame] = useState<HTMLDivElement | null>(null)
+    useLayoutEffect(() => {
+      useActivityView.setState({
+        open: false,
+        expanded: false,
+        placement: 'bottom',
+        scope: 'project',
+        selected: null,
+        arranged: undefined,
+        origin: null,
+        ...state,
+      })
+    }, [])
+    return (
+      <div
+        ref={setFrame}
+        className="relative h-dvh w-full bg-rail text-ink [--sheet-inset:3px]"
+      >
+        <div
+          data-appearance-part="sheet-frame"
+          className="absolute inset-(--sheet-inset) overflow-hidden rounded-xl bg-sheet shadow-sheet"
+        >
+          <div className="mx-auto flex h-full max-w-(--spacing-reading) flex-col justify-end gap-4 p-4">
+            <p className="text-sm text-ink-muted">
+              The conversation stays where it is while the activity view is open.
+            </p>
+            <div
+              data-appearance-part="composer"
+              className="min-h-24 rounded-2xl border border-separator bg-composer p-3 text-sm text-ink-faint"
+            >
+              Message input
+            </div>
+          </div>
+        </div>
+        <ActivityView projectId="project-theorem" frame={frame} />
+      </div>
+    )
+  }
+}
+
 function PlanCardUnderWayStory() {
   return (
     <div className="mx-auto w-full max-w-(--spacing-reading) px-4 py-4">
@@ -1593,6 +1642,22 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'tool-calls-check': threadStory('finished', appCheckMessages()),
   'plan-card': PlanCardStory,
   'plan-card-under-way': PlanCardUnderWayStory,
+  'agent-activity-compact': activityStory({}),
+  'agent-activity-drawer': activityStory({
+    open: true,
+    selected: 'thread:thread-python-sdk',
+  }),
+  'agent-activity-right-all': activityStory({
+    open: true,
+    placement: 'right',
+    scope: 'all',
+    selected: 'thread:thread-atlas-0',
+  }),
+  'agent-activity-workspace': activityStory({
+    open: true,
+    expanded: true,
+    selected: 'thread:thread-app-gallery',
+  }),
   'face-bench': FaceBench,
   'face-book': FaceBook,
   'face-in-shell': ShellCompareStory,

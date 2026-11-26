@@ -34,6 +34,7 @@ import { createThreads } from '@/lib/workbench/threads/threads'
 import { conversationServices } from '@/lib/workbench/conversation/runtime'
 import { createSideChatModel } from '@/lib/workbench/conversation/side-chat-model'
 import { createSideChats } from '@/lib/workbench/conversation/side-chats'
+import { registerActivitySource } from '@/lib/workbench/activity/sources'
 import { useConversationRuntime } from '@/lib/workbench/conversation/use-conversation-runtime'
 import { createLanguage } from '@/lib/workbench/language/language'
 import { deliverReducedMotion, languagePortFor } from './mount-wiring'
@@ -618,6 +619,26 @@ export function Workbench({
           client: theorem(),
           onAccountChange: (listener) => watch.onChange(() => listener()),
         })
+        // The activity view reads these owners' own listings while it is open; it takes none of them over.
+        const stopActivity = registerActivitySource(projectId, {
+          terminals: async () => {
+            if (!(await host.canList())) return undefined
+            const listed = await host.list()
+            return listed.sessions.map((row) => ({
+              workspace: workspaceId,
+              session: row.session,
+              label: row.name || row.command || `Terminal ${row.session}`,
+              state: row.state,
+              exitCode: row.exit_code ?? null,
+            }))
+          },
+          sideChats: () =>
+            conversation.sideChats().map((chat) => ({
+              conversationId: chat.conversationId,
+              ...(chat.threadId ? { threadId: chat.threadId } : {}),
+              ...(chat.detached ? { detached: true } : {}),
+            })),
+        })
         const refresh = () => void watch.refresh()
         window.addEventListener('focus', refresh)
         const terminalKey = `theorem-terminal-views.1:${JSON.stringify([account, workspaceId])}`
@@ -696,6 +717,7 @@ export function Workbench({
           },
           stop() {
             stopped = true
+            stopActivity()
             window.removeEventListener('focus', refresh)
             window.removeEventListener('pagehide', saveTerminalViews)
             watch.dispose()

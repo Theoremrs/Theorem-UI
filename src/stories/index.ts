@@ -528,6 +528,30 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 1280, height: 720 },
   },
   {
+    id: 'agent-activity-compact',
+    title: 'Agent activity: the compact preview above the composer',
+    lane: 'original',
+    viewport: { width: 1280, height: 800 },
+  },
+  {
+    id: 'agent-activity-drawer',
+    title: 'Agent activity: the bottom drawer, a working thread selected',
+    lane: 'original',
+    viewport: { width: 1280, height: 800 },
+  },
+  {
+    id: 'agent-activity-right-all',
+    title: 'Agent activity: the right drawer over All work, with project labels',
+    lane: 'original',
+    viewport: { width: 1280, height: 800 },
+  },
+  {
+    id: 'agent-activity-workspace',
+    title: 'Agent activity: the full agent workspace, a thread waiting for approval',
+    lane: 'original',
+    viewport: { width: 1280, height: 800 },
+  },
+  {
     id: 'tool-calls-check',
     title: 'Tool calls: an App check with its problems',
     lane: 'original',

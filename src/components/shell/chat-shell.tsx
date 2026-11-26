@@ -41,6 +41,7 @@ import {
 } from 'react'
 import type { CSSProperties } from 'react'
 
+import { ActivityView } from '@/components/activity/activity-view'
 import { ModePage } from '@/components/pages/mode-page'
 import { IdePageShown, OnIdePage } from '@/components/ide/ide-page'
 import { IdeStatusBar } from '@/components/ide/ide-status-bar'
@@ -513,6 +514,10 @@ function DesktopShell(route: DockRoute) {
             )}
           </div>
         </div>
+        {/* Agent activity overlays the sheet without reflowing it, ending above the composer. */}
+        {!full && !vault && (
+          <ActivityView projectId={route.projectId} frame={frame} />
+        )}
         {workbenchMounted && (
           <WorkbenchDock placement={requestedPlacement} frame={frame}>
             {({ shown, companion }) => (

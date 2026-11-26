@@ -26,6 +26,7 @@ import {
   useOrganization,
 } from '@/lib/theorem/organization'
 import { cn } from '@/lib/utils'
+import { useActivityView } from '@/lib/workbench/activity/arrangement'
 import { useShell } from './shell-state'
 
 type Entry = {
@@ -45,8 +46,25 @@ type Group = { label: string; items: Entry[] }
 
 export const useCommandPalette = create<{
   open: boolean
+  /** What had focus when the palette opened, so a command can hand focus back to it. */
+  origin: HTMLElement | null
   setOpen: (open: boolean) => void
-}>()((set) => ({ open: false, setOpen: (open) => set({ open }) }))
+}>()((set) => ({
+  open: false,
+  origin: null,
+  setOpen: (open) =>
+    set(
+      open
+        ? {
+            open,
+            origin:
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null,
+          }
+        : { open },
+    ),
+}))
 
 /** ⌘K or Ctrl+K anywhere opens the palette. */
 function useHotkey() {
@@ -128,6 +146,20 @@ function useGroups(close: () => void): Group[] {
         label: 'Go to',
         items: [
           { id: 'new-chat', label: 'New chat', Mark: Icon.NewChat, run: go('/') },
+          {
+            id: 'agent-activity',
+            label: 'Agent activity',
+            keywords: 'agents runs work running waiting drawer workspace',
+            Mark: Icon.Agent,
+            run: () => {
+              // The palette's own trigger is gone once it closes: focus returns to what had it before.
+              const origin = useCommandPalette.getState().origin
+              close()
+              const view = useActivityView.getState()
+              if (view.open) view.close()
+              else view.openView({ origin })
+            },
+          },
           ...SETTINGS_GROUPS.flatMap(({ sections }) =>
             sections.map(({ path, label, Mark }) => ({
               id: path,
