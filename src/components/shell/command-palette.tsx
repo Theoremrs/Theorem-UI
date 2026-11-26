@@ -26,6 +26,8 @@ import {
   useOrganization,
 } from '@/lib/theorem/organization'
 import { cn } from '@/lib/utils'
+import { useActivityView } from '@/lib/workbench/activity/arrangement'
+import { useAgentProfileDialog } from '@/components/agent/agent-profile-dialog'
 import { useShell } from './shell-state'
 
 type Entry = {
@@ -45,8 +47,28 @@ type Group = { label: string; items: Entry[] }
 
 export const useCommandPalette = create<{
   open: boolean
+  /** What had focus when the palette opened, so a command can hand focus back to it. */
+  origin: HTMLElement | null
+  /** A command's step that waits until the dialog has closed. */
+  afterClose: (() => void) | null
   setOpen: (open: boolean) => void
-}>()((set) => ({ open: false, setOpen: (open) => set({ open }) }))
+}>()((set) => ({
+  open: false,
+  origin: null,
+  afterClose: null,
+  setOpen: (open) =>
+    set(
+      open
+        ? {
+            open,
+            origin:
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null,
+          }
+        : { open },
+    ),
+}))
 
 /** ⌘K or Ctrl+K anywhere opens the palette. */
 function useHotkey() {
@@ -70,6 +92,7 @@ function useGroups(close: () => void): Group[] {
   const { starred, selected, select } = usePickedModels()
   const { plugins, skills } = useCatalogEntries()
   const { data: organization } = useOrganization()
+  const activityHosted = useActivityView((s) => s.hosts > 0)
 
   return useMemo(() => {
     const go = (to: string) => () => {
@@ -128,6 +151,43 @@ function useGroups(close: () => void): Group[] {
         label: 'Go to',
         items: [
           { id: 'new-chat', label: 'New chat', Mark: Icon.NewChat, run: go('/') },
+          // Offered only where a view can show it: not in Settings, the Vault or a full workspace.
+          ...(activityHosted
+            ? [
+          {
+            id: 'agent-activity',
+            label: 'Agent activity',
+            keywords: 'agents runs work running waiting drawer workspace',
+            Mark: Icon.Agent,
+            run: () => {
+              // Opened once the dialog has finished closing and handed focus back, so the
+              // view's own focus move is the last one. Close returns focus to what the palette had.
+              const origin = useCommandPalette.getState().origin
+              useCommandPalette.setState({
+                afterClose: () => {
+                  const view = useActivityView.getState()
+                  if (view.open) view.close()
+                  else view.openView({ origin })
+                },
+              })
+              close()
+            },
+          },
+              ]
+            : []),
+          {
+            id: 'agent-profile',
+            label: 'Agent profile',
+            keywords: 'agent name character representation theo personality',
+            Mark: Icon.Agent,
+            run: () => {
+              useCommandPalette.setState({
+                afterClose: () =>
+                  useAgentProfileDialog.getState().setOpen(true),
+              })
+              close()
+            },
+          },
           ...SETTINGS_GROUPS.flatMap(({ sections }) =>
             sections.map(({ path, label, Mark }) => ({
               id: path,
@@ -184,7 +244,7 @@ function useGroups(close: () => void): Group[] {
       },
     ]
     return groups.filter((group) => group.items.length)
-  }, [catalog, defaultName, starred, selected, select, plugins, skills, organization, navigate, close])
+  }, [catalog, defaultName, starred, selected, select, plugins, skills, organization, activityHosted, navigate, close])
 }
 
 /** The ⌘K palette: places, models, plugins and skills, filtered as the person types. */
@@ -193,7 +253,16 @@ export function CommandPalette() {
   const open = useCommandPalette((s) => s.open)
   const setOpen = useCommandPalette((s) => s.setOpen)
   return (
-    <CommandDialog open={open} onOpenChange={setOpen}>
+    <CommandDialog
+      open={open}
+      onOpenChange={setOpen}
+      onOpenChangeComplete={(isOpen) => {
+        if (isOpen) return
+        const { afterClose } = useCommandPalette.getState()
+        useCommandPalette.setState({ afterClose: null })
+        afterClose?.()
+      }}
+    >
       <CommandDialogPortal>
         <CommandDialogBackdrop />
         <CommandDialogViewport>

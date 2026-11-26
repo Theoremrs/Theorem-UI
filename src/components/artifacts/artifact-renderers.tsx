@@ -4,7 +4,7 @@
 // is the registry's answer (artifact-registry: contributions + resolve); a
 // representation with no mounted renderer gets the Theorem card, which says
 // what the artifact is and shows its fallbackText.
-import { createElement, isValidElement, useMemo } from 'react'
+import { createElement, isValidElement, useContext, useMemo } from 'react'
 import type { FC, ReactElement, ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
@@ -30,13 +30,18 @@ import {
   UnreadableNotebook,
 } from './notebook-artifact'
 import { OpenUIArtifact } from './openui/renderer'
-import { SceneInConversation, SceneInReply } from '@/components/chat/scene-part'
+import {
+  SceneFromElsewhere,
+  SceneInConversation,
+  SceneInReply,
+} from '@/components/chat/scene-part'
 import {
   mountRenderers,
   rendererFor,
   representationOf,
 } from './artifact-registry'
 import type { RendererProps } from './artifact-registry'
+import { ArtifactElsewhere } from './artifact-view'
 
 /** A fenced block inside a document: the child of <pre> is <code class="language-x">. */
 function fencedCode(
@@ -191,10 +196,15 @@ const SceneReplyArtifact: FC<RendererProps> = ({ artifact }) =>
 /**
  * A scene filling a panel, in its full layout, wired to the same
  * conversation as its reply: Ask refers to the reply that carries this
- * revision, and Fix asks the agent in this thread.
+ * revision, and Fix asks the agent in this thread. Kept open from another
+ * chat, it is shown without either and offers the way back to its own chat,
+ * so nothing it asks reaches the conversation on screen.
  */
 const SceneArtifact: FC<RendererProps> = ({ artifact }) => {
   const messageId = useArtifactMessageId(artifact)
+  const elsewhere = useContext(ArtifactElsewhere)
+  if (artifact.scene && elsewhere)
+    return <SceneFromElsewhere scene={artifact.scene} threadId={elsewhere} />
   return artifact.scene ? (
     <SceneInConversation
       scene={artifact.scene}

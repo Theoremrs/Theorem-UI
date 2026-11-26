@@ -42,6 +42,10 @@ export interface ActivityEntry {
   epoch: number
   /** The last event sequence applied within `epoch`. */
   seq: number
+  /** The project a thread opens under; absent for work that belongs to this page's workspace. */
+  projectId?: string
+  /** Every project a thread is filed in, so a project's scope can include it. */
+  projects?: string[]
   /** The run that acted here last, as the owner recorded it. */
   runId?: string
   parentRunId?: string

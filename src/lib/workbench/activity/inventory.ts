@@ -23,6 +23,9 @@ export interface SideChatRow {
   detached?: boolean
 }
 
+/** What a side chat closed here, with its thread kept, says about itself. */
+export const DETACHED_SIDE_CHAT = 'Closed here; reopen it from the workspace'
+
 /** A delegated specialist run the page follows. */
 export interface DelegationRow {
   runId: string
@@ -69,7 +72,10 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
   ]
   const entries: ActivityEntry[] = []
   const entry = (
-    e: Omit<ActivityEntry, 'key' | 'observation' | 'observedAt' | 'epoch' | 'seq'>,
+    e: Omit<
+      ActivityEntry,
+      'key' | 'observation' | 'observedAt' | 'epoch' | 'seq'
+    >,
   ): ActivityEntry => ({
     ...e,
     key: keyOf(e.source, e.resource),
@@ -107,6 +113,16 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
               : 'unknown'
       // A thread with no run, no queued turn and no failure is at rest; it is not unfinished work.
       if (execution === 'unknown') continue
+      // The project it opens under, as organization's primaryProjectId picks it: pinned first, then oldest.
+      const [primary] = [...thread.memberships].sort(
+        (a, b) => Number(b.pinned) - Number(a.pinned) || a.atMs - b.atMs,
+      )
+      const projects = [
+        ...new Set([
+          thread.homeProjectId,
+          ...thread.memberships.map((m) => m.projectId),
+        ]),
+      ]
       // The active run is the thread's own word; a failed or approval reason names an earlier one
       // only when no run is active.
       const runId = thread.attention.runId ?? approval?.runId ?? failed?.runId
@@ -114,8 +130,10 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
         entry({
           source: 'thread',
           resource: thread.threadId,
-          label: thread.title,
+          label: thread.title || 'New chat',
           execution,
+          projectId: primary?.projectId ?? thread.homeProjectId,
+          projects,
           ...(waiting ? { waiting } : {}),
           ...(runId ? { runId } : {}),
         }),
@@ -125,37 +143,59 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
 
   if (!inputs.terminals) gaps.push('Terminal sessions have not been listed.')
   for (const row of inputs.terminals ?? []) {
-    const exited =
-      row.state === 'exited' || row.state === 'killed' || row.exitCode != null
-    // Only a session the host says is running is shown as running; a lost session, or a word
-    // the page does not know, is shown as unknown and not current.
-    const running = !exited && (row.state === undefined || row.state === 'running')
+    // Only a session the host says is running is live; exited, lost or any other word is not.
+    const live =
+      row.state === 'running' ||
+      (row.state === undefined && row.exitCode == null)
+    const detail =
+      row.exitCode != null
+        ? `Program exited with code ${row.exitCode}`
+        : row.state === 'exited'
+          ? 'Program exited'
+          : row.state === 'lost'
+            ? 'The host lost this terminal'
+            : !live && row.state
+              ? `The host reports it ${row.state}`
+              : undefined
     entries.push({
       ...entry({
         source: 'terminal',
         resource: `${row.workspace}/${row.session}`,
-        label: row.label,
+        label: shownText(row.label) || 'Terminal',
         // A program's exit says how the program ended, not whether an agent's assignment did.
-        execution: running ? 'running' : 'unknown',
+        execution: live ? 'running' : 'unknown',
         reported: true,
-        ...(exited && row.exitCode != null
-          ? { detail: `Program exited with code ${row.exitCode}` }
-          : {}),
+        ...(detail ? { detail } : {}),
         ...(row.runId ? { runId: row.runId } : {}),
       }),
-      ...(!running && !exited ? { observation: 'stale' as const } : {}),
+      // A session the host lost, or calls by a word the page does not know, is not current.
+      ...(!live &&
+      row.exitCode == null &&
+      row.state !== 'exited' &&
+      row.state !== 'killed'
+        ? { observation: 'stale' as const }
+        : {}),
     })
   }
 
+  const listedThreads = new Set(
+    entries.filter((e) => e.source === 'thread').map((e) => e.resource),
+  )
   for (const chat of inputs.sideChats ?? []) {
-    if (!chat.running && !chat.detached) continue
+    // An open chat at rest is shown only when its thread has work the organization lists.
+    if (
+      !chat.running &&
+      !chat.detached &&
+      !(chat.threadId && listedThreads.has(chat.threadId))
+    )
+      continue
     entries.push(
       entry({
         source: 'sideChat',
         resource: chat.threadId ?? chat.conversationId,
         label: 'Side chat',
         execution: chat.running ? 'running' : 'unknown',
-        ...(chat.detached ? { detail: 'Closed here; reopen to see it' } : {}),
+        ...(chat.detached ? { detail: DETACHED_SIDE_CHAT } : {}),
       }),
     )
   }
@@ -172,16 +212,64 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
       }),
     )
 
-  // A side chat's thread is also a thread: keep the thread's own row, once.
+  // A side chat this session knows of keeps one row, under its own key, whether or not its thread
+  // is listed: the thread's row folds into it, giving it the owner's state, and the row keeps what
+  // opening a side chat needs (the workspace reveal, the reopen note). A thread that finishes
+  // therefore never trades its key for another one.
   const seen = new Set<string>()
-  const threads = new Set(
-    entries.filter((e) => e.source === 'thread').map((e) => e.resource),
+  const threadRows = new Map(
+    entries.filter((e) => e.source === 'thread').map((e) => [e.resource, e]),
   )
-  const unique = entries.filter((e) => {
-    if (e.source === 'sideChat' && threads.has(e.resource)) return false
-    if (seen.has(e.key)) return false
+  const sideChatThreads = new Set(
+    (inputs.sideChats ?? []).flatMap((chat) =>
+      chat.threadId ? [chat.threadId] : [],
+    ),
+  )
+  const unique = entries.flatMap((e) => {
+    if (e.source === 'thread' && sideChatThreads.has(e.resource)) return []
+    if (seen.has(e.key)) return []
     seen.add(e.key)
-    return true
+    const thread =
+      e.source === 'sideChat' ? threadRows.get(e.resource) : undefined
+    return thread
+      ? [
+          {
+            ...e,
+            label: thread.label,
+            execution: thread.execution,
+            ...(thread.waiting ? { waiting: thread.waiting } : {}),
+            ...(thread.runId ? { runId: thread.runId } : {}),
+            ...(e.detail
+              ? {}
+              : { detail: 'A side chat open in the workspace' }),
+          },
+        ]
+      : [e]
   })
   return { entries: unique, completeness: { complete: false, gaps } }
+}
+
+/**
+ * A program names its own terminal, so its label is untrusted text shown
+ * outside the terminal grid. Control characters and invisible direction or
+ * formatting marks are removed, as Rex's Program Status Protocol asks of
+ * anything a terminal shows from a program's report.
+ */
+export function shownText(text: string): string {
+  return Array.from(text)
+    .filter((char) => !hidden(char.codePointAt(0) ?? 0))
+    .join('')
+    .trim()
+}
+
+function hidden(code: number): boolean {
+  return (
+    code <= 0x1f ||
+    (code >= 0x7f && code <= 0x9f) ||
+    code === 0x061c ||
+    (code >= 0x200b && code <= 0x200f) ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2060 && code <= 0x2069) ||
+    code === 0xfeff
+  )
 }
