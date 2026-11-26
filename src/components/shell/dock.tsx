@@ -1,6 +1,7 @@
 // SOURCING: dockview-react (docking layout: tabs, splits, floating and edge groups, maximize, serialization, always-rendered panels), the shell's ModeView (assistant-ui Thread in chat mode), FilePanel, NotePanel (Milkdown Crepe), WorkspaceFilePanel, the inspector's panels (the graph via React.lazy, so cosmos.gl loads only when it opens), the arrangements, the IDE frame (browser-only Theia), Base UI Menu on the theme's glass (the one layout menu: where the terminal opens), zustand stores for artifact view, note view, workspace file view, the inspected file, saved layouts and the drawers
 import { useThreadDisplayTitle } from '@/lib/theorem/thread-title'
 import { useAuiState } from '@assistant-ui/react'
+import { useQuery } from '@tanstack/react-query'
 import { Menu } from '@base-ui/react/menu'
 import { DockviewDefaultTab, DockviewReact } from 'dockview-react'
 import type {
@@ -22,7 +23,11 @@ import {
 } from 'react'
 import { ArtifactPanel } from '@/components/artifacts/artifact-panel'
 import { useThreadArtifacts } from '@/components/artifacts/artifact-model'
-import { useArtifactView } from '@/components/artifacts/artifact-view'
+import { useArtifactView, viewOf } from '@/components/artifacts/artifact-view'
+import type { ArtifactViewState } from '@/components/artifacts/artifact-view'
+import { readThreadArtifacts } from '@/components/cabinet/catalog'
+import { panelView, viewParams } from './artifact-panel-params'
+import type { ArtifactPanelParams } from './artifact-panel-params'
 import { Icon } from '@/components/icons'
 import {
   LinksPanel,
@@ -41,18 +46,9 @@ import {
 import { useNote } from '@/lib/theorem/notes'
 import { useFileDock } from '@/lib/theorem/project-files'
 import { useWorkspaceFileView } from '@/lib/workspace/open'
-import {
-  THREAD,
-  followFront,
-  holdsPanelsMenu,
-} from './arrangements'
+import { THREAD, followFront, holdsPanelsMenu } from './arrangements'
 import { FilePanel } from './file-panel'
-import {
-  hasOwnView,
-  ModeView,
-  modeLabel,
-  useShellMode,
-} from './modes'
+import { hasOwnView, ModeView, modeLabel, useShellMode } from './modes'
 import { openBeside } from './open-beside'
 import { useShell } from './shell-state'
 import { ChromeMenuPopup, menuItem } from './chrome-menu'
@@ -140,11 +136,7 @@ function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
       data-appearance-width-role="main"
       className="flex h-full min-w-0 flex-col"
     >
-      {inChat && (
-        <ThreadHeader
-          actions={actions}
-        />
-      )}
+      {inChat && <ThreadHeader actions={actions} />}
       <div className="relative min-h-0 flex-1">
         <ModeView docked actions={mode === 'notes' ? actions : undefined} />
       </div>
@@ -155,10 +147,42 @@ function ArtifactDockPanel({
   api,
   containerApi,
   params,
-}: IDockviewPanelProps<{ artifactId: string }>) {
-  const { artifactId } = params
-  const versions = useThreadArtifacts().get(artifactId)
+}: IDockviewPanelProps<ArtifactPanelParams>) {
+  const { artifactId, threadId: origin } = params
+  const onScreen = useArtifactView((s) => s.threadId)
+  // An artifact kept open from another chat reads its revisions from that chat (AR-03).
+  const elsewhere = origin !== undefined && origin !== onScreen
+  const here = useThreadArtifacts().get(artifactId)
+  // One read per originating conversation, shared by every panel kept from it; each panel takes
+  // its own artifact's revisions from that snapshot.
+  const remote = useQuery({
+    queryKey: ['theorem', 'thread-artifacts', origin],
+    queryFn: () => readThreadArtifacts(origin ?? ''),
+    enabled: elsewhere,
+    // Its own chat is not on screen to stream new revisions here, so following reads again.
+    refetchInterval: elsewhere ? 15_000 : false,
+    select: (artifacts) => artifacts.get(artifactId),
+  })
+  const versions = elsewhere ? remote.data : here
   const title = versions?.at(-1)?.title
+  // A panel opened before its chat had an id learns it once the chat on screen shows it holds
+  // the artifact, so it is never labelled with a conversation it did not come from.
+  const found = Boolean(here?.length)
+  useEffect(() => {
+    if (origin !== undefined || !onScreen || !found) return
+    api.updateParameters({ ...params, threadId: onScreen })
+    useArtifactView.setState((s) => {
+      const view = s.views[artifactId]
+      return view && view.threadId === undefined
+        ? {
+            views: {
+              ...s.views,
+              [artifactId]: { ...view, threadId: onScreen },
+            },
+          }
+        : {}
+    })
+  }, [api, params, origin, onScreen, found, artifactId])
   useEffect(() => {
     if (title) api.setTitle(title)
   }, [api, title])
@@ -166,7 +190,8 @@ function ArtifactDockPanel({
     subscribe(containerApi.onDidMaximizedGroupChange),
     () => api.isMaximized(),
   )
-  const loading = useAuiState((s) => s.thread.isLoading)
+  const threadLoading = useAuiState((s) => s.thread.isLoading)
+  const loading = elsewhere ? remote.isPending : threadLoading
 
   if (!versions?.length)
     return (
@@ -175,7 +200,13 @@ function ArtifactDockPanel({
           <p>Loading artifact…</p>
         ) : (
           <>
-            <p>This artifact is not part of this conversation.</p>
+            <p>
+              {elsewhere
+                ? remote.isError
+                  ? 'The conversation this artifact came from could not be read.'
+                  : 'This artifact is no longer in the conversation it came from.'
+                : 'This artifact is not part of this conversation.'}
+            </p>
             <Button variant="ghost" size="sm" onClick={() => api.close()}>
               Close
             </Button>
@@ -187,6 +218,9 @@ function ArtifactDockPanel({
   return (
     <ArtifactPanel
       artifactId={artifactId}
+      versions={elsewhere ? versions : undefined}
+      threadId={elsewhere ? origin : undefined}
+      keepable
       onClose={() => api.close()}
       expanded={expanded}
       onExpandedChange={(next) => (next ? api.maximize() : api.exitMaximized())}
@@ -459,12 +493,42 @@ function openSide(
   openBeside(api, sized, THREAD, 0.55)
 }
 function openArtifact(api: DockviewApi, artifactId: string) {
+  const view = viewOf(useArtifactView.getState().views, artifactId)
+  const { threadId, keep } = view
+  const { follow, revision } = viewParams(view)
   openSide(api, {
     id: artifactPanelId(artifactId),
     component: 'artifact',
-    params: { artifactId },
+    params: {
+      artifactId,
+      ...(threadId && { threadId }),
+      ...(keep && { keep: 'true' }),
+      ...(follow && { follow }),
+      ...(revision !== undefined && { revision }),
+    },
     title: 'Artifact',
   })
+}
+
+/** Rewrites one artifact panel's recorded view; the layout saves with it. */
+function updateArtifactParams(
+  api: DockviewApi,
+  artifactId: string,
+  change: (params: ArtifactPanelParams) => ArtifactPanelParams,
+) {
+  const panel = api.getPanel(artifactPanelId(artifactId))
+  if (!panel) return
+  const current = panel.params as ArtifactPanelParams
+  const { keep, threadId, follow, revision, ...rest } = change(current)
+  if (
+    keep === current.keep &&
+    threadId === current.threadId &&
+    follow === current.follow &&
+    revision === current.revision
+  )
+    return
+  // Dockview merges parameters, so an absent key is written as undefined to remove it.
+  panel.api.updateParameters({ ...rest, threadId, keep, follow, revision })
 }
 
 function openDelegation(api: DockviewApi, delegationId: string, title: string) {
@@ -630,6 +694,8 @@ export function DockShell({
   })
 
   const onReady = ({ api }: DockviewReadyEvent) => {
+    // Restored panels compare their own chat with this one from their first render.
+    useArtifactView.setState({ threadId })
     const saved = useShell.getState().layouts[projectId]
     if (saved && restoreLayout(api, saved.dock))
       layoutThread.current = saved.threadId
@@ -652,8 +718,36 @@ export function DockShell({
     }
     const active = dock.activePanel && artifactIdOf(dock.activePanel.id)
     if (active) useArtifactView.getState().focused(active)
+    // A restored layout brings each artifact panel's own record of where it came from.
+    const restored: Record<string, ArtifactViewState> = {}
+    for (const panel of dock.panels) {
+      const artifactId = artifactIdOf(panel.id)
+      if (artifactId)
+        restored[artifactId] = panelView(panel.params as ArtifactPanelParams)
+    }
+    // The layout is the record of this dock's views: views left in memory from another project or
+    // an earlier mount do not shadow it.
+    useArtifactView.setState({ views: restored })
+    // Following and the chosen revision are saved on each panel, so a reload restores them.
+    const unsubscribe = useArtifactView.subscribe((state, previous) => {
+      if (state.views === previous.views) return
+      for (const [artifactId, view] of Object.entries(state.views)) {
+        const before = previous.views[artifactId]
+        if (before?.follow === view.follow && before.revision === view.revision)
+          continue
+        updateArtifactParams(dock, artifactId, (params) => ({
+          ...params,
+          ...viewParams(view),
+        }))
+      }
+    })
     useArtifactView.setState({
       dock: {
+        kept: (artifactId, keep) =>
+          updateArtifactParams(dock, artifactId, (params) => ({
+            ...params,
+            keep: keep ? 'true' : undefined,
+          })),
         open: (artifactId) => openArtifact(dock, artifactId),
         expand: (artifactId) => {
           openArtifact(dock, artifactId)
@@ -704,6 +798,7 @@ export function DockShell({
       ...springMaximize(dock),
     ]
     return () => {
+      unsubscribe()
       for (const listener of listeners) listener.dispose()
       useArtifactView.setState({ dock: undefined })
       useNoteView.setState({ dock: undefined })
@@ -714,21 +809,32 @@ export function DockShell({
     }
   }, [dock, projectId])
 
-  // A different conversation starts without the previous one's artifacts and delegations. A
-  // new chat gaining its first id is the same conversation, so it keeps them.
+  // A different conversation starts without the previous one's artifacts and delegations, but an
+  // artifact the person kept open stays, still reading from its own conversation (AR-07). A new
+  // chat gaining its first id is the same conversation, so it keeps them all.
   useEffect(() => {
-    if (!dock || layoutThread.current === threadId) return
+    if (!dock) return
+    if (layoutThread.current === threadId) {
+      useArtifactView.setState({ threadId })
+      return
+    }
     const previous = layoutThread.current
     layoutThread.current = threadId
     if (previous !== undefined) {
-      for (const panel of dock.panels)
+      const { views } = useArtifactView.getState()
+      for (const panel of dock.panels) {
+        const artifactId = artifactIdOf(panel.id)
         if (
-          artifactIdOf(panel.id) ||
-          isDelegationPanel(panel.id) ||
-          isReviewPanel(panel.id)
+          artifactId
+            ? !viewOf(views, artifactId).keep
+            : isDelegationPanel(panel.id) || isReviewPanel(panel.id)
         )
           dock.removePanel(panel)
-      useArtifactView.getState().reset()
+      }
+      useArtifactView.getState().changedChat(threadId)
+    } else {
+      // The same chat gaining its id, or a first chat: panels learn their id from what they show.
+      useArtifactView.setState({ threadId })
     }
     const layout = adaptation.current
       ? adaptation.current.layoutForSave()

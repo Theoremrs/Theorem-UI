@@ -11,7 +11,12 @@ import { ArtifactActions } from './artifact-actions'
 import { fillsPanel, isLive } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
 import { ArtifactReferrer } from './artifact-referrer'
-import { useArtifactView } from './artifact-view'
+import {
+  ArtifactElsewhere,
+  shownRevision,
+  useArtifactView,
+  viewOf,
+} from './artifact-view'
 import { thingProps } from '@/lib/face/things'
 
 export { download } from './artifact-actions'
@@ -34,21 +39,32 @@ export function ArtifactKindIcon({
 /** Canvas for one artifact: header actions, revision switcher, rendered body. */
 export function ArtifactPanel({
   artifactId,
+  versions: given,
+  threadId,
   onClose,
   expanded,
   onExpandedChange,
+  keepable,
   className,
 }: {
   artifactId: string
+  /** Revisions read from another conversation; the conversation on screen is read otherwise. */
+  versions?: readonly TheoremArtifact[]
+  /** The conversation those revisions came from, when it is not the one on screen. */
+  threadId?: string
   onClose: () => void
   /** Omitted where the canvas cannot expand, as on phones where it is already full screen. */
   expanded?: boolean
   onExpandedChange?: (expanded: boolean) => void
+  /** Offers to keep the panel open across chats; only the dock can. */
+  keepable?: boolean
   className?: string
 }) {
   const artifacts = useThreadArtifacts()
-  const revision = useArtifactView((s) => s.revisions[artifactId])
+  const view = useArtifactView((s) => viewOf(s.views, artifactId))
+  const revision = shownRevision(view)
   const select = useArtifactView((s) => s.select)
+  const keep = useArtifactView((s) => s.keep)
   const sectionRef = useRef<HTMLElement>(null)
 
   // Opened from a chat card, the canvas grows out of that card. The frame
@@ -64,7 +80,7 @@ export function ArtifactPanel({
     return () => cancelAnimationFrame(frame)
   }, [artifactId])
 
-  const versions = artifacts.get(artifactId)
+  const versions = given ?? artifacts.get(artifactId)
   if (!versions?.length) return null
   const index = selectedArtifactIndex(versions, revision)
   const newest = versions[versions.length - 1]
@@ -102,6 +118,9 @@ export function ArtifactPanel({
         index={index}
         versionCount={versions.length}
         goTo={goTo}
+        following={view.follow}
+        kept={keepable ? view.keep : undefined}
+        onKeptChange={(next) => keep(artifactId, next)}
         expanded={expanded}
         onExpandedChange={onExpandedChange}
         onClose={onClose}
@@ -113,38 +132,40 @@ export function ArtifactPanel({
           fills ? 'flex flex-col' : 'overflow-y-auto',
         )}
       >
-        <div
-          className={cn(
-            fills
-              ? 'flex min-h-0 flex-1 flex-col'
-              : 'mx-auto w-full max-w-(--appearance-expanded-measure) px-6 py-6',
-          )}
-        >
-          {/* The newest slot stays mounted while an older revision is shown,
+        <ArtifactElsewhere.Provider value={threadId}>
+          <div
+            className={cn(
+              fills
+                ? 'flex min-h-0 flex-1 flex-col'
+                : 'mx-auto w-full max-w-(--appearance-expanded-measure) px-6 py-6',
+            )}
+          >
+            {/* The newest slot stays mounted while an older revision is shown,
               so the look back costs nothing on the way back. A passive body
               keeps its unsaved edit; a live interactive one is already kept
               by its answer, so this slot only refers there. */}
-          <div
-            hidden={!latest}
-            className={cn(fills && latest && 'min-h-0 flex-1')}
-          >
-            {liveNewest ? (
-              <ArtifactReferrer artifact={newest} />
-            ) : (
-              <ArtifactView artifact={newest} distance="interactive" latest />
+            <div
+              hidden={!latest}
+              className={cn(fills && latest && 'min-h-0 flex-1')}
+            >
+              {liveNewest ? (
+                <ArtifactReferrer artifact={newest} threadId={threadId} />
+              ) : (
+                <ArtifactView artifact={newest} distance="interactive" latest />
+              )}
+            </div>
+            {!latest && (
+              <div className={cn(fills && 'min-h-0 flex-1')}>
+                <ArtifactView
+                  key={artifact.revision}
+                  artifact={artifact}
+                  distance="interactive"
+                  latest={false}
+                />
+              </div>
             )}
           </div>
-          {!latest && (
-            <div className={cn(fills && 'min-h-0 flex-1')}>
-              <ArtifactView
-                key={artifact.revision}
-                artifact={artifact}
-                distance="interactive"
-                latest={false}
-              />
-            </div>
-          )}
-        </div>
+        </ArtifactElsewhere.Provider>
       </div>
     </section>
   )
@@ -154,6 +175,9 @@ function ArtifactPanelHeader({
   index,
   versionCount,
   goTo,
+  following,
+  kept,
+  onKeptChange,
   expanded,
   onExpandedChange,
   onClose,
@@ -162,6 +186,11 @@ function ArtifactPanelHeader({
   index: number
   versionCount: number
   goTo: (index: number) => void
+  /** Whether the view moves to each new revision; a chosen revision stays put. */
+  following: boolean
+  /** Undefined where the panel cannot be kept across chats. */
+  kept?: boolean
+  onKeptChange: (kept: boolean) => void
   expanded?: boolean
   onExpandedChange?: (expanded: boolean) => void
   onClose: () => void
@@ -179,6 +208,18 @@ function ArtifactPanelHeader({
         <p className="truncate text-xs text-ink-faint">{kindLabel(artifact)}</p>
       </div>
 
+      {/* A chosen revision stays fixed while newer ones arrive (AR-06); this is the one quiet
+          way back to the current work. */}
+      {!following && index < versionCount - 1 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs text-ink-muted"
+          onClick={() => goTo(versionCount - 1)}
+        >
+          Newer version
+        </Button>
+      )}
       {versionCount > 1 && (
         <div className="flex items-center text-xs text-ink-muted">
           <Button
@@ -213,6 +254,19 @@ function ArtifactPanelHeader({
         latest={index === versionCount - 1}
         copy
       />
+      {kept !== undefined && (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Keep open in other chats"
+          title="Keep open in other chats"
+          className={cn('size-8 p-1.5', kept && 'bg-selected')}
+          aria-pressed={kept}
+          onClick={() => onKeptChange(!kept)}
+        >
+          <Icon.Pin className="size-4" />
+        </Button>
+      )}
       {onExpandedChange && (
         <Button
           variant="ghost"

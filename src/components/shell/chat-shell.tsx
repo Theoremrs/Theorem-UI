@@ -42,6 +42,7 @@ import {
 import type { CSSProperties } from 'react'
 
 import { ActivityView } from '@/components/activity/activity-view'
+import { AgentIdentityChip } from '@/components/agent/agent-profile-dialog'
 import { ModePage } from '@/components/pages/mode-page'
 import { IdePageShown, OnIdePage } from '@/components/ide/ide-page'
 import { IdeStatusBar } from '@/components/ide/ide-status-bar'
@@ -518,7 +519,11 @@ function DesktopShell(route: DockRoute) {
           {/* Agent activity overlays the sheet without reflowing it, ending above the composer.
               It is not there in the Vault or with the workspace full, which cover the sheet. */}
           {!vault && !full && (
-            <ActivityView projectId={route.projectId} frame={sheetFrame} />
+            <ActivityView
+              projectId={route.projectId}
+              frame={sheetFrame}
+              identity={<AgentIdentityChip />}
+            />
           )}
         </div>
         {workbenchMounted && (

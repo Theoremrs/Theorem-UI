@@ -12,7 +12,8 @@ import type { ThreadMessage, ThreadMessageLike } from '@assistant-ui/react'
 import { cleanup, render } from '../../../test/workspace'
 import { SCENE_CONTRACT, SCENE_PART } from '@/components/chat/scene-model'
 import { useComposerReferences } from '@/components/chat/composer-references'
-import { messageIdOf } from './artifact-model'
+import { messageIdOf, readSceneArtifact } from './artifact-model'
+import type { TheoremArtifact } from './artifact-model'
 
 void mock.module('@/components/icons', () => ({
   Icon: new Proxy({}, { get: () => () => null }),
@@ -78,7 +79,10 @@ afterEach(() => {
 
 const sentTurns: unknown[] = []
 
-function Dock() {
+/** Kept from another chat: its revisions and the conversation they came from. */
+type Elsewhere = { versions: readonly TheoremArtifact[]; threadId: string }
+
+function Dock({ elsewhere }: { elsewhere?: Elsewhere }) {
   const runtime = useExternalStoreRuntime({
     messages: thread,
     isRunning: false,
@@ -93,20 +97,28 @@ function Dock() {
   })
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <ArtifactPanel artifactId="scene:cpu" onClose={() => {}} />
+      <ArtifactPanel
+        artifactId="scene:cpu"
+        versions={elsewhere?.versions}
+        threadId={elsewhere?.threadId}
+        onClose={() => {}}
+      />
     </AssistantRuntimeProvider>
   )
 }
 
-async function panel() {
-  const rendered = await render(<Dock />)
+async function panel(elsewhere?: Elsewhere) {
+  const rendered = await render(<Dock elsewhere={elsewhere} />)
   const frame = rendered.container.querySelector('iframe')
   if (!frame?.contentWindow) throw new Error('no scene frame in the panel')
   const page = frame.contentWindow as unknown as PageWindow
   const fromPage = (data: unknown) =>
     act(() => {
       window.dispatchEvent(
-        new MessageEvent('message', { data, source: page as unknown as Window }),
+        new MessageEvent('message', {
+          data,
+          source: page as unknown as Window,
+        }),
       )
     })
   const button = (name: string) =>
@@ -119,13 +131,19 @@ async function panel() {
 test('the reply that carries a revision is found by the artifact it reads to', () => {
   const messages = thread as unknown as ThreadMessage[]
   expect(
-    messageIdOf(messages, { artifactId: 'scene:cpu', revision: 'a'.repeat(64) }),
+    messageIdOf(messages, {
+      artifactId: 'scene:cpu',
+      revision: 'a'.repeat(64),
+    }),
   ).toBe('reply-1')
   expect(
     messageIdOf(messages, { artifactId: 'scene:cpu', revision: 'other' }),
   ).toBeUndefined()
   expect(
-    messageIdOf(messages, { artifactId: 'scene:gpu', revision: 'a'.repeat(64) }),
+    messageIdOf(messages, {
+      artifactId: 'scene:gpu',
+      revision: 'a'.repeat(64),
+    }),
   ).toBeUndefined()
 })
 
@@ -156,10 +174,42 @@ test('a scene in the panel that fails offers Fix, which asks in this thread', as
   fromPage({
     type: 'sceneos:mounted',
     ok: false,
-    error: { stage: 'mount', message: 'ctx.canvas is null', line: 3, column: 1 },
+    error: {
+      stage: 'mount',
+      message: 'ctx.canvas is null',
+      line: 3,
+      column: 1,
+    },
   })
   const fix = button('Fix')
   expect(fix).toBeDefined()
   await act(async () => fix?.click())
   expect(sentTurns).toHaveLength(1)
+})
+
+test('a scene kept from another chat offers neither Ask nor Fix, so nothing reaches the chat on screen', async () => {
+  const kept = readSceneArtifact(part)
+  if (!kept) throw new Error('the scene part did not read')
+  const turns = sentTurns.length
+  const { page, fromPage, button, container } = await panel({
+    versions: [kept],
+    threadId: 'thread_origin',
+  })
+  expect(container.textContent).toContain('From another chat')
+  fromPage({ type: 'sceneos:host-ready' })
+  expect(page.sent[0]).toMatchObject({ type: 'sceneos:mount', ask: false })
+  fromPage({
+    type: 'sceneos:mounted',
+    ok: false,
+    error: {
+      stage: 'mount',
+      message: 'ctx.canvas is null',
+      line: 3,
+      column: 1,
+    },
+  })
+  expect(button('Fix')).toBeUndefined()
+  fromPage({ type: 'sceneos:ask', entity: { id: 'alu', label: 'ALU' } })
+  expect(useComposerReferences.getState().references).toHaveLength(0)
+  expect(sentTurns).toHaveLength(turns)
 })

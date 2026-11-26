@@ -2196,7 +2196,8 @@
       "required_observations": "Preserve one agent identity, distinct run IDs, accurate grouping, and no invented collaboration.",
       "status": "not_run",
       "blocker": "No durable agent identity or project-level run list exists at c1a0e4b26; see gate-0 ownership map 2.1 and 5.",
-      "evidence": []
+      "evidence": [],
+      "progress": "Gate 3: the agent's name and representation come from one profile on Theorem's organization record (Theoremrs/Theorem#1176), shown in the activity drawer and edited in the Agent profile dialog. Not run live."
     },
     {
       "id": "UAE-AC-02",
@@ -2427,7 +2428,8 @@
       "required_observations": "Verify exact versus current revision semantics and resolution after switching chats.",
       "status": "not_run",
       "blocker": "Artifact resolution is thread-only at c1a0e4b26; ownership map 2.6 and the durable-artifacts plan.",
-      "evidence": []
+      "evidence": [],
+      "progress": "Gate 3: a panel opens at the newest or a chosen revision and, kept open, reads its revisions from the conversation it came from (readArtifactVersions). Opening from a run is not built. Not run live."
     },
     {
       "id": "UAE-AC-14",
@@ -2444,7 +2446,8 @@
       "required_observations": "Count startup executions and verify retained state and runtime identity.",
       "status": "not_run",
       "blocker": "Runtime attachment is owned by the message subtree (ArtifactReferrer); ownership map 2.7.",
-      "evidence": []
+      "evidence": [],
+      "progress": "Gate 3: not built. The runtime host (AR-08 to AR-12) is deferred; a kept panel of a live App refers to its answer and goes to that chat, so the App still starts once."
     },
     {
       "id": "UAE-AC-15",
@@ -2461,7 +2464,8 @@
       "required_observations": "Keep the old view fixed; distinguish panel retention from revision selection; deliberately compare and follow current work.",
       "status": "not_run",
       "blocker": "No per-view revision or presentation state yet; ownership map 3.",
-      "evidence": []
+      "evidence": [],
+      "progress": "Gate 3: a chosen revision is a separate choice from following (artifact-view.ts) and stays fixed while newer revisions arrive, with a quiet Newer version action. Store tests only; not run live."
     },
     {
       "id": "UAE-AC-16",
@@ -2572,7 +2576,8 @@
       "required_observations": "Verify durable identity, saved characteristics, unchanged active-run configuration, and accurate attribution.",
       "status": "not_run",
       "blocker": "No durable agent-profile authority exists yet; Gate 0 decision 2 (2026-11-26) chose to extend the Theorem backend organization record (ownership map 5 and 7 item 2).",
-      "evidence": []
+      "evidence": [],
+      "progress": "Gate 3: the name is saved on the organization record, so a new run and a client restart read it back; saving bumps the organization revision and leaves roles and models alone. Backend tests written, not compiled here; not run live."
     },
     {
       "id": "UAE-AC-22",

@@ -182,6 +182,27 @@ The question each decision answered is kept so later readers see what was weighe
 | 2.3 reveal and surfaces | `src/components/activity/activity-view.tsx`: one arrangement shown as a compact preview above the composer, a bottom or right drawer, and an expanded full view, opened from the command palette (Agent activity). Open work navigates to an existing thread or shows the workspace; it never launches. The view sits inside the sheet frame, ends above the measured composer, goes inert with the sheet, and returns focus to its opener on close. | The compact entry is TSX, not the spec's Ratatui component. Expand shows the view's own full layout, not the Rust workbench with the same selection. No agent-initiated reveal, pinning or comparison split yet. |
 | 2.1 run inventory, mounted | `use-activity.ts` reads the organization always and, while the view is open, the workspace's own terminal listing and side-chat record, lent through `sources.ts` while the workbench is mounted. `arrangement.ts` keeps insertion order, saved manual order and removals per project and scope, leaves finished work in place marked as no longer listed, and never moves the selection on an owner event. | Delegated runs are not listed (they are read per run). Without the workbench mounted, terminals and side chats are absent, and the view says so. |
 
+## 7c. Gate 3 status (2026-11-26)
+
+| Gap | What Gate 3 built | Still open |
+| --- | --- | --- |
+| 5 profile authority | Theorem (Theoremrs/Theorem#1176): `OrganizationDefinition` gains an optional `profile` (name, representation, description, characteristics, working preferences, instruction references), validated and bounded, saved through `PUT /v1/theorem/organization/profile` with an expected revision and a 409 on a stale save. Changing it bumps the organization revision and leaves roles and models alone, so running work keeps the version it started with (AG-04). Here: `src/lib/theorem/agent-profile.ts` reads and saves it, `agent-profile-dialog.tsx` edits it (command palette, and the agent's name in the activity drawer). | The record still holds one agent per organization; more than one, and copying with lineage, are not modelled. Runs do not read working preferences yet. |
+| 2.6 artifact view state | `artifact-view.ts` records each panel's view as separate choices: follow the newest, the revision shown when not following, and keep open across chats. A chosen revision stays fixed while newer ones arrive, with a quiet "Newer version" action. | One view per artifact (the panel id is the artifact id); two views of the same artifact side by side are not possible. |
+| 2.6 reopen after changing chats | A kept panel survives a chat change and a saved layout, records its origin conversation on the panel, and reads revisions from it (`readArtifactVersions`). A live App there refers to its answer and goes to that chat. | The runtime host (AR-08 to AR-12) is not built: a live App still runs only in its answer, as the referral guard requires. |
+
+## 7d. Gates 4 and 5: what they wait on (2026-11-26)
+
+Neither gate is started. Each exit needs a backend capability that does not exist yet, and one needs an owner decision first.
+
+| Gate | Needs | Why it cannot start from the UI |
+| --- | --- | --- |
+| 4 template export | A package format (schema version, agent identity and lineage, profile, role and model requirements, asset references) and an export route on the organization. | The organization is the only agent record, so a template is the organization's definition plus its profile. Building the package is small once the format is agreed. |
+| 4 import as a copy | A second agent identity to mint (PT-03). | The record holds one agent per organization (Gate 0 decision 2 leaves "more than one agent" to Gate 3, and it is still open). A copy cannot get a new identity with lineage until the organization can hold more than one agent, or a copy makes a new organization. That is the owner's choice. |
+| 4 selected memory | Memory scoping on reads, writes, retrieval and export per agent (DB-04), and an export that includes payloads or names them as dependencies (PT-02). | No per-agent memory scope or memory export route exists. |
+| 4 host-supplied store and standalone embedded Rusty Red | Provider resolution in the order DB-03 sets, with a failed explicit binding kept and shown. | Backend provider binding; nothing for the UI to show yet. |
+| 5 second knowledge provider and evaluation forks | A materially different retrieval provider declaring its capabilities (DB-05), and isolated candidate forks from one snapshot (11.3). | Backend. |
+| 5 advanced arrangements | Two views of one artifact side by side, remote handoff, cross-window presentation. | Waits on the runtime host (AR-08 to AR-12), which Gate 3 deferred; today one panel per artifact. |
+
 ## 8. Overlap note
 
 A separate local working session titled "Extensible connected workspace spec" may cover some of the same ground. It was not readable from here; compare before Gate 1 starts.

@@ -626,9 +626,12 @@ function ActivityCompact({
 export function ActivityView({
   projectId,
   frame,
+  identity,
 }: {
   projectId: string
   frame: HTMLElement | null
+  /** Who the work is done by, shown beside the title; the shell passes the agent's chip. */
+  identity?: ReactNode
 }) {
   const view = useActivityView()
   const { arranged, completeness, projects, source } = useActivity(projectId)
@@ -742,6 +745,7 @@ export function ActivityView({
       )}
       <header className="flex shrink-0 items-center gap-1 border-b border-separator px-2 py-1">
         <h2 className="px-1 text-sm font-medium">Agent activity</h2>
+        {identity}
         <div
           role="group"
           aria-label="Scope"
