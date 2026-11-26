@@ -167,6 +167,14 @@ The question each decision answered is kept so later readers see what was weighe
 2. **Agent profile owner: extend `Organization`.** The alternative was a separate agents resource in the backend. Gate 3 first confirms the record can hold more than one agent per organization.
 3. **Acceptance IDs: keep the `UAE-` prefix.** The alternative was renumbering as `AC-63` onward.
 
+## 7a. Gate 1 status (2026-11-26)
+
+| Gap | What Gate 1 built | Still open |
+| --- | --- | --- |
+| 2.4 input control | `workbench-process/src/control.rs`: one agent claim per terminal (`code.claim`, `code.release`), granted to the run that `code.start`s it; the person's key or paste stops agent input until `shell.hand_back` (human only); a rebind fences old claims by epoch; a claim ends when its run leaves the page's working runs. No lease, no timed expiry (decision 1). Agent actions that name no panel are refused as `AmbiguousTarget` when more than one panel fits, and Create, Start and Destroy honour `on`. | Only one browser client is modelled: claims live in the page, not with the terminal host, so a second client does not see them. Host-side claims need the terminal host. |
+| 2.5 side-chat lifetime | Close, a project switch and a `Hosts` unmount detach (stop reading, never cancel). Only the side chat's own Stop cancels. A closed side chat with a stored thread is kept in session storage and listed as detached; the picker reopens it on its own thread (`SideChatOpen.reopen`), resuming a live run through history. | The record is per browser tab session. A thread-level "side chat of" mark in Theorem would let any client list them. |
+| 2.1 run inventory | `src/lib/workbench/activity/`: a read model with per-resource ordering, dedupe by source, resource, epoch and seq, gap handling that waits for a snapshot, stale observation, and view generations against late results; an inventory from the organization read, terminal listings, side chats and delegations that always states its gaps. | Theorem has no project-wide run list (backend). Nothing mounts the activity view yet; Gate 2's drawer is its first surface. |
+
 ## 8. Overlap note
 
 A separate local working session titled "Extensible connected workspace spec" may cover some of the same ground. It was not readable from here; compare before Gate 1 starts.

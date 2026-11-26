@@ -2215,8 +2215,9 @@
       "procedure": "Observe a native side chat, a delegated specialist, and an external terminal session together.",
       "required_observations": "Each uses its existing owner; instrumented and uninstrumented states remain distinguishable.",
       "status": "not_run",
-      "blocker": "No activity projection over conversation, delegation and terminal owners yet; ownership map 2.1.",
-      "evidence": []
+      "blocker": "Needs a live side chat, delegated run and external terminal observed together on a deployed stack; the activity view is not yet mounted (Gate 2).",
+      "evidence": [],
+      "progress": "Gate 1 built the read model (src/lib/workbench/activity: projection.ts, inventory.ts) with unit tests; no surface renders it yet and no live host was observed. Theorem serves no project-wide run list, so the inventory is partial by its own statement."
     },
     {
       "id": "UAE-AC-03",
@@ -2253,8 +2254,9 @@
       "procedure": "Close and reopen a running side-chat view and a terminal view after more output occurs.",
       "required_observations": "Verify work continued. Separately Stop and verify acknowledgment, affected child scope, and final outcome.",
       "status": "not_run",
-      "blocker": "Side-chat Host unmount cancels the chat (side-chats.tsx:45-50); ownership map 2.5.",
-      "evidence": []
+      "blocker": "Needs a live Theorem run: closing must be shown not to cancel the server run, and reopen must be shown to resume it.",
+      "evidence": [],
+      "progress": "Gate 1: closing, a project switch or a host unmount now detaches a side chat instead of cancelling it (side-chats.tsx layout cleanup, side-chat-model.ts detaching); a closed side chat is kept and reopens on its own thread. Unit tests cover close, stop and reopen with a fake turn."
     },
     {
       "id": "UAE-AC-05",
@@ -2290,8 +2292,9 @@
       "procedure": "Issue an agent command to an exact terminal while the user changes focus.",
       "required_observations": "The target remains fixed. Try a duplicate label and a deleted ID; no input reaches a fallback pane.",
       "status": "not_run",
-      "blocker": "Terminal refusals other than stale_epoch flatten to failed; no typed fallback-free target check yet; ownership map 2.4.",
-      "evidence": []
+      "blocker": "Needs a browser run against a live terminal host; only the Rust model was tested.",
+      "evidence": [],
+      "progress": "Gate 1: agent terminal input needs an owner-issued claim (code.claim), the person's input stops it until shell.hand_back, a rebind fences old claims, and an agent action naming no panel is refused as AmbiguousTarget when more than one panel fits. Covered by workbench-process tests."
     },
     {
       "id": "UAE-AC-07",
@@ -2347,8 +2350,9 @@
       "procedure": "Deliver duplicate/out-of-order events, equal offsets on different resources/epochs, a cursor gap, and a late view response.",
       "required_observations": "Reconcile without losing valid output, duplicating events, applying stale content, or launching work.",
       "status": "not_run",
-      "blocker": "Activity projection and per-resource cursors are not built; existing terminal epoch handling covers only part of this.",
-      "evidence": []
+      "blocker": "No owner feeds the projection yet; needs live terminal and run streams with injected faults.",
+      "evidence": [],
+      "progress": "Gate 1: activity projection drops duplicates and out-of-order steps per resource, keeps equal offsets on other resources and epochs, never merges a new epoch, holds changes after a gap until a snapshot, and view bindings refuse late results by generation. Unit tested with synthetic events."
     },
     {
       "id": "UAE-AC-10",
