@@ -22,6 +22,7 @@ import {
 import { filesUnderPanel, hasOwnView, useShellMode } from './modes'
 import { useActiveProject, useTenant } from './projects'
 import { useShell } from './shell-state'
+import { ChromeMenuPopup, menuItem } from './chrome-menu'
 
 import { Explorer } from './explorer'
 
@@ -34,12 +35,6 @@ const ProgramsPanel = lazy(() =>
     default: module.ProgramsPanel,
   })),
 )
-
-export const menuItem =
-  'appearance-menu-item flex min-h-8 cursor-default items-center gap-2 rounded-md px-2 text-sm outline-none select-none data-highlighted:bg-hover'
-
-export const menuPopup =
-  'origin-(--transform-origin) rounded-lg border border-separator bg-popover p-1 text-popover-foreground shadow-popover outline-none transition-[opacity,scale] duration-(--duration-snap) ease-snap data-ending-style:duration-(--duration-exit) data-ending-style:ease-exit data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0'
 
 /**
  * The project menu. Threads belong to a project, so switching starts a new
@@ -88,10 +83,10 @@ function ProjectSwitcher({ stay = false }: { stay?: boolean }) {
             sideOffset={4}
             className="z-50"
           >
-            <Menu.Popup
+            <ChromeMenuPopup
               data-appearance-part="popover"
               data-appearance-recipe="ui.label"
-              className={`w-(--anchor-width) min-w-52 ${menuPopup}`}
+              className="w-(--anchor-width) min-w-52"
             >
               <Menu.Group>
                 <Menu.GroupLabel
@@ -124,7 +119,7 @@ function ProjectSwitcher({ stay = false }: { stay?: boolean }) {
                 <Icon.Add className="size-4" />
                 New project
               </Menu.Item>
-            </Menu.Popup>
+            </ChromeMenuPopup>
           </Menu.Positioner>
         </Menu.Portal>
       </Menu.Root>

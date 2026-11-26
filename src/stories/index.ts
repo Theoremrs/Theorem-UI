@@ -96,6 +96,7 @@ export const STORIES: readonly StoryMeta[] = [
   { id: 'design-oracle-reflow', title: 'Design oracle F09: scale and narrow reflow', lane: 'original', viewport: { width: 390, height: 844 } },
   { id: 'design-oracle-rtl', title: 'Design oracle F10: RTL and CJK fallback', lane: 'original', viewport: { width: 390, height: 844 } },
   { id: 'design-oracle-continuity', title: 'Design oracle F11: draft continuity', lane: 'original', viewport: { width: 1440, height: 900 } },
+  { id: 'design-oracle-markdown', title: 'Design oracle F12: Markdown inventory across both voices', lane: 'original', viewport: { width: 1024, height: 900 } },
   {
     id: 'workbench-default',
     title: 'Workbench: Files, main and tools with the picker',
@@ -247,6 +248,13 @@ export const STORIES: readonly StoryMeta[] = [
     lane: 'original',
     viewport: { width: 1440, height: 900 },
     threadId: 'thread-app-gallery',
+    routes: { populated: true, reviewless: true },
+  },
+  {
+    id: 'new-chat',
+    title: 'New chat: the composer with its three most recent artifacts under it',
+    lane: 'original',
+    viewport: { width: 1440, height: 900 },
     routes: { populated: true, reviewless: true },
   },
   { id: 'project-home', title: 'Project home: composer, sessions and context on one page', lane: 'original', viewport: { width: 1440, height: 900 } },

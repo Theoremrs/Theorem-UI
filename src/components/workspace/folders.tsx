@@ -14,7 +14,7 @@ import {
   SidebarGroupLabel,
 } from '@/components/coss/sidebar'
 import { Icon } from '@/components/icons'
-import { menuItem, menuPopup } from '@/components/shell/sidebar'
+import { ChromeMenuPopup, menuItem } from '@/components/shell/chrome-menu'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { FilesystemMarks } from '@/components/ui/filesystem-item'
 import { hostActions } from '@/lib/handlers/actions'
@@ -99,7 +99,7 @@ function WorkspaceSection({
               sideOffset={4}
               className="z-50"
             >
-              <Menu.Popup className={`min-w-48 ${menuPopup}`}>
+              <ChromeMenuPopup className="min-w-48">
                 <Menu.Item className={menuItem} onClick={() => make('note')}>
                   <Icon.NewNote className="size-4" />
                   New note
@@ -154,7 +154,7 @@ function WorkspaceSection({
                   <Icon.Settings className="size-4" />
                   {client.theorem ? 'Home settings…' : 'Folder settings…'}
                 </Menu.Item>
-              </Menu.Popup>
+              </ChromeMenuPopup>
             </Menu.Positioner>
           </Menu.Portal>
         </Menu.Root>

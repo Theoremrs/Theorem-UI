@@ -148,6 +148,11 @@ export const CONTROLS = [
     source: 'streamline-ai-science-spark.png',
     autofill: true,
   },
+  // The layout menu's mark (owner, 2026-11-24).
+  {
+    name: 'layout',
+    source: 'control/source/streamline-composition-layout-3.png',
+  },
 ]
 
 /**

@@ -1,4 +1,4 @@
-// SOURCING: coss ui sidebar, collapsible, menu and input over Base UI, the shadcn button, @dnd-kit/core (DndContext, useDroppable and DragOverlay: a thread dragged onto a project moves there), @dnd-kit/sortable with @dnd-kit/modifiers and @dnd-kit/utilities (a project dragged to another place in its list, as the rail's destinations are), @tanstack/react-router, the shell's tenant and command palette, useGlideHighlight from components/motion, lib/theorem/organization. the assistant-ui tooltip icon button for search in the header, lib/theorem/sidebar-prefs for pins. The shape (search in the header, New thread, Pinned, Projects, Recent, the Librarian below; rows, marks and labels after the ChatGPT and Codex sidebars the owner's review on 2026-11-14 named) is docs/plans/projects-sidebar-and-session-graph.md §5, after the Linear, Claude and Twenty sidebars on Mobbin; thread membership is translated from mikecann/threadbear@78b77e1 (MIT, Mike Cann).
+// SOURCING: coss ui sidebar, collapsible, menu and input over Base UI, the shadcn button, @dnd-kit/core (DndContext, useDroppable and DragOverlay: a thread dragged onto a project moves there), @dnd-kit/sortable with @dnd-kit/modifiers and @dnd-kit/utilities (a project dragged to another place in its list, as the rail's destinations are), @tanstack/react-router, the shell's tenant, useGlideHighlight from components/motion, lib/theorem/organization, assistant-ui's thread-search element for search in the header (rows are assistant-ui thread-list items, see thread-row), lib/theorem/sidebar-prefs for pins. The shape (search in the header, New thread, Pinned, Projects, Recent, the Librarian below; rows, marks and labels after the ChatGPT and Codex sidebars the owner's review on 2026-11-14 named) is docs/plans/projects-sidebar-and-session-graph.md §5, after the Linear, Claude and Twenty sidebars on Mobbin; thread membership is translated from mikecann/threadbear@78b77e1 (MIT, Mike Cann).
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { useAuiState } from '@assistant-ui/react'
 import {
@@ -35,6 +35,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { ThreadFromFailure } from '@/components/assistant-ui/elements/thread-list.aui'
+import { ThreadSearch } from '@/components/assistant-ui/elements/thread-search'
+import type { SearchableThread } from '@/components/assistant-ui/elements/thread-search'
 import { focusComposer } from '@/components/chat/composer-references'
 import { Button } from '@/components/ui/button'
 import {
@@ -42,7 +44,6 @@ import {
   CollapsiblePanel,
   CollapsibleTrigger,
 } from '@/components/coss/collapsible'
-import { Kbd } from '@/components/coss/kbd'
 import {
   Menu,
   MenuItem,
@@ -80,13 +81,14 @@ import {
 } from './thread-row'
 import type { RowDrag } from './thread-row'
 import { neighbour } from '@/lib/theorem/row-neighbour'
-import { useCommandPalette } from '@/components/shell/command-palette'
 import { useShellMode } from '@/components/shell/modes'
 import { useCreateProject, useTenant } from '@/components/shell/projects'
 import { useShell } from '@/components/shell/shell-state'
 import { describeError } from '@/lib/theorem/client'
 import {
+  lastMoved,
   nestByOrigin,
+  primaryProjectId,
   rootOf,
   organizationKey,
   organizationQuery,
@@ -155,13 +157,6 @@ const dropRing = 'rounded-lg bg-selected/50 outline-1 outline-focus'
 const HEADING = 'px-2'
 /** The group gap comes from the navigation's spacing role, not each group. */
 const GROUP = 'p-0'
-
-/** The palette's shortcut as this keyboard writes it. */
-const SEARCH_SHORTCUT = /mac|iphone|ipad/i.test(
-  typeof navigator === 'undefined' ? '' : navigator.userAgent,
-)
-  ? '⌘K'
-  : 'Ctrl K'
 
 /** A thread lands on what the pointer is over; a project takes the place of the nearest project. */
 const collide: CollisionDetection = (args) =>
@@ -435,7 +430,7 @@ function ProjectNode({
           </>
         }
       >
-        <SidebarMenuSub id={subtree} className="ms-4 me-0 gap-px pe-0">
+        <SidebarMenuSub id={subtree} className="ms-4 me-0 gap-px border-l-0 pe-0">
           <ThreadRows threads={threads} place={project.projectId} />
           {project.outputCount > 0 && <ProjectOutputs project={project} />}
           {threads.length === 0 && project.outputCount === 0 && (
@@ -502,7 +497,7 @@ function ProjectOutputs({ project }: { project: ProjectEntry }) {
           </SidebarMenuSubButton>
         }
       >
-        <SidebarMenuSub id={list} className="me-0 gap-px pe-0">
+        <SidebarMenuSub id={list} className="me-0 gap-px border-l-0 pe-0">
           {outputs.isPending && (
             <li className="px-2 py-1 text-xs text-ink-muted">Reading…</li>
           )}
@@ -723,7 +718,11 @@ function ChatsGroup({
   })
   const accepting = isOver && takes(active, null)
   return (
-    <SidebarGroup ref={setNodeRef} className={cn(GROUP, accepting && dropRing)}>
+    // It runs to the bottom of the list, so the space under the chats takes a thread out of its projects too.
+    <SidebarGroup
+      ref={setNodeRef}
+      className={cn(GROUP, 'flex-1', accepting && dropRing)}
+    >
       <SidebarGroupLabel
         data-appearance-recipe="ui.section"
         className={HEADING}
@@ -742,28 +741,104 @@ function ChatsGroup({
       <SidebarMenuSub className="mx-0 translate-x-0 gap-px border-l-0 px-0 *:before:hidden">
         {starting && <StartingRow />}
         <ThreadRows threads={threads} place="unsorted" first={CHATS_SHOWN} />
-        {threads.length === 0 && !starting && (
-          <li className="px-2 py-1 text-xs text-ink-muted">
-            No chats yet. Start one with +, or drag one out of a project.
-          </li>
-        )}
       </SidebarMenuSub>
     </SidebarGroup>
+  )
+}
+
+/**
+ * The sidebar's search: assistant-ui's thread search over every thread the
+ * tree draws, grouped by project, pins first. Its list takes the tree's place
+ * while there is a query.
+ */
+function SidebarSearch({
+  views,
+  query,
+  onQueryChange,
+}: {
+  views: ReturnType<typeof useOrganizedViews>
+  query: string
+  onQueryChange: (query: string) => void
+}) {
+  const navigate = useNavigate()
+  const pins = useSidebarPrefs((s) => s.pins)
+  const [activeId, setActiveId] = useState('')
+  const threads = useMemo(() => {
+    const titles = new Map(
+      views.projects.map(({ project }) => [project.projectId, project.title]),
+    )
+    const listed = new Map<string, ThreadEntry>()
+    for (const project of views.projects)
+      for (const thread of project.threads) listed.set(thread.threadId, thread)
+    for (const thread of views.unsorted) listed.set(thread.threadId, thread)
+    return [...listed.values()]
+      .sort((a, b) => lastMoved(b) - lastMoved(a))
+      .map(
+        (thread): SearchableThread => ({
+          id: thread.threadId,
+          title: thread.title || 'New chat',
+          group: titles.get(primaryProjectId(thread)) ?? 'Recent',
+          preview: thread.summary?.text ?? '',
+          pinned: isPinned(pins, { kind: 'thread', id: thread.threadId }),
+        }),
+      )
+  }, [views, pins])
+  // The first match is active until the arrows move it.
+  const needle = query.toLowerCase()
+  const matches = threads.filter((thread) =>
+    `${thread.title} ${thread.preview}`.toLowerCase().includes(needle),
+  )
+  const active = matches.some((thread) => thread.id === activeId)
+    ? activeId
+    : (matches.find((thread) => thread.pinned) ?? matches[0])?.id ?? ''
+  const open = (threadId: string) => {
+    const thread = views.byId.get(threadId)
+    if (thread) useShell.getState().setProjectId(primaryProjectId(thread))
+    onQueryChange('')
+    void navigate({ to: '/c/$threadId', params: { threadId } })
+  }
+  return (
+    <ThreadSearch
+      threads={threads}
+      query={query}
+      onQueryChange={onQueryChange}
+      activeId={active}
+      onActiveChange={setActiveId}
+      onSelect={open}
+      placeholder="Search"
+      listWhenEmpty={false}
+      data-sidebar-search=""
+      className={cn(
+        'max-w-none gap-1 rounded-none border-0 bg-transparent p-0 dark:bg-transparent',
+        query && 'min-h-0 flex-1',
+      )}
+      fieldClassName="h-8 rounded-md bg-raised/55 px-2 py-0 ring-1 ring-separator ring-inset has-focus-visible:outline-2 has-focus-visible:outline-focus dark:bg-raised/55 [&_input]:outline-none! [&_input]:text-sm [&_input]:text-ink [&_input]:placeholder:text-ink-muted [&_svg]:text-ink-muted"
+      listClassName="min-h-0 flex-1 overflow-y-auto pt-1"
+    />
   )
 }
 
 function WorkspaceHeader({
   organization,
   onNewProject,
+  search,
+  searching,
 }: {
   organization: OrganizationRead | undefined
   onNewProject: () => void
+  search: React.ReactNode
+  searching: boolean
 }) {
   const tenant = useTenant()
   const control = useLibrarianControl()
   const librarian = organization?.served ? organization.librarian : undefined
   return (
-    <div className="flex shrink-0 flex-col gap-1 px-1.5 pt-1.5 pb-1">
+    <div
+      className={cn(
+        'flex shrink-0 flex-col gap-1 px-1.5 pt-1.5 pb-1',
+        searching && 'min-h-0 flex-1',
+      )}
+    >
       <Menu>
         <MenuTrigger
           render={
@@ -805,19 +880,7 @@ function WorkspaceHeader({
           </MenuLinkItem>
         </MenuPopup>
       </Menu>
-      {/* Search is a field you can see, not an icon to find: it opens the command palette, whose input takes the typing. */}
-      <button
-        type="button"
-        data-sidebar-search=""
-        onClick={() => useCommandPalette.getState().setOpen(true)}
-        className="flex h-8 w-full items-center gap-2 rounded-md bg-raised/55 px-2 text-start text-sm text-ink-muted ring-1 ring-separator transition-colors duration-100 outline-none ring-inset hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
-      >
-        <Icon.SearchMark aria-hidden className="size-4 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">Search</span>
-        <Kbd aria-hidden className="bg-transparent text-ink-faint">
-          {SEARCH_SHORTCUT}
-        </Kbd>
-      </button>
+      {search}
     </div>
   )
 }
@@ -839,6 +902,8 @@ export function OrganizedPanel() {
   const navigate = useNavigate()
   const create = useCreateProject()
   const views = useOrganizedViews()
+  const [query, setQuery] = useState('')
+  const searching = query.trim() !== ''
   useRevealOpenThread(views)
   useFreshAfterRuns((threadId) => views.byId.has(threadId))
 
@@ -976,8 +1041,16 @@ export function OrganizedPanel() {
       <WorkspaceHeader
         organization={data}
         onNewProject={createProject}
+        searching={searching}
+        search={
+          <SidebarSearch
+            views={views}
+            query={query}
+            onQueryChange={setQuery}
+          />
+        }
       />
-      <SidebarMenu className="shrink-0 px-2 pb-1">
+      <SidebarMenu hidden={searching} className="shrink-0 px-2 pb-1">
         <SidebarMenuItem>
           <SidebarMenuButton
             data-appearance-recipe="ui.label"
@@ -990,6 +1063,7 @@ export function OrganizedPanel() {
         </SidebarMenuItem>
       </SidebarMenu>
       <SidebarContent
+        hidden={searching}
         role="navigation"
         aria-label="Threads"
         className="relative gap-0 px-2 pb-3"
@@ -1017,7 +1091,7 @@ export function OrganizedPanel() {
               ref={listRef}
               onKeyDown={onKeyDown}
               data-appearance-spacing-role="group-controls"
-              className="flex flex-col pt-2"
+              className="flex flex-1 flex-col pt-2"
             >
               <PinnedGroup projects={data?.projects ?? []} byId={views.byId} />
               <SidebarGroup className={GROUP}>

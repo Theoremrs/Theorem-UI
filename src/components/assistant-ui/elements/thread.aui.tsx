@@ -82,6 +82,7 @@ import { useStartThreadFrom } from '@/lib/theorem/thread-tree'
 import { hasTheoremError } from '@/lib/theorem/message-history'
 
 import { ComposerToolTrigger } from '@/components/chat/composer-tools'
+import { RecentArtifacts } from '@/components/chat/recent-artifacts'
 import { UserMarkdown } from '@/components/chat/user-markdown'
 import { ChatCollapsibleMessage } from '@/components/coss/chat/chat-collapsible-message'
 import {
@@ -347,6 +348,7 @@ const ThreadRoot: FC<{
               slots={composerSlots}
             />
           </ThreadPrimitive.ViewportFooter>
+          {isEmpty && <RecentArtifacts />}
         </div>
       </ThreadPrimitive.Viewport>
       {/* Selecting reply text offers to quote it into the composer. */}

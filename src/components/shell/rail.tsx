@@ -1,4 +1,4 @@
-// SOURCING: Base UI Menu (account menu), @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/modifiers (reordering the destinations), @dnd-kit/accessibility (saying a keyboard move aloud), Kit's home slot (the stage stands the fox in it), the agent terminal toggle, ui/tooltip over Base UI Tooltip, ThemeToggle (next-themes light/dark), the shell's mode routes and tenant hook, the opened folders (whether the Vault is offered), the sign-in helpers (sign out), glass/liquid-glass (the junction's tab is a pane of the navigation panel's glass)
+// SOURCING: Base UI Menu (account menu), @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/modifiers (reordering the destinations), @dnd-kit/accessibility (saying a keyboard move aloud), Kit's home slot (the stage stands the fox in it), the agent terminal toggle, ThemeToggle (next-themes light/dark), the shell's mode routes and tenant hook, the opened folders (whether the Vault is offered), the sign-in helpers (sign out), glass/liquid-glass (the junction's tab is a pane of the navigation panel's glass)
 import { Menu } from '@base-ui/react/menu'
 import { LiveRegion, useAnnouncement } from '@dnd-kit/accessibility'
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
@@ -30,12 +30,6 @@ import { KitPerch } from '@/components/kit/kit-stage'
 import { useSurfaceMaterial } from '@/lib/appearance'
 import { signOut, useSignInConfigured } from '@/lib/theorem/sign-in'
 import { useWorkspaces } from '@/lib/workspace/workspaces'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { useWorkbenchPlacement } from '@/components/workbench/use-workbench-placement'
 import { RailMark } from './rail-marks'
 import {
@@ -48,7 +42,7 @@ import {
 import type { ShellMode } from './modes'
 import { useTenant } from './projects'
 import { useShell } from './shell-state'
-import { menuItem, menuPopup } from './sidebar'
+import { ChromeMenuPopup, menuItem } from './chrome-menu'
 
 import { Link } from '@tanstack/react-router'
 import { useCommandPalette } from './command-palette'
@@ -78,10 +72,10 @@ function AccountMenu() {
           sideOffset={8}
           className="z-50"
         >
-          <Menu.Popup
+          <ChromeMenuPopup
             data-appearance-part="popover"
             data-appearance-recipe="ui.label"
-            className={`min-w-52 ${menuPopup}`}
+            className="min-w-52"
           >
             {tenant && (
               <>
@@ -111,7 +105,7 @@ function AccountMenu() {
                 </Menu.Item>
               </>
             )}
-          </Menu.Popup>
+          </ChromeMenuPopup>
         </Menu.Positioner>
       </Menu.Portal>
     </Menu.Root>
@@ -222,24 +216,15 @@ function FilesControl({ collapsible }: { collapsible: boolean }) {
     if (covered) void openMode('chat')
   }
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            aria-label="Files"
-            aria-pressed={showing}
-            onClick={toggle}
-            className={`${railButton} h-12 aria-pressed:text-ink`}
-          />
-        }
-      >
-        <RailMark.Files className="size-5" />
-      </TooltipTrigger>
-      <TooltipContent side="right">
-        {showing ? 'Hide files' : 'Show files'}
-      </TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      aria-label="Files"
+      aria-pressed={showing}
+      onClick={toggle}
+      className={`${railButton} h-12 aria-pressed:text-ink`}
+    >
+      <RailMark.Files className="size-5" />
+    </button>
   )
 }
 
@@ -441,78 +426,66 @@ export function Rail({
     >
       {junction && <Junction {...junction} joins={joins} />}
       <LiveRegion id="rail-modes-moved" announcement={announcement} />
-      <TooltipProvider>
-        <DndContext
-          id="rail-modes"
-          sensors={sensors}
-          modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-          accessibility={{
-            announcements,
-            screenReaderInstructions: {
-              draggable:
-                'Drag to reorder, or press Alt with the up or down arrow to move this destination.',
-            },
-          }}
-          onDragStart={() => (dragged.current = true)}
-          onDragEnd={onDragEnd}
-          onDragCancel={() => setTimeout(() => (dragged.current = false))}
+      <DndContext
+        id="rail-modes"
+        sensors={sensors}
+        modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+        accessibility={{
+          announcements,
+          screenReaderInstructions: {
+            draggable:
+              'Drag to reorder, or press Alt with the up or down arrow to move this destination.',
+          },
+        }}
+        onDragStart={() => (dragged.current = true)}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setTimeout(() => (dragged.current = false))}
+      >
+        <SortableContext
+          items={modes.map((entry) => entry.mode)}
+          strategy={verticalListSortingStrategy}
         >
-          <SortableContext
-            items={modes.map((entry) => entry.mode)}
-            strategy={verticalListSortingStrategy}
-          >
-            <nav aria-label="Modes" className="flex flex-col gap-1">
-              {modes.map(({ mode: value, label, Mark }) => {
-                const active = value === mode
-                const toggles = active && collapsible
-                const modePanelOpen = panelOpen && !filesShown && !workspaceFull
-                const tooltip = toggles
-                  ? `${modePanelOpen ? 'Hide' : 'Show'} ${label} panel`
-                  : label
-                return (
-                  <Tooltip key={value}>
-                    <TooltipTrigger
-                      render={
-                        <Destination
-                          data-appearance-radius-role="control"
-                          mode={value}
-                          register={register}
-                          onMove={move}
-                          aria-label={label}
-                          aria-current={active ? 'page' : undefined}
-                          aria-expanded={toggles ? modePanelOpen : undefined}
-                          onClick={() => {
-                            if (dragged.current) return
-                            const shell = useShell.getState()
-                            const returning = shell.filesShown || workspaceFull
-                            // A destination reveals its own list when Files or
-                            // the full workspace covers it; a later press can
-                            // collapse that list.
-                            if (workspaceFull) shell.setWorkbench('closed')
-                            if (returning) {
-                              shell.setFilesShown(false)
-                              shell.setPanelOpen(navigatorMode(value), true)
-                            }
-                            if (!active) void openMode(value)
-                            else if (collapsible && !returning)
-                              togglePanel(value)
-                          }}
-                          className={`${railButton} h-12 aria-[current=page]:text-ink aria-[current=page]:hover:bg-transparent`}
-                        >
-                          <Mark className="size-5" />
-                        </Destination>
-                      }
-                    />
-                    <TooltipContent side="right">{tooltip}</TooltipContent>
-                  </Tooltip>
-                )
-              })}
-            </nav>
-          </SortableContext>
-        </DndContext>
-        <div aria-hidden="true" className="my-2 h-px w-5 bg-separator" />
-        <FilesControl collapsible={collapsible} />
-      </TooltipProvider>
+          <nav aria-label="Modes" className="flex flex-col gap-1">
+            {modes.map(({ mode: value, label, Mark }) => {
+              const active = value === mode
+              const toggles = active && collapsible
+              const modePanelOpen = panelOpen && !filesShown && !workspaceFull
+              return (
+                <Destination
+                  key={value}
+                  data-appearance-radius-role="control"
+                  mode={value}
+                  register={register}
+                  onMove={move}
+                  aria-label={label}
+                  aria-current={active ? 'page' : undefined}
+                  aria-expanded={toggles ? modePanelOpen : undefined}
+                  onClick={() => {
+                    if (dragged.current) return
+                    const shell = useShell.getState()
+                    const returning = shell.filesShown || workspaceFull
+                    // A destination reveals its own list when Files or
+                    // the full workspace covers it; a later press can
+                    // collapse that list.
+                    if (workspaceFull) shell.setWorkbench('closed')
+                    if (returning) {
+                      shell.setFilesShown(false)
+                      shell.setPanelOpen(navigatorMode(value), true)
+                    }
+                    if (!active) void openMode(value)
+                    else if (collapsible && !returning) togglePanel(value)
+                  }}
+                  className={`${railButton} h-12 aria-[current=page]:text-ink aria-[current=page]:hover:bg-transparent`}
+                >
+                  <Mark className="size-5" />
+                </Destination>
+              )
+            })}
+          </nav>
+        </SortableContext>
+      </DndContext>
+      <div aria-hidden="true" className="my-2 h-px w-5 bg-separator" />
+      <FilesControl collapsible={collapsible} />
       <div className="flex-1" />
       <KitPerch name="rail" className="mb-1" />
       <TerminalToggle />

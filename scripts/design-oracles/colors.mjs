@@ -80,6 +80,7 @@ export const REQUIRED_RENDERED_FIXTURE_PAIRS = Object.freeze({
   F09: ['primary/composer','primary/assistant-reading'],
   F10: ['primary/assistant-reading'],
   F11: ['primary/composer'],
+  F12: ['primary/user-message','link/user-message','secondary/user-message','primary/assistant-reading','secondary/assistant-reading','link/assistant-reading','primary/popover'],
 })
 export const REQUIRED_RENDERED_FIXTURE_CANDIDATES = Object.freeze({
   F01: [{ pair:'placeholder/composer',kind:'placeholder',requireText:true }],
@@ -88,6 +89,17 @@ export const REQUIRED_RENDERED_FIXTURE_CANDIDATES = Object.freeze({
   F06: [{ pair:'secondary/assistant-reading',kind:'semantic',textIncludes:'Checking the examples' }],
   F07: [{ pair:'error/status',kind:'semantic',requireText:true }],
   F08: [{ pair:'primary/selected',kind:'semantic',requireText:true }],
+  // Headings, strong text, a link in a table header, a nested quotation,
+  // code inside emphasis and a formula each carry their own paint.
+  F12: [
+    { pair:'primary/assistant-reading',kind:'semantic',textIncludes:'What changed' },
+    { pair:'primary/assistant-reading',kind:'semantic',textIncludes:'strong text' },
+    { pair:'link/assistant-reading',kind:'semantic',textIncludes:'Seats' },
+    { pair:'secondary/assistant-reading',kind:'semantic',textIncludes:'nested quotation' },
+    { pair:'primary/assistant-reading',kind:'semantic',textIncludes:'code inside it' },
+    { pair:'primary/assistant-reading',kind:'semantic',textIncludes:'T(s)' },
+    { pair:'primary/user-message',kind:'semantic',textIncludes:'A heading the person wrote' },
+  ],
 })
 
 export const contrastRatio = (foreground, background) => wcagContrast(foreground, background)

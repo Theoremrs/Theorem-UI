@@ -22,12 +22,15 @@ import {
 import type { Theorem } from "@/lib/theorem/client";
 import { cn } from "@/lib/utils";
 import {
+  AuiConfig,
+  AuiProvider,
   ThreadListItemMorePrimitive,
   ThreadListItemPrimitive,
   ThreadListPrimitive,
   useAui,
   useAuiState,
 } from "@assistant-ui/react";
+import { Derived } from "@assistant-ui/store";
 import { Collapsible } from "@base-ui/react/collapsible";
 import { ContextMenu } from "@base-ui/react/context-menu";
 import { useQueryClient } from "@tanstack/react-query";
@@ -43,7 +46,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ComponentPropsWithoutRef, FC } from "react";
+import type { ComponentPropsWithoutRef, FC, ReactNode } from "react";
 
 export const ThreadList: FC = () => {
   const [search, setSearch] = useState("");
@@ -440,6 +443,41 @@ const ThreadListShowMore: FC = () => {
     >
       {isLoadingMore ? "Loading…" : "Show more"}
     </button>
+  );
+};
+
+/**
+ * A thread-list item scope found by its Theorem thread id, for a row drawn
+ * outside the list's own order, as the sidebar's project tree draws them:
+ * ThreadListItemByIndexProvider's lookup, by id. `scoped` is false while the
+ * runtime has not listed the thread yet.
+ */
+export const ThreadListItemByRemoteId: FC<{
+  remoteId: string;
+  children: (scoped: boolean) => ReactNode;
+}> = ({ remoteId, children }) => {
+  const aui = useAui();
+  const id = useAuiState(
+    (s) => s.threads.threadItems.find((item) => item.remoteId === remoteId)?.id,
+  );
+  const config = useMemo(
+    () =>
+      id === undefined
+        ? undefined
+        : AuiConfig({
+            threadListItem: Derived({
+              source: "threads",
+              query: { type: "id", id },
+              get: (client) => client.threads.item({ id }),
+            }),
+          }),
+    [id],
+  );
+  if (!config) return children(false);
+  return (
+    <AuiProvider extends={aui} config={config}>
+      {children(true)}
+    </AuiProvider>
   );
 };
 

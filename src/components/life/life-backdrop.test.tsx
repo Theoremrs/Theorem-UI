@@ -146,7 +146,11 @@ test('a phone uses transparent Canvas 2D instead of WebGL', async () => {
   const media = Object.getOwnPropertyDescriptor(window, 'matchMedia')
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
-    value: () => ({ matches: true }),
+    value: () => ({
+      matches: true,
+      addEventListener() {},
+      removeEventListener() {},
+    }),
   })
   const context = spyOn(
     HTMLCanvasElement.prototype,

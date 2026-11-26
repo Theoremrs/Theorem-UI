@@ -12,13 +12,6 @@ import type {
   MarkdownTextPrimitiveProps,
   SyntaxHighlighterProps,
 } from '@assistant-ui/react-markdown'
-import {
-  escapeCurrencyDollars,
-  normalizeMathDelimiters,
-} from '@assistant-ui/react-markdown/preprocess'
-import rehypeKatex from 'rehype-katex'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
 import { memo, useMemo, useRef } from 'react'
 import type { FC } from 'react'
 import type { TextMessagePartProps } from '@assistant-ui/react'
@@ -27,13 +20,12 @@ import { MermaidDiagram } from '@/components/assistant-ui/elements/mermaid-diagr
 import { SyntaxHighlighter } from '@/components/assistant-ui/elements/shiki-highlighter.aui'
 import { bareDrawing } from '@/components/assistant-ui/elements/surfaces'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  InlineCode,
+  MARKDOWN_REMARK,
+  markdownElements,
+  markdownRehype,
+  preprocessMarkdown,
+} from '@/components/chat/markdown-elements'
 import { cn } from '@/lib/utils'
 import { appearancePair } from '@/lib/appearance-policy'
 
@@ -58,9 +50,10 @@ const useShallowStable = <T extends Record<string, unknown> | undefined>(
   return ref.current
 }
 
-/** A fenced mermaid block is the drawing alone, in line with the reply's text. */
+/** A fenced mermaid block is the drawing alone, in line with the reply's text;
+ * the document rhythm spaces it. */
 const MermaidFence: FC<SyntaxHighlighterProps> = (props) => (
-  <MermaidDiagram {...props} className={cn('my-3', bareDrawing)} />
+  <MermaidDiagram {...props} className={bareDrawing} />
 )
 
 // Fenced mermaid blocks render as diagrams with no header, box or fill; every
@@ -69,6 +62,8 @@ const defaultComponentsByLanguage: MarkdownTextPrimitiveProps['componentsByLangu
   {
     mermaid: { SyntaxHighlighter: MermaidFence, CodeHeader: () => null },
   }
+
+const ASSISTANT_REHYPE = markdownRehype('assistant')
 
 const MarkdownTextImpl: FC<MarkdownTextProps> = ({
   components,
@@ -86,9 +81,9 @@ const MarkdownTextImpl: FC<MarkdownTextProps> = ({
 
   return (
     <MarkdownTextPrimitive
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      preprocess={preprocessMath}
+      remarkPlugins={MARKDOWN_REMARK}
+      rehypePlugins={ASSISTANT_REHYPE}
+      preprocess={preprocessMarkdown}
       className="aui-md"
       components={markdownComponents}
       componentsByLanguage={
@@ -101,170 +96,12 @@ const MarkdownTextImpl: FC<MarkdownTextProps> = ({
 
 export const MarkdownText = memo(MarkdownTextImpl)
 
-// Models emit \( \) and \[ \] as often as dollars; prices in prose are not math.
-const preprocessMath = (text: string) =>
-  normalizeMathDelimiters(escapeCurrencyDollars(text))
-
 /** The code block draws its own chrome, so a fence's separate header is empty. */
 export const CodeHeader: FC<CodeHeaderProps> = () => null
 
-/** Inline code longer than this many characters reads as a diagnostic block. */
-const DIAGNOSTIC_LENGTH = 72
-
 const defaultComponents = {
   ...memoizeMarkdownComponents({
-    h1: ({ className, ...props }) => (
-      <h1
-        data-appearance-recipe="heading.large"
-        className={cn('aui-md-h1', className)}
-        {...props}
-      />
-    ),
-    h2: ({ className, ...props }) => (
-      <h2
-        data-appearance-recipe="heading.medium"
-        className={cn('aui-md-h2', className)}
-        {...props}
-      />
-    ),
-    h3: ({ className, ...props }) => (
-      <h3
-        data-appearance-recipe="heading.small"
-        className={cn('aui-md-h3', className)}
-        {...props}
-      />
-    ),
-    h4: ({ className, ...props }) => (
-      <h4
-        data-appearance-recipe="heading.small"
-        className={cn('aui-md-h4', className)}
-        {...props}
-      />
-    ),
-    h5: ({ className, ...props }) => (
-      <h5
-        data-appearance-recipe="heading.small"
-        className={cn('aui-md-h5', className)}
-        {...props}
-      />
-    ),
-    h6: ({ className, ...props }) => (
-      <h6
-        data-appearance-recipe="heading.small"
-        className={cn('aui-md-h6', className)}
-        {...props}
-      />
-    ),
-    p: ({ className, ...props }) => (
-      <p
-        data-appearance-recipe="prose"
-        data-appearance-part="prose-block"
-        {...appearancePair('primary', 'assistant-reading')}
-        className={cn('aui-md-p', className)}
-        {...props}
-      />
-    ),
-    a: ({ className, ...props }) => (
-      <a
-        {...appearancePair('link', 'assistant-reading')}
-        className={cn(
-          'aui-md-a text-link decoration-link/40 hover:decoration-link underline underline-offset-2',
-          className,
-        )}
-        {...props}
-      />
-    ),
-    blockquote: ({ className, ...props }) => (
-      <blockquote
-        className={cn(
-          'aui-md-blockquote border-separator text-ink-muted my-3 border-s-2 ps-4',
-          className,
-        )}
-        {...props}
-      />
-    ),
-    ul: ({ className, ...props }) => (
-      <ul
-        className={cn(
-          'aui-md-ul marker:text-ink-faint my-3 ms-5 list-disc [&>li]:mt-1',
-          className,
-        )}
-        {...props}
-      />
-    ),
-    ol: ({ className, ...props }) => (
-      <ol
-        className={cn(
-          'aui-md-ol marker:text-ink-faint my-3 ms-5 list-decimal [&>li]:mt-1',
-          className,
-        )}
-        {...props}
-      />
-    ),
-    hr: ({ className, ...props }) => (
-      <hr
-        className={cn('aui-md-hr border-separator my-5', className)}
-        {...props}
-      />
-    ),
-    // A table stays inside the prose column on its own opaque surface and
-    // scrolls sideways in its own region (shadcn Table's container).
-    table: ({ className, ...props }) => (
-      <div className="aui-md-table-wrapper">
-        <Table className={cn('aui-md-table', className)} {...props} />
-      </div>
-    ),
-    thead: ({ className, ...props }) => (
-      <TableHeader className={cn('aui-md-thead', className)} {...props} />
-    ),
-    tbody: ({ className, ...props }) => (
-      <TableBody className={cn('aui-md-tbody', className)} {...props} />
-    ),
-    th: ({ className, ...props }) => (
-      <TableHead
-        data-appearance-recipe="ui.section"
-        {...appearancePair('primary', 'popover')}
-        className={cn(
-          'aui-md-th text-ink h-auto px-3 py-2 align-bottom whitespace-normal [[align=center]]:text-center [[align=right]]:text-right',
-          className,
-        )}
-        {...props}
-      />
-    ),
-    td: ({ className, ...props }) => (
-      <TableCell
-        {...appearancePair('primary', 'popover')}
-        className={cn(
-          'aui-md-td px-3 py-2 align-top whitespace-normal [[align=center]]:text-center [[align=right]]:text-right',
-          className,
-        )}
-        {...props}
-      />
-    ),
-    tr: ({ className, ...props }) => (
-      <TableRow
-        className={cn(
-          'aui-md-tr border-separator hover:bg-transparent',
-          className,
-        )}
-        {...props}
-      />
-    ),
-    li: ({ className, ...props }) => (
-      <li className={cn('aui-md-li leading-6', className)} {...props} />
-    ),
-    strong: ({ className, ...props }) => (
-      <strong
-        className={cn('aui-md-strong font-semibold', className)}
-        {...props}
-      />
-    ),
-    sup: ({ className, ...props }) => (
-      <sup
-        className={cn('aui-md-sup [&>a]:text-xs [&>a]:no-underline', className)}
-        {...props}
-      />
-    ),
+    ...markdownElements('assistant'),
     pre: ({ className, ...props }) => (
       <pre
         data-appearance-recipe="code"
@@ -275,6 +112,8 @@ const defaultComponents = {
         {...props}
       />
     ),
+    // Backticks keep their sentence at any length: a long path or command
+    // wraps in the line. Diagnostic panels come from fenced blocks.
     code: function Code({ className, children, ...props }) {
       const isCodeBlock = useIsMarkdownCodeBlock()
       if (isCodeBlock)
@@ -288,29 +127,10 @@ const defaultComponents = {
             {children}
           </code>
         )
-      // A long string in backticks (an error, a path, a command line) is a
-      // diagnostic: it gets a contained block of its own instead of running
-      // through the sentence.
-      if (typeof children === 'string' && children.length > DIAGNOSTIC_LENGTH)
-        return (
-          <code
-            data-appearance-recipe="code"
-            data-diagnostic=""
-            {...appearancePair('primary', 'popover')}
-            className={cn('aui-md-diagnostic', className)}
-            {...props}
-          >
-            {children}
-          </code>
-        )
       return (
-        <code
-          {...appearancePair('code', 'assistant-reading')}
-          className={cn('aui-md-inline-code', className)}
-          {...props}
-        >
+        <InlineCode voice="assistant" className={className} {...props}>
           {children}
-        </code>
+        </InlineCode>
       )
     },
     CodeHeader,

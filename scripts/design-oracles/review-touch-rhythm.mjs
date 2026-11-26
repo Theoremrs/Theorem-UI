@@ -52,10 +52,11 @@ try {
     return {heading:n.tagName,headingLeading:parseFloat(getComputedStyle(n).lineHeight),before:box.top-n.previousElementSibling.getBoundingClientRect().bottom,after:n.nextElementSibling.getBoundingClientRect().top-box.bottom}
    })}
   })
-  // A heading's space above is 1.75 lines (--appearance-section-gap, the
-  // design overhaul's "more space above"); below it is a quarter line
-  // (--appearance-heading-gap, owner 2026-11-22).
-  const passed=errors.length===0&&measured.headings.length===3&&measured.headings.every(n=>Math.abs(n.before-1.75*measured.leading)<=0.25&&Math.abs(n.after-0.25*measured.leading)<=0.25)
+  // A section heading (h1, h2) has 1.25 lines above and 0.4 below; a
+  // subordinate one (h3-h6) 1 line above and 0.3 below (chat typography
+  // brief, 2026-11-24). A heading stays closer to the text under it.
+  const gaps=n=>/^H[12]$/.test(n.heading)?[1.25,0.4]:[1,0.3]
+  const passed=errors.length===0&&measured.headings.length===3&&measured.headings.every(n=>Math.abs(n.before-gaps(n)[0]*measured.leading)<=0.25&&Math.abs(n.after-gaps(n)[1]*measured.leading)<=0.25)
   results.push({settings,passed,errors,...measured});await p.close()
  }
  await writeFile(resolve(output,'chromium-touch-and-rhythm.json'),JSON.stringify({generatedAt:new Date().toISOString(),engine:browser.version(),results},null,2)+'\n')
