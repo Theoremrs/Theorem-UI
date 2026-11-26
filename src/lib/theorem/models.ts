@@ -1,10 +1,11 @@
-// SOURCING: zustand + zustand/middleware persist (the person's starred and picked models, as lib/palette keeps the palette; record table arrangements travel in the same preferences object as `recordLayouts` from components/records/view-state), @tanstack/react-query (the model list Theorem serves at /api/chat/v1/models, OpenRouter's fields passed through)
+// SOURCING: zustand + zustand/middleware persist (the person's starred and picked models, as lib/palette keeps the palette; record table arrangements travel in the same preferences object as `recordLayouts` from components/records/view-state), @tanstack/react-query (the model list Theorem serves at /api/chat/v1/models, OpenRouter's fields passed through), ./roster (the conversation's participant roster, which outranks the picked model for the model a turn runs on)
 import type { Theorem } from './client'
 import { create } from 'zustand'
 import { mergeLayouts, trimLayouts, useRecordLayouts } from '@/components/records/view-state'
 import { describeError, hasStatus, mutate } from './client'
 import { readGeneration, useGenerationDefaults } from './generation'
 import { isNotServed, theoremJson } from './passthrough'
+import { leadRefOf, modelRef, rosterLeadRef, useRoster } from './roster'
 import { persist } from 'zustand/middleware'
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
@@ -218,10 +219,13 @@ export function formatPrice({
   return `${dollars(promptPrice)} / ${dollars(completionPrice)} per M`
 }
 
-/** Theorem's catalog reference split into the shape a send carries. */
+/**
+ * Theorem's catalog reference split into the shape a send carries. The rule
+ * lives in ./roster, which carries the split form on the wire; this is the name
+ * the rest of the chat uses for it.
+ */
 export function resolvedModel(ref: string): Theorem.ResolvedModel {
-  const slash = ref.indexOf('/')
-  return { provider: ref.slice(0, slash), model: ref.slice(slash + 1) }
+  return modelRef(ref)
 }
 
 type PickedModelsState = {
@@ -255,9 +259,22 @@ export const usePickedModels = create<PickedModelsState>()(
   ),
 )
 
-/** The picked model as a send carries it; undefined leaves it to Theorem's default. */
+/**
+ * Which model a turn runs on, in one place: the open conversation's roster
+ * speaks when it has a seat, and the account's pick answers for a conversation
+ * that has none. With exactly one seat in the room this is the picked model it
+ * was before rosters, so no reader of a send's model sees a different answer.
+ */
+const fold = (lead: string | undefined, picked: string | undefined) => lead ?? picked
+
+/** The same rule as the composer reads it, reacting to either store. */
+export function useEffectiveRef(): string | undefined {
+  return fold(useRoster(leadRefOf), usePickedModels((s) => s.selected))
+}
+
+/** The model the next turn runs on; undefined leaves it to Theorem's default. */
 export function pickedModel(): Theorem.ResolvedModel | undefined {
-  const ref = usePickedModels.getState().selected
+  const ref = fold(rosterLeadRef(), usePickedModels.getState().selected)
   return ref ? resolvedModel(ref) : undefined
 }
 

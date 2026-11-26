@@ -13,7 +13,7 @@ import {
 } from '@/components/coss/menu'
 import { Icon } from '@/components/icons'
 import { effortLabel, useGenerationDefaults } from '@/lib/theorem/generation'
-import { useModelCatalog, usePickedModels } from '@/lib/theorem/models'
+import { useEffectiveRef, useModelCatalog } from '@/lib/theorem/models'
 import type { ModelOption } from '@/lib/theorem/models'
 import { useConversationGeneration, useLatestRunFacts } from '@/lib/theorem/use-generation'
 
@@ -21,13 +21,14 @@ import { useConversationGeneration, useLatestRunFacts } from '@/lib/theorem/use-
 const DEFAULT = ''
 
 /**
- * The model the next turn runs on, as the catalog lists it: the picked one,
- * or Theorem's default when nothing is picked. Undefined until the catalog
+ * The model the next turn runs on, as the catalog lists it: the conversation's
+ * seated model when the room has one — the participant the last pick acted on —
+ * else this browser's pick, else Theorem's default. Undefined until the catalog
  * says.
  */
 export function useEffectiveModel(): { model: ModelOption | undefined } {
   const { data: catalog, list } = useModelCatalog()
-  const selected = usePickedModels((s) => s.selected)
+  const selected = useEffectiveRef()
   const ref = selected ?? list?.defaultRef
   const model = useMemo(
     () => (ref ? catalog?.find((option) => option.ref === ref) : undefined),
