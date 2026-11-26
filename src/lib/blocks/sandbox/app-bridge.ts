@@ -114,22 +114,20 @@ const context = connectToPage().then((port) => {
   serve<SandboxMethods, 'frame.look'>(rpc, 'frame.look', () => lookNow())
   // The live document supplies layout and computed styles. A serialized
   // snapshot cannot reconstruct its font loading, line boxes or scroll sizes.
+  // Measured at once, after the run: fonts still loading are reported as
+  // such, and a timer here would be throttled past the host's deadline
+  // whenever the person's tab is in the background.
   serve<SandboxMethods, 'frame.design'>(
     rpc,
     'frame.design',
-    async ({ captureId }) => {
-      await Promise.race([
-        document.fonts.ready,
-        new Promise((resolve) => setTimeout(resolve, 750)),
-      ])
-      return collectDesignObservations({
+    ({ captureId }) =>
+      collectDesignObservations({
         captureId,
         evidenceKind: 'rendered-artifact',
         maxElements: 300,
         maxNodes: 5000,
         maxTextLength: 160,
-      })
-    },
+      }),
   )
   observeHeight((height, fills) => {
     void call<PageMethods, 'frame.resize'>(rpc, 'frame.resize', { height, fills })

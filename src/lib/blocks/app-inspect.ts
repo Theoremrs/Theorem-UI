@@ -111,6 +111,11 @@ const CONNECT_MS = 10_000
 const FRAME_HEIGHT = 768
 /** How long the App's page has to say what it shows at the end of its run. */
 const LOOK_MS = 2_000
+/**
+ * How long it has to answer a design measurement. Longer than a look: it
+ * walks the live document, on the same thread as a chat that is streaming.
+ */
+const DESIGN_MS = 5_000
 /** What a frame answers when asked what it shows. It is the App's word, so it is checked. */
 const attributes = z.record(z.string().max(80), z.string())
 const looked = z.object({
@@ -302,14 +307,28 @@ async function run(
       if (designed) {
         const captureId = crypto.randomUUID()
         const observed = await Promise.race([
-          connection.connected.then((rpc) =>
-            call<SandboxMethods, 'frame.design'>(rpc, 'frame.design', {
-              captureId,
-            }),
-          ),
-          wait(LOOK_MS).then(() => null),
-        ]).catch(() => null)
-        design = appDesignFeedback(observed, captureId)
+          connection.connected
+            .then((rpc) =>
+              call<SandboxMethods, 'frame.design'>(rpc, 'frame.design', {
+                captureId,
+              }),
+            )
+            .then(
+              (value) => ({ value }),
+              (error: unknown) => ({
+                failed: error instanceof Error ? error.message : String(error),
+              }),
+            ),
+          wait(DESIGN_MS).then(() => ({ late: true })),
+        ])
+        design =
+          'value' in observed
+            ? appDesignFeedback(observed.value, captureId)
+            : unavailableDesign(
+                'late' in observed
+                  ? `The App did not answer the design measurement within ${DESIGN_MS / 1000} s.`
+                  : `The App's design measurement failed: ${observed.failed}`,
+              )
       }
     }
   } finally {
