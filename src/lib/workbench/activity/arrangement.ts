@@ -92,7 +92,12 @@ export function arrange(
         // Unlisted only when its owner said so; an owner not read now keeps its last word.
         listed: wasRead(key) ? false : kept[key].listed,
       }
-    else continue
+    // A saved place whose owner has not been read yet (a reload, a closed view, a listing still
+    // on its way) keeps its place with no row, so the manual order survives the first listings.
+    else if (!wasRead(key)) {
+      order.push(key)
+      continue
+    } else continue
     order.push(key)
   }
   for (const [key, entry] of current) {
@@ -117,15 +122,21 @@ export function removeFrom(arranged: Arranged, key: string): Arranged {
   }
 }
 
-/** Moves a row by `by` places, within the list. */
+/**
+ * Moves a row by `by` places among the rows shown. A saved place waiting for its owner's listing
+ * holds no row, so it is stepped over rather than counted as a place.
+ */
 export function moveIn(arranged: Arranged, key: string, by: number): Arranged {
-  const from = arranged.order.indexOf(key)
+  const shown = arranged.order.filter((k) => arranged.items[k])
+  const from = shown.indexOf(key)
   if (from < 0) return arranged
-  const to = Math.max(0, Math.min(arranged.order.length - 1, from + by))
+  const to = Math.max(0, Math.min(shown.length - 1, from + by))
   if (to === from) return arranged
-  const order = [...arranged.order]
-  order.splice(from, 1)
-  order.splice(to, 0, key)
+  const order = arranged.order.filter((k) => k !== key)
+  const neighbour = shown[to] as string
+  const at = order.indexOf(neighbour)
+  // Moving down lands after the row it passes; moving up, before it.
+  order.splice(to > from ? at + 1 : at, 0, key)
   return { ...arranged, order }
 }
 

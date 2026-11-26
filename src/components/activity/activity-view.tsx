@@ -580,7 +580,7 @@ function ActivityCompact({
           )}
           {/* Like Rex's session picker: one quiet mark for the strongest
               state, waiting over working, with the words beside it. */}
-          <ToneMark tone={waiting ? 'waiting' : 'working'} />
+          <ToneMark tone={waiting ? 'waiting' : working ? 'working' : 'idle'} />
           <span className="truncate">{summary}</span>
         </button>
         <button
