@@ -176,9 +176,29 @@ function ArtifactDockPanel({
     queryKey: ['theorem', 'artifact-versions', origin, artifactId],
     queryFn: () => readArtifactVersions(origin ?? '', artifactId),
     enabled: elsewhere,
+    // Its own chat is not on screen to stream new revisions here, so following reads again.
+    refetchInterval: elsewhere ? 15_000 : false,
   })
   const versions = elsewhere ? remote.data : here
   const title = versions?.at(-1)?.title
+  // A panel opened before its chat had an id learns it once the chat on screen shows it holds
+  // the artifact, so it is never labelled with a conversation it did not come from.
+  const found = Boolean(here?.length)
+  useEffect(() => {
+    if (origin !== undefined || !onScreen || !found) return
+    api.updateParameters({ ...params, threadId: onScreen })
+    useArtifactView.setState((s) => {
+      const view = s.views[artifactId]
+      return view && view.threadId === undefined
+        ? {
+            views: {
+              ...s.views,
+              [artifactId]: { ...view, threadId: onScreen },
+            },
+          }
+        : {}
+    })
+  }, [api, params, origin, onScreen, found, artifactId])
   useEffect(() => {
     if (title) api.setTitle(title)
   }, [api, title])
@@ -683,6 +703,8 @@ export function DockShell({
   })
 
   const onReady = ({ api }: DockviewReadyEvent) => {
+    // Restored panels compare their own chat with this one from their first render.
+    useArtifactView.setState({ threadId })
     const saved = useShell.getState().layouts[projectId]
     if (saved && restoreLayout(api, saved.dock))
       layoutThread.current = saved.threadId
@@ -784,7 +806,7 @@ export function DockShell({
 
   // A different conversation starts without the previous one's artifacts and delegations, but an
   // artifact the person kept open stays, still reading from its own conversation (AR-07). A new
-  // chat gaining its first id is the same conversation, so it keeps them all and they take the id.
+  // chat gaining its first id is the same conversation, so it keeps them all.
   useEffect(() => {
     if (!dock) return
     if (layoutThread.current === threadId) {
@@ -806,24 +828,8 @@ export function DockShell({
       }
       useArtifactView.getState().changedChat(threadId)
     } else {
-      useArtifactView.setState((s) => ({
-        threadId,
-        views: Object.fromEntries(
-          Object.entries(s.views).map(([id, view]) => [
-            id,
-            view.threadId === undefined ? { ...view, threadId } : view,
-          ]),
-        ),
-      }))
-      if (threadId)
-        for (const panel of dock.panels) {
-          const artifactId = artifactIdOf(panel.id)
-          if (artifactId && !(panel.params as ArtifactPanelParams).threadId)
-            updateArtifactParams(dock, artifactId, (params) => ({
-              ...params,
-              threadId,
-            }))
-        }
+      // The same chat gaining its id, or a first chat: panels learn their id from what they show.
+      useArtifactView.setState({ threadId })
     }
     const layout = adaptation.current
       ? adaptation.current.layoutForSave()

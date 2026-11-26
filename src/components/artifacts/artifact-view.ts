@@ -149,5 +149,5 @@ export const useArtifactView = create<ArtifactView>()((set, get) => ({
         openId: s.openId && views[s.openId] ? s.openId : undefined,
       }
     }),
-  reset: () => set({ openId: undefined, views: {} }),
+  reset: () => set({ openId: undefined, views: {}, threadId: undefined }),
 }))

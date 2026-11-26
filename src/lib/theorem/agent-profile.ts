@@ -66,6 +66,8 @@ export const DEFAULT_PROFILE: AgentProfile = {
 }
 
 function identityOf(organization: AgentOrganization): AgentIdentity {
+  // An organization route without the profile field is a Theorem that cannot store one yet.
+  if (!('profile' in organization)) return { served: false }
   return {
     served: true,
     agentId: organization.agent_id,
@@ -164,5 +166,7 @@ export function useSaveAgentProfile() {
       expectedRevision: number
     }) => saveAgentProfile(profile, expectedRevision),
     onSuccess: (saved) => client.setQueryData(agentIdentityKey, saved),
+    // A refused save (above all a 409) means the cached record is behind: reopening reads anew.
+    onError: () => client.invalidateQueries({ queryKey: agentIdentityKey }),
   })
 }

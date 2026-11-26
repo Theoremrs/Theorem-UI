@@ -1,4 +1,5 @@
 import { Outlet } from '@tanstack/react-router'
+import { AgentProfileDialog } from '@/components/agent/agent-profile-dialog'
 import { ArtifactLibraryPublication } from '@/components/artifacts/openui/publication'
 import { PreferencesSync } from '@/lib/theorem/models'
 import { TheoremRuntimeProvider } from '@/lib/theorem/runtime'
@@ -27,6 +28,8 @@ export default function SignedInChat({
     >
       <ChatShell projectId={projectId} threadId={threadId} />
       <CommandPalette />
+      {/* Mounted wherever the palette is, which opens it. */}
+      <AgentProfileDialog />
       <PreferencesSync />
       <ArtifactLibraryPublication />
       <Outlet />

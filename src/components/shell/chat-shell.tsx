@@ -42,10 +42,7 @@ import {
 import type { CSSProperties } from 'react'
 
 import { ActivityView } from '@/components/activity/activity-view'
-import {
-  AgentIdentityChip,
-  AgentProfileDialog,
-} from '@/components/agent/agent-profile-dialog'
+import { AgentIdentityChip } from '@/components/agent/agent-profile-dialog'
 import { ModePage } from '@/components/pages/mode-page'
 import { IdePageShown, OnIdePage } from '@/components/ide/ide-page'
 import { IdeStatusBar } from '@/components/ide/ide-status-bar'
@@ -528,7 +525,6 @@ function DesktopShell(route: DockRoute) {
               identity={<AgentIdentityChip />}
             />
           )}
-          <AgentProfileDialog />
         </div>
         {workbenchMounted && (
           <WorkbenchDock placement={requestedPlacement} frame={frame}>

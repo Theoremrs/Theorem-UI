@@ -123,6 +123,9 @@ function ProfileForm({
   onDone: () => void
 }) {
   const start = shownProfile(identity)
+  // The revision the form was read at: a refetch while it is open must not move it, or a save
+  // would overwrite a change made elsewhere instead of being refused.
+  const [readAt] = useState(identity.revision)
   const save = useSaveAgentProfile()
   const [name, setName] = useState(start.name)
   const [description, setDescription] = useState(start.description ?? '')
@@ -161,7 +164,7 @@ function ProfileForm({
     event.preventDefault()
     if (problem) return
     save.mutate(
-      { profile: draft, expectedRevision: identity.revision },
+      { profile: draft, expectedRevision: readAt },
       { onSuccess: onDone },
     )
   }
@@ -252,9 +255,7 @@ function ProfileForm({
           </label>
         </div>
       </details>
-      {problem && name.trim() !== '' && (
-        <p className="text-sm text-ink-muted">{problem}</p>
-      )}
+      {problem && <p className="text-sm text-ink-muted">{problem}</p>}
       {save.error && (
         <p role="alert" className="text-sm text-error-ink">
           {conflict
@@ -264,7 +265,7 @@ function ProfileForm({
       )}
       <DialogFooter>
         <span className="me-auto self-center text-xs text-ink-faint">
-          Version {identity.revision}
+          Version {readAt}
         </span>
         <Button type="submit" disabled={Boolean(problem) || save.isPending}>
           Save

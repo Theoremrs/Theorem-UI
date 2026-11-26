@@ -178,7 +178,9 @@ export async function readArtifactVersions(
 ): Promise<TheoremArtifact[]> {
   const { messages } = await theorem().chat.threads.get({ threadId })
   const versions: TheoremArtifact[] = []
-  for (const message of messages)
+  // As the conversation lists them (threadArtifacts): only what the agent's answers carry.
+  for (const message of messages) {
+    if ((message as { role?: string }).role !== 'assistant') continue
     for (const part of (message as { parts?: unknown[] }).parts ?? []) {
       const artifact = readArtifact(part)
       if (
@@ -187,6 +189,7 @@ export async function readArtifactVersions(
       )
         versions.push(artifact)
     }
+  }
   return versions.sort((a, b) => a.patchSequence - b.patchSequence)
 }
 
