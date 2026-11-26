@@ -6,6 +6,8 @@
 import { z } from 'zod'
 import { documentAppDatabases, openInMemory } from './app-db'
 import * as checker from './app-checker'
+import { appDesignFeedback, unavailableDesign } from './app-design'
+import type { AppDesignFeedback } from './app-design'
 import { PICTURE_WIDTH, pictureOf } from './app-picture'
 import type { AppPicture } from './app-picture'
 import { AppBuildError, appSourcesOf } from './app-source'
@@ -51,10 +53,13 @@ export interface AppInspection {
    */
   rendered?: { text: string; elements: number; outline?: string }
   /**
-   * What the App looked like, when a picture was asked for: its snapshot drawn
-   * in the page, with what it drew on a canvas. Its own fonts are not in it.
+   * An approximate reconstruction, when a picture was asked for: its snapshot
+   * drawn in the page, with what it drew on a canvas. Its own fonts are not in
+   * it. This is not a browser screenshot or evidence for a pixel comparison.
    */
   picture?: AppPicture
+  /** Optional measurements of the live sandbox DOM, with explicit coverage. */
+  design?: AppDesignFeedback
 }
 
 export interface InspectOptions {
@@ -62,6 +67,8 @@ export interface InspectOptions {
   runMs?: number
   /** Also draw what the App showed, for a reader that can see. */
   picture?: boolean
+  /** Also collect and evaluate the running App's rendered design measurements. */
+  design?: boolean
 }
 
 /** How long an App runs unless told otherwise, and the longest it may. */
@@ -157,17 +164,22 @@ async function run(
   page: string,
   runMs: number,
   pictured: boolean,
+  designed: boolean,
 ): Promise<{
   problems: Array<AppProblem>
   ranMs: number
   rendered?: AppInspection['rendered']
   picture?: AppPicture
+  design?: AppDesignFeedback
 }> {
   const problems: Array<AppProblem> = []
   let snapshot: string | undefined
   // What the App's root and body carried when it was last looked at.
   let carried: PageAttributes | undefined
   let outline: string | undefined
+  let design: AppDesignFeedback | undefined = designed
+    ? unavailableDesign('The App did not connect for design measurement.')
+    : undefined
   let height = FRAME_HEIGHT
   const build = hosted.hostedBuild(page)
   const state = pinnedAppState(null)
@@ -237,6 +249,18 @@ async function run(
         outline = last.data.outline
         carried = last.data.page
       }
+      if (designed) {
+        const captureId = crypto.randomUUID()
+        const observed = await Promise.race([
+          connection.connected.then((rpc) =>
+            call<SandboxMethods, 'frame.design'>(rpc, 'frame.design', {
+              captureId,
+            }),
+          ),
+          wait(LOOK_MS).then(() => null),
+        ]).catch(() => null)
+        design = appDesignFeedback(observed, captureId)
+      }
     }
   } finally {
     connection.dispose()
@@ -254,6 +278,7 @@ async function run(
       pictured && snapshot !== undefined
         ? await pictureOf(snapshot, height, carried)
         : undefined,
+    ...(design ? { design } : {}),
   }
 }
 
@@ -279,6 +304,13 @@ export async function inspectApp(
     omitted: 0,
     typesChecked: false,
     ranMs: 0,
+    ...(options.design === true
+      ? {
+          design: unavailableDesign(
+            'The App was not run; design measurements require a successful build and runMs greater than zero.',
+          ),
+        }
+      : {}),
   }
   const finish = (): AppInspection => {
     const unique = found.filter(
@@ -328,11 +360,18 @@ export async function inspectApp(
   }
 
   if (runMs > 0) {
-    const ran = await run(html, page, runMs, options.picture === true)
+    const ran = await run(
+      html,
+      page,
+      runMs,
+      options.picture === true,
+      options.design === true,
+    )
     found.push(...ran.problems)
     inspection.ranMs = ran.ranMs
     inspection.rendered = ran.rendered
     if (ran.picture) inspection.picture = ran.picture
+    if (ran.design) inspection.design = ran.design
   }
   return finish()
 }

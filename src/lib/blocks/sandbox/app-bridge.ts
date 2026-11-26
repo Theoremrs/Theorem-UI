@@ -9,6 +9,7 @@
 import { CellContext } from './cell'
 import { connectToPage } from './connect'
 import { Databases } from './db'
+import { collectDesignObservations } from './design-collector'
 import {
   lookNow,
   markSelectedCell,
@@ -101,6 +102,25 @@ const context = connectToPage().then((port) => {
   // A page that never stops changing never settles into a snapshot, so the
   // page can ask for one.
   serve<SandboxMethods, 'frame.look'>(rpc, 'frame.look', () => lookNow())
+  // The live document supplies layout and computed styles. A serialized
+  // snapshot cannot reconstruct its font loading, line boxes or scroll sizes.
+  serve<SandboxMethods, 'frame.design'>(
+    rpc,
+    'frame.design',
+    async ({ captureId }) => {
+      await Promise.race([
+        document.fonts.ready,
+        new Promise((resolve) => setTimeout(resolve, 750)),
+      ])
+      return collectDesignObservations({
+        captureId,
+        evidenceKind: 'rendered-artifact',
+        maxElements: 300,
+        maxNodes: 5000,
+        maxTextLength: 160,
+      })
+    },
+  )
   observeHeight((height, fills) => {
     void call<PageMethods, 'frame.resize'>(rpc, 'frame.resize', { height, fills })
   })

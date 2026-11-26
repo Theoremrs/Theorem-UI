@@ -6,6 +6,7 @@ import cell from './sandbox/cell.ts?raw'
 import cellRuntime from './sandbox/cell-runtime.ts?raw'
 import connect from './sandbox/connect.ts?raw'
 import db from './sandbox/db.ts?raw'
+import designCollector from '../../../packages/design-feedback/collect.mjs?raw'
 import display from './sandbox/display.ts?raw'
 import notebook from './sandbox/notebook.ts?raw'
 import outline from './sandbox/outline.ts?raw'
@@ -22,6 +23,7 @@ export const runtimeSources: Record<string, string> = {
   'cell-runtime': cellRuntime,
   connect,
   db,
+  'design-collector': designCollector,
   display,
   notebook,
   outline,
