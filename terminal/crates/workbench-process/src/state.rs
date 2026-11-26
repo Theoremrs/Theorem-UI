@@ -38,6 +38,11 @@ pub(crate) struct Opening {
     pub attachment: String,
     /// The id of the launch this open is an attempt of.
     pub operation: String,
+    /// The agent run whose `code.start` asked for this open: it is issued an
+    /// input claim once the terminal is bound (IN-02). It lives on the open
+    /// itself, so an open that never starts, or that the person leaves, grants
+    /// no one, and a later open in the pane cannot inherit it.
+    pub grant: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

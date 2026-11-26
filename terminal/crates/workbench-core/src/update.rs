@@ -977,15 +977,24 @@ impl Model {
                 let target = match on {
                     // A panel named that does not exist is said so, as it is
                     // for Create, Start and Destroy, not told to focus one.
-                    Some(panel) if !self.panels.contains_key(&panel) => {
-                        self.notify(Notice::Refused(Refusal::UnknownPanel(panel)));
-                        return vec![];
-                    }
-                    Some(panel) => self
-                        .panels
-                        .get(&panel)
-                        .is_some_and(|e| e.kind == kind && e.available)
-                        .then_some(panel),
+                    // A named panel of another kind, or one that is not
+                    // available, is said so too, as Create, Start and Destroy do.
+                    Some(panel) => match self.panels.get(&panel) {
+                        None => {
+                            self.notify(Notice::Refused(Refusal::UnknownPanel(panel)));
+                            return vec![];
+                        }
+                        Some(e) if e.kind != kind || !e.available => {
+                            self.notify(Notice::Refused(Refusal::Unavailable {
+                                reason: format!(
+                                    "Panel {} is not an available {title} panel.",
+                                    panel.as_str()
+                                ),
+                            }));
+                            return vec![];
+                        }
+                        Some(_) => Some(panel),
+                    },
                     None if !actor.is_human() => match self.agent_target(&[kind.as_str()]) {
                         Ok(target) => target,
                         Err(()) => return vec![],

@@ -938,10 +938,17 @@ fn a_local_action_with_no_panel_of_its_kind_is_refused_with_a_reason() {
         Msg::ActionOn {
             id: ActionId::new("note.find"),
             actor: Actor::Human,
-            panel: term,
+            panel: term.clone(),
         },
     );
-    assert!(matches!(m.take_notice(), Some(Notice::Refused(_))));
+    // The named panel is said to be the wrong kind, not that one should be focused.
+    let Some(Notice::Refused(Refusal::Unavailable { reason })) = m.take_notice() else {
+        panic!("not refused with a reason");
+    };
+    assert!(
+        reason.contains(term.as_str()) && reason.contains("not an available"),
+        "{reason}"
+    );
 }
 
 #[test]
