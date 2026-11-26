@@ -354,6 +354,20 @@
 .appearance-surface[data-surface-role='composer']:focus-within {
   border-color: color-mix(in oklab, var(--line-control), var(--ink) 22%);
 }
+/* Flat (every Calm surface) has no hard outline either: a separator hairline
+   and the composer's lift (owner, 2026-11-25). Focus, which it holds nearly
+   always, firms the hairline by a step, well short of the control line. */
+.appearance-surface[data-surface-role='composer'][data-material='flat'] {
+  border-color: var(--line-separator);
+  box-shadow: var(--shadow-composer);
+}
+.appearance-surface[data-surface-role='composer'][data-material='flat']:focus-within {
+  border-color: color-mix(
+    in oklab,
+    var(--line-separator),
+    var(--line-control) 30%
+  );
+}
 .appearance-surface[data-surface-role='composer']:is(
     [data-material='glass'],
     [data-material='liquid']
@@ -431,14 +445,15 @@
   );
 }
 
-/* The thread's composer stands a fifth larger than the rest of the
-   conversation (owner, 2026-11-24). Every measure of it scales by the one
-   factor, so its design is unchanged: it centres on the column, wider than
+/* The thread's composer stands a tenth larger than the rest of the
+   conversation (owner, 2026-11-24; cut from a fifth, 2026-11-25). Its box,
+   controls and icons scale by the one factor, its text does not: words keep
+   the conversation's size. It centres on the column, wider than
    the reply text, and never wider than the pane less its page padding. What
    sits under a new chat's composer (appearance-composer-span) takes its width. */
 .appearance-composer-track,
 .appearance-composer-span {
-  --composer-scale: 1.2;
+  --composer-scale: 1.1;
   align-self: center;
   margin-inline: 0;
   inline-size: min(
@@ -471,7 +486,6 @@
 .appearance-composer-track
   .appearance-composer-toolbar
   :is(button, [role='button']) {
-  font-size: calc(0.875rem * var(--composer-scale));
   min-block-size: calc(var(--appearance-control-min) * var(--composer-scale));
   min-inline-size: calc(var(--appearance-control-min) * var(--composer-scale));
 }
@@ -610,8 +624,11 @@
   padding: 0;
   margin: 0;
 }
+/* The placeholder is a hint, well behind what is typed: the faint ink let
+   through to the composer's ground, so it recedes on every palette and
+   surface (owner, 2026-11-25). */
 .theorem-composer.theorem-note .milkdown .crepe-placeholder::before {
-  color: var(--ink-muted);
+  color: color-mix(in oklab, var(--ink-faint) 65%, transparent);
 }
 .theorem-composer.theorem-note .milkdown {
   --crepe-color-surface: var(--popover);
@@ -624,24 +641,8 @@
   font: var(--recipe-code);
   letter-spacing: normal;
 }
-/* The thread's composer is a fifth larger (--composer-scale above): its text
-   at the recipe's size times the scale, so the recipe's line height, the
-   two-line rest height and the placeholder grow with it. */
-.appearance-composer-track
-  .theorem-composer.theorem-note
-  .milkdown
-  .ProseMirror,
-.appearance-composer-track
-  .theorem-composer.theorem-note
-  .milkdown
-  .ProseMirror
-  :is(p, li),
-.appearance-composer-track
-  .theorem-composer.theorem-note
-  .milkdown
-  .crepe-placeholder::before {
-  font-size: calc(1rem * var(--composer-scale));
-}
+/* The larger composer (--composer-scale above) gives its text more room to
+   grow into before it scrolls; the text itself stays the recipe's size. */
 .appearance-composer-track
   .theorem-composer.theorem-note
   .milkdown

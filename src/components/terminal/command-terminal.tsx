@@ -1,4 +1,4 @@
-// SOURCING: the agent terminal's own crate (terminal/src/command.rs, built into src/terminal-wasm): in the reply where a call ran a command (chat/theorem-parts' tool-call slot, and a host call's part, which the server rewrites with what the command has printed while it runs), Ratzilla draws the command on the prompt's line and what it printed through the VT interpreter the workbench's process panes use; loadWasm from terminal-screen loads it and paints it in the workspace's terminal colours, on the agent terminal's canvas and in its type (cell-grid.css data-terminal-type), its height counted in that type's rows; the frame is the elements' lifted frame (surfaces). It opens and closes as assistant-ui's Reasoning element does (open while it works, closed after unless the reader chose), the crate drawing the shimmer and the clock, and cell-grid.css turning the prompt down while the output shows; framer-motion's useReducedMotion holds the shimmer still. While output streams it takes the column so wider lines never widen it, lines past the fold slide in as the crate reports the scroll, and every open and close glides without overshoot. The output scrolls by wheel, by keys once it has focus and by a finger's drag, the page scrolling once the output can go no further; opening a cut command shows all of it, and the copy over the prompt copies it with useCopyToClipboard and the Copy/Copied icons, as the code block's header does (markdown-text). Should the terminal not load, the command and what it printed show as text.
+// SOURCING: the agent terminal's own crate (terminal/src/command.rs, built into src/terminal-wasm): in the reply where a call ran a command (chat/theorem-parts' tool-call slot, and a host call's part, which the server rewrites with what the command has printed while it runs), Ratzilla draws the command on the prompt's line and what it printed through the VT interpreter the workbench's process panes use; loadWasm from terminal-screen loads it and paints it in the workspace's terminal colours, on the agent terminal's canvas and in its type (cell-grid.css data-terminal-type), its height counted in that type's rows; the frame is the elements' lifted frame (surfaces). It opens and closes as assistant-ui's Reasoning element does (open while it works, closed after unless the reader chose), the crate drawing the shimmer and the clock, and cell-grid.css turning the prompt down while the output shows; framer-motion's useReducedMotion holds the shimmer still. While output streams it takes the column so wider lines never widen it, lines past the fold slide in as the crate reports the scroll, and every open and close glides without overshoot. The output scrolls by wheel, by keys once it has focus and by a finger's drag, the page scrolling once the output can go no further; opening a cut command shows all of it, and the copy in the top right gutter copies the command and what it printed, as plain text, with useCopyToClipboard and the Copy/Copied icons, as the code block's header does (markdown-text). Should the terminal not load, the command and what it printed show as text.
 import { useReducedMotion } from 'framer-motion'
 import { useEffect, useId, useRef, useState } from 'react'
 import { liftedFrame } from '@/components/assistant-ui/elements/surfaces'
@@ -125,6 +125,24 @@ export function readHostCommand(call: unknown): CommandRun | undefined {
 export interface CommandTerminalProps extends CommandRun {
   state: CallState
   className?: string
+}
+
+/**
+ * What the copy takes: the command on its prompt's line and what it printed,
+ * as plain text, the way a terminal's own selection reads. A command that
+ * printed nothing is copied bare, ready to run.
+ */
+export function copiedText({
+  command,
+  stdout,
+  stderr,
+}: Pick<CommandRun, 'command' | 'stdout' | 'stderr'>) {
+  const printed = [stdout, stderr]
+    .map((text) => text.replace(ESCAPES, '').replace(/[\r\n]+$/, ''))
+    .filter((text) => text !== '')
+  return printed.length === 0
+    ? command
+    : [`$ ${command}`, ...printed].join('\n')
 }
 
 /** Whether it printed anything a terminal shows (the crate's `has_output`). */
@@ -379,7 +397,9 @@ export function CommandTerminal({
             }}
             style={{ height: `${open ? rows : 1}lh` }}
             className={cn(
-              'group/command relative overflow-hidden transition-[height] motion-reduce:transition-none',
+              // The right gutter is the copy's, so it covers neither the
+              // chevron nor the clock and exit at the line's end.
+              'group/command relative overflow-hidden pr-[3ch] transition-[height] motion-reduce:transition-none',
               byReader
                 ? open
                   ? 'duration-(--duration-snap) ease-glide'
@@ -416,18 +436,26 @@ export function CommandTerminal({
                   setByReader(true)
                   setChosen(!open)
                 }}
-                className="absolute inset-x-0 top-0 h-[1lh] cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+                className="absolute top-0 right-[3ch] left-0 h-[1lh] cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
               />
             )}
             <button
               type="button"
-              aria-label={isCopied ? 'Copied' : 'Copy command'}
-              onClick={() => void copyToClipboard(command)}
+              aria-label={
+                isCopied
+                  ? 'Copied'
+                  : printed
+                    ? 'Copy command and output'
+                    : 'Copy command'
+              }
+              onClick={() =>
+                void copyToClipboard(copiedText({ command, stdout, stderr }))
+              }
               className={cn(
-                // Over the prompt while the terminal is pointed at or the copy has focus; a
-                // finger, which cannot point, finds it once the terminal is open, or at
-                // once when there is nothing to open.
-                'absolute top-0 left-0 flex h-[1lh] w-[3ch] items-center justify-center bg-term-canvas text-term-muted opacity-0 transition-opacity group-hover/command:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none',
+                // In the top right gutter while the terminal is pointed at or the copy has
+                // focus; a finger, which cannot point, finds it once the terminal is open,
+                // or at once when there is nothing to open.
+                'absolute top-0 right-0 flex h-[1lh] w-[3ch] items-center justify-center bg-term-canvas text-term-muted opacity-0 transition-opacity group-hover/command:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none',
                 open || isCopied || !opens
                   ? 'pointer-coarse:opacity-100'
                   : 'pointer-coarse:pointer-events-none',
