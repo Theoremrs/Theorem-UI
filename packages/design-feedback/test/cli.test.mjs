@@ -19,6 +19,7 @@ test('CLI rejects typos, missing values, and options that a command cannot use',
 test('capture validation bounds resource use and rejects credential-bearing URLs', () => {
   assert.throws(() => normalizeCaptureOptions({ width: -1 }), /width/)
   assert.throws(() => normalizeCaptureOptions({ width: 8192, height: 8192, dpr: 3 }), /20 million/)
+  assert.throws(() => normalizeCaptureOptions({ maxElements: 5001 }), /max-elements/)
   assert.throws(() => normalizeCaptureOptions({ colorScheme: 'auto' }), /scheme/)
   assert.throws(() => validateCaptureURL('javascript:alert(1)'), /only http/)
   assert.throws(() => validateCaptureURL('https://user:secret@example.com'), /credentials/)

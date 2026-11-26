@@ -109,7 +109,7 @@ const context = connectToPage().then((port) => {
     'frame.design',
     async ({ captureId }) => {
       await Promise.race([
-        document.fonts.ready,
+        document.fonts?.ready ?? Promise.resolve(),
         new Promise((resolve) => setTimeout(resolve, 750)),
       ])
       return collectDesignObservations({

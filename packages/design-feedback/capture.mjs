@@ -37,7 +37,7 @@ export function normalizeCaptureOptions(options = {}) {
     dpr: boundedNumber(options.dpr, 1, 'dpr', 0.5, 3),
     timeout: boundedNumber(options.timeout, 15000, 'timeout', 1000, 120000, true),
     settleMs: boundedNumber(options.settleMs, 100, 'settle-ms', 0, 5000, true),
-    maxElements: boundedNumber(options.maxElements, 1000, 'max-elements', 1, 10000, true),
+    maxElements: boundedNumber(options.maxElements, 1000, 'max-elements', 1, 5000, true),
     noSandbox: options.noSandbox === true,
   }
   if (normalized.width * normalized.height * normalized.dpr ** 2 > 20000000) throw new Error('Capture exceeds the 20 million pixel limit')
@@ -179,7 +179,9 @@ export async function capturePage(page, browser, input = {}) {
 
 export async function captureURL(url, input = {}) {
   const target = validateCaptureURL(url)
-  const { browser, options } = await launchCaptureBrowser(input)
+  const options = normalizeCaptureOptions(input)
+  await prepareOutput(options.out, 'capture.json', options.overwrite)
+  const { browser } = await launchCaptureBrowser(options)
   try {
     const { page } = await openCapturePage(browser, options)
     await page.goto(target, { waitUntil: 'domcontentloaded' })
