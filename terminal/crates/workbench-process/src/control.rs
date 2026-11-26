@@ -8,7 +8,7 @@
 //! person's own input (a key, typed text or a paste in any view of the
 //! terminal) takes control: the agent's claim ends and no agent may claim
 //! the terminal again until the person hands it back. A claim also ends when
-//! its run leaves the page's set of working runs, when the agent releases it,
+//! the page says its run finished, when the agent releases it,
 //! or when the host rebinds the terminal (a new epoch). Nothing expires on a
 //! timer.
 //!
@@ -58,7 +58,7 @@ pub(crate) enum Refusal {
     Person,
     /// The claim was for an older binding of this terminal.
     Stale,
-    /// The run was seen working and has since stopped.
+    /// The page said the run finished.
     Ended,
 }
 
@@ -87,12 +87,10 @@ impl Refusal {
 pub(crate) struct Control {
     held: BTreeMap<Key, Holder>,
     next: u64,
-    /// Runs the page has reported working, so that leaving the set ends
-    /// their claims. A run never seen working (a side chat's run, which the
-    /// page does not report) keeps its claim until it is released, the
-    /// person takes over, or the terminal is rebound.
-    seen_working: BTreeSet<String>,
-    /// Runs that were seen working and left the set: they claim nothing more.
+    /// Runs the page said finished: they claim nothing more. A run the page
+    /// never saw finish (one in a chat no longer on screen) keeps its claim
+    /// until it is released, the person takes over, or the terminal is
+    /// rebound.
     ended: BTreeSet<String>,
 }
 
@@ -110,6 +108,9 @@ impl Control {
             Some(Holder::Agent(c)) if c.run != run && c.epoch == epoch => {
                 return Err(Refusal::HeldBy(c.run.clone()));
             }
+            // The request comes from a view of an older binding than the
+            // claim held: it is the request that is stale, not the claim.
+            Some(Holder::Agent(c)) if c.epoch > epoch => return Err(Refusal::Stale),
             // A claim for an older epoch is fenced: anyone may claim anew.
             _ => {}
         }
@@ -129,17 +130,16 @@ impl Control {
         match self.held.get(key) {
             None => Err(Refusal::NoClaim),
             Some(Holder::Person { .. }) => Err(Refusal::Person),
-            Some(Holder::Agent(c)) if c.run != run => {
-                if c.epoch == epoch {
-                    Err(Refusal::HeldBy(c.run.clone()))
-                } else {
-                    Err(Refusal::NoClaim)
-                }
-            }
-            Some(Holder::Agent(c)) if c.epoch != epoch => {
+            // Input from a view of an older binding: refuse it and leave the
+            // newer claim alone.
+            Some(Holder::Agent(c)) if c.epoch > epoch => Err(Refusal::Stale),
+            // The claim is for an older binding: it is fenced.
+            Some(Holder::Agent(c)) if c.epoch < epoch => {
+                let own = c.run == run;
                 self.held.remove(key);
-                Err(Refusal::Stale)
+                Err(if own { Refusal::Stale } else { Refusal::NoClaim })
             }
+            Some(Holder::Agent(c)) if c.run != run => Err(Refusal::HeldBy(c.run.clone())),
             Some(Holder::Agent(_)) => Ok(()),
         }
     }
@@ -155,10 +155,13 @@ impl Control {
                 true
             }
             // A claim for an older binding was already fenced; it holds nothing to stop.
-            Some(Holder::Agent(_)) => {
+            Some(Holder::Agent(c)) if c.epoch < epoch => {
                 self.held.remove(key);
                 false
             }
+            // Typing seen through a view of an older binding says nothing
+            // about the newer claim.
+            Some(Holder::Agent(_)) => false,
             _ => false,
         }
     }
@@ -185,18 +188,12 @@ impl Control {
         false
     }
 
-    /// The page's set of working runs, whole. A run that was in an earlier
-    /// set and is not in this one has ended or stopped: its claims end.
-    pub(crate) fn working_runs(&mut self, runs: &[String]) {
-        let now: BTreeSet<String> = runs.iter().cloned().collect();
-        let ended: BTreeSet<String> = self.seen_working.difference(&now).cloned().collect();
+    /// Runs the page saw finish: their claims end, and they get no new ones.
+    pub(crate) fn runs_ended(&mut self, runs: &[String]) {
+        let ended: BTreeSet<&String> = runs.iter().collect();
         self.held
             .retain(|_, holder| !matches!(holder, Holder::Agent(c) if ended.contains(&c.run)));
-        self.ended.extend(ended);
-        for run in &now {
-            self.ended.remove(run);
-        }
-        self.seen_working = now;
+        self.ended.extend(runs.iter().cloned());
     }
 
     /// The words `workbench.read` shows for `key`.
@@ -277,17 +274,16 @@ mod tests {
     }
 
     #[test]
-    fn a_claim_ends_when_its_run_stops_working_and_not_before() {
+    fn a_claim_ends_when_its_run_finishes_and_not_before() {
         let mut c = Control::default();
-        c.working_runs(&["r1".into()]);
         c.claim(key("t"), "r1", 1).unwrap();
-        // A side chat's run, never reported working, keeps its claim.
         c.claim(key("u"), "side", 1).unwrap();
-        c.working_runs(&["r1".into(), "r2".into()]);
+        c.runs_ended(&["other".into()]);
         assert_eq!(c.check(&key("t"), "r1", 1), Ok(()));
-        c.working_runs(&[]);
+        // A side chat's run ends the same way as a main turn's.
+        c.runs_ended(&["r1".into(), "side".into()]);
         assert_eq!(c.check(&key("t"), "r1", 1), Err(Refusal::NoClaim));
-        assert_eq!(c.check(&key("u"), "side", 1), Ok(()));
+        assert_eq!(c.check(&key("u"), "side", 1), Err(Refusal::NoClaim));
     }
 
     #[test]
@@ -317,10 +313,23 @@ mod tests {
     }
 
     #[test]
+    fn a_view_of_an_older_binding_cannot_displace_a_newer_claim() {
+        let mut c = Control::default();
+        let held = c.claim(key("t"), "r1", 2).unwrap();
+        assert_eq!(c.claim(key("t"), "r2", 0), Err(Refusal::Stale));
+        assert_eq!(c.claim(key("t"), "r1", 1), Err(Refusal::Stale));
+        assert_eq!(c.check(&key("t"), "r1", 1), Err(Refusal::Stale));
+        assert_eq!(c.check(&key("t"), "r2", 1), Err(Refusal::Stale));
+        assert!(!c.person_input(&key("t"), 1));
+        // The newer claim is untouched by all of it.
+        assert_eq!(c.check(&key("t"), "r1", 2), Ok(()));
+        assert_eq!(c.claim(key("t"), "r1", 2).unwrap(), held);
+    }
+
+    #[test]
     fn a_run_that_stopped_working_claims_nothing_more() {
         let mut c = Control::default();
-        c.working_runs(&["r1".into()]);
-        c.working_runs(&[]);
+        c.runs_ended(&["r1".into()]);
         assert_eq!(c.claim(key("t"), "r1", 1), Err(Refusal::Ended));
         assert!(c.claim(key("t"), "r2", 1).is_ok());
     }

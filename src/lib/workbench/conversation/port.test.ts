@@ -783,6 +783,38 @@ describe('followed runs', () => {
     expect(followed(heard).at(-1)).toEqual([])
   })
 
+  const ended = (heard: HostMessage[]) =>
+    heard.flatMap((message) =>
+      message.type === 'runsEnded' ? [message.runs] : [],
+    )
+
+  test('runs that finish in the open thread are said to have ended, a switch ends none', () => {
+    const { port, stub } = setup()
+    const heard: HostMessage[] = []
+    port.subscribe?.((message) => heard.push(message))
+    stub.messages = [assistant('m1', 'working', { runId: 'run-1' })]
+    stub.emit()
+    expect(ended(heard)).toEqual([])
+
+    stub.messages = [
+      assistant('m1', 'done', {
+        runId: 'run-1',
+        status: { type: 'complete', reason: 'stop' },
+      }),
+    ]
+    stub.emit()
+    expect(ended(heard)).toEqual([['run-1']])
+
+    // A working run in a thread the person leaves is out of view, not finished.
+    stub.messages = [assistant('m2', 'working', { runId: 'run-2' })]
+    stub.emit()
+    stub.threadId = 'thread-2'
+    stub.messages = []
+    stub.emit()
+    expect(followed(heard).at(-1)).toEqual([])
+    expect(ended(heard)).toEqual([['run-1']])
+  })
+
   test('a stopped subscription hears no more', () => {
     const { port, stub } = setup()
     const heard: HostMessage[] = []

@@ -59,6 +59,43 @@ describe('inventory', () => {
     expect(inv.entries[2]?.waiting).toEqual({ for: 'approval', ref: 'rv' })
   })
 
+  test('an approval waits, a queued turn is queued, and the active run is kept', () => {
+    const inv = buildInventory({
+      at: 5,
+      organization: org([
+        thread('e', {
+          reasons: [{ kind: 'approval', runId: 'run-e', approvalId: 'ap', toolName: 'bash', atMs: 1 }],
+          running: true,
+          runId: 'run-e',
+        }),
+        thread('f', { reasons: [{ kind: 'pending_turn', messageId: 'm', atMs: 1 }], running: false }),
+        thread('g', {
+          reasons: [{ kind: 'failed', runId: 'run-old', atMs: 1 }],
+          running: true,
+          runId: 'run-new',
+        }),
+      ]),
+      terminals: [],
+    })
+    expect(inv.entries.map((e) => [e.resource, e.execution, e.runId ?? null])).toEqual([
+      ['e', 'waiting', 'run-e'],
+      ['f', 'queued', null],
+      ['g', 'running', 'run-new'],
+    ])
+    expect(inv.entries[0]?.waiting).toEqual({ for: 'approval', ref: 'ap' })
+  })
+
+  test('a lost terminal session is not shown as running or current', () => {
+    const inv = buildInventory({
+      at: 0,
+      organization: org([]),
+      terminals: [{ workspace: 'w', session: 's3', label: 'zsh', state: 'lost' }],
+    })
+    expect(inv.entries).toMatchObject([
+      { resource: 'w/s3', execution: 'unknown', observation: 'stale' },
+    ])
+  })
+
   test('it never claims to be complete, and names what it could not read', () => {
     const inv = buildInventory({ at: 0, organization: org([], false) })
     expect(inv.completeness.complete).toBe(false)

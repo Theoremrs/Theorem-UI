@@ -244,7 +244,7 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx, control: &str) -> Vec<Node> {
             .join("\n"),
     );
     let (row, col) = b.screen.cursor_position();
-    let (cols, rows) = b.screen.size();
+    let (rows, cols) = b.screen.size();
     // API-03: what this is a read of. The text above is the emulated screen,
     // not the raw output log, and a screen is evidence of what is shown, not
     // a parsed result.

@@ -130,11 +130,37 @@ pub(crate) struct Retained {
     pub(crate) diagnostics: Vec<(String, HostMessage)>,
     /// The latest `DocumentLocal` of each document.
     pub(crate) locals: Vec<(ResourceRef, HostMessage)>,
+    /// Runs the page said finished, oldest first, at most `ENDED_RUNS`.
+    pub(crate) ended: std::collections::VecDeque<String>,
     /// How many held messages their bounds have pushed out, oldest first.
     pub(crate) evicted: u64,
 }
 
+/// How many finished runs the root keeps for terminal panels opened later.
+const ENDED_RUNS: usize = 256;
+
 impl Retained {
+    /// Keep `runs` as finished, oldest pushed out past the bound.
+    pub(crate) fn keep_ended_runs(&mut self, runs: &[String]) {
+        for run in runs {
+            if self.ended.contains(run) {
+                continue;
+            }
+            if self.ended.len() == ENDED_RUNS {
+                self.ended.pop_front();
+                self.evicted += 1;
+            }
+            self.ended.push_back(run.clone());
+        }
+    }
+
+    /// The finished runs held, as one message, or none when there are none.
+    pub(crate) fn ended_runs(&self) -> Option<HostMessage> {
+        (!self.ended.is_empty()).then(|| HostMessage::RunsEnded {
+            runs: self.ended.iter().cloned().collect(),
+        })
+    }
+
     /// Keep `message` as the latest for `resource`, unless the one held is
     /// newer (a late, older snapshot never replaces it).
     pub(crate) fn keep_snapshot(&mut self, resource: &ResourceRef, message: &HostMessage) {

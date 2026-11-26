@@ -111,7 +111,9 @@ export const keyOf = (source: ActivitySource, resource: string) =>
  * change past a gap waits for the owner's snapshot instead of being guessed across.
  */
 export function createActivityProjection(): ActivityProjection {
-  const entries = new Map<string, ActivityEntry & { gap: boolean }>()
+  // `fence` is the newest epoch the owner has announced, which may be ahead of the state held
+  // while its snapshot is awaited: nothing older than it applies again.
+  const entries = new Map<string, ActivityEntry & { gap: boolean; fence: number }>()
   const listeners = new Set<() => void>()
   const changed = () => {
     for (const listener of [...listeners]) listener()
@@ -125,7 +127,7 @@ export function createActivityProjection(): ActivityProjection {
     apply(event) {
       const key = keyOf(event.source, event.resource)
       const known = entries.get(key)
-      if (known && event.epoch < known.epoch) return 'stale_epoch'
+      if (known && event.epoch < Math.max(known.epoch, known.fence)) return 'stale_epoch'
       const sameEpoch = known !== undefined && event.epoch === known.epoch
       // A snapshot is canonical: after a loss it may repeat the last seq and still settle it.
       const settles =
@@ -139,6 +141,7 @@ export function createActivityProjection(): ActivityProjection {
         if (!sameEpoch) {
           // A new epoch is a new stream: nothing from the old one carries over.
           known.gap = true
+          known.fence = event.epoch
           known.observation = 'recovering'
           changed()
           return 'needs_snapshot'
@@ -174,6 +177,7 @@ export function createActivityProjection(): ActivityProjection {
         observedAt: event.at,
         observation: 'current' as const,
         gap: false,
+        fence: event.epoch,
       }
       if (event.kind === 'snapshot' && !('waiting' in event.state)) delete next.waiting
       entries.set(key, next)
@@ -182,11 +186,14 @@ export function createActivityProjection(): ActivityProjection {
     },
     lost(source, resource) {
       let any = false
-      for (const e of matching(source, resource))
+      // The stream is gone, so no later change can be trusted until a snapshot settles it.
+      for (const e of matching(source, resource)) {
+        e.gap = true
         if (e.observation !== 'stale') {
           e.observation = 'stale'
           any = true
         }
+      }
       if (any) changed()
     },
     recovering(source, resource) {
@@ -201,11 +208,11 @@ export function createActivityProjection(): ActivityProjection {
     remove(source, resource) {
       if (entries.delete(keyOf(source, resource))) changed()
     },
-    entries: () => [...entries.values()].map(({ gap: _gap, ...e }) => e),
+    entries: () => [...entries.values()].map(({ gap: _gap, fence: _fence, ...e }) => e),
     get(key) {
       const found = entries.get(key)
       if (!found) return undefined
-      const { gap: _gap, ...e } = found
+      const { gap: _gap, fence: _fence, ...e } = found
       return e
     },
     subscribe(listener) {
@@ -222,9 +229,11 @@ export function createActivityProjection(): ActivityProjection {
  */
 export function createViewBindings() {
   const bound = new Map<string, { key: string; generation: number }>()
+  // One counter for every view, so a generation is never handed out twice, even after unbind.
+  let next = 0
   return {
     bind(view: string, key: string): number {
-      const generation = (bound.get(view)?.generation ?? 0) + 1
+      const generation = ++next
       bound.set(view, { key, generation })
       return generation
     },

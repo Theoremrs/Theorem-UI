@@ -514,10 +514,19 @@ pub enum HostMessage {
     },
     /// The runs whose edits Follow the agent shows: the working turn's run and
     /// the child runs of its delegations, as the page holds them now. The
-    /// whole set each time; empty when no turn works. Handled by the root
-    /// and also sent to every panel: a shell ends the agent input claims of
-    /// runs that left the set.
+    /// whole set each time; empty when no turn works. Handled by the root and
+    /// sent to no panel: it follows the conversation on screen, so a run
+    /// leaving it may only mean the person opened another chat.
     FollowedRuns {
+        runs: Vec<String>,
+    },
+    /// Runs the page saw finish (completed, failed or stopped): a turn of the
+    /// conversation on screen, a child run of its delegations, or a side
+    /// chat's run, detached ones included. Only these, never a run that only
+    /// went out of view. A shell ends their agent input claims and refuses
+    /// them new ones (Gate 0 decision 1). Sent to every panel; the root keeps
+    /// the latest few and hands them to a terminal panel opened later.
+    RunsEnded {
         runs: Vec<String>,
     },
     /// React's latest snapshot of a conversation, as the existing terminal

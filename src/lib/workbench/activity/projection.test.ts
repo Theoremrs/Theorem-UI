@@ -86,6 +86,24 @@ describe('activity projection', () => {
     expect(p.apply(ev({ kind: 'snapshot', seq: 6 }))).toBe('duplicate')
   })
 
+  test('once a newer epoch is announced, a late snapshot from the older one is refused', () => {
+    const p = createActivityProjection()
+    p.apply(ev({ kind: 'snapshot', seq: 3, state: { execution: 'running' } }))
+    expect(p.apply(ev({ epoch: 2, seq: 1 }))).toBe('needs_snapshot')
+    expect(p.apply(ev({ kind: 'snapshot', epoch: 1, seq: 4, state: { execution: 'failed' } }))).toBe(
+      'stale_epoch',
+    )
+    expect(p.get('terminal:w/s1')).toMatchObject({ execution: 'running', observation: 'recovering' })
+  })
+
+  test('after a loss, no change applies until the owner snapshots', () => {
+    const p = createActivityProjection()
+    p.apply(ev({ kind: 'snapshot', seq: 5, state: { execution: 'running' } }))
+    p.lost('terminal')
+    expect(p.apply(ev({ seq: 6, state: { execution: 'succeeded' } }))).toBe('needs_snapshot')
+    expect(p.get('terminal:w/s1')).toMatchObject({ execution: 'running', observation: 'stale' })
+  })
+
   test('a snapshot without a waiting reason clears the old one', () => {
     const p = createActivityProjection()
     p.apply(ev({ kind: 'snapshot', state: { execution: 'waiting', waiting: { for: 'approval', ref: 'r1' } } }))
@@ -105,5 +123,14 @@ describe('view bindings', () => {
     const third = views.bind('v1', 'terminal:w/s1')
     expect(views.current('v1', 'terminal:w/s1', first)).toBe(false)
     expect(views.current('v1', 'terminal:w/s1', third)).toBe(true)
+  })
+
+  test('a generation from before an unbind never matches a later binding', () => {
+    const views = createViewBindings()
+    const first = views.bind('v1', 'terminal:w/s1')
+    views.unbind('v1')
+    const second = views.bind('v1', 'terminal:w/s1')
+    expect(second).not.toBe(first)
+    expect(views.current('v1', 'terminal:w/s1', first)).toBe(false)
   })
 })

@@ -90,16 +90,28 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
   else {
     if (!org.complete) gaps.push('Only the first page of threads was read.')
     for (const thread of org.threads) {
-      const failed = thread.attention.reasons.find((r) => r.kind === 'failed')
-      const review = thread.attention.reasons.find((r) => r.kind === 'review')
-      const execution: Execution = review
+      const reasons = thread.attention.reasons
+      const failed = reasons.find((r) => r.kind === 'failed')
+      const review = reasons.find((r) => r.kind === 'review')
+      const approval = reasons.find((r) => r.kind === 'approval')
+      const pending = reasons.find((r) => r.kind === 'pending_turn')
+      // What the thread waits on comes first: a run held at an approval is running, but it is
+      // the person it waits for.
+      const waiting = approval
+        ? { for: 'approval' as const, ref: approval.approvalId }
+        : review
+          ? { for: 'approval' as const, ref: review.reviewId }
+          : undefined
+      const execution: Execution = waiting
         ? 'waiting'
         : thread.attention.running
           ? 'running'
-          : failed
-            ? 'failed'
-            : 'unknown'
-      // A thread with no run and no failure is at rest; it is not unfinished work.
+          : pending
+            ? 'queued'
+            : failed
+              ? 'failed'
+              : 'unknown'
+      // A thread with no run, no queued turn and no failure is at rest; it is not unfinished work.
       if (execution === 'unknown') continue
       // The project it opens under, as organization's primaryProjectId picks it: pinned first, then oldest.
       const [primary] = [...thread.memberships].sort(
@@ -111,6 +123,9 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
           ...thread.memberships.map((m) => m.projectId),
         ]),
       ]
+      // The active run is the thread's own word; a failed or approval reason names an earlier one
+      // only when no run is active.
+      const runId = thread.attention.runId ?? approval?.runId ?? failed?.runId
       entries.push(
         entry({
           source: 'thread',
@@ -119,13 +134,8 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
           execution,
           projectId: primary?.projectId ?? thread.homeProjectId,
           projects,
-          ...(review
-            ? { waiting: { for: 'approval' as const, ref: review.reviewId } }
-            : {}),
-          ...(thread.attention.runId ? { runId: thread.attention.runId } : {}),
-          ...(failed && 'runId' in failed && failed.runId
-            ? { runId: failed.runId }
-            : {}),
+          ...(waiting ? { waiting } : {}),
+          ...(runId ? { runId } : {}),
         }),
       )
     }
@@ -147,8 +157,8 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
             : !live && row.state
               ? `The host reports it ${row.state}`
               : undefined
-    entries.push(
-      entry({
+    entries.push({
+      ...entry({
         source: 'terminal',
         resource: `${row.workspace}/${row.session}`,
         label: shownText(row.label) || 'Terminal',
@@ -158,7 +168,14 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
         ...(detail ? { detail } : {}),
         ...(row.runId ? { runId: row.runId } : {}),
       }),
-    )
+      // A session the host lost, or calls by a word the page does not know, is not current.
+      ...(!live &&
+      row.exitCode == null &&
+      row.state !== 'exited' &&
+      row.state !== 'killed'
+        ? { observation: 'stale' as const }
+        : {}),
+    })
   }
 
   for (const chat of inputs.sideChats ?? []) {
