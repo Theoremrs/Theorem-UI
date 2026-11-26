@@ -64,7 +64,7 @@ Each row names the operation Gate 0 asked about, its current owner, what exists,
 | What exists | `open` with an `operation_id` reused on retry (`src/lib/workbench/terminal/session.ts:291-373`), `attach` (`:379-397`), `input`/`inputBytes` with a 256-entry input-id ledger (`:24-25`, `:409-455`), `resize` (`:498-520`), `detach`, which closes the view's attachment and leaves the program running (`:540-555`), and `kill`, refused unless the host advertises `terminal.kill` (`:557-584`). Closing a process pane emits `TerminalDetach`, never a kill (`terminal/crates/workbench-process/src/panel.rs:1314-1323`); ending is `shell.end`, and its confirmation is human-only (`terminal/crates/workbench-process/src/lib.rs:77-79`). Three version fields are kept apart: stream epoch, binding epoch and program generation (`session.ts:30-47`; `src/lib/workbench/wire/TerminalOpened.ts`). |
 | Control today | No input-control claim. The lease was removed on 2026-11-16 (`ARCHITECTURE.md` Section 7): "Every view may type, paste and resize, so no role is asked for" (`src/lib/workbench/terminal/host.ts:80-85`). Fencing that remains: binding epoch, attachment-name supersession (`session.ts:611-634`, `:907-921`) and input-id dedupe. A host refusal other than `stale_epoch` is flattened to `failed` (`src/lib/workbench/terminal/wire.ts:257-268`). PTY size follows the most recently focused view (`terminal/crates/workbench-process/src/panel.rs:1185-1195`; `bound.rs:596-625`). |
 | SDK still has the lease | `IdeTerminalAttach.role` (`controller | observer`) with `generation`, `IdeTerminalControl{role: controller | observer | unleased, generation, epoch}`, and `IdeTerminalListRow.controlled` (SDK `IdeTerminalAttach.d.ts:15-33`, `IdeTerminalControl.d.ts:1-16`, `src/terminal.d.ts:13-50`). Inferred: the UI acts as an unleased client. |
-| Gap | IN-02, IN-03 and API-05 need exactly the controller claim with fencing that was removed nine days earlier. **This is a direct conflict with a decision already taken in the workbench work and needs Travis (section 7, decision 1).** The host side appears to still model it, which keeps the cost of returning to it lower (inferred from the SDK types; the host was not read). Also: the adapter ignores the claim payload on `terminalDetach` (`adapter.ts:1042-1043`). |
+| Gap | IN-02, IN-03 and API-05 need exactly the controller claim with fencing that was removed nine days earlier. This conflicted with R28. **Decided 2026-11-26 (section 7, decision 1): no lease.** R28 stands for the person's own views; the claim that remains to build is the agent's, arbitrated against the person's input. The SDK's controller role may carry that agent claim (inferred from the SDK types; the host was not read). Also: the adapter ignores the claim payload on `terminalDetach` (`adapter.ts:1042-1043`). |
 
 ### 2.5 Side-chat lifetime
 
@@ -116,7 +116,7 @@ Each row names the operation Gate 0 asked about, its current owner, what exists,
 | Create view / close view | Panel open and close in the core; close detaches for terminals (R29) | Close of a side chat is unwired (2.5) |
 | Start assignment / start terminal / run artifact | `terminalOpen` with `operation` (`effect.rs:855`); `code.start` with `theorem`, `claude`, `codex` (`terminal/crates/workbench-core/src/panels.rs:36-52`) | No artifact run command; no operation id on assignment start in this repo |
 | Message agent | `ConversationSend.clientMessageId` | Recipient is the conversation, not an agent; no visible per-target draft store beyond the conversation's own (IN-01) |
-| Take / release terminal control | None (lease removed) | Decision 1 |
+| Take / release terminal control | None (lease removed) | Agent claim only, no view lease (decision 1) |
 | Terminal input / resize | `terminalInput`, `terminalResize` with epoch and attachment | No owner-issued claim |
 | Edit / commit artifact | App `saveSource` through the document with a revision guard (`apps.ts`) | Apps only |
 | Pause / resume / stop | `theo.stop` emits `ConversationCancel` (`builtin.rs:131-133`); `chat.runs.cancel` | No declared child scope, no list of affected run ids (IN-06) |
@@ -144,26 +144,28 @@ What exists, by kind:
 
 **Proposed owner:** the Theorem backend's organization service, by extending the existing `Organization` record rather than adding a parallel registry. It already has the properties AG-01 and ID-02 need at the record level: a durable `agent_id`, a `revision` and `content_hash`, and roles with capabilities and model bindings, and `DelegationRecord` already pins runs to `role_id` and `organization_revision`, which is ID-02's "run records retain the profile/config revision under which they started". What it lacks is the profile itself (name, description, representation reference, user-authored characteristics, working preferences, instruction references), a per-agent identity for more than one agent per organization, and copy with lineage. Storage follows DB-01 and DB-02: the definition role in the host's Rusty Red store, separate from the execution journal. This repository's part is a typed client and a profile read, never an owner of the record. The face constant and the `localStorage` book stay presentation; a representation reference in the profile points at them.
 
-This is a proposal from source reading only. The backend was not read, so whether `Organization` can carry several agents, or whether a new `agents` resource beside it fits better, is for Travis to decide (section 7, decision 2).
+**Decided 2026-11-26 (section 7, decision 2): extend `Organization`.** The backend was not read, so whether the record can carry more than one agent per organization is the first thing Gate 3 checks; if it cannot, that is a backend change to the record, not a separate agents resource.
 
 ## 6. Top gaps, in the order the gates meet them
 
 1. **No project-level run inventory** (2.1). Backend endpoint needed before OW-02 or any "All work" scope. Gate 1.
-2. **Input-control claim removed** (2.4). Conflicts with IN-02, IN-03 and API-05. Gate 1, after decision 1.
+2. **Input-control claim removed** (2.4). Conflicts with IN-02, IN-03 and API-05. Gate 1; decision 1 settled it as an agent claim with no lease.
 3. **Side-chat cancel on `Host` unmount; closed side chats orphaned** (2.5). UI-only fix. Gate 1.
 4. **No client identity and no resource-targeted reveal** (2.3, 3). Gate 2.
 5. **Artifacts resolve only from a thread; no runtime owner** (2.6, 2.7). Backend read plus a UI runtime host; tracked by the durable-artifacts plan. Gate 3.
-6. **No durable agent profile** (5). Backend. Gate 3, after decision 2.
+6. **No durable agent profile** (5). Backend. Gate 3, on the extended `Organization` record (decision 2).
 7. **Dockview layout unversioned and device-only** (1). Gate 2.
 8. **Acceptance ID collision.** The workbench already uses `AC-01` to `AC-62` and `R01` to `R48`. The companion's cases are recorded as `UAE-AC-01` to `UAE-AC-24`; the companion's own requirement IDs (UX-, CP-, DR-, WS-, IN-, ID-, OW-, ST-, EV-, RC-, API-, AR-, AG-, DB-, PT-, UI-) do not collide and are kept.
 
 Smaller source inconsistencies found on the way, left for the owning gate: `session.ts:1161-1165` says the host has no list or adopt operation, which `host.ts:117-122` and `adapter.ts:572-650` contradict; `ids.rs:37-38` says the dock mints `PanelInstanceId`, which `model.rs:801-812` contradicts; test fixtures still use the removed `role: 'controller'` (`src/lib/workbench/terminal/fixtures/herdr-wire.ts:48-51`).
 
-## 7. Decisions only the owner can make
+## 7. Decisions (settled 2026-11-26 by the owner)
 
-1. **Terminal control.** The workbench removed the controller lease on 2026-11-16 and lets every view type and resize. This spec requires one controller with owner-issued, fenced claims (IN-02, IN-03, API-05). Either restore a lease (the SDK still models `controller | observer | unleased`) or amend this spec to the "every view may type" model with input-id dedupe. Gate 1 cannot start the terminal part until this is settled.
-2. **Agent profile owner.** Extend `Organization` (proposed above) or add a separate agents resource in the backend.
-3. **Acceptance IDs.** Keep the `UAE-` prefix, or renumber the companion's cases into the workbench's sequence (`AC-63` onward).
+The question each decision answered is kept so later readers see what was weighed.
+
+1. **Terminal control: no lease.** The question was whether to restore the controller lease the workbench removed on 2026-11-16, or amend the companion. The owner chose no lease because leases have caused too many problems. R28 stands; the companion's IN-02 and IN-03 are amended (spec Section 4, the decision paragraph after IN-03) so that control is arbitrated between the person and agents, with an owner-issued agent claim and no timed expiry. `UAE-AC-07` is restated to match.
+2. **Agent profile owner: extend `Organization`.** The alternative was a separate agents resource in the backend. Gate 3 first confirms the record can hold more than one agent per organization.
+3. **Acceptance IDs: keep the `UAE-` prefix.** The alternative was renumbering as `AC-63` onward.
 
 ## 8. Overlap note
 

@@ -2297,7 +2297,7 @@
       "id": "UAE-AC-07",
       "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
       "spec_case": "AC-07",
-      "title": "Terminal control lease, fencing and reacquisition",
+      "title": "Agent input claim, person takeover and reacquisition",
       "requirements": [
         "IN-02–03",
         "UI-05",
@@ -2306,11 +2306,12 @@
       ],
       "oracle_class": "live owner/provider",
       "delivery_gate": "Gate 1 and Gate 2",
-      "procedure": "Take terminal control, select/copy output, close the controlling view, and disconnect a client.",
-      "required_observations": "Verify lease release/expiry, stale-controller fencing, explicit reacquisition, and no process kill.",
+      "procedure": "Give an agent an input claim on a terminal, type into it from the person's own views (two views of the same terminal), select/copy output, close a view and disconnect a client.",
+      "required_observations": "Every view of the person's own types without locking another out (R28); the person's input stops further agent input until released; the agent's stale claim is fenced and it reacquires through the owner before typing again; closing a view or losing a client kills no process and leaves no lease to expire.",
       "status": "not_run",
-      "blocker": "Decision needed: the workbench removed the control lease on 2026-11-16 (R28 any view types) while this case expects a lease; ownership map 7 item 1.",
-      "evidence": []
+      "blocker": "No agent input claim exists yet (Gate 0 decision 1, 2026-11-26: no lease; R28 stands). Gate 1 builds the claim; ownership map 2.4 and 7 item 1.",
+      "evidence": [],
+      "spec_note": "Restated from the companion's AC-07, which assumed a lease, to match Gate 0 decision 1."
     },
     {
       "id": "UAE-AC-08",
@@ -2563,7 +2564,7 @@
       "procedure": "Rename/customize an agent, run it again, and restart the client.",
       "required_observations": "Verify durable identity, saved characteristics, unchanged active-run configuration, and accurate attribution.",
       "status": "not_run",
-      "blocker": "No durable agent-profile authority exists; Gate 0 proposes the Theorem backend organization service as owner, pending Travis's decision (ownership map 5 and 7 item 2).",
+      "blocker": "No durable agent-profile authority exists yet; Gate 0 decision 2 (2026-11-26) chose to extend the Theorem backend organization record (ownership map 5 and 7 item 2).",
       "evidence": []
     },
     {
@@ -2632,7 +2633,7 @@
   "companion_cases": {
     "spec": "SPEC-UNIFIED-AGENT-EXPERIENCE-1.0",
     "id_prefix": "UAE-",
-    "note": "Cases from Section 14 of the unified agent experience companion. Their own spec numbers AC-01..AC-24 collide with this file's ids, so they are recorded as UAE-AC-01..UAE-AC-24 with spec_case naming the original number. The tally in execution_record counts workbench cases only. UAE-AC-01..21 gate the companion's first coherent release (Gates 0-3) as applicable to supported providers; UAE-AC-22..23 gate portable state; UAE-AC-24 gates provider experiments. A case needing live evidence stays not_run when only mocks or replay are available.",
+    "note": "Cases from Section 14 of the unified agent experience companion. Their own spec numbers AC-01..AC-24 collide with this file's ids, so they are recorded as UAE-AC-01..UAE-AC-24 with spec_case naming the original number. The tally in execution_record counts workbench cases only. UAE-AC-01..21 gate the companion's first coherent release (Gates 0-3) as applicable to supported providers; UAE-AC-22..23 gate portable state; UAE-AC-24 gates provider experiments. A case needing live evidence stays not_run when only mocks or replay are available. The UAE- prefix was confirmed by the owner on 2026-11-26 (Gate 0 decision 3).",
     "added": "2026-11-26, Gate 0, against c1a0e4b26"
   }
 }
