@@ -178,8 +178,17 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
     })
   }
 
+  const listedThreads = new Set(
+    entries.filter((e) => e.source === 'thread').map((e) => e.resource),
+  )
   for (const chat of inputs.sideChats ?? []) {
-    if (!chat.running && !chat.detached) continue
+    // An open chat at rest is shown only when its thread has work the organization lists.
+    if (
+      !chat.running &&
+      !chat.detached &&
+      !(chat.threadId && listedThreads.has(chat.threadId))
+    )
+      continue
     entries.push(
       entry({
         source: 'sideChat',
@@ -203,23 +212,38 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
       }),
     )
 
-  // A side chat's thread is also a thread: keep the thread's own row, once, saying it is a side
-  // chat. That is how a side chat with a run going shows: its thread is running.
+  // A side chat this session knows of keeps one row, under its own key, whether or not its thread
+  // is listed: the thread's row folds into it, giving it the owner's state, and the row keeps what
+  // opening a side chat needs (the workspace reveal, the reopen note). A thread that finishes
+  // therefore never trades its key for another one.
   const seen = new Set<string>()
-  const threads = new Set(
-    entries.filter((e) => e.source === 'thread').map((e) => e.resource),
+  const threadRows = new Map(
+    entries.filter((e) => e.source === 'thread').map((e) => [e.resource, e]),
   )
-  const openSideChats = new Set(
+  const sideChatThreads = new Set(
     (inputs.sideChats ?? []).flatMap((chat) =>
-      chat.threadId && !chat.detached ? [chat.threadId] : [],
+      chat.threadId ? [chat.threadId] : [],
     ),
   )
   const unique = entries.flatMap((e) => {
-    if (e.source === 'sideChat' && threads.has(e.resource)) return []
+    if (e.source === 'thread' && sideChatThreads.has(e.resource)) return []
     if (seen.has(e.key)) return []
     seen.add(e.key)
-    return e.source === 'thread' && openSideChats.has(e.resource) && !e.detail
-      ? [{ ...e, detail: 'A side chat open in the workspace' }]
+    const thread =
+      e.source === 'sideChat' ? threadRows.get(e.resource) : undefined
+    return thread
+      ? [
+          {
+            ...e,
+            label: thread.label,
+            execution: thread.execution,
+            ...(thread.waiting ? { waiting: thread.waiting } : {}),
+            ...(thread.runId ? { runId: thread.runId } : {}),
+            ...(e.detail
+              ? {}
+              : { detail: 'A side chat open in the workspace' }),
+          },
+        ]
       : [e]
   })
   return { entries: unique, completeness: { complete: false, gaps } }
@@ -242,6 +266,7 @@ function hidden(code: number): boolean {
   return (
     code <= 0x1f ||
     (code >= 0x7f && code <= 0x9f) ||
+    code === 0x061c ||
     (code >= 0x200b && code <= 0x200f) ||
     (code >= 0x202a && code <= 0x202e) ||
     (code >= 0x2060 && code <= 0x2069) ||

@@ -90,7 +90,7 @@ beforeEach(() => {
     saved: {},
     origin: null,
   })
-  useShell.setState({ workbench: undefined })
+  useShell.setState({ workbench: undefined, askedProject: undefined })
   const spy = spyOn(globalThis, 'fetch').mockImplementation((async (
     input: RequestInfo | URL,
     init?: RequestInit,
@@ -145,6 +145,11 @@ test('a thread filed in the project shown now opens there, even when pinned else
   await act(async () => open.click())
   await waitFor(() => router.state.location.pathname === '/c/m')
   expect(useShell.getState().projectId).toBe('p')
+  // The chat route opens a thread in the project asked for, so the choice is recorded.
+  expect(useShell.getState().askedProject).toEqual({
+    threadId: 'm',
+    projectId: 'p',
+  })
 })
 
 test('closing after Show all returns focus to the preview’s Show all', async () => {
@@ -292,4 +297,36 @@ test('the view says what it cannot see', async () => {
   const text = region(container)!.textContent
   expect(text).toContain('Theorem serves no project-wide run list yet')
   expect(text).toContain('The workspace is not open here')
+})
+
+test('work that finishes under focus keeps its row and the preview until focus leaves', async () => {
+  const { container } = await mount([thread('a')])
+  const preview = await waitFor(() =>
+    container.querySelector<HTMLElement>(
+      '[aria-label="Agent activity preview"]',
+    ),
+  )
+  const disclosure =
+    preview.querySelector<HTMLButtonElement>('[aria-expanded]')!
+  await act(async () => disclosure.click())
+  const a = await waitFor(() => row(container, 'thread:a'))
+  act(() => a.focus())
+  // Thread a's run ends: the organization no longer lists it as working.
+  await act(async () => {
+    client.setQueryData(organizationKey, organization([thread('a', false)]))
+  })
+  await waitFor(() =>
+    container
+      .querySelector('[aria-label="Agent activity preview"]')
+      ?.textContent?.includes('Nothing working now'),
+  )
+  expect(document.activeElement).toBe(row(container, 'thread:a'))
+})
+
+test('a mounted view counts as a host, so commands can open it', async () => {
+  expect(useActivityView.getState().hosts).toBe(0)
+  await mount([])
+  expect(useActivityView.getState().hosts).toBe(1)
+  cleanup()
+  expect(useActivityView.getState().hosts).toBe(0)
 })

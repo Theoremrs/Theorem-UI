@@ -6,6 +6,7 @@ import { buildInventory } from './inventory'
 import type { Completeness, SideChatRow, TerminalRow } from './inventory'
 import { activitySource, activitySources } from './sources'
 import type { ActivitySource } from './sources'
+import type { ActivitySource as EntrySource } from './projection'
 
 /** How often an open view asks the workspace's owners again. Observational: nothing is attached or resized. */
 export const LIST_INTERVAL_MS = 4_000
@@ -39,7 +40,12 @@ export function useActivity(projectId: string) {
   useEffect(() => {
     if (!open || !source) return
     let live = true
+    // Reads can overlap when the host is slow; only the newest one started may land, so a late
+    // reply never rolls the listing back.
+    let started = 0
+    let landed = 0
     const read = async () => {
+      const mine = ++started
       const sideChats = source.sideChats?.()
       let terminals: TerminalRow[] | undefined
       try {
@@ -48,7 +54,9 @@ export function useActivity(projectId: string) {
         // A failed listing leaves terminals unlisted, which the inventory names as a gap.
         terminals = undefined
       }
-      if (live) setListing({ source, terminals, sideChats, at: Date.now() })
+      if (!live || mine < landed) return
+      landed = mine
+      setListing({ source, terminals, sideChats, at: Date.now() })
     }
     void read()
     const timer = setInterval(() => void read(), LIST_INTERVAL_MS)
@@ -74,9 +82,18 @@ export function useActivity(projectId: string) {
     [organization, terminals, sideChats, at],
   )
 
+  // The owners this read heard from: only they can say their work left.
+  const read = useMemo(() => {
+    const sources = new Set<EntrySource>()
+    if (organization) sources.add('thread')
+    if (terminals) sources.add('terminal')
+    if (sideChats) sources.add('sideChat')
+    return sources
+  }, [organization, terminals, sideChats])
+
   useEffect(() => {
-    sync(inventory.entries, projectId)
-  }, [inventory, projectId, scope, sync])
+    sync(inventory.entries, projectId, read)
+  }, [inventory, projectId, scope, sync, read])
 
   const completeness: Completeness = useMemo(() => {
     const gaps = [...inventory.completeness.gaps]

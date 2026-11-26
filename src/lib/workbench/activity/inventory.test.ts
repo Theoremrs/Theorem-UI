@@ -64,11 +64,22 @@ describe('inventory', () => {
       at: 5,
       organization: org([
         thread('e', {
-          reasons: [{ kind: 'approval', runId: 'run-e', approvalId: 'ap', toolName: 'bash', atMs: 1 }],
+          reasons: [
+            {
+              kind: 'approval',
+              runId: 'run-e',
+              approvalId: 'ap',
+              toolName: 'bash',
+              atMs: 1,
+            },
+          ],
           running: true,
           runId: 'run-e',
         }),
-        thread('f', { reasons: [{ kind: 'pending_turn', messageId: 'm', atMs: 1 }], running: false }),
+        thread('f', {
+          reasons: [{ kind: 'pending_turn', messageId: 'm', atMs: 1 }],
+          running: false,
+        }),
         thread('g', {
           reasons: [{ kind: 'failed', runId: 'run-old', atMs: 1 }],
           running: true,
@@ -77,7 +88,9 @@ describe('inventory', () => {
       ]),
       terminals: [],
     })
-    expect(inv.entries.map((e) => [e.resource, e.execution, e.runId ?? null])).toEqual([
+    expect(
+      inv.entries.map((e) => [e.resource, e.execution, e.runId ?? null]),
+    ).toEqual([
       ['e', 'waiting', 'run-e'],
       ['f', 'queued', null],
       ['g', 'running', 'run-new'],
@@ -89,7 +102,9 @@ describe('inventory', () => {
     const inv = buildInventory({
       at: 0,
       organization: org([]),
-      terminals: [{ workspace: 'w', session: 's3', label: 'zsh', state: 'lost' }],
+      terminals: [
+        { workspace: 'w', session: 's3', label: 'zsh', state: 'lost' },
+      ],
     })
     expect(inv.entries).toMatchObject([
       { resource: 'w/s3', execution: 'unknown', observation: 'stale' },
@@ -178,13 +193,38 @@ describe('inventory', () => {
       ],
     })
     expect(inv.entries.map((e) => e.key)).toEqual([
-      'thread:side-t',
+      'sideChat:side-t',
       'sideChat:side-u',
       'delegation:d1',
     ])
-    expect(inv.entries[0]?.detail).toBe('A side chat open in the workspace')
+    expect(inv.entries[0]).toMatchObject({
+      label: 'Thread side-t',
+      execution: 'running',
+      runId: 'r',
+      detail: 'A side chat open in the workspace',
+    })
     expect(inv.entries[1]?.detail).toContain('reopen')
     expect(inv.entries[2]?.parentRunId).toBe('r')
+  })
+
+  test("a side chat keeps its one key when its thread's run finishes", () => {
+    const sideChats = [{ conversationId: 'side-1', threadId: 'side-t' }]
+    const running = buildInventory({
+      at: 0,
+      organization: org([
+        thread('side-t', { reasons: [], running: true, runId: 'r' }),
+      ]),
+      sideChats,
+    })
+    const resting = buildInventory({
+      at: 1,
+      organization: org([thread('side-t', { reasons: [], running: false })]),
+      sideChats: [
+        { conversationId: 'side-1', threadId: 'side-t', running: true },
+      ],
+    })
+    expect(running.entries.map((e) => e.key)).toEqual(['sideChat:side-t'])
+    expect(resting.entries.map((e) => e.key)).toEqual(['sideChat:side-t'])
   })
 })
 
@@ -192,5 +232,6 @@ describe('shownText', () => {
   test('a terminal label loses control and invisible direction marks', () => {
     expect(shownText('  build\u0007 ‮gnirts‬ ')).toBe('build gnirts')
     expect(shownText('​')).toBe('')
+    expect(shownText('\u061cabc')).toBe('abc')
   })
 })
