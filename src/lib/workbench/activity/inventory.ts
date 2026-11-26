@@ -90,16 +90,28 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
   else {
     if (!org.complete) gaps.push('Only the first page of threads was read.')
     for (const thread of org.threads) {
-      const failed = thread.attention.reasons.find((r) => r.kind === 'failed')
-      const review = thread.attention.reasons.find((r) => r.kind === 'review')
-      const execution: Execution = review
+      const reasons = thread.attention.reasons
+      const failed = reasons.find((r) => r.kind === 'failed')
+      const review = reasons.find((r) => r.kind === 'review')
+      const approval = reasons.find((r) => r.kind === 'approval')
+      const pending = reasons.find((r) => r.kind === 'pending_turn')
+      // What the thread waits on comes first: a run held at an approval is running, but it is
+      // the person it waits for.
+      const waiting = approval
+        ? { for: 'approval' as const, ref: approval.approvalId }
+        : review
+          ? { for: 'approval' as const, ref: review.reviewId }
+          : undefined
+      const execution: Execution = waiting
         ? 'waiting'
         : thread.attention.running
           ? 'running'
-          : failed
-            ? 'failed'
-            : 'unknown'
-      // A thread with no run and no failure is at rest; it is not unfinished work.
+          : pending
+            ? 'queued'
+            : failed
+              ? 'failed'
+              : 'unknown'
+      // A thread with no run, no queued turn and no failure is at rest; it is not unfinished work.
       if (execution === 'unknown') continue
       // The project it opens under, as organization's primaryProjectId picks it: pinned first, then oldest.
       const [primary] = [...thread.memberships].sort(
@@ -111,6 +123,9 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
           ...thread.memberships.map((m) => m.projectId),
         ]),
       ]
+      // The active run is the thread's own word; a failed or approval reason names an earlier one
+      // only when no run is active.
+      const runId = thread.attention.runId ?? approval?.runId ?? failed?.runId
       entries.push(
         entry({
           source: 'thread',
@@ -119,13 +134,8 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
           execution,
           projectId: primary?.projectId ?? thread.homeProjectId,
           projects,
-          ...(review
-            ? { waiting: { for: 'approval' as const, ref: review.reviewId } }
-            : {}),
-          ...(thread.attention.runId ? { runId: thread.attention.runId } : {}),
-          ...(failed && 'runId' in failed && failed.runId
-            ? { runId: failed.runId }
-            : {}),
+          ...(waiting ? { waiting } : {}),
+          ...(runId ? { runId } : {}),
         }),
       )
     }
@@ -147,8 +157,8 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
             : !live && row.state
               ? `The host reports it ${row.state}`
               : undefined
-    entries.push(
-      entry({
+    entries.push({
+      ...entry({
         source: 'terminal',
         resource: `${row.workspace}/${row.session}`,
         label: shownText(row.label) || 'Terminal',
@@ -158,11 +168,27 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
         ...(detail ? { detail } : {}),
         ...(row.runId ? { runId: row.runId } : {}),
       }),
-    )
+      // A session the host lost, or calls by a word the page does not know, is not current.
+      ...(!live &&
+      row.exitCode == null &&
+      row.state !== 'exited' &&
+      row.state !== 'killed'
+        ? { observation: 'stale' as const }
+        : {}),
+    })
   }
 
+  const listedThreads = new Set(
+    entries.filter((e) => e.source === 'thread').map((e) => e.resource),
+  )
   for (const chat of inputs.sideChats ?? []) {
-    if (!chat.running && !chat.detached) continue
+    // An open chat at rest is shown only when its thread has work the organization lists.
+    if (
+      !chat.running &&
+      !chat.detached &&
+      !(chat.threadId && listedThreads.has(chat.threadId))
+    )
+      continue
     entries.push(
       entry({
         source: 'sideChat',
@@ -186,23 +212,38 @@ export function buildInventory(inputs: InventoryInputs): Inventory {
       }),
     )
 
-  // A side chat's thread is also a thread: keep the thread's own row, once, saying it is a side
-  // chat. That is how a side chat with a run going shows: its thread is running.
+  // A side chat this session knows of keeps one row, under its own key, whether or not its thread
+  // is listed: the thread's row folds into it, giving it the owner's state, and the row keeps what
+  // opening a side chat needs (the workspace reveal, the reopen note). A thread that finishes
+  // therefore never trades its key for another one.
   const seen = new Set<string>()
-  const threads = new Set(
-    entries.filter((e) => e.source === 'thread').map((e) => e.resource),
+  const threadRows = new Map(
+    entries.filter((e) => e.source === 'thread').map((e) => [e.resource, e]),
   )
-  const openSideChats = new Set(
+  const sideChatThreads = new Set(
     (inputs.sideChats ?? []).flatMap((chat) =>
-      chat.threadId && !chat.detached ? [chat.threadId] : [],
+      chat.threadId ? [chat.threadId] : [],
     ),
   )
   const unique = entries.flatMap((e) => {
-    if (e.source === 'sideChat' && threads.has(e.resource)) return []
+    if (e.source === 'thread' && sideChatThreads.has(e.resource)) return []
     if (seen.has(e.key)) return []
     seen.add(e.key)
-    return e.source === 'thread' && openSideChats.has(e.resource) && !e.detail
-      ? [{ ...e, detail: 'A side chat open in the workspace' }]
+    const thread =
+      e.source === 'sideChat' ? threadRows.get(e.resource) : undefined
+    return thread
+      ? [
+          {
+            ...e,
+            label: thread.label,
+            execution: thread.execution,
+            ...(thread.waiting ? { waiting: thread.waiting } : {}),
+            ...(thread.runId ? { runId: thread.runId } : {}),
+            ...(e.detail
+              ? {}
+              : { detail: 'A side chat open in the workspace' }),
+          },
+        ]
       : [e]
   })
   return { entries: unique, completeness: { complete: false, gaps } }
@@ -225,6 +266,7 @@ function hidden(code: number): boolean {
   return (
     code <= 0x1f ||
     (code >= 0x7f && code <= 0x9f) ||
+    code === 0x061c ||
     (code >= 0x200b && code <= 0x200f) ||
     (code >= 0x202a && code <= 0x202e) ||
     (code >= 0x2060 && code <= 0x2069) ||

@@ -225,3 +225,46 @@ describe('removing work with no run id', () => {
     expect(arrange(left, [term('running')], at).order).toEqual(['terminal:w/1'])
   })
 })
+
+describe('owners not read this time', () => {
+  const term = entry('w/1', {
+    source: 'terminal',
+    projects: undefined,
+    projectId: undefined,
+    execution: 'running',
+  })
+
+  test('an unread owner neither ends a removal nor marks its rows as left', () => {
+    const shown = arrange(empty, [term], at)
+    const removed = removeFrom(shown, 'terminal:w/1')
+    // The terminal listing was not read: its removal holds when it is read again unchanged.
+    const unread = arrange(removed, [], {
+      ...at,
+      read: new Set(['thread'] as const),
+    })
+    expect(unread.removed['terminal:w/1']).toBe('~running')
+    expect(arrange(unread, [term], at).order).toEqual([])
+    // A row whose owner was not read keeps its last word rather than reading as gone.
+    const kept = arrange(shown, [], {
+      ...at,
+      read: new Set(['thread'] as const),
+    })
+    expect(kept.items['terminal:w/1']?.listed).toBe(true)
+  })
+
+  test('a removal that changes on sync is saved, so another project and back keeps it', () => {
+    useActivityView.setState({
+      arranged: undefined,
+      saved: {},
+      scope: 'project',
+    })
+    const view = useActivityView.getState()
+    view.sync([term], 'p')
+    view.remove('terminal:w/1')
+    // It leaves the listing (marker becomes left), then the person visits another project.
+    useActivityView.getState().sync([], 'p')
+    useActivityView.getState().sync([], 'q')
+    useActivityView.getState().sync([term], 'p')
+    expect(useActivityView.getState().arranged?.order).toEqual(['terminal:w/1'])
+  })
+})

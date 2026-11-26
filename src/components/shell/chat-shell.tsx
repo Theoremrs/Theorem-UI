@@ -516,9 +516,9 @@ function DesktopShell(route: DockRoute) {
               </div>
             )}
           </div>
-          {/* Agent activity overlays the sheet without reflowing it, ending above the composer;
-              the sheet's own inert and hidden states cover it too. */}
-          {!vault && (
+          {/* Agent activity overlays the sheet without reflowing it, ending above the composer.
+              It is not there in the Vault or with the workspace full, which cover the sheet. */}
+          {!vault && !full && (
             <ActivityView
               projectId={route.projectId}
               frame={sheetFrame}

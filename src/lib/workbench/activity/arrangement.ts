@@ -1,7 +1,7 @@
 // SOURCING: zustand + zustand/middleware persist (per-browser view preferences, as components/shell/shell-state keeps the shell's); the rules are the unified agent spec's WS-02 (insertion order, manual order persists, events never reorder or reselect), WS-05 (finished work stays until removed or the scope changes), DR-02 (project scope first, All work explicit) and DR-03 (compression never overwrites the saved arrangement), docs/plans/theo-workbench/SPEC-UNIFIED-AGENT-EXPERIENCE-1.0.md §3.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { ActivityEntry } from './projection'
+import type { ActivityEntry, ActivitySource } from './projection'
 
 export type ActivityScope = 'project' | 'all'
 export type DrawerPlacement = 'bottom' | 'right'
@@ -42,19 +42,34 @@ const LEFT = '~left'
  * end in the listing's order; a row the owners stop listing stays, marked, so finished work is not
  * erased. A change of project or scope starts again from the listing, keeping a saved manual order
  * where its keys still appear.
+ *
+ * `read` names the owners this listing came from. Only they can say work left: an owner that was
+ * not read this time (a closed view, a failed listing) leaves its rows and removals as they were.
+ * Omitted, every owner counts as read.
  */
 export function arrange(
   previous: Pick<Arranged, 'projectId' | 'scope' | 'order' | 'removed'> &
     Partial<Pick<Arranged, 'items'>>,
   entries: ActivityEntry[],
-  { projectId, scope }: { projectId: string; scope: ActivityScope },
+  {
+    projectId,
+    scope,
+    read,
+  }: {
+    projectId: string
+    scope: ActivityScope
+    read?: ReadonlySet<ActivitySource>
+  },
 ): Arranged {
   const same = previous.projectId === projectId && previous.scope === scope
   const removed = same ? { ...previous.removed } : {}
   const current = new Map<string, ActivityEntry>()
   const listedKeys = new Set(entries.map((entry) => entry.key))
+  const wasRead = (key: string) =>
+    !read || read.has(key.slice(0, key.indexOf(':')) as ActivitySource)
   for (const [key, marker] of Object.entries(removed))
-    if (!listedKeys.has(key) && marker.startsWith('~')) removed[key] = LEFT
+    if (!listedKeys.has(key) && marker.startsWith('~') && wasRead(key))
+      removed[key] = LEFT
   for (const entry of entries) {
     if (!inScope(entry, scope, projectId)) continue
     const gone = removed[entry.key]
@@ -71,7 +86,12 @@ export function arrange(
   for (const key of same ? previous.order : []) {
     const entry = current.get(key)
     if (entry) items[key] = { entry, listed: true }
-    else if (kept[key]) items[key] = { entry: kept[key].entry, listed: false }
+    else if (kept[key])
+      items[key] = {
+        entry: kept[key].entry,
+        // Unlisted only when its owner said so; an owner not read now keeps its last word.
+        listed: wasRead(key) ? false : kept[key].listed,
+      }
     else continue
     order.push(key)
   }
@@ -162,7 +182,14 @@ interface ActivityViewState {
   setSize: (placement: DrawerPlacement, size: number) => void
   setScope: (scope: ActivityScope) => void
   select: (key: string | null) => void
-  sync: (entries: ActivityEntry[], projectId: string) => void
+  sync: (
+    entries: ActivityEntry[],
+    projectId: string,
+    read?: ReadonlySet<ActivitySource>,
+  ) => void
+  /** How many mounted views can show the activity now; a command opens it only when one can. */
+  hosts: number
+  host: () => () => void
   remove: (key: string) => void
   move: (key: string, by: number) => void
 }
@@ -228,7 +255,7 @@ export const useActivityView = create<ActivityViewState>()(
         })),
       setScope: (scope) => set({ scope }),
       select: (selected) => set({ selected }),
-      sync: (entries, projectId) =>
+      sync: (entries, projectId, read) =>
         set((state) => {
           const { scope } = state
           const previous =
@@ -244,9 +271,26 @@ export const useActivityView = create<ActivityViewState>()(
                     removed: {},
                   }),
                 }
-          const arranged = arrange(previous, entries, { projectId, scope })
-          return { arranged }
+          const arranged = arrange(previous, entries, {
+            projectId,
+            scope,
+            ...(read ? { read } : {}),
+          })
+          // A removal that changed (work left, or came back) is kept, so another project's visit
+          // does not bring back the old marker.
+          const stored = state.saved[savedKey(projectId, scope)]
+          const changed =
+            JSON.stringify(arranged.removed) !==
+            JSON.stringify(stored?.removed ?? {})
+          return changed && (stored || Object.keys(arranged.removed).length)
+            ? { arranged, saved: remember(state.saved, arranged) }
+            : { arranged }
         }),
+      hosts: 0,
+      host: () => {
+        set((state) => ({ hosts: state.hosts + 1 }))
+        return () => set((state) => ({ hosts: Math.max(0, state.hosts - 1) }))
+      },
       remove: (key) =>
         set((state) => {
           if (!state.arranged) return {}

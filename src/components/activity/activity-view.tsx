@@ -128,7 +128,14 @@ const sourceWord: Record<ActivityEntry['source'], string> = {
   delegation: 'Delegated run',
 }
 
-/** Measures where the composer starts, so the view ends above it however tall it grows. */
+const COMPOSERS =
+  '[data-appearance-part="sheet-frame"] [data-appearance-part="composer"]'
+
+/**
+ * Measures where the visible composer starts, so the view ends above it however tall it grows.
+ * Panels kept mounted while hidden have composers too, and a Compare pane can show its own: every
+ * visible one counts, and the highest decides.
+ */
 function useComposerClearance(frame: HTMLElement | null) {
   const [clearance, setClearance] = useState(GAP)
   useLayoutEffect(() => {
@@ -136,33 +143,35 @@ function useComposerClearance(frame: HTMLElement | null) {
     let frameId = 0
     const measure = () => {
       frameId = 0
-      const composer = frame.querySelector<HTMLElement>(
-        '[data-appearance-part="sheet-frame"] [data-appearance-part="composer"]',
-      )
       const box = frame.getBoundingClientRect()
-      const top = composer?.checkVisibility({ visibilityProperty: true })
-        ? composer.getBoundingClientRect().top
-        : box.bottom
+      let top = box.bottom
+      for (const composer of frame.querySelectorAll<HTMLElement>(COMPOSERS))
+        if (composer.checkVisibility({ visibilityProperty: true }))
+          top = Math.min(top, composer.getBoundingClientRect().top)
       setClearance(Math.max(GAP, Math.round(box.bottom - top + GAP)))
     }
     const schedule = () => {
       if (!frameId) frameId = requestAnimationFrame(measure)
     }
     const observer = new ResizeObserver(schedule)
+    const follow = () => {
+      for (const composer of frame.querySelectorAll(COMPOSERS))
+        observer.observe(composer)
+    }
     observer.observe(frame)
-    const composer = frame.querySelector(
-      '[data-appearance-part="sheet-frame"] [data-appearance-part="composer"]',
-    )
-    if (composer) observer.observe(composer)
-    // The composer mounts and remounts as the route changes: follow it.
+    follow()
+    // Composers mount and remount as the route changes, and panels show and hide by attribute:
+    // follow both.
     const mutations = new MutationObserver(() => {
-      const next = frame.querySelector(
-        '[data-appearance-part="sheet-frame"] [data-appearance-part="composer"]',
-      )
-      if (next) observer.observe(next)
+      follow()
       schedule()
     })
-    mutations.observe(frame, { childList: true, subtree: true })
+    mutations.observe(frame, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['hidden', 'inert', 'style', 'class', 'aria-hidden'],
+    })
     window.visualViewport?.addEventListener('resize', schedule)
     measure()
     return () => {
@@ -205,9 +214,15 @@ function useOpenWork(projectId: string, source: ActivitySource | undefined) {
   const open = async (entry: ActivityEntry, listed: boolean) => {
     setNotice(undefined)
     if (entry.source === 'thread') {
-      // A thread filed in the project shown now opens there; only one from elsewhere moves the shell.
-      if (entry.projectId && !entry.projects?.includes(projectId))
-        useShell.getState().setProjectId(entry.projectId)
+      // A thread filed in the project shown now opens there; only one from elsewhere moves the
+      // shell. The chat route opens a thread in the project asked for, so say which.
+      const shell = useShell.getState()
+      const target =
+        entry.projectId && !entry.projects?.includes(projectId)
+          ? entry.projectId
+          : projectId
+      shell.askProject({ threadId: entry.resource, projectId: target })
+      if (target !== projectId) shell.setProjectId(target)
       await navigate({
         to: '/c/$threadId',
         params: { threadId: entry.resource },
@@ -282,7 +297,7 @@ function Row({
 }) {
   const { entry } = item
   return (
-    <li className="flex items-center gap-1">
+    <li data-activity-item={entry.key} className="flex items-center gap-1">
       <button
         type="button"
         data-activity-chrome=""
@@ -436,20 +451,31 @@ function ResizeEdge({
   room: number
   onSize: (size: number) => void
 }) {
-  const start = useRef<{ at: number; size: number } | null>(null)
+  const start = useRef<{ at: number; size: number; sign: number } | null>(null)
   const bottom = placement === 'bottom'
+  // A side drawer sits at the inline end, so its edge faces the start: leftwards in a
+  // left-to-right layout, rightwards in a right-to-left one.
+  const rtl = (element: HTMLElement) =>
+    getComputedStyle(element).direction === 'rtl'
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId)
-    start.current = { at: bottom ? event.clientY : event.clientX, size }
+    start.current = {
+      at: bottom ? event.clientY : event.clientX,
+      size,
+      sign: !bottom && rtl(event.currentTarget) ? -1 : 1,
+    }
   }
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!start.current) return
-    const delta = start.current.at - (bottom ? event.clientY : event.clientX)
+    const delta =
+      (start.current.at - (bottom ? event.clientY : event.clientX)) *
+      start.current.sign
     onSize(Math.min(room, start.current.size + delta))
   }
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const grow = bottom ? 'ArrowUp' : 'ArrowLeft'
-    const shrink = bottom ? 'ArrowDown' : 'ArrowRight'
+    const reversed = !bottom && rtl(event.currentTarget)
+    const grow = bottom ? 'ArrowUp' : reversed ? 'ArrowRight' : 'ArrowLeft'
+    const shrink = bottom ? 'ArrowDown' : reversed ? 'ArrowLeft' : 'ArrowRight'
     if (event.key !== grow && event.key !== shrink) return
     event.preventDefault()
     onSize(Math.min(room, size + (event.key === grow ? 24 : -24)))
@@ -473,7 +499,7 @@ function ResizeEdge({
         'absolute z-10 outline-focus focus-visible:outline-2',
         bottom
           ? 'inset-x-0 top-0 h-2 -translate-y-1 cursor-row-resize'
-          : 'inset-y-0 left-0 w-2 -translate-x-1 cursor-col-resize',
+          : 'inset-y-0 start-0 w-2 -translate-x-1 rtl:translate-x-1 cursor-col-resize',
       )}
     />
   )
@@ -504,22 +530,41 @@ function ActivityCompact({
 }) {
   const view = useActivityView()
   const [expanded, setExpanded] = useState(false)
-  const shown = items.filter(active)
-  if (!shown.length) return null
-  const waiting = shown.filter((i) => i.entry.execution === 'waiting').length
-  const working = shown.length - waiting
-  const summary = [
-    working ? `${working} working` : '',
-    waiting ? `${waiting} waiting for you` : '',
-  ]
-    .filter(Boolean)
-    .join(', ')
+  // While focus is inside the preview, the row holding it and the preview itself stay, so work
+  // that finishes never takes focus away (CP-04). The counts still follow the owners.
+  const [focus, setFocus] = useState<{ within: boolean; row?: string }>({
+    within: false,
+  })
+  const live = items.filter(active)
+  const shown = items.filter(
+    (item) => active(item) || item.entry.key === focus.row,
+  )
+  if (!shown.length && !focus.within) return null
+  const waiting = live.filter((i) => i.entry.execution === 'waiting').length
+  const working = live.length - waiting
+  const summary =
+    [
+      working ? `${working} working` : '',
+      waiting ? `${waiting} waiting for you` : '',
+    ]
+      .filter(Boolean)
+      .join(', ') || 'Nothing working now'
   return (
     <section
       aria-label="Agent activity preview"
       data-appearance-part="activity-compact"
       style={{ bottom: clearance }}
-      className="absolute right-(--sheet-inset) z-30 w-72 max-w-[calc(100%-2*var(--sheet-inset))] rounded-xl border border-separator bg-raised text-ink shadow-lg"
+      onFocus={(event) => {
+        const row = event.target
+          .closest('[data-activity-item]')
+          ?.getAttribute('data-activity-item')
+        setFocus({ within: true, ...(row ? { row } : {}) })
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget))
+          setFocus({ within: false })
+      }}
+      className="absolute end-(--sheet-inset) z-30 w-72 max-w-[calc(100%-2*var(--sheet-inset))] rounded-xl border border-separator bg-raised text-ink shadow-lg"
     >
       <div className="flex items-center gap-1 p-1">
         <button
@@ -594,6 +639,9 @@ export function ActivityView({
   const width = useWidth(frame)
   const region = useRef<HTMLElement>(null)
   const { open: openWork, notice } = useOpenWork(projectId, source)
+  // Commands that open the view are offered only while a view like this one is mounted.
+  const host = useActivityView((s) => s.host)
+  useEffect(() => host(), [host])
   const [frameHeight, setFrameHeight] = useState(800)
   useLayoutEffect(() => {
     if (!frame) return
@@ -644,6 +692,8 @@ export function ActivityView({
   const placement = view.expanded
     ? 'full'
     : effectivePlacement(view.placement, width)
+  // The list beside the details needs the width a right drawer needs; narrower, they stack.
+  const stacked = placement === 'right' || width < RIGHT_MIN_WIDTH
   const room =
     placement === 'bottom'
       ? frameHeight - clearance - GAP
@@ -681,7 +731,7 @@ export function ActivityView({
       className={cn(
         'absolute z-30 flex flex-col overflow-hidden rounded-xl border border-separator bg-raised text-ink shadow-lg',
         placement === 'bottom' && 'inset-x-(--sheet-inset)',
-        placement === 'right' && 'top-(--sheet-inset) right-(--sheet-inset)',
+        placement === 'right' && 'top-(--sheet-inset) end-(--sheet-inset)',
         placement === 'full' && 'top-(--sheet-inset) inset-x-(--sheet-inset)',
       )}
     >
@@ -752,7 +802,7 @@ export function ActivityView({
       <div
         className={cn(
           'grid min-h-0 flex-1',
-          placement === 'right'
+          stacked
             ? 'grid-rows-[minmax(0,1fr)_minmax(0,1fr)]'
             : 'grid-cols-[minmax(12rem,20rem)_minmax(0,1fr)]',
         )}
@@ -761,9 +811,7 @@ export function ActivityView({
           aria-label="Work"
           className={cn(
             'min-h-0 overflow-auto p-1',
-            placement === 'right'
-              ? 'border-b border-separator'
-              : 'border-e border-separator',
+            stacked ? 'border-b border-separator' : 'border-e border-separator',
           )}
         >
           {items.length ? (

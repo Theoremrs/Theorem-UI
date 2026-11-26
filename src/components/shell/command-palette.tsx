@@ -92,6 +92,7 @@ function useGroups(close: () => void): Group[] {
   const { starred, selected, select } = usePickedModels()
   const { plugins, skills } = useCatalogEntries()
   const { data: organization } = useOrganization()
+  const activityHosted = useActivityView((s) => s.hosts > 0)
 
   return useMemo(() => {
     const go = (to: string) => () => {
@@ -150,6 +151,9 @@ function useGroups(close: () => void): Group[] {
         label: 'Go to',
         items: [
           { id: 'new-chat', label: 'New chat', Mark: Icon.NewChat, run: go('/') },
+          // Offered only where a view can show it: not in Settings, the Vault or a full workspace.
+          ...(activityHosted
+            ? [
           {
             id: 'agent-activity',
             label: 'Agent activity',
@@ -169,6 +173,8 @@ function useGroups(close: () => void): Group[] {
               close()
             },
           },
+              ]
+            : []),
           {
             id: 'agent-profile',
             label: 'Agent profile',
@@ -238,7 +244,7 @@ function useGroups(close: () => void): Group[] {
       },
     ]
     return groups.filter((group) => group.items.length)
-  }, [catalog, defaultName, starred, selected, select, plugins, skills, organization, navigate, close])
+  }, [catalog, defaultName, starred, selected, select, plugins, skills, organization, activityHosted, navigate, close])
 }
 
 /** The ⌘K palette: places, models, plugins and skills, filtered as the person types. */
