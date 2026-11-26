@@ -14,6 +14,7 @@ const READS = new Set([
   'logs',
   'progress',
   'result',
+  'output',
   'receipt',
   'compare',
   'jobs',
