@@ -114,10 +114,10 @@ test('the live App sandbox returns bounded design feedback through its real RPC'
     assert.equal(result.observed.capture.viewport.width, 1024)
     assert.equal(result.observed.capture.viewport.height, 768)
     assert.equal(result.observed.elements.find((element) => element.id === 'id:bad').rect.width, 321)
-    assert.ok(result.feedback.report.findings.some((finding) =>
-      finding.elementId === 'id:bad' && finding.status === 'fail' && finding.source === 'main.tsx:8:3'))
-    assert.ok(result.feedback.report.findings.some((finding) =>
-      finding.elementId === 'id:gradient' && finding.status === 'unknown'))
+    assert.ok(result.feedback.report.issues.some((issue) =>
+      issue.status === 'fail' && issue.at.includes('main.tsx:8:3')))
+    assert.ok(result.feedback.report.issues.some((issue) =>
+      issue.status === 'unknown' && issue.at.includes('[id="gradient"]')))
   } finally {
     await browser.close()
   }

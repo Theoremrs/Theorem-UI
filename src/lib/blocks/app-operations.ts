@@ -85,7 +85,7 @@ export const APP_OPERATIONS = [
         design: {
           type: 'boolean',
           description:
-            'Collect live sandbox DOM geometry and styles, then return bounded design findings, authority, evidence and coverage. Requires runMs > 0; defaults to false.',
+            'Collect live sandbox DOM geometry and styles, then return design issues: each rule, status and authority with what was measured and expected once, how many elements have it and where (source place, else selector), plus pass/fail counts and coverage. Requires runMs > 0; defaults to false.',
         },
         library: {
           type: 'string',

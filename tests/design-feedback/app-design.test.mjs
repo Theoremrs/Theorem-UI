@@ -3,7 +3,9 @@ import test from 'node:test'
 import {
   appDesignFeedback,
   APP_DESIGN_MAX_ELEMENTS,
+  APP_DESIGN_MAX_ISSUES,
   APP_DESIGN_MAX_NODES,
+  APP_DESIGN_MAX_PLACES,
   unavailableDesign,
 } from '../../src/lib/blocks/app-design.ts'
 
@@ -35,9 +37,11 @@ test('sandbox DOM observations produce localized evaluated feedback', () => {
   assert.equal(result.status, 'measured')
   assert.equal(result.evidence, 'sandbox-reported-dom')
   assert.deepEqual(result.capture.viewport, { width: 1024, height: 768, dpr: 1 })
-  assert.ok(result.report.findings.some((finding) =>
-    finding.status === 'fail' && finding.authority === 'standard' &&
-    finding.source === 'main.tsx:12:3' && finding.evidence.kind === 'rendered-artifact'))
+  assert.ok(result.report.issues.some((issue) =>
+    issue.status === 'fail' && issue.authority === 'standard' &&
+    issue.rule === 'color.text-contrast' && issue.at.includes('main.tsx:12:3')))
+  assert.ok(result.report.issues.every((issue) => issue.status !== 'pass'))
+  assert.ok(result.report.summary.pass > 0)
 })
 
 test('a missing, stale or wrong-kind capture never becomes a clean report', () => {
@@ -66,10 +70,34 @@ test('malformed and oversized sandbox replies are rejected before reporting', ()
   assert.equal(appDesignFeedback(excessiveScan, 'artifact-check').status, 'unavailable')
 })
 
+test('repeated problems are one issue at many places, so distinct ones are not crowded out', () => {
+  const many = observation()
+  many.elements = Array.from({ length: 100 }, (_, i) => ({
+    ...many.elements[0], id: `id:p${i}`, selector: `html > body:nth-of-type(1) > div > p:nth-of-type(${i + 1})`,
+    source: i < 3 ? `main.tsx:${12 + i}:3` : undefined,
+  }))
+  many.elements.push({
+    ...observation().elements[0], id: 'id:faint', selector: '#faint', source: 'main.tsx:40:5',
+    text: { ...observation().elements[0].text, color: 'rgb(230, 230, 230)' },
+  })
+  many.coverage.nodesSeen = many.coverage.elementsMeasured = many.elements.length
+  const result = appDesignFeedback(many, 'artifact-check')
+  assert.equal(result.status, 'measured')
+  const contrast = result.report.issues.filter((issue) => issue.rule === 'color.text-contrast')
+  assert.equal(contrast.length, 2)
+  const repeated = contrast.find((issue) => issue.count === 100)
+  assert.ok(repeated)
+  assert.equal(repeated.at.length, APP_DESIGN_MAX_PLACES)
+  assert.deepEqual(repeated.at.slice(0, 4), ['main.tsx:12:3', 'main.tsx:13:3', 'main.tsx:14:3', 'div > p:nth-of-type(4)'])
+  assert.ok(contrast.some((issue) => issue.count === 1 && issue.at[0] === 'main.tsx:40:5'))
+  assert.ok(new TextEncoder().encode(JSON.stringify(result)).length < 8 * 1024)
+})
+
 test('bounded reports retain omission counts and uncertainty', () => {
   const many = observation()
   many.elements = Array.from({ length: 100 }, (_, i) => ({
     ...many.elements[0], id: `id:p${i}`, selector: `#p${i}`,
+    text: { ...many.elements[0].text, color: `rgb(${150 + i}, ${150 + i}, ${150 + i})` },
   }))
   many.coverage.nodesSeen = many.coverage.elementsMeasured = many.elements.length
   many.coverage.complete = false
@@ -77,8 +105,8 @@ test('bounded reports retain omission counts and uncertainty', () => {
   many.coverage.limitations = ['The element limit was reached.']
   const result = appDesignFeedback(many, 'artifact-check')
   assert.equal(result.status, 'measured')
-  assert.ok(result.report.findings.length <= 40)
-  assert.ok(result.report.summary.omitted > 0)
+  assert.equal(result.report.issues.length, APP_DESIGN_MAX_ISSUES)
+  assert.ok(result.report.omittedIssues > 0)
   assert.equal(result.report.coverage.complete, false)
   assert.equal(result.report.coverage.omitted, 20)
   assert.ok(result.report.summary.fail >= 100)
