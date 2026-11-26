@@ -27,6 +27,7 @@ import {
 } from '@/lib/theorem/organization'
 import { cn } from '@/lib/utils'
 import { useActivityView } from '@/lib/workbench/activity/arrangement'
+import { useAgentProfileDialog } from '@/components/agent/agent-profile-dialog'
 import { useShell } from './shell-state'
 
 type Entry = {
@@ -164,6 +165,19 @@ function useGroups(close: () => void): Group[] {
                   if (view.open) view.close()
                   else view.openView({ origin })
                 },
+              })
+              close()
+            },
+          },
+          {
+            id: 'agent-profile',
+            label: 'Agent profile',
+            keywords: 'agent name character representation theo personality',
+            Mark: Icon.Agent,
+            run: () => {
+              useCommandPalette.setState({
+                afterClose: () =>
+                  useAgentProfileDialog.getState().setOpen(true),
               })
               close()
             },
