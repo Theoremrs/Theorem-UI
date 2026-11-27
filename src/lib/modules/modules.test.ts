@@ -25,6 +25,7 @@ import {
   MAX_EVENT_DEPTH,
   MAX_EVENTS_PER_SECOND,
   createPageRuntime,
+  listLoopDiagnostics,
 } from './runtime'
 import {
   compatibility,
@@ -476,8 +477,33 @@ describe('runtime', () => {
       })
     }
     runtime.emit('b1', 'again', { id: 'x' })
+    // The causal id sees the chain meet itself before the depth limit does.
+    expect(calls).toBeGreaterThan(0)
+    expect(calls).toBeLessThanOrEqual(MAX_EVENT_DEPTH)
+    expect(h.notices.some((n) => n.includes('came back'))).toBe(true)
+    expect(listLoopDiagnostics().at(-1)?.kind).toBe('loop')
+  })
+
+  test('a ring longer than the depth limit stops at the depth limit', () => {
+    const h = host()
+    const runtime = createPageRuntime(lookup, h)
+    const ring = Array.from({ length: MAX_EVENT_DEPTH + 4 }, (_, i) => `r${i}`)
+    let calls = 0
+    ring.forEach((self, i) => {
+      const other = ring[(i + 1) % ring.length]!
+      runtime.wire(self, {
+        type: 'theorem.test.inspector',
+        on: { again: [{ to: { instance: other, action: 'show' } }] },
+      })
+      runtime.handle(self, 'show', (item) => {
+        calls++
+        runtime.emit(self, 'again', item)
+      })
+    })
+    runtime.emit('r0', 'again', { id: 'x' })
     expect(calls).toBe(MAX_EVENT_DEPTH)
     expect(h.notices.some((n) => n.includes('too many times'))).toBe(true)
+    expect(listLoopDiagnostics().at(-1)?.kind).toBe('depth')
   })
 
   // Review found that a loop through modules that answer later (a sandboxed
@@ -507,8 +533,14 @@ describe('runtime', () => {
     }
     runtime.emit('b1', 'again', { id: 'x' })
     for (let turn = 0; turn < 40; turn++) await Promise.resolve()
-    expect(calls).toBe(MAX_EVENT_DEPTH)
-    expect(h.notices.some((n) => n.includes('too many times'))).toBe(true)
+    expect(calls).toBeGreaterThan(1)
+    expect(calls).toBeLessThanOrEqual(MAX_EVENT_DEPTH)
+    expect(h.notices.some((n) => n.includes('came back'))).toBe(true)
+    const trip = listLoopDiagnostics().at(-1)
+    expect(trip?.kind).toBe('loop')
+    // The chain kept one cause id across the delayed hops.
+    expect(new Set(trip?.hops.map(() => trip.causeId)).size).toBe(1)
+    expect(trip?.hops.length).toBeGreaterThan(1)
   })
 
   // A hop slower than the window starts afresh: such a loop is slow enough

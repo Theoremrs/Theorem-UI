@@ -251,6 +251,46 @@ able to stand in for a mode:
 - **Phones.** Below the desktop width, Index mode keeps the Index's own
   overlay inspector rather than its page.
 
+## Contract, contributions and causal identity (EXT-01/02/05/06/07, EXEC-01/02)
+
+- **Codec (EXT-07).** Module and page schemas are loose objects at every
+  level, so a field a newer or foreign writer added survives parse and write.
+  A file whose `schema` number (`theorem.page/2`) or `format` is above this
+  client's `FORMAT_VERSION` is refused with `NewerFormatError`, which carries
+  the title/id/label and the raw JSON for a read-only presentation. Because
+  there is then no parsed document, no save can overwrite it; `guardedWrite`
+  also checks stored text for a caller that holds only text. Settings
+  migration (`migrations`, instance `v`) is unchanged and separate from this
+  data-format fence. Limit: the vault write path in `store.ts` does not call
+  `guardedWrite`; it is protected only because parse refuses first.
+- **Contributions (EXT-02).** `theorem.module/1` takes an optional
+  `contributes` with `commands` (id under the module id, args as JSON Schema,
+  effect, action port, keys) and declarative `contributions` of the kinds
+  nav-entry, panel, open-handler (`serves`), preview, reference-row,
+  property-cell, artifact-viewer, collection-view, theme (tokens), layout-preset,
+  shell and application. When a definition enters the catalog
+  (`setInstalled`, `registerBuiltin`) `syncModuleContributions` registers them
+  into `lib/commands` and `lib/contributions` with source
+  `{kind:'module', moduleId}`; removal or a changed definition unregisters
+  them. A command runs `runModuleAction`, which calls the action on a placed
+  instance on an open page and fails with a message when none is placed.
+  Registering grants no capability. Limit: vault modules supply no component
+  code, so panels and viewers mount the module itself (`meta.moduleId`).
+- **Causal identity (EXT-06).** Each chain carries a `causeId` and its hops.
+  A repeated `instance.event` inside one chain is dropped as a `loop`
+  (also across delayed deliveries within `CHAIN_WINDOW_MS`); the depth and rate
+  guards remain. Trips are listed by `listLoopDiagnostics()`, and
+  `runtime.stop/restart(instance)` let the person stop the source. Limit: a
+  loop slower than the chain window is not distinguishable from a timer.
+- **Trust (EXEC-01/02).** Definitions carry `trust`: `isolated`
+  (sandboxed-html), `composition`, or `trusted` (built-ins only; a file that
+  declares `trust: "trusted"` is refused). `describeModules()` returns the
+  JSON catalog for agents. Grants stay bound to the digest (`grantFor`).
+- **Dependencies (EXT-05).** A manifest's `dependencies` resolve through
+  `AppDependencies` (lib/blocks); the definition records the resolved path.
+  The resolver supplies versions/URLs, not content digests, so none is
+  recorded.
+
 ## Not in this release
 
 - **Other modes as pages.** Chat and Vault mode stay as they are.
