@@ -18,6 +18,7 @@ import { describeError } from '@/lib/theorem/client'
 import {
   agentName,
   checkImport,
+  chosenAgentId,
   exportAgent,
   lineageLine,
   packageFileName,
@@ -44,6 +45,7 @@ import type {
 } from '@/lib/theorem/organization-agents'
 import { useAgentProfileDialog } from './agent-profile-dialog'
 import { useOrganizationAgentsDialog } from './agents-dialog-store'
+import { TheoremError } from '@theoremharness/sdk'
 
 export { useOrganizationAgentsDialog }
 
@@ -73,6 +75,30 @@ function Problem({ error }: { error: unknown }) {
     <p role="alert" className="text-sm text-error-ink">
       {describeError(error)}
     </p>
+  )
+}
+
+const isConflict = (error: unknown) =>
+  error instanceof TheoremError && error.statusCode === 409
+
+/** A refused save of a draft read at an older revision, with the way to read the newer one. */
+function SaveProblem({
+  error,
+  onReload,
+}: {
+  error: unknown
+  onReload: () => void
+}) {
+  if (!isConflict(error)) return <Problem error={error} />
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <p role="alert" className="text-sm text-error-ink">
+        The organization changed somewhere else since this was read.
+      </p>
+      <Button size="xs" variant="outline" onClick={onReload}>
+        Load the newer version
+      </Button>
+    </div>
   )
 }
 
@@ -164,7 +190,8 @@ function AgentRow({
   open: boolean
   onToggle: () => void
 }) {
-  const { agentId, choose } = useChosenAgent()
+  const agentId = useChosenAgent(chosenAgentId)
+  const choose = useChosenAgent((state) => state.choose)
   const talking = agent.primary ? agentId === null : agentId === agent.agent_id
   const lineage = lineageLine(agent)
   const failed = agent.knowledge_resolution.state === 'failed'
@@ -270,14 +297,31 @@ function PrimaryProfile() {
   )
 }
 
-function ProfileEdit({
+/** Each reload mounts the form anew from the agent and revision as they stand now. */
+function ProfileEdit(props: { agent: OrganizationAgent; revision: number }) {
+  const [reads, setReads] = useState(0)
+  return (
+    <ProfileForm
+      key={reads}
+      {...props}
+      onReload={() => setReads((count) => count + 1)}
+    />
+  )
+}
+
+function ProfileForm({
   agent,
   revision,
+  onReload,
 }: {
   agent: OrganizationAgent
   revision: number
+  onReload: () => void
 }) {
   const save = useSaveAgentProfileOf()
+  // The revision the draft was read at: a refetch must not move it, or a save would overwrite
+  // a change made elsewhere instead of being refused. Only this form's own save advances it.
+  const [readAt, setReadAt] = useState(revision)
   const start = agent.profile
   const [name, setName] = useState(start?.name ?? '')
   const [description, setDescription] = useState(start?.description ?? '')
@@ -296,11 +340,10 @@ function ProfileEdit({
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (problem) return
-    save.mutate({
-      agentId: agent.agent_id,
-      profile: draft,
-      expectedRevision: revision,
-    })
+    save.mutate(
+      { agentId: agent.agent_id, profile: draft, expectedRevision: readAt },
+      { onSuccess: (record) => setReadAt(record.revision) },
+    )
   }
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
@@ -325,7 +368,7 @@ function ProfileEdit({
         />
       </label>
       {problem && <p className="text-ink-muted">{problem}</p>}
-      <Problem error={save.error} />
+      <SaveProblem error={save.error} onReload={onReload} />
       <div>
         <Button
           type="submit"
@@ -339,26 +382,55 @@ function ProfileEdit({
   )
 }
 
-function KnowledgeEdit({
+/** Each reload mounts the form anew from the agent and revision as they stand now. */
+function KnowledgeEdit(props: { agent: OrganizationAgent; revision: number }) {
+  const [reads, setReads] = useState(0)
+  return (
+    <KnowledgeForm
+      key={reads}
+      {...props}
+      onReload={() => setReads((count) => count + 1)}
+    />
+  )
+}
+
+function KnowledgeForm({
   agent,
   revision,
+  onReload,
 }: {
   agent: OrganizationAgent
   revision: number
+  onReload: () => void
 }) {
   const providers = useKnowledgeProviders()
   const save = useSaveAgentKnowledge()
-  const [provider, setProvider] = useState(agent.knowledge.provider ?? '')
+  // As with the profile: the draft keeps the revision it was read at until its own save.
+  const [readAt, setReadAt] = useState(revision)
+  const [binding] = useState(agent.knowledge)
+  const [provider, setProvider] = useState(binding.provider ?? '')
+  // A provider the binding names that this host does not list still gets an option, so the
+  // select shows it and choosing another really changes the value.
+  const unlisted =
+    binding.provider &&
+    !providers.data?.providers.some(
+      (descriptor) => descriptor.id === binding.provider,
+    )
+      ? binding.provider
+      : null
   return (
     <form
       className="flex flex-col gap-3"
       onSubmit={(event) => {
         event.preventDefault()
-        save.mutate({
-          agentId: agent.agent_id,
-          knowledge: { ...agent.knowledge, provider: provider || null },
-          expectedRevision: revision,
-        })
+        save.mutate(
+          {
+            agentId: agent.agent_id,
+            knowledge: { ...binding, provider: provider || null },
+            expectedRevision: readAt,
+          },
+          { onSuccess: (record) => setReadAt(record.revision) },
+        )
       }}
     >
       <label className="flex flex-col gap-1.5">
@@ -369,6 +441,12 @@ function KnowledgeEdit({
           className="h-8 rounded-md border border-separator bg-transparent px-2"
         >
           <option value="">The host&apos;s choice, else the default</option>
+          {unlisted && (
+            <option value={unlisted}>
+              {unlisted}
+              {providers.data ? ' (not on this host)' : ''}
+            </option>
+          )}
           {providers.data?.providers.map((descriptor) => (
             <option key={descriptor.id} value={descriptor.id}>
               {descriptor.label}
@@ -381,7 +459,8 @@ function KnowledgeEdit({
         A provider that cannot be reached here stops the agent&apos;s turns
         rather than quietly using another.
       </span>
-      <Problem error={providers.error ?? save.error} />
+      <Problem error={providers.error} />
+      <SaveProblem error={save.error} onReload={onReload} />
       <div>
         <Button type="submit" size="sm" disabled={save.isPending}>
           Save knowledge
@@ -683,26 +762,40 @@ function ImportAgent({
   const [agentPackage, setPackage] = useState<AgentPackage | null>(null)
   const [check, setCheck] = useState<ImportCheck | null>(null)
   const [error, setError] = useState<unknown>(null)
+  const [checking, setChecking] = useState(false)
   const choose = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     setPackage(null)
     setCheck(null)
     setError(null)
     if (!file) return
+    // No other file can be chosen until this one's check answers, so a report always
+    // belongs to the package beside it.
+    setChecking(true)
     try {
       const parsed = parsePackage(await file.text())
       setPackage(parsed)
       setCheck(await checkImport(parsed))
     } catch (failure) {
       setError(failure)
+    } finally {
+      setChecking(false)
     }
   }
   return (
     <div className="flex flex-col gap-2 text-sm">
       <label className="flex flex-col gap-1.5">
         Import an agent package
-        <input type="file" accept="application/json,.json" onChange={choose} />
+        <input
+          type="file"
+          accept="application/json,.json"
+          disabled={checking || importing.isPending}
+          onChange={choose}
+        />
       </label>
+      {checking && (
+        <span className="text-ink-muted">Checking the package…</span>
+      )}
       <span className="text-xs text-ink-muted">
         An import is always a copy with a new identity; the package&apos;s
         source is recorded in its lineage.

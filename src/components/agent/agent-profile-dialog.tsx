@@ -30,6 +30,7 @@ import type {
 import { describeError } from '@/lib/theorem/client'
 import {
   agentName,
+  chosenAgentId,
   useChosenAgent,
   useOrganizationAgents,
 } from '@/lib/theorem/organization-agents'
@@ -49,7 +50,7 @@ export function AgentIdentityChip() {
   const identity = useAgentIdentity()
   const setOpen = useAgentProfileDialog((state) => state.setOpen)
   const openAgents = useOrganizationAgentsDialog((state) => state.setOpen)
-  const chosenId = useChosenAgent((state) => state.agentId)
+  const chosenId = useChosenAgent(chosenAgentId)
   const agents = useOrganizationAgents()
   // A further agent the composer talks to names the chip, and pressing it opens the agents.
   const chosen =

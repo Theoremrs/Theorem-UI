@@ -50,6 +50,8 @@ export interface OrganizationAgent {
 export type OrganizationAgents =
   | {
       served: true
+      /** Null where this Theorem's record does not name its organization. */
+      organizationId: string | null
       revision: number
       multipleAgents: boolean
       agents: OrganizationAgent[]
@@ -58,6 +60,7 @@ export type OrganizationAgents =
   | { served: false }
 
 interface OrganizationRecord {
+  organization_id?: string
   revision: number
   settings?: { multiple_agents?: boolean }
   agents?: OrganizationAgent[]
@@ -67,6 +70,7 @@ function agentsOf(record: OrganizationRecord): OrganizationAgents {
   if (!Array.isArray(record.agents)) return { served: false }
   return {
     served: true,
+    organizationId: record.organization_id ?? null,
     revision: record.revision,
     multipleAgents: Boolean(record.settings?.multiple_agents),
     agents: record.agents,
@@ -74,12 +78,15 @@ function agentsOf(record: OrganizationRecord): OrganizationAgents {
 }
 
 export async function readOrganizationAgents(): Promise<OrganizationAgents> {
+  let agents: OrganizationAgents
   try {
-    return agentsOf(await theoremJson<OrganizationRecord>(ORGANIZATION))
+    agents = agentsOf(await theoremJson<OrganizationRecord>(ORGANIZATION))
   } catch (error) {
-    if (isNotServed(error)) return { served: false }
-    throw error
+    if (!isNotServed(error)) throw error
+    agents = { served: false }
   }
+  reconcileChosenAgent(agents)
+  return agents
 }
 
 export const organizationAgentsKey = ['theorem', 'organization-agents'] as const
@@ -122,19 +129,84 @@ export function resolutionLine(resolution: BindingResolution): string {
 
 // ── which agent the composer talks to ───────────────────────────────────────
 
-export const useChosenAgent = create<{
+interface ChosenAgentState {
   /** A further agent's id; null talks to the primary. */
   agentId: string | null
+  /** The organization the choice was made in. A choice made in another is dropped. */
+  organizationId: string | null
+  /**
+   * Whether a successful read of the agents this session holds the chosen one. Not persisted:
+   * until a read confirms it, turns go to the primary and the primary is what shows.
+   */
+  confirmed: boolean
+  /** The organization the latest successful read was of. Not persisted. */
+  current: string | null
   choose: (agentId: string | null) => void
-}>()(
-  persist((set) => ({ agentId: null, choose: (agentId) => set({ agentId }) }), {
-    name: 'theorem.chosen-agent',
-  }),
+}
+
+export const useChosenAgent = create<ChosenAgentState>()(
+  persist(
+    (set, get) => ({
+      agentId: null,
+      organizationId: null,
+      confirmed: false,
+      current: null,
+      // Chosen from a list just read, so the choice is of the organization that list was.
+      choose: (agentId) =>
+        set({
+          agentId,
+          organizationId: agentId ? get().current : null,
+          confirmed: agentId !== null,
+        }),
+    }),
+    {
+      name: 'theorem.chosen-agent',
+      partialize: ({ agentId, organizationId }) => ({
+        agentId,
+        organizationId,
+      }),
+    },
+  ),
 )
+
+/** The further agent turns go to and readers show: only one a read has confirmed. */
+export function chosenAgentId(state: ChosenAgentState): string | null {
+  return state.confirmed ? state.agentId : null
+}
+
+/**
+ * Hold the persisted choice against a successful read of the agents: a choice made in another
+ * organization, or of an agent this one no longer has, falls back to the primary.
+ */
+export function reconcileChosenAgent(agents: OrganizationAgents) {
+  const organizationId = agents.served ? agents.organizationId : null
+  const { agentId, organizationId: chosenIn } = useChosenAgent.getState()
+  const held =
+    agents.served &&
+    agentId !== null &&
+    chosenIn === organizationId &&
+    agents.agents.some((agent) => agent.agent_id === agentId && !agent.primary)
+  useChosenAgent.setState(
+    held
+      ? { confirmed: true, current: organizationId }
+      : {
+          agentId: null,
+          organizationId: null,
+          confirmed: false,
+          current: organizationId,
+        },
+  )
+}
+
+/** After a removal: forget the choice only if it still names the removed agent. */
+export function forgetRemovedAgent(agentId: string) {
+  const state = useChosenAgent.getState()
+  if (state.agentId === agentId) state.choose(null)
+}
 
 /** What a send declares of the chosen agent: nothing for the primary. */
 export function agentTurnOptions(): { agent?: string } {
-  const { agentId } = useChosenAgent.getState()
+  const agentId = chosenAgentId(useChosenAgent.getState())
   return agentId ? { agent: agentId } : {}
 }
 
@@ -158,7 +230,9 @@ function useOrganizationWrite<TVariables extends Write>(
   return useMutation({
     mutationFn: run,
     onSuccess: (record) => {
-      client.setQueryData(organizationAgentsKey, agentsOf(record))
+      const agents = agentsOf(record)
+      reconcileChosenAgent(agents)
+      client.setQueryData(organizationAgentsKey, agents)
       void client.invalidateQueries({ queryKey: agentIdentityKey })
     },
     // A refused write (above all a 409) means the cached record is behind.
@@ -216,14 +290,14 @@ export function useSaveAgentKnowledge() {
 }
 
 export function useRemoveAgent() {
-  const chosen = useChosenAgent()
   return useOrganizationWrite(
     async ({ agentId, expectedRevision }: Write & { agentId: string }) => {
       const record = await write<OrganizationRecord>(
         `${AGENTS}/${encodeURIComponent(agentId)}?expected_revision=${expectedRevision}`,
         'DELETE',
       )
-      if (chosen.agentId === agentId) chosen.choose(null)
+      // Read the choice as it stands now: another may have been made while this ran.
+      forgetRemovedAgent(agentId)
       return record
     },
   )

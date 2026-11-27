@@ -3,14 +3,21 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import {
   agentName,
   agentTurnOptions,
+  chosenAgentId,
+  forgetRemovedAgent,
   lineageLine,
   packageFileName,
   parsePackage,
   percent,
+  reconcileChosenAgent,
   resolutionLine,
   useChosenAgent,
 } from './organization-agents'
-import type { AgentPackage, OrganizationAgent } from './organization-agents'
+import type {
+  AgentPackage,
+  OrganizationAgent,
+  OrganizationAgents,
+} from './organization-agents'
 
 const agent = (patch: Partial<OrganizationAgent> = {}): OrganizationAgent => ({
   agent_id: 'agent:ada',
@@ -71,14 +78,98 @@ describe('resolutionLine', () => {
   })
 })
 
+const read = (
+  organizationId: string | null,
+  agents: OrganizationAgent[],
+): OrganizationAgents => ({
+  served: true,
+  organizationId,
+  revision: 1,
+  multipleAgents: true,
+  agents,
+})
+
+const theo = agent({ agent_id: 'agent:theo', primary: true, profile: null })
+const ada = agent()
+const bo = agent({ agent_id: 'agent:bo' })
+
+/** As a fresh session finds it: a choice persisted earlier, nothing read yet. */
+const persisted = (agentId: string | null, organizationId: string | null) =>
+  useChosenAgent.setState({
+    agentId,
+    organizationId,
+    confirmed: false,
+    current: null,
+  })
+
 describe('agentTurnOptions', () => {
-  beforeEach(() => useChosenAgent.getState().choose(null))
+  beforeEach(() => persisted(null, null))
   test('declares nothing while the primary is chosen', () => {
+    reconcileChosenAgent(read('org:a', [theo, ada]))
     expect(agentTurnOptions()).toEqual({})
   })
   test('declares the chosen further agent', () => {
+    reconcileChosenAgent(read('org:a', [theo, ada]))
     useChosenAgent.getState().choose('agent:ada')
+    expect(useChosenAgent.getState().organizationId).toBe('org:a')
     expect(agentTurnOptions()).toEqual({ agent: 'agent:ada' })
+  })
+  test('declares nothing for a persisted choice no read has confirmed', () => {
+    persisted('agent:ada', 'org:a')
+    expect(agentTurnOptions()).toEqual({})
+    expect(chosenAgentId(useChosenAgent.getState())).toBeNull()
+  })
+})
+
+describe('reconcileChosenAgent', () => {
+  beforeEach(() => persisted(null, null))
+  test('confirms a persisted choice this organization still has', () => {
+    persisted('agent:ada', 'org:a')
+    reconcileChosenAgent(read('org:a', [theo, ada]))
+    expect(agentTurnOptions()).toEqual({ agent: 'agent:ada' })
+  })
+  test('drops a choice made in another organization', () => {
+    persisted('agent:ada', 'org:a')
+    reconcileChosenAgent(read('org:b', [theo, ada]))
+    expect(useChosenAgent.getState().agentId).toBeNull()
+    expect(agentTurnOptions()).toEqual({})
+  })
+  test('falls back to the primary when the agent is gone', () => {
+    persisted('agent:ada', 'org:a')
+    reconcileChosenAgent(read('org:a', [theo, bo]))
+    expect(useChosenAgent.getState().agentId).toBeNull()
+    expect(agentTurnOptions()).toEqual({})
+  })
+  test('falls back to the primary where agents are not served', () => {
+    persisted('agent:ada', 'org:a')
+    reconcileChosenAgent({ served: false })
+    expect(useChosenAgent.getState().agentId).toBeNull()
+    expect(agentTurnOptions()).toEqual({})
+  })
+  test('a later read without the agent withdraws a confirmed choice', () => {
+    reconcileChosenAgent(read('org:a', [theo, ada]))
+    useChosenAgent.getState().choose('agent:ada')
+    reconcileChosenAgent(read('org:a', [theo]))
+    expect(agentTurnOptions()).toEqual({})
+  })
+})
+
+describe('forgetRemovedAgent', () => {
+  beforeEach(() => {
+    persisted(null, null)
+    reconcileChosenAgent(read('org:a', [theo, ada, bo]))
+  })
+  test('falls back to the primary when the removed agent is still chosen', () => {
+    useChosenAgent.getState().choose('agent:ada')
+    forgetRemovedAgent('agent:ada')
+    expect(useChosenAgent.getState().agentId).toBeNull()
+  })
+  test('keeps a choice made while the removal ran', () => {
+    useChosenAgent.getState().choose('agent:ada')
+    // The removal of Ada starts; meanwhile Bo is chosen; then the removal answers.
+    useChosenAgent.getState().choose('agent:bo')
+    forgetRemovedAgent('agent:ada')
+    expect(agentTurnOptions()).toEqual({ agent: 'agent:bo' })
   })
 })
 
