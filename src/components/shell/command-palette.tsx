@@ -101,6 +101,18 @@ function useShellCommands() {
           run: () => navigate({ to: '/' }),
         },
         {
+          id: 'theorem.recovery.open',
+          label: 'Open recovery',
+          group: 'Go to',
+          description:
+            'Safe mode, restore the shipped shell, reset layout or handlers, and the failure record.',
+          keywords: ['safe mode', 'reset', 'repair', 'broken', 'restore'],
+          effect: 'navigate',
+          target: 'host',
+          keys: ['mod+alt+shift+r'],
+          run: () => navigate({ to: '/recovery' }),
+        },
+        {
           id: 'theorem.settings.open',
           label: 'Open settings',
           group: 'Go to',

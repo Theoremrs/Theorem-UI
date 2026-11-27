@@ -14,6 +14,7 @@ import { Route as AppHostRouteImport } from './routes/app-host'
 import { Route as GraphqlRouteImport } from './routes/graphql'
 import { Route as InstallRouteImport } from './routes/install'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as RecoveryRouteImport } from './routes/recovery'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StoriesDotjsonRouteImport } from './routes/stories[.]json'
 import { Route as ChatChar91indexChar93RouteImport } from './routes/_chat/[index]'
@@ -36,6 +37,7 @@ import { Route as SettingsAiRouteImport } from './routes/settings/ai'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
 import { Route as SettingsCompanionsRouteImport } from './routes/settings/companions'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings/connections'
+import { Route as SettingsDefaultsRouteImport } from './routes/settings/defaults'
 import { Route as SettingsImportRouteImport } from './routes/settings/import'
 import { Route as SettingsKeysRouteImport } from './routes/settings/keys'
 import { Route as SettingsPluginsRouteImport } from './routes/settings/plugins'
@@ -117,6 +119,11 @@ const InstallRoute = InstallRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecoveryRoute = RecoveryRouteImport.update({
+  id: '/recovery',
+  path: '/recovery',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -228,6 +235,11 @@ const SettingsCompanionsRoute = SettingsCompanionsRouteImport.update({
 const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsDefaultsRoute = SettingsDefaultsRouteImport.update({
+  id: '/defaults',
+  path: '/defaults',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsImportRoute = SettingsImportRouteImport.update({
@@ -549,6 +561,7 @@ export interface FileRoutesByFullPath {
   '/graphql': typeof GraphqlRoute
   '/install': typeof InstallRoute
   '/login': typeof LoginRoute
+  '/recovery': typeof RecoveryRoute
   '/settings': typeof SettingsRouteWithChildren
   '/stories.json': typeof StoriesDotjsonRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
@@ -569,6 +582,7 @@ export interface FileRoutesByFullPath {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
+  '/settings/defaults': typeof SettingsDefaultsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
@@ -634,6 +648,7 @@ export interface FileRoutesByTo {
   '/graphql': typeof GraphqlRoute
   '/install': typeof InstallRoute
   '/login': typeof LoginRoute
+  '/recovery': typeof RecoveryRoute
   '/stories.json': typeof StoriesDotjsonRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/canvas': typeof ChatCanvasRoute
@@ -653,6 +668,7 @@ export interface FileRoutesByTo {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
+  '/settings/defaults': typeof SettingsDefaultsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
@@ -721,6 +737,7 @@ export interface FileRoutesById {
   '/graphql': typeof GraphqlRoute
   '/install': typeof InstallRoute
   '/login': typeof LoginRoute
+  '/recovery': typeof RecoveryRoute
   '/settings': typeof SettingsRouteWithChildren
   '/stories.json': typeof StoriesDotjsonRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
@@ -741,6 +758,7 @@ export interface FileRoutesById {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
+  '/settings/defaults': typeof SettingsDefaultsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
@@ -810,6 +828,7 @@ export interface FileRouteTypes {
     | '/graphql'
     | '/install'
     | '/login'
+    | '/recovery'
     | '/settings'
     | '/stories.json'
     | '/.well-known/apple-app-site-association'
@@ -830,6 +849,7 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/companions'
     | '/settings/connections'
+    | '/settings/defaults'
     | '/settings/import'
     | '/settings/keys'
     | '/settings/plugins'
@@ -895,6 +915,7 @@ export interface FileRouteTypes {
     | '/graphql'
     | '/install'
     | '/login'
+    | '/recovery'
     | '/stories.json'
     | '/.well-known/apple-app-site-association'
     | '/canvas'
@@ -914,6 +935,7 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/companions'
     | '/settings/connections'
+    | '/settings/defaults'
     | '/settings/import'
     | '/settings/keys'
     | '/settings/plugins'
@@ -981,6 +1003,7 @@ export interface FileRouteTypes {
     | '/graphql'
     | '/install'
     | '/login'
+    | '/recovery'
     | '/settings'
     | '/stories.json'
     | '/.well-known/apple-app-site-association'
@@ -1001,6 +1024,7 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/companions'
     | '/settings/connections'
+    | '/settings/defaults'
     | '/settings/import'
     | '/settings/keys'
     | '/settings/plugins'
@@ -1069,6 +1093,7 @@ export interface RootRouteChildren {
   GraphqlRoute: typeof GraphqlRoute
   InstallRoute: typeof InstallRoute
   LoginRoute: typeof LoginRoute
+  RecoveryRoute: typeof RecoveryRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   StoriesDotjsonRoute: typeof StoriesDotjsonRoute
   DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute
@@ -1159,6 +1184,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/recovery': {
+      id: '/recovery'
+      path: '/recovery'
+      fullPath: '/recovery'
+      preLoaderRoute: typeof RecoveryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -1313,6 +1345,13 @@ declare module '@tanstack/react-router' {
       path: '/connections'
       fullPath: '/settings/connections'
       preLoaderRoute: typeof SettingsConnectionsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/defaults': {
+      id: '/settings/defaults'
+      path: '/defaults'
+      fullPath: '/settings/defaults'
+      preLoaderRoute: typeof SettingsDefaultsRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/import': {
@@ -1781,6 +1820,7 @@ interface SettingsRouteChildren {
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsCompanionsRoute: typeof SettingsCompanionsRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
+  SettingsDefaultsRoute: typeof SettingsDefaultsRoute
   SettingsImportRoute: typeof SettingsImportRoute
   SettingsKeysRoute: typeof SettingsKeysRoute
   SettingsPluginsRoute: typeof SettingsPluginsRoute
@@ -1799,6 +1839,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsCompanionsRoute: SettingsCompanionsRoute,
   SettingsConnectionsRoute: SettingsConnectionsRoute,
+  SettingsDefaultsRoute: SettingsDefaultsRoute,
   SettingsImportRoute: SettingsImportRoute,
   SettingsKeysRoute: SettingsKeysRoute,
   SettingsPluginsRoute: SettingsPluginsRoute,
@@ -1822,6 +1863,7 @@ const rootRouteChildren: RootRouteChildren = {
   GraphqlRoute: GraphqlRoute,
   InstallRoute: InstallRoute,
   LoginRoute: LoginRoute,
+  RecoveryRoute: RecoveryRoute,
   SettingsRoute: SettingsRouteWithChildren,
   StoriesDotjsonRoute: StoriesDotjsonRoute,
   DotwellKnownAppleAppSiteAssociationRoute:

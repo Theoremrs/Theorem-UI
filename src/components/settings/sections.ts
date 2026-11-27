@@ -49,6 +49,8 @@ export const SETTINGS_GROUPS = [
         Mark: Icon.Archive,
         width: 880,
       },
+      // Which handler, application and shell serves what: the person's choice (EXT-03).
+      { path: '/settings/defaults', label: 'Defaults', Mark: Icon.Layout },
     ],
   },
   {

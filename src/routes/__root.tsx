@@ -11,6 +11,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 
+import { RecoveryControl } from '@/components/shell/recovery-control'
 import { SignInReturn } from '@/components/connections/sign-in-return'
 import { MotionRoot } from '@/components/motion'
 import { getDesktopHost, isDesktopDocument } from '@/lib/desktop/host'
@@ -49,9 +50,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function NotFound() {
   return (
     <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-background text-center">
-      <p className="font-heading text-[20px] font-medium">
-        Nothing here
-      </p>
+      <p className="font-heading text-[20px] font-medium">Nothing here</p>
       <Link to="/" className="text-sm text-link underline underline-offset-2">
         Start a new chat
       </Link>
@@ -72,7 +71,9 @@ function RootDocument({ children }: { children: ReactNode }) {
   }, [])
   // The paper surfaces' grain, baked once and shared (lib/paper-texture.ts).
   useEffect(() => {
-    void import('@/lib/paper-texture').then(({ applyPaperTexture }) => applyPaperTexture())
+    void import('@/lib/paper-texture').then(({ applyPaperTexture }) =>
+      applyPaperTexture(),
+    )
   }, [])
   return (
     // next-themes sets the .dark class and appearanceScript sets data-palette before paint, so the server markup differs by design.
@@ -95,6 +96,8 @@ function RootDocument({ children }: { children: ReactNode }) {
           disableTransitionOnChange
         >
           <MotionRoot />
+          {/* Host-owned: no shell, module or handler can replace the way to recovery. */}
+          <RecoveryControl />
           {/* A sign-in the person was sent back from is finished on whatever page they return to. */}
           <SignInReturn />
           {children}

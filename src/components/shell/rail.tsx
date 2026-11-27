@@ -32,14 +32,10 @@ import { signOut, useSignInConfigured } from '@/lib/theorem/sign-in'
 import { useWorkspaces } from '@/lib/workspace/workspaces'
 import { useWorkbenchPlacement } from '@/components/workbench/use-workbench-placement'
 import { RailMark } from './rail-marks'
-import {
-  MODES,
-  modeLabel,
-  navigatorMode,
-  useOpenMode,
-  useShellMode,
-} from './modes'
+import { modeLabel, navigatorMode, useOpenMode, useShellMode } from './modes'
 import type { ShellMode } from './modes'
+import { navEntries, useNavEntries } from '@/lib/shell/host-registry'
+import type { NavEntry } from '@/lib/shell/host-registry'
 import { useTenant } from './projects'
 import { useShell } from './shell-state'
 import { ChromeMenuPopup, menuItem } from './chrome-menu'
@@ -228,19 +224,49 @@ function FilesControl({ collapsible }: { collapsible: boolean }) {
   )
 }
 
+/** A destination that opens one of the shell's modes, from a `nav-entry` contribution. */
+type ModeEntry = NavEntry & { mode: ShellMode }
+const isModeEntry = (entry: NavEntry): entry is ModeEntry =>
+  entry.mode !== undefined
+
 /**
  * The rail's destinations in the order the person dragged them into. Modes the
  * saved order does not name, such as one added since, follow in their default
- * order.
+ * (registration) order. `entries` are the navigation contributions in force.
  */
-export function orderModes(order: readonly ShellMode[]) {
+export function orderModes(
+  order: readonly ShellMode[],
+  entries: readonly NavEntry[] = navEntries(),
+): ModeEntry[] {
+  const modes = entries.filter(isModeEntry)
   const rank = (mode: ShellMode) => {
     const saved = order.indexOf(mode)
     return saved < 0
-      ? order.length + MODES.findIndex((entry) => entry.mode === mode)
+      ? order.length + modes.findIndex((entry) => entry.mode === mode)
       : saved
   }
-  return [...MODES].sort((a, b) => rank(a.mode) - rank(b.mode))
+  return [...modes].sort((a, b) => rank(a.mode) - rank(b.mode))
+}
+
+/** Destinations another source contributed that open a path rather than a mode. */
+function PathDestinations({ entries }: { entries: readonly NavEntry[] }) {
+  const linked = entries.filter((entry) => !entry.mode && entry.to)
+  if (!linked.length) return null
+  return (
+    <nav aria-label="More destinations" className="mt-1 flex flex-col gap-1">
+      {linked.map(({ id, label, Mark, to }) => (
+        <Link
+          key={id}
+          to={to}
+          aria-label={label}
+          data-appearance-radius-role="control"
+          className={`${railButton} h-12`}
+        >
+          <Mark className="size-5" />
+        </Link>
+      ))}
+    </nav>
+  )
 }
 
 /** What a screen reader hears while a destination is dragged. */
@@ -336,9 +362,10 @@ export function Rail({
   const setRailOrder = useShell((s) => s.setRailOrder)
   // The Vault works on opened folders, so it is offered where they can be.
   const folders = useWorkspaces().available
-  const ordered = orderModes(railOrder)
+  const entries = useNavEntries()
+  const ordered = orderModes(railOrder, entries)
   const modes = ordered.filter(
-    (entry) => folders || !('folders' in entry) || entry.mode === mode,
+    (entry) => !entry.folders || folders || entry.mode === mode,
   )
   const order = modes.map((entry) => entry.mode).join()
 
@@ -484,6 +511,7 @@ export function Rail({
           </nav>
         </SortableContext>
       </DndContext>
+      <PathDestinations entries={entries} />
       <div aria-hidden="true" className="my-2 h-px w-5 bg-separator" />
       <FilesControl collapsible={collapsible} />
       <div className="flex-1" />
