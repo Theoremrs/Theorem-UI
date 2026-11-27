@@ -1,6 +1,8 @@
 // SOURCING: loro-crdt through StateReplica (state collections) and the existing sandbox bridge; no library models an App document's bridge host
 // Adapt the existing sandbox bridge to one revisioned Documents SDK owner.
+import { useEffect, useState } from 'react'
 import type { AppDocument, AppSnapshot } from '../theorem/apps'
+import { describeError } from '../theorem/client'
 import { appArtifacts } from '../theorem/app-artifacts'
 import { traceRecording } from '../theorem/app-traces'
 import { contentDigest } from '../theorem/note-canonical'
@@ -44,6 +46,41 @@ export function documentAppState(app: AppDocument) {
     ready: replica.ready,
     dispose: () => replica.dispose(),
   }
+}
+
+/**
+ * An App document's state as a view holds it while mounted: the replica,
+ * once it has read the document, or why it could not. Every view of one
+ * document reads and saves the same collections through its one owner.
+ */
+export function useDocumentReplica(app: AppDocument | undefined): {
+  state?: ReturnType<typeof documentAppState>
+  error?: string
+} {
+  const [held, setHeld] = useState<{
+    app: AppDocument
+    state?: ReturnType<typeof documentAppState>
+    error?: string
+  }>()
+  useEffect(() => {
+    if (!app) return
+    let active = true
+    const replica = documentAppState(app)
+    void replica.ready.then(
+      () => {
+        if (active) setHeld({ app, state: replica })
+      },
+      (failure: unknown) => {
+        if (active) setHeld({ app, error: describeError(failure, 'document') })
+      },
+    )
+    return () => {
+      active = false
+      replica.dispose()
+    }
+  }, [app])
+  // A replica read for another document is not this one's.
+  return held && held.app === app ? held : {}
 }
 
 /**

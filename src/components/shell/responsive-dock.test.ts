@@ -17,7 +17,7 @@ const frame = () =>
   new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   )
-function setup(stacked = false) {
+function setup({ stacked = false, width = 400 } = {}) {
   document.documentElement.style.fontSize = '16px'
   const host = document.createElement('div')
   document.body.append(host)
@@ -37,7 +37,7 @@ function setup(stacked = false) {
   const inspector = api.addPanel({
     id: 'outline',
     component: 'outline',
-    initialWidth: 400,
+    initialWidth: width,
     minimumWidth: 340,
     position: { referencePanel: 'thread', direction: 'right' },
   })
@@ -46,6 +46,7 @@ function setup(stacked = false) {
         id: 'graph',
         component: 'graph',
         initialHeight: 300,
+        minimumWidth: 200,
         position: { referencePanel: 'outline', direction: 'below' },
       })
     : undefined
@@ -56,34 +57,63 @@ function setup(stacked = false) {
   )
   return { api, component, thread, inspector, graph, adapter }
 }
-test('a constrained reading track floats the inspector and restores the same panel when room returns', async () => {
+
+/** Nothing floats over the conversation, whatever the dock's width. */
+const floats = (api: ReturnType<typeof setup>['api']) =>
+  api.groups.filter((group) => group.api.location.type !== 'grid')
+
+test('a column opened too wide gives the conversation its reading width and stays docked', async () => {
+  const { api, thread, inspector } = setup({ width: 700 })
+  await waitFor(() => thread.api.width >= 560)
+  expect(floats(api)).toEqual([])
+  expect(inspector.group === thread.group).toBe(false)
+  expect(inspector.group.api.width).toBeGreaterThanOrEqual(340)
+  expect(thread.api.width + inspector.group.api.width).toBe(1200)
+})
+
+test('a dock too narrow for a column stacks its panels behind the conversation and gives the same panel its column back when room returns', async () => {
   const { api, component, thread, inspector } = setup()
   await frame()
-  component.layout(700, 800)
-  await waitFor(() => inspector.api.location.type === 'floating')
-  expect(inspector.api.location.type).toBe('floating')
-  expect(api.getPanel('thread')).toBe(thread)
-  expect(thread.api.width).toBeGreaterThanOrEqual(560)
+  const column = inspector.group.id
+  thread.api.setActive()
+  component.layout(800, 800)
+  await waitFor(() => inspector.group === thread.group)
+  expect(floats(api)).toEqual([])
+  expect(api.groups).toHaveLength(1)
+  expect(thread.group.activePanel?.id).toBe('thread')
+  expect(api.getPanel('outline') === inspector).toBe(true)
   component.layout(320, 800)
   await frame()
-  expect(inspector.group.minimumWidth).toBe(0)
-  expect(inspector.group.api.width).toBeLessThanOrEqual(320)
+  expect(api.minimumWidth).toBeLessThanOrEqual(320)
   component.layout(1400, 800)
-  await waitFor(() => inspector.api.location.type === 'grid')
-  expect(inspector.api.location.type).toBe('grid')
-  expect(api.getPanel('outline')).toBe(inspector)
-  expect(inspector.group.minimumWidth).toBe(340)
+  await waitFor(() => inspector.group !== thread.group)
+  expect(floats(api)).toEqual([])
+  expect(inspector.group.id).toBe(column)
+  expect(api.getPanel('outline') === inspector).toBe(true)
+  expect(Math.abs(inspector.group.api.width - 400)).toBeLessThanOrEqual(1)
+  expect(thread.api.width).toBeGreaterThanOrEqual(560)
+  expect(thread.group.panels.map((panel) => panel.id)).toEqual(['thread'])
 })
-test('a closed responsive inspector is not resurrected by widening the window', async () => {
-  const { api, component, inspector } = setup()
-  component.layout(700, 800)
-  await waitFor(() => inspector.api.location.type === 'floating')
-  expect(inspector.api.location.type).toBe('floating')
+
+test('the column in use stays in front when it stacks', async () => {
+  const { component, thread, inspector } = setup()
+  await frame()
+  inspector.api.setActive()
+  component.layout(800, 800)
+  await waitFor(() => inspector.group === thread.group)
+  expect(thread.group.activePanel?.id).toBe('outline')
+})
+
+test('a panel closed while it is stacked is not resurrected by widening the window', async () => {
+  const { api, component, thread, inspector } = setup()
+  component.layout(800, 800)
+  await waitFor(() => inspector.group === thread.group)
   api.removePanel(inspector)
   component.layout(1400, 800)
   await frame()
   expect(api.getPanel('outline')).toBeUndefined()
   expect(api.panels).toHaveLength(1)
+  expect(api.groups).toHaveLength(1)
 })
 
 function shape(
@@ -93,7 +123,7 @@ function shape(
 }
 
 test('stacked inspectors recover their preferred split, size and mounted panels', async () => {
-  const { api, component, inspector, graph } = setup(true)
+  const { api, component, thread, inspector, graph } = setup({ stacked: true })
   await frame()
   const upper = inspector.group
   const lower = graph!.group
@@ -103,55 +133,75 @@ test('stacked inspectors recover their preferred split, size and mounted panels'
     bottom: lower.api.height,
   }
   const expected = shape(api.toJSON().grid.root)
-  component.layout(700, 800)
+  component.layout(320, 800)
   await waitFor(() =>
-    [inspector, graph!].every(
-      (panel) => panel.api.location.type === 'floating',
-    ),
+    [inspector, graph!].every((panel) => panel.group === thread.group),
   )
+  expect(floats(api)).toEqual([])
   component.layout(1200, 800)
   await waitFor(() =>
-    [inspector, graph!].every((panel) => panel.api.location.type === 'grid'),
+    [inspector, graph!].every((panel) => panel.group !== thread.group),
   )
   expect(shape(api.toJSON().grid.root)).toEqual(expected)
-  expect(api.getPanel('outline')).toBe(inspector)
-  expect(api.getPanel('graph')).toBe(graph)
-  expect(inspector.group).toBe(upper)
-  expect(graph!.group).toBe(lower)
-  expect(Math.abs(upper.api.width - before.width)).toBeLessThanOrEqual(1)
-  expect(Math.abs(lower.api.width - before.width)).toBeLessThanOrEqual(1)
-  expect(Math.abs(upper.api.height - before.top)).toBeLessThanOrEqual(1)
-  expect(Math.abs(lower.api.height - before.bottom)).toBeLessThanOrEqual(1)
+  expect(api.getPanel('outline') === inspector).toBe(true)
+  expect(api.getPanel('graph') === graph).toBe(true)
+  expect(inspector.group.id).toBe(upper.id)
+  expect(graph!.group.id).toBe(lower.id)
+  expect(
+    Math.abs(inspector.group.api.width - before.width),
+  ).toBeLessThanOrEqual(1)
+  expect(Math.abs(graph!.group.api.width - before.width)).toBeLessThanOrEqual(1)
+  expect(Math.abs(inspector.group.api.height - before.top)).toBeLessThanOrEqual(
+    1,
+  )
+  expect(Math.abs(graph!.group.api.height - before.bottom)).toBeLessThanOrEqual(
+    1,
+  )
 })
 
-test('preferred saves while overlaid preserve closures and additions without saving temporary windows', async () => {
-  const { api, component, inspector, graph, adapter } = setup(true)
+test('only the columns the conversation needs room from stack', async () => {
+  const { component, thread, inspector, graph } = setup({ stacked: true })
+  await frame()
+  // The conversation's 560 and the outline's 340 leave the graph its 200.
+  component.layout(800, 800)
+  await waitFor(() => inspector.group === thread.group)
+  await frame()
+  expect(graph!.group === thread.group).toBe(false)
+  expect(thread.api.width).toBeGreaterThanOrEqual(560)
+})
+
+test('saves while stacked keep each column in place, with closures and additions, and never the temporary tabs', async () => {
+  const { api, component, thread, inspector, graph, adapter } = setup({
+    stacked: true,
+  })
   await frame()
   const wide = adapter.layoutForSave()!
-  component.layout(700, 800)
+  component.layout(320, 800)
   await waitFor(() =>
-    [inspector, graph!].every(
-      (panel) => panel.api.location.type === 'floating',
-    ),
+    [inspector, graph!].every((panel) => panel.group === thread.group),
   )
   expect(shape(adapter.layoutForSave()!.grid.root)).toEqual(
     shape(wide.grid.root),
   )
-  expect(adapter.layoutForSave()!.floatingGroups).toBeUndefined()
+  // A column opened while the dock is narrow stacks too, and saves as a column.
   const extra = api.addPanel({
     id: 'links',
     component: 'links',
-    position: { referenceGroup: graph!.group },
+    minimumWidth: 340,
+    position: { referencePanel: 'thread', direction: 'right' },
   })
+  await waitFor(() => extra.group === thread.group)
   api.removePanel(inspector)
-  expect(graph!.api.location.type).toBe('floating')
+  await frame()
   const saved = adapter.layoutForSave()!
   expect(Object.keys(saved.panels).sort()).toEqual(['graph', 'links', 'thread'])
-  expect(JSON.stringify(shape(saved.grid.root))).not.toContain('outline')
-  expect(JSON.stringify(shape(saved.grid.root))).toContain('links')
+  const grid = JSON.stringify(shape(saved.grid.root))
+  expect(grid).not.toContain('outline')
+  expect(grid).toContain('links')
+  expect(shape(saved.grid.root)).toContainEqual(['thread'])
   expect(saved.floatingGroups).toBeUndefined()
   expect(saved.grid.width).toBe(wide.grid.width)
-  expect(api.getPanel('links')).toBe(extra)
+  expect(api.getPanel('links') === extra).toBe(true)
   const reloaded = new DockviewComponent(document.createElement('div'), {
     createComponent: () => ({
       element: document.createElement('div'),
@@ -162,5 +212,7 @@ test('preferred saves while overlaid preserve closures and additions without sav
   reloaded.layout(1200, 800)
   reloaded.api.fromJSON(saved)
   expect(reloaded.api.getPanel('outline')).toBeUndefined()
-  expect(reloaded.api.getPanel('links')?.api.location.type).toBe('grid')
+  const links = reloaded.api.getPanel('links')!
+  expect(links.api.location.type).toBe('grid')
+  expect(links.group === reloaded.api.getPanel('thread')!.group).toBe(false)
 })

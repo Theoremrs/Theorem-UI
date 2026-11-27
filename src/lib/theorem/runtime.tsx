@@ -29,11 +29,12 @@ import {
 } from '@theoremharness/sdk/assistant-ui'
 import type { TheoremChatAdapterOptions } from '@theoremharness/sdk/assistant-ui'
 import type { TheoremContextReference } from '@theoremharness/sdk'
+import { QueryClientContext } from '@tanstack/react-query'
 import { createAssistantStream } from 'assistant-stream'
-import pMap from 'p-map'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef } from 'react'
 import { create } from 'zustand'
 import { refreshConversation } from './conversation-refresh'
+import type { RefreshCursor } from './conversation-refresh'
 import type { ReactNode } from 'react'
 import { toastManager } from '@/components/coss/toast'
 import { useComposerReferences } from '@/components/chat/composer-references'
@@ -41,6 +42,12 @@ import { codingTurnOptions, planningTurnOptions, useCodeMode, usePlanning, webTu
 import { skillTurnOptions } from './skill-selection'
 import { connectionTurnOptions } from './tool-selection'
 import { DRAFT_PLAN } from './plans'
+import {
+  consumePendingStyle,
+  conversationStyleSettled,
+  holdPendingStyle,
+  styleTurnOptions,
+} from './response-styles'
 import { TheoremPartRenderers } from '@/components/chat/theorem-parts'
 import { useShell } from '@/components/shell/shell-state'
 import { documentThreadIds } from '@/lib/documents/ask-store'
@@ -67,7 +74,7 @@ import { modelTurnOptions } from './models'
 import { bindRunInput } from './run-input-runtime'
 
 import { toHistoryMessages } from './message-history'
-import { isUntitledTitle, threadTitle } from './thread-title'
+import { isUntitledTitle, recoveredTitle, rememberTitle, threadTitle } from './thread-title'
 
 import { Figures } from '@/components/face/figures'
 import { useKitRequests } from '@/lib/kit/operations'
@@ -262,6 +269,11 @@ export async function* tailRun(
   abortSignal: AbortSignal,
 ): AsyncGenerator<ChatModelRunResult, void> {
   const parts = new Map<string, Theorem.StoredPart>()
+  // The saved assistant message's durable id, from the run's own PERSISTED
+  // event. Before it arrives the reply has no savable message name: the
+  // assistant-ui local id is synthetic, and the retained-passage opener
+  // must not be aimed at it.
+  let assistantMessageId: string | undefined
   for (let attempt = 0; ; attempt++) {
     let interrupted = false
     let status: RunStatus | undefined
@@ -285,7 +297,26 @@ export async function* tailRun(
             yield {
               content: contentOf(parts),
               metadata: {
-                custom: { theoremRunId: runId, theoremCursor: event.seq },
+                custom: {
+                  theoremRunId: runId,
+                  theoremCursor: event.seq,
+                  ...(assistantMessageId ? { theoremMessageId: assistantMessageId } : {}),
+                },
+              },
+            }
+          }
+        }
+        if (event.sourceEventType === 'CHAT.MESSAGE.PERSISTED') {
+          const saved = event.payload as { messageId?: unknown; role?: unknown }
+          if (saved.role === 'assistant' && typeof saved.messageId === 'string') {
+            assistantMessageId = saved.messageId
+            // A metadata step: assistant-ui merges it into the running
+            // message without touching the parts, so the reply gains its
+            // durable name without reflow.
+            yield {
+              content: contentOf(parts),
+              metadata: {
+                custom: { theoremRunId: runId, theoremMessageId: assistantMessageId },
               },
             }
           }
@@ -647,6 +678,7 @@ export function draftedPlan(step: ChatModelRunResult): boolean {
 }
 function useTheoremThreadRuntime() {
   const aui = useAui()
+  const queryClient = useContext(QueryClientContext)
   const adapter = useMemo<ChatModelAdapter>(
     () => ({
       async *run(options) {
@@ -663,13 +695,15 @@ function useTheoremThreadRuntime() {
           if (isNew) useGenerationOverrides.getState().adopt(remoteId)
           // The override belongs on the thread; what is not there yet goes with the turn below.
           await saveThreadGeneration(remoteId)
+          await conversationStyleSettled(remoteId)
+          const style = styleTurnOptions(remoteId)
           // The composer's model pick; read at each send, so switching mid-thread takes effect.
           const custom = options.runConfig.custom ?? {}
           const configured = custom.theoremTurnOptions as Record<string,unknown> | undefined
           // The composer's context, Web, Plan and Code mode toggles, client surface and connection choice, read at each send like the model pick.
           // The skills picked in the draft ride as structured ids, so the harness loads them.
           const draftText = options.messages.at(-1)?.content.map((part) => part.type === 'text' ? part.text : '').join('\n') ?? ''
-          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(localId,remoteId),...codingTurnOptions(localId,remoteId),...clientSurfaceTurnOptions(),...connectionTurnOptions(localId,remoteId),...skillTurnOptions(draftText),...generationTurnOptions(remoteId)}
+          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(localId,remoteId),...codingTurnOptions(localId,remoteId),...clientSurfaceTurnOptions(),...connectionTurnOptions(localId,remoteId),...skillTurnOptions(draftText),...generationTurnOptions(remoteId),...style}
           const composed = Object.keys(added).length ? {
             ...options,
             runConfig:{...options.runConfig,custom:{...custom,theoremTurnOptions:{...configured,...added}}},
@@ -677,6 +711,7 @@ function useTheoremThreadRuntime() {
           const turn = runTurn(remoteId,composed,modelTurnOptions,()=>{
             // Recovery replays its saved request; only a newly accepted send consumes these references.
             if (!given) useComposerReferences.setState(state=>({references:state.references.filter(reference=>!references.includes(reference))}))
+            consumePendingStyle(remoteId, style.responseStyle, queryClient)
           })
           for await (const step of timed(turn)) {
             // Plan stays on until a plan is written; the turn that writes one turns it off for this conversation.
@@ -691,7 +726,7 @@ function useTheoremThreadRuntime() {
         }
       },
     }),
-    [aui],
+    [aui, queryClient],
   )
   // Replies are read aloud by the page's own voice, when the person asks.
   const speech = useMemo(() => speechAdapter(), [])
@@ -735,71 +770,135 @@ function useTheoremThreadRuntime() {
   usePresentRequests(runtime)
   // A coding session the agent started that stops working wakes the agent; this tells it.
   useSessionNoticeDelivery(runtime)
-  useEffect(() => {
-    let busy = false
-    const abort = new AbortController()
-    const refresh = async () => {
-      const remoteId = aui.threadListItem.getState().remoteId
-      if (busy || !remoteId || document.visibilityState !== 'visible') return
-      busy = true
-      try { await refreshConversation(runtime.thread,()=>theorem().chat.threads.get({threadId:remoteId},{abortSignal:abort.signal})) }
-      catch { /* A failed refresh leaves the last confirmed transcript intact. */ }
-      finally { busy = false }
-    }
-    const timer = setInterval(()=>void refresh(),3000)
-    return () => {clearInterval(timer);abort.abort()}
-  },[aui,runtime])
   return runtime
 }
 
+/** Every project's threads, read at once: the sidebar's tree draws them all. */
+async function projectIds(active: string): Promise<string[]> {
+  const ids = new Set<string>([active])
+  let cursor: string | undefined
+  for (let read = 0; read < 20; read++) {
+    const page = await theorem().chat.projects.list({ limit: 100, cursor })
+    for (const project of page.items) ids.add(project.projectId)
+    cursor = page.nextCursor
+    if (!cursor) break
+  }
+  return [...ids]
+}
+
 /**
- * Threads open from any project, so the runtime stays up across projects and
- * asks for the active one when it lists or creates.
+ * Threads from every project, so the runtime stays up across projects and the
+ * sidebar's tree finds each of its rows in the list; a new thread goes to the
+ * active project.
  */
 export function createThreadListAdapter(
   activeProject: () => string,
 ): RemoteThreadListAdapter {
   const client = theorem()
+  const queued = new Map<string, Theorem.Thread>()
+  const pending = new Set<string>()
+  let workers = 0
+  const recoverTitles = () => {
+    const work = async () => {
+      workers += 1
+      try {
+        for (const [id] of queued) {
+          queued.delete(id)
+          pending.add(id)
+          try {
+            const snapshot = await client.chat.threads.get(
+              { threadId: id },
+              { timeoutInSeconds: 10, maxRetries: 0 },
+            )
+            rememberTitle(snapshot.thread, threadTitle(snapshot))
+          } catch {
+            // Leave authoritative list metadata visible if history is inaccessible.
+          } finally {
+            pending.delete(id)
+          }
+        }
+      } finally {
+        workers -= 1
+      }
+    }
+    const start = Math.min(4 - workers, queued.size)
+    for (let worker = 0; worker < start; worker++) void work()
+  }
   return {
     async list(params) {
-      const page = await client.chat.threads.list({
-        projectId: activeProject(),
-        cursor: params?.after,
-        includeArchived: true,
-        limit: 50,
+      // The cursor names each project that has more, with its own cursor.
+      const after = params?.after
+        ? (JSON.parse(params.after) as Record<string, string>)
+        : undefined
+      const projects = after
+        ? Object.keys(after)
+        : await projectIds(activeProject())
+      const active = activeProject()
+      const reads = await Promise.allSettled(
+        projects.map((projectId) =>
+          client.chat.threads.list({
+            projectId,
+            cursor: after?.[projectId],
+            includeArchived: true,
+            limit: 50,
+          }),
+        ),
+      )
+      // Only the open project's failure fails the list: another project
+      // that cannot be read (removed, or no longer shared) is left out, and
+      // on a later page keeps its cursor so the next load tries it again.
+      const pages = reads.flatMap((read, index) => {
+        const projectId = projects[index]!
+        if (read.status === 'fulfilled') return [{ projectId, page: read.value }]
+        if (projectId === active) throw read.reason
+        return []
       })
+      const more = Object.fromEntries([
+        ...pages.flatMap(({ projectId, page }) =>
+          page.nextCursor ? [[projectId, page.nextCursor]] : [],
+        ),
+        ...reads.flatMap((read, index) => {
+          const cursor = after?.[projects[index]!]
+          return read.status === 'rejected' && cursor ? [[projects[index]!, cursor]] : []
+        }),
+      ])
+      const seen = new Set<string>()
+      const page = {
+        items: pages
+          .flatMap((read) => read.page.items)
+          .filter((thread) => !seen.has(thread.threadId) && !!seen.add(thread.threadId)),
+        nextCursor: Object.keys(more).length ? JSON.stringify(more) : undefined,
+      }
       // The agent terminal's threads live in its drawer, and each note's
       // conversation on the document screen, not among the chats.
       const apart = new Set([
         ...useShell.getState().terminalThreadIds,
         ...documentThreadIds(),
       ])
+      const visible = page.items.filter((thread) => !apart.has(thread.threadId))
+      const threads = visible.map((thread) => {
+        if (!isUntitledTitle(thread.title)) {
+          rememberTitle(thread, thread.title)
+          return toMetadata(thread)
+        }
+        const recovered = recoveredTitle(thread)
+        if (!recovered && (thread.lastMessageAtMs !== undefined || thread.revision > 1) && !pending.has(thread.threadId))
+          queued.set(thread.threadId, thread)
+        return toMetadata(thread, recovered ?? thread.title)
+      })
+      if (queued.size) setTimeout(recoverTitles, 0)
       return {
-        threads: await pMap(
-          page.items.filter((thread) => !apart.has(thread.threadId)),
-          async (thread) => {
-            if (!isUntitledTitle(thread.title)) return toMetadata(thread)
-            try {
-              const snapshot = await client.chat.threads.get(
-                { threadId: thread.threadId },
-                { timeoutInSeconds: 10, maxRetries: 0 },
-              )
-              return toMetadata(snapshot.thread, threadTitle(snapshot))
-            } catch {
-              // One inaccessible history must not hide the rest of the chats.
-              return toMetadata(thread)
-            }
-          },
-          { concurrency: 4 },
-        ),
+        threads,
         nextCursor: page.nextCursor,
       }
     },
-    async initialize() {
+    async initialize(localId) {
       try {
         const created = await mutate((headers) =>
           client.chat.threads.create({ projectId: activeProject(), ...headers }),
         )
+        // An attachment upload can create the thread before its first turn.
+        holdPendingStyle(localId, created.record.threadId)
         return { remoteId: created.record.threadId }
       } catch (error) {
         toastManager.add({
@@ -840,7 +939,9 @@ export function createThreadListAdapter(
     },
     async fetch(remoteId) {
       const snapshot = await client.chat.threads.get({ threadId: remoteId })
-      return toMetadata(snapshot.thread, threadTitle(snapshot))
+      const title = threadTitle(snapshot)
+      rememberTitle(snapshot.thread, title)
+      return toMetadata(snapshot.thread, title)
     },
     // This callback runs concurrently with sends; only runTurn writes titles.
     async generateTitle(remoteId, messages) {
@@ -858,11 +959,13 @@ export function TheoremRuntimeProvider({
   projectId,
   threadId,
   onThreadIdChange,
+  refreshVisible = true,
   children,
 }: {
   projectId: string
   threadId: string | undefined
   onThreadIdChange: (threadId: string | undefined) => void
+  refreshVisible?: boolean
   children: ReactNode
 }) {
   const project = useRef(projectId)
@@ -881,6 +984,58 @@ export function TheoremRuntimeProvider({
     threadId,
     onThreadIdChange,
   })
+  useEffect(() => {
+    if (!refreshVisible) return
+    let busy = false
+    let activeId: string | undefined
+    let pending: AbortController | undefined
+    let cursor: RefreshCursor = {}
+    const followSelection = () => {
+      const id = runtime.threads.mainItem.getState().remoteId ?? undefined
+      if (id === activeId) return
+      pending?.abort()
+      activeId = id
+      cursor = {}
+    }
+    const refresh = async () => {
+      followSelection()
+      const id = activeId
+      if (busy || !id || document.visibilityState !== 'visible') return
+      const request = new AbortController()
+      pending = request
+      const active = () => !request.signal.aborted && document.visibilityState === 'visible'
+      busy = true
+      try {
+        await refreshConversation(
+          runtime.thread,
+          () => theorem().chat.threads.get(
+            { threadId: id },
+            { abortSignal: request.signal, timeoutInSeconds: 10, maxRetries: 0 },
+          ),
+          cursor,
+          active,
+        )
+      } catch {
+        // A failed refresh leaves the last confirmed transcript intact.
+      } finally {
+        busy = false
+        pending = undefined
+      }
+    }
+    const visibility = () => {
+      if (document.visibilityState === 'visible') void refresh()
+      else pending?.abort()
+    }
+    const stop = runtime.threads.mainItem.subscribe(followSelection)
+    const timer = setInterval(() => void refresh(), 3000)
+    document.addEventListener('visibilitychange', visibility)
+    return () => {
+      stop()
+      clearInterval(timer)
+      pending?.abort()
+      document.removeEventListener('visibilitychange', visibility)
+    }
+  }, [runtime, refreshVisible])
   useKitClock()
   return (
     <AssistantRuntimeProvider runtime={runtime}>

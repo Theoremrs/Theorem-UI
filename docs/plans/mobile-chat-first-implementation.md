@@ -6,6 +6,8 @@ This implements the approved first chat pass: readable rich replies, a compact c
 
 The integration branch is `feat/mobile-rich-chat-20261121`, based on main `6c9a1806`. Main gained a newer SDK and substantial mobile work during the initial implementation. This integration keeps those newer runtime, queue, app-preview, presence, recovery, native-header, navigation, authentication, and native-build changes. The initial local implementation remains on `feat/mobile-rich-chat-20261120` as a checkpoint; it is not the branch to merge.
 
+The November 27 integration brought in #152's durable outbox, Stop error reporting, and project-bound attachment flow. The composer keeps the attachment picker before the recipient and leaves it hidden while a conversation starts. The transcript reserves room for both the composer and any expanded notices.
+
 ## User-visible behavior
 
 - Native Markdown renders paragraphs, headings, emphasis, lists, task lists, quotes, links, inline code, fenced code, tables, and supported images. Code has a Copy action. Tables and code scroll horizontally inside the reply.
@@ -24,7 +26,7 @@ The integration branch is `feat/mobile-rich-chat-20261121`, based on main `6c9a1
 
 The current SDK is the vendored `@theoremharness/sdk` 0.6.0-alpha.10 from main. HeadlessConversation, the external-store binding, journal, draft store, outbox, and selection remain their existing owners. This change adds no SDK endpoint, direct mutation transport, approval replay, or inferred progress.
 
-The active-run Queue button needed a native action because the generic Assistant UI Send primitive disables running sends without an Assistant UI queue adapter. Theorem already owns its outbox. The action uses the public `runtime.thread.composer.send({ startRun: false })`, preserving the existing onNew/outbox path and avoiding cancellation of in-flight tool execution. It honors thread/composer readiness and the surface's blocked state. Waiting outbox items retain main's existing in-memory behavior; this pass does not add queue persistence across app termination.
+The active-run Queue button needed a native action because the generic Assistant UI Send primitive disables running sends without an Assistant UI queue adapter. Theorem already owns its outbox. The action uses the public `runtime.thread.composer.send({ startRun: false })`, preserving the existing onNew/outbox path and avoiding cancellation of in-flight tool execution. It honors thread/composer readiness and the surface's blocked state. Main's SQLite outbox keeps waiting messages and their Stop pause across app termination.
 
 Source policy follows the web implementation: web_search and web_read supply retrieved research, while explicit reference parts remain distinguishable. URL deduplication cannot silently promote retrieval into an explicit reference. Public links use the contextual browser. Email links retain main's existing handoff.
 
@@ -49,6 +51,8 @@ The renderer uses react-native-marked and Assistant UI's native renderer pattern
 The only dependency added relative to this main baseline is the explicit `marked` 18.1.3 dependency, matching the already-installed transitive parser. Main already provides react-native-marked, react-native-svg, and expo-glass-effect. No native module, entitlement, capability, extension, bundle identifier, or SDK tarball changes are part of this integration.
 
 ## Verification
+
+The November 27 integration passed the app and test TypeScript checks, 250 mobile tests across 26 files, and the iOS production export of 2,593 modules (8.3 MB Hermes bundle). The earlier simulator results below apply to the original mobile branch revision.
 
 - App and test TypeScript configurations passed.
 - Full mobile suite passed: 231 tests, 0 failures, 1,342 assertions across 25 files.

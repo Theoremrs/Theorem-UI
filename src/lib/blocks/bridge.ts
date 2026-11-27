@@ -9,6 +9,8 @@ import type { WorkspaceClient } from '@/lib/workspace/types'
 import type { Capabilities } from './declarations'
 import {
   DB_READS,
+  MAX_CELL_ERROR,
+  MAX_CELL_SHOWS,
   MAX_OUTLINE,
   MAX_SNAPSHOT,
   call,
@@ -17,6 +19,12 @@ import {
 import type {
   ArtifactObservation,
   ArtifactResolution,
+  CapabilityFailure,
+  CapabilityInvokeParams,
+  CapabilityMethod,
+  CapabilityOutcome,
+  CapabilityQueryParams,
+  CellStatus,
   DbFailure,
   DbMethod,
   DbOutcome,
@@ -28,6 +36,7 @@ import type {
   ListedFile,
   ModelTrace,
   PageMethods,
+  ReopenedRun,
   Rpc,
   RunRequestResult,
   SandboxMethods,
@@ -69,6 +78,41 @@ export function dbFailure(error: unknown): DbFailure {
   }
 }
 
+/** A capability instance a frame may reach, and what it may do there. */
+export interface CapabilityScope {
+  instanceId: string
+  methods: ReadonlyArray<CapabilityMethod>
+  /** The action keys `invoke` may name. */
+  actions: ReadonlyArray<string>
+}
+
+/**
+ * Capability calls the host makes for a frame with its own session: the frame
+ * names an instance and an action, never a credential.
+ */
+export interface AppCapabilities {
+  /** What the module declared and the person allowed; anything else is denied. */
+  scope: ReadonlyArray<CapabilityScope>
+  describe: (instanceId: string) => Promise<unknown>
+  query: (request: CapabilityQueryParams) => Promise<unknown>
+  invoke: (request: CapabilityInvokeParams) => Promise<unknown>
+}
+
+/** A capability's refusal as the frame is told of it: a problem's code and detail. */
+export function capabilityFailure(error: unknown): CapabilityFailure {
+  const body = (error as { body?: unknown } | null)?.body
+  const problem = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {}
+  return {
+    code: typeof problem.code === 'string' ? problem.code : 'capability_failure',
+    message:
+      typeof problem.detail === 'string'
+        ? problem.detail
+        : error instanceof Error
+          ? error.message
+          : String(error),
+  }
+}
+
 /** What the page lends one block. */
 export interface BridgeHost {
   client: Pick<WorkspaceClient, 'read' | 'tree' | 'write'>
@@ -87,6 +131,8 @@ export interface BridgeHost {
   onSelection?: (selection: AppSelection) => void
   /** The frame's code threw and nothing caught it. */
   onError?: (error: FrameError) => void
+  /** A notebook cell first showed its value or its failure. */
+  onStatus?: (status: CellStatus) => void
   /** A static copy of the frame, unsanitized: snapshots.ts cleans it before showing it. */
   onSnapshot?: (html: string, outline?: string) => void
   /** The page's conversation, where questions asked from inside the App go. */
@@ -95,6 +141,8 @@ export interface BridgeHost {
   recording?: (trace: ModelTrace) => Promise<Uint8Array>
   /** Keeps the App's runs and results durably. Absent where no Theorem backend is reached. */
   artifacts?: AppArtifacts
+  /** Capability instances a sandboxed module was allowed. Absent: every capability call is denied. */
+  capability?: AppCapabilities
 }
 
 /**
@@ -113,6 +161,8 @@ export interface AppArtifacts {
   source: () => unknown
   /** A kept result and its bytes, checked against their digests. */
   open: (id: string) => Promise<{ result: unknown; bytes: Uint8Array }>
+  /** A kept run with every moment it holds, checked against its chunks and digests. */
+  run: (id: string) => Promise<ReopenedRun>
 }
 
 /** The most bytes one App result carries across the bridge; the store's blob bound. */
@@ -156,6 +206,9 @@ export function checkPath(path: string): string {
 }
 
 const name = z.string().min(1).max(200)
+/** The most a view's selection state may be, as JSON, so a reference to it stays small. */
+const MAX_SELECTION_STATE = 4096
+
 const params = {
   read: z.object({
     path: z.string(),
@@ -186,6 +239,12 @@ const params = {
     column: z.number().int().nonnegative().optional(),
     stack: z.string().max(8000).optional(),
   }),
+  status: z.object({
+    cell: z.string().max(200),
+    stage: z.enum(['ready', 'failed']),
+    error: z.string().max(MAX_CELL_ERROR).optional(),
+    shows: z.string().max(MAX_CELL_SHOWS).optional(),
+  }),
   resize: z.object({
     height: z.number().finite().nonnegative(),
     fills: z.boolean().optional(),
@@ -198,6 +257,13 @@ const params = {
     entityLabel: z.string().max(200).optional(),
     cellId: z.string().max(200).optional(),
     source: z.string().max(300).optional(),
+    ids: z.array(z.string().max(200)).max(200).optional(),
+    state: z
+      .record(z.string(), z.json())
+      .refine((state) => JSON.stringify(state).length <= MAX_SELECTION_STATE, {
+        message: `A view's state is at most ${MAX_SELECTION_STATE} characters`,
+      })
+      .optional(),
   }),
   ask: z.object({
     text: z.string().trim().min(1).max(MAX_DOSSIER_QUESTION),
@@ -227,6 +293,7 @@ const params = {
   }),
   resolve: z.strictObject({ subject: z.record(z.string(), z.json()) }),
   openResult: z.strictObject({ id: z.string().regex(/^sha256:[0-9a-f]{64}$/) }),
+  openRun: z.strictObject({ id: z.string().min(1).max(256) }),
   trace: z.strictObject({
     recordingId: z.string().trim().min(1).max(200),
     frames: z.array(
@@ -252,6 +319,22 @@ const params = {
           .optional(),
       })
       .optional(),
+  }),
+  capabilityDescribe: z.strictObject({ instanceId: name }),
+  capabilityQuery: z.strictObject({
+    instanceId: name,
+    viewKey: name.optional(),
+    query: z.record(z.string(), z.json()).optional(),
+    cursor: z.string().min(1).max(4096).optional(),
+    limit: z.number().int().positive().optional(),
+  }),
+  capabilityInvoke: z.strictObject({
+    instanceId: name,
+    actionKey: name,
+    inputs: z.record(z.string(), z.json()),
+    recordId: name.optional(),
+    expectedRevision: z.number().int().nonnegative().optional(),
+    invocationKey: name.optional(),
   }),
   snapshot: z.object({
     html: z.string().max(MAX_SNAPSHOT),
@@ -281,6 +364,45 @@ export function decodeFile(bytes: Uint8Array, as: FileFormat): unknown {
   if (as === 'json') return JSON.parse(text) as unknown
   // A plain array: d3-dsv's `columns` property does not survive cloning.
   return [...csvParse(text, autoType)]
+}
+
+/**
+ * The capabilities the host lends, for one call. A module reaches a capability
+ * only through the host, and only where its manifest declared the instance
+ * (and the action) and the person allowed it; any other call is refused.
+ */
+function lentCapability(
+  host: BridgeHost,
+  instanceId: string,
+  method: CapabilityMethod,
+  actionKey?: string,
+) {
+  const lent = host.capability
+  const scope = lent?.scope.find((one) => one.instanceId === instanceId)
+  if (!lent || !scope)
+    throw new BridgeDenied(
+      `capability("${instanceId}") is not among the capability instances this module was allowed`,
+    )
+  if (!scope.methods.includes(method))
+    throw new BridgeDenied(
+      `capability.${method} on "${instanceId}" was not allowed`,
+    )
+  if (actionKey !== undefined && !scope.actions.includes(actionKey))
+    throw new BridgeDenied(
+      `the action "${actionKey}" of "${instanceId}" is not among the actions this module was allowed`,
+    )
+  return lent
+}
+
+/** A capability call as the frame is answered: its value, or the refusal it met. */
+async function capabilityOutcome(
+  reach: () => Promise<unknown>,
+): Promise<CapabilityOutcome> {
+  try {
+    return { ok: true, value: await reach() }
+  } catch (error) {
+    return { ok: false, error: capabilityFailure(error) }
+  }
 }
 
 /**
@@ -435,6 +557,11 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
     return null
   })
 
+  serve<PageMethods, 'frame.status'>(rpc, 'frame.status', (raw) => {
+    host.onStatus?.(params.status.parse(raw))
+    return null
+  })
+
   serve<PageMethods, 'frame.resize'>(rpc, 'frame.resize', (raw) => {
     const { height, fills } = params.resize.parse(raw)
     host.onResize?.(Math.min(height, MAX_HEIGHT), fills)
@@ -495,6 +622,30 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
   serve<PageMethods, 'artifacts.open'>(rpc, 'artifacts.open', async (raw) =>
     artifacts().open(params.openResult.parse(raw).id),
   )
+  serve<PageMethods, 'artifacts.run'>(rpc, 'artifacts.run', async (raw) =>
+    artifacts().run(params.openRun.parse(raw).id),
+  )
+
+  serve<PageMethods, 'capability.describe'>(rpc, 'capability.describe', (raw) => {
+    const { instanceId } = params.capabilityDescribe.parse(raw)
+    const lent = lentCapability(host, instanceId, 'describe')
+    return capabilityOutcome(() => lent.describe(instanceId))
+  })
+  serve<PageMethods, 'capability.query'>(rpc, 'capability.query', (raw) => {
+    const request = params.capabilityQuery.parse(raw)
+    const lent = lentCapability(host, request.instanceId, 'query')
+    return capabilityOutcome(() => lent.query(request))
+  })
+  serve<PageMethods, 'capability.invoke'>(rpc, 'capability.invoke', (raw) => {
+    const request = params.capabilityInvoke.parse(raw)
+    const lent = lentCapability(
+      host,
+      request.instanceId,
+      'invoke',
+      request.actionKey,
+    )
+    return capabilityOutcome(() => lent.invoke(request))
+  })
 
   serve<PageMethods, 'trace.recording'>(rpc, 'trace.recording', async (raw) => {
     if (!host.recording)

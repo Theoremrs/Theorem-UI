@@ -17,13 +17,17 @@ import { projectThreadView } from '@theoremharness/sdk/assistant-ui'
 import { signIn } from '@/lib/auth'
 import { config } from '@/lib/config'
 import { onDraftChanged, readDraft, setCurrentThread, writeDraft } from '@/lib/drafts'
-import { db } from '@/lib/local-db'
+import { clearAccountData, db } from '@/lib/local-db'
 import { SignInError } from '@/lib/oauth'
 import { createJournalStore } from '@/lib/journal-store'
-import { theorem } from '@/lib/theorem'
+import { describeError, principalOf, theorem } from '@/lib/theorem'
 import { phoneTurnOptions } from '../phone-actions/calendar'
+// intake/queue imports conversations() from this module; the two touch each other
+// only inside functions, so the cycle resolves at call time rather than at load.
+import { intake } from '../intake/queue'
 import { ConversationBinding, type Lease } from './binding'
 import { Outbox } from './outbox'
+import { createOutboxStore } from './outbox-store'
 import type { QueuedMessage, QueueState } from './queue'
 import type { Recovery } from './recovery'
 
@@ -49,19 +53,50 @@ export function conversations(): ConversationBinding {
 
 let outgoing: Outbox | undefined
 
+/** Bumped by resetConversations: every session was thrown away, so mounted views
+ * must drop their stale leases and retain again for the account now on the device. */
+let generation = 0
+const generationListeners = new Set<() => void>()
+
 /** The app's one outbox: messages wait here during a run and go when the conversation is free. */
 export function outbox(): Outbox {
   outgoing ??= new Outbox({
     binding: conversations(),
     newId: () => Crypto.randomUUID(),
     extras: phoneTurnOptions,
+    store: createOutboxStore(db()),
   })
   return outgoing
 }
 
 export function resetConversations() {
+  holdConversations()
+  releaseConversations()
+}
+
+/** Throws away every session and queued message, without telling mounted views.
+ * Nothing can dispatch, restore, or start a conversation until the hold is
+ * released — used mid-replacement, while deciding whose account comes next. */
+export function holdConversations() {
   outgoing?.reset()
   shared?.reset()
+}
+
+/** Ends a hold: mounted views drop their stale leases and retain again, under
+ * whatever account is on the device by then. */
+export function releaseConversations() {
+  generation += 1
+  for (const listener of generationListeners) listener()
+}
+
+/** Who the current bearer is, per Theorem's own session; undefined when it cannot be
+ * established (a token the authority has already refused). */
+async function currentPrincipal(): Promise<string | undefined> {
+  try {
+    return (await theorem().session.bootstrap()).principalId
+  } catch {
+    return undefined
+  }
 }
 
 const textOf = (message: AppendMessage) =>
@@ -76,6 +111,8 @@ export type ConversationView = {
   runId: string | undefined
   /** A send the authority refused; its text is back in the composer. */
   sendError: unknown
+  /** A Stop whose pause this device could not keep. */
+  stopError: unknown
   /** Messages sent during a run, waiting to go. Each can be taken back until it goes. */
   queued: QueuedMessage[]
   /** Stop was pressed: queued messages wait until the person sends again. */
@@ -93,7 +130,19 @@ export function useConversation(threadId: string): ConversationView {
   const [lease, setLease] = useState<Lease>()
   const [state, setState] = useState<ConversationState>({ phase: 'detached' })
   const [sendError, setSendError] = useState<unknown>()
+  const [stopError, setStopError] = useState<unknown>()
   const [recoveryError, setRecoveryError] = useState<unknown>()
+
+  // A reset (sign-out, or an in-place sign-in that changed the account) leaves this
+  // view holding a stale lease for the old session; hearing the new generation runs
+  // the retain effect again and the view attaches under the current account.
+  const gen = useSyncExternalStore(
+    useCallback((listener) => {
+      generationListeners.add(listener)
+      return () => generationListeners.delete(listener)
+    }, []),
+    () => generation,
+  )
 
   useEffect(() => {
     const next = conversations().retain(threadId)
@@ -104,10 +153,12 @@ export function useConversation(threadId: string): ConversationView {
       unsubscribe()
       next.release()
     }
-  }, [threadId])
+  }, [threadId, gen])
 
   const queue: QueueState = useSyncExternalStore(
-    useCallback((listener) => outbox().subscribe(threadId, listener), [threadId]),
+    // gen, too: a reset discards the entries that hold this view's listeners, so
+    // the view must subscribe again against the fresh ones.
+    useCallback((listener) => outbox().subscribe(threadId, listener), [threadId, gen]),
     () => outbox().snapshot(threadId),
   )
 
@@ -126,16 +177,44 @@ export function useConversation(threadId: string): ConversationView {
       const text = textOf(message)
       if (!text) return
       setSendError(undefined)
-      writeDraft(threadId, '')
-      // The queued message owns the words from here; a refusal gives them back (see below).
+      // The queued message owns the words from here. submit() saves them durably
+      // before it returns, so the draft is cleared only once they are kept; a
+      // definite refusal gives them back (see below).
       outbox().submit(threadId, text)
+      writeDraft(threadId, '')
     },
     // The only path to cancellation: the person pressed Stop.
     onCancel: async () => {
-      await outbox().stop(threadId)
+      // The run is stopped and the queue paused whatever its save says; a pause
+      // this device could not keep is reported rather than swallowed, because only
+      // then could a restart send what the person stopped.
+      setStopError(undefined)
+      try {
+        await outbox().stop(threadId)
+      } catch (error) {
+        setStopError(error)
+      }
     },
   })
   runtimeRef.current = runtime
+
+  // Restore and keep the draft for this thread. Declared before the refusal
+  // effect below so it runs first on mount: a refusal that arrived while the
+  // screen was closed prepends to the saved draft instead of overwriting it.
+  useEffect(() => {
+    const composer = runtime.thread.composer
+    const saved = readDraft(threadId)
+    if (saved && !composer.getState().text) composer.setText(saved)
+    setCurrentThread(threadId)
+    const unsubscribe = composer.subscribe(() => writeDraft(threadId, composer.getState().text))
+    const unlisten = onDraftChanged((key) => {
+      if (key === threadId) composer.setText(readDraft(threadId))
+    })
+    return () => {
+      unsubscribe()
+      unlisten()
+    }
+  }, [runtime, threadId])
 
   // A refused send is dropped from the journal; give the words back.
   useEffect(() => {
@@ -154,8 +233,11 @@ export function useConversation(threadId: string): ConversationView {
   const editQueued = useCallback(
     (id: string) => {
       const item = outbox().snapshot(threadId).items.find((entry) => entry.id === id)
-      // Only a message that was still waiting can come back; one that already went is a real message.
-      if (!item || !outbox().remove(threadId, id)) return
+      // Only a message that was still waiting can come back; one that already went
+      // is a real message. An uncertain send keeps its command id: editing it into
+      // the composer would let it go again under a fresh id, which could duplicate
+      // a message the authority already admitted.
+      if (!item || item.uncertain || !outbox().remove(threadId, id)) return
       const composer = runtimeRef.current?.thread.composer
       const current = composer?.getState().text ?? ''
       composer?.setText(current ? `${item.text}\n\n${current}` : item.text)
@@ -167,8 +249,52 @@ export function useConversation(threadId: string): ConversationView {
     async (recovery: Recovery) => {
       setRecoveryError(undefined)
       try {
-        // Signing in again replaces the tokens only: drafts and journals stay.
-        if (recovery === 'sign-in') await signIn()
+        if (recovery === 'sign-in') {
+          // Signing in again replaces the tokens in place, without a signed-out
+          // transition, so the account-change cleanup in _layout does not run,
+          // and a still-live session could dispatch while the swap happens.
+          // The decision is therefore made inside signIn's beforeReplace hook:
+          // the candidate tokens are probed while the OLD bearer is still the
+          // installed one, and unless it is proved to be the same person, the
+          // prior account's queued messages, drafts and journals are cleared —
+          // exactly as a sign-out does — before anything can serve a request
+          // under them. A failed lookup clears too: unknown identity is never
+          // assumed safe. If the hook throws, signIn leaves the old session
+          // installed.
+          //
+          // The mounted views are held, not released, inside the hook: a view
+          // told to re-attach while the old bearer is still installed would
+          // attach under it. The hold is released only once the replacement is
+          // on the device (or the candidate was never installed and the old
+          // bearer stands, which the same account may use).
+          const before = await currentPrincipal()
+          let cleared = false
+          try {
+            await signIn(async (tokens) => {
+              const after = await principalOf(tokens)
+              if (before && after && before === after) return
+              // Claim the clear before any of it can fail: the finally below
+              // releases the views even if the cleanup itself throws, so a
+              // failed hold or wipe cannot leave mounted views held forever.
+              cleared = true
+              // The mounted composer keeps its typed words in memory; the draft
+              // rows are gone with the account data, so without this they would
+              // sit in the new account's composer and could be sent under it.
+              runtimeRef.current?.thread.composer.setText('')
+              holdConversations()
+              clearAccountData()
+              intake.reset()
+            })
+          } finally {
+            // Success: views re-attach under the new bearer. Failure after the
+            // clear began: the candidate was never installed, and the wiped (or
+            // half-wiped) queues and journals must still be rebuilt against the
+            // bearer that stayed — never leave mounted views holding discarded
+            // sessions.
+            if (cleared) releaseConversations()
+          }
+          if (cleared) return
+        }
         conversations().reconnect(threadId)
       } catch (error) {
         if (error instanceof SignInError && error.code === 'cancelled') return
@@ -178,27 +304,12 @@ export function useConversation(threadId: string): ConversationView {
     [threadId],
   )
 
-  // Restore and keep the draft for this thread.
-  useEffect(() => {
-    const composer = runtime.thread.composer
-    const saved = readDraft(threadId)
-    if (saved && !composer.getState().text) composer.setText(saved)
-    setCurrentThread(threadId)
-    const unsubscribe = composer.subscribe(() => writeDraft(threadId, composer.getState().text))
-    const unlisten = onDraftChanged((key) => {
-      if (key === threadId) composer.setText(readDraft(threadId))
-    })
-    return () => {
-      unsubscribe()
-      unlisten()
-    }
-  }, [runtime, threadId])
-
   return {
     runtime,
     state,
     runId: view.runId,
     sendError,
+    stopError,
     queued: queue.items,
     paused: queue.paused,
     removeQueued,

@@ -1,14 +1,21 @@
-// SOURCING: ui/button (ghost icon buttons) for header actions, useCopyToClipboard hook; bodies render through the registry (artifact-renderers' ArtifactView), except a live interactive newest, whose runtime belongs to its answer (artifact-referrer)
+// SOURCING: assistant-ui's canvas-split element (vendored in assistant-ui/elements): the document beside the thread, its header (title, version, saved or editing, close) and its body's writing caret; ui/button (ghost icon buttons) for the version steps and Expand; bodies render through the registry (artifact-renderers' ArtifactView), except a live interactive newest, whose runtime belongs to its answer (artifact-referrer)
+import { useAuiState } from '@assistant-ui/react'
 import { appearancePair } from '@/lib/appearance-policy'
 import { useLayoutEffect, useRef } from 'react'
+import {
+  CanvasSplitBody,
+  CanvasSplitDocument,
+  CanvasSplitHeader,
+} from '@/components/assistant-ui/elements/canvas-split'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { flyGhost, takeLaunch } from '@/lib/motion'
+import { FramePresentation, PRESENTATION_ROOM } from '@/lib/blocks/presentation'
 import { cn } from '@/lib/utils'
-import { kindLabel, useThreadArtifacts } from './artifact-model'
+import { messageIdOf, useThreadArtifacts } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 import { ArtifactActions } from './artifact-actions'
-import { isLive } from './artifact-registry'
+import { fillsPanel, isLive } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
 import { ArtifactReferrer } from './artifact-referrer'
 import { useArtifactView } from './artifact-view'
@@ -26,12 +33,16 @@ export function ArtifactKindIcon({
   const Glyph =
     kind === 'code'
       ? Icon.Code
-      : kind === 'diagram'
+      : kind === 'diagram' || kind === 'graph'
         ? Icon.Diagram
         : Icon.Article
   return <Glyph className={className} />
 }
-/** Canvas for one artifact: header actions, revision switcher, rendered body. */
+/**
+ * Canvas for one artifact, the document half of a canvas split: header
+ * actions, revision switcher, rendered body. The dock is the split itself,
+ * so the conversation keeps its reading width beside it.
+ */
 export function ArtifactPanel({
   artifactId,
   onClose,
@@ -49,7 +60,19 @@ export function ArtifactPanel({
   const artifacts = useThreadArtifacts()
   const revision = useArtifactView((s) => s.revisions[artifactId])
   const select = useArtifactView((s) => s.select)
-  const sectionRef = useRef<HTMLElement>(null)
+  const sectionRef = useRef<HTMLDivElement>(null)
+  const newestRevision = artifacts.get(artifactId)?.at(-1)?.revision
+  // The turn is still writing the newest revision while the reply that
+  // carries it runs; only the last reply can be running.
+  const writing = useAuiState((s) => {
+    const last = s.thread.messages.at(-1)
+    return (
+      last?.status?.type === 'running' &&
+      newestRevision !== undefined &&
+      messageIdOf([last], { artifactId, revision: newestRevision }) !==
+        undefined
+    )
+  })
 
   // Opened from a chat card, the canvas grows out of that card. The frame
   // after mount is when the dock or the phone overlay has its final size.
@@ -71,6 +94,8 @@ export function ArtifactPanel({
   const artifact = versions[index] ?? newest
   if (!artifact || !newest) return null
   const latest = artifact === newest
+  const editing = writing && latest
+  const fills = fillsPanel(artifact, 'interactive')
   // A live interactive artifact runs in the answer that wrote it; the panel
   // refers to that one runtime instead of mounting a second (PR #128 P1).
   const liveNewest = isLive(newest, 'interactive')
@@ -81,8 +106,9 @@ export function ArtifactPanel({
     )
 
   return (
-    <section
+    <CanvasSplitDocument
       ref={sectionRef}
+      role="region"
       data-appearance-part="artifact"
       data-appearance-radius-role="artifact"
       data-surface-role="artifact"
@@ -94,25 +120,46 @@ export function ArtifactPanel({
         label: artifact.title,
         whole: true,
       })}
-      className={cn('flex h-full min-w-0 flex-col bg-artifact', className)}
+      className={cn('h-full bg-artifact', className)}
     >
       <ArtifactPanelHeader
         artifact={artifact}
         index={index}
         versionCount={versions.length}
+        saved={!editing}
         goTo={goTo}
         expanded={expanded}
         onExpandedChange={onExpandedChange}
         onClose={onClose}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-(--appearance-expanded-measure) px-6 py-6">
+      <div
+        {...{ [PRESENTATION_ROOM]: '' }}
+        className={cn(
+          'min-h-0 flex-1',
+          fills ? 'flex flex-col' : 'overflow-y-auto',
+        )}
+      >
+        <FramePresentation value="panel">
+        {/* A body that fills the panel, such as an App's frame, has no
+            line for the caret to follow. */}
+        <CanvasSplitBody
+          writing={editing && !fills}
+          className={cn(
+            'min-h-0 overflow-visible',
+            fills
+              ? 'gap-0 p-0'
+              : 'mx-auto w-full max-w-(--appearance-expanded-measure) flex-none px-6 py-6',
+          )}
+        >
           {/* The newest slot stays mounted while an older revision is shown,
               so the look back costs nothing on the way back. A passive body
               keeps its unsaved edit; a live interactive one is already kept
               by its answer, so this slot only refers there. */}
-          <div hidden={!latest}>
+          <div
+            hidden={!latest}
+            className={cn(fills && latest && 'min-h-0 flex-1')}
+          >
             {liveNewest ? (
               <ArtifactReferrer artifact={newest} />
             ) : (
@@ -120,22 +167,26 @@ export function ArtifactPanel({
             )}
           </div>
           {!latest && (
-            <ArtifactView
-              key={artifact.revision}
-              artifact={artifact}
-              distance="interactive"
-              latest={false}
-            />
+            <div className={cn(fills && 'min-h-0 flex-1')}>
+              <ArtifactView
+                key={artifact.revision}
+                artifact={artifact}
+                distance="interactive"
+                latest={false}
+              />
+            </div>
           )}
-        </div>
+        </CanvasSplitBody>
+        </FramePresentation>
       </div>
-    </section>
+    </CanvasSplitDocument>
   )
 }
 function ArtifactPanelHeader({
   artifact,
   index,
   versionCount,
+  saved,
   goTo,
   expanded,
   onExpandedChange,
@@ -144,26 +195,28 @@ function ArtifactPanelHeader({
   artifact: TheoremArtifact
   index: number
   versionCount: number
+  saved: boolean
   goTo: (index: number) => void
   expanded?: boolean
   onExpandedChange?: (expanded: boolean) => void
   onClose: () => void
 }) {
   return (
-    <header className="flex min-h-14 shrink-0 items-center gap-2 border-b border-separator px-3">
-      <ArtifactKindIcon
-        kind={artifact.kind}
-        className="size-4 shrink-0 text-ink-muted"
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <h2 className="truncate font-heading text-[16px] font-semibold leading-tight">
-          {artifact.title}
-        </h2>
-        <p className="truncate text-xs text-ink-faint">{kindLabel(artifact)}</p>
-      </div>
-
+    <CanvasSplitHeader
+      title={artifact.title}
+      version={index + 1}
+      versions={versionCount}
+      saved={saved}
+      icon={
+        <ArtifactKindIcon
+          kind={artifact.kind}
+          className="size-3.5 shrink-0 text-muted-foreground"
+        />
+      }
+      onClose={onClose}
+    >
       {versionCount > 1 && (
-        <div className="flex items-center text-xs text-ink-muted">
+        <div className="flex items-center">
           <Button
             variant="ghost"
             size="icon"
@@ -174,9 +227,6 @@ function ArtifactPanelHeader({
           >
             <Icon.Previous className="size-3.5" />
           </Button>
-          <span className="min-w-12 text-center tabular-nums">
-            v{index + 1} of {versionCount}
-          </span>
           <Button
             variant="ghost"
             size="icon"
@@ -208,16 +258,7 @@ function ArtifactPanelHeader({
           <Icon.Expand className="size-4" />
         </Button>
       )}
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="Close"
-        className="size-8 p-1.5"
-        onClick={onClose}
-      >
-        <Icon.X className="size-4" />
-      </Button>
-    </header>
+    </CanvasSplitHeader>
   )
 }
 

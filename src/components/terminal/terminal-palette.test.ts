@@ -1,4 +1,4 @@
-// SOURCING: culori (a dependency) for OKLCH and WCAG contrast; @tanstack/highlight's githubDarkTheme for the code colours. The test only reads the crate's colour constants.
+// SOURCING: culori (a dependency) for OKLCH and WCAG contrast; lib/code-colours' GitHub Dark for the code colours. The test only reads the crate's colour constants.
 //
 // The terminal crate draws its code in fixed colours, and the rest in pi's
 // slate until the page sets its palette (terminal-theme.ts works out every
@@ -7,7 +7,7 @@
 // in OKLCH at GitHub Dark's diff hues.
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'bun:test'
-import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
+import { GITHUB_DARK } from '@/lib/code-colours'
 import { converter, differenceCiede2000, wcagContrast } from 'culori'
 import { SLATE } from './terminal-theme'
 import { FALLBACK_ROLES, wasmPalette } from './terminal-roles'
@@ -94,13 +94,11 @@ test("code draws in GitHub Dark's token colours, which Stone dark's Monaco uses"
     link: 'LINK',
   }
   for (const [cls, name] of Object.entries(byClass))
-    expect(colour[name]).toBe(
-      githubDarkTheme.tokens[cls as keyof typeof githubDarkTheme.tokens],
-    )
+    expect(colour[name]).toBe(GITHUB_DARK[cls as keyof typeof GITHUB_DARK])
   // The comment grey is GitHub Dark's, lifted in lightness only to read on
   // the raised slate.
   const comment = oklch(colour.SYNTAX_COMMENT)!
-  const github = oklch(githubDarkTheme.tokens.comment)!
+  const github = oklch(GITHUB_DARK.comment)!
   expect(comment.l).toBeGreaterThan(github.l)
   expect(Math.abs(comment.h! - github.h!)).toBeLessThan(3)
 })

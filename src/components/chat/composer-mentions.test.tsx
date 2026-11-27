@@ -232,20 +232,32 @@ describe('mentionReference', () => {
       mentionReference({ id: 'x', type: 'tool', label: 'recall' }),
     ).toBeUndefined()
   })
-  test('the message reads @ and the title', () => {
-    expect(
-      MENTION_FORMATTER.serialize({ id: 'x', type: 'record', label: 'Noor' }),
-    ).toBe('@Noor')
+  test("a pick is written as assistant-ui's directive, naming what it cites", () => {
+    expect(MENTION_FORMATTER.serialize(NOOR)).toBe(
+      ':record[Noor]{name=record:Person/person:noor}',
+    )
+    // A title with a bracket is written quoted, so it still reads back whole.
+    const quoted = MENTION_FORMATTER.serialize({
+      ...NOOR,
+      label: 'Noor [studio]',
+    })
+    expect(quoted).toBe(
+      ':record{label="Noor [studio]" name="record:Person/person:noor"}',
+    )
+    expect(MENTION_FORMATTER.parse(quoted)).toEqual([
+      { kind: 'mention', type: 'record', label: 'Noor [studio]', id: NOOR.id },
+    ])
   })
 })
 
 describe('pruneMentionCites', () => {
+  const words = MENTION_FORMATTER.serialize(NOOR)
   test('a chip goes once its words have been in the message and are gone', () => {
     citeMention(NOOR)
     // Before the words arrive, the chip stays.
     pruneMentionCites('@noo')
     expect(keys()).toEqual(['person:noor'])
-    pruneMentionCites('ask @Noor about the glaze')
+    pruneMentionCites(`ask ${words} about the glaze`)
     expect(keys()).toEqual(['person:noor'])
     pruneMentionCites('ask about the glaze')
     expect(keys()).toEqual([])
@@ -261,8 +273,8 @@ describe('pruneMentionCites', () => {
       metadata: { cite: 'document', objectType: 'note', objectId: 'doc:q3' },
     }
     citeMention(plan)
-    pruneMentionCites('see @Q3\\_plan')
-    pruneMentionCites('see @Q3\\_plan today')
+    pruneMentionCites('see :document[Q3\\_plan]{name=document:doc:q3}')
+    pruneMentionCites('see :document\\[Q3\\_plan]{name=document:doc:q3} today')
     expect(keys()).toEqual(['doc:q3'])
   })
 
@@ -278,16 +290,16 @@ describe('pruneMentionCites', () => {
       label: 'Noor',
     })
     citeMention(NOOR)
-    pruneMentionCites('@Noor')
+    pruneMentionCites(words)
     pruneMentionCites('')
     expect(keys()).toEqual(['person:noor'])
   })
 
   test('a chip the person removed is forgotten, and its words stay text', () => {
     citeMention(NOOR)
-    pruneMentionCites('@Noor')
+    pruneMentionCites(words)
     useComposerReferences.getState().remove('record:Person/person:noor')
-    pruneMentionCites('@Noor')
+    pruneMentionCites(words)
     expect(useMentionCites.getState().byKey).toEqual({})
   })
 })
@@ -309,7 +321,8 @@ describe('the @ list in the composer', () => {
     )
     // One search, for what was typed, not a recent-documents search first.
     expect(asked).toEqual([{ kind: 'items', query: { q: 'noo', limit: 5 } }])
-    expect(container.textContent).toContain('Records and documents')
+    // The rows say what the list holds; no heading explains it.
+    expect(container.textContent).not.toContain('Records and documents')
     const rows = options().map((o) => o.textContent)
     expect(rows[0]).toBe('NoorPerson')
     expect(rows.at(-1)).toBe('Notes on the kiln visitDocument')
@@ -327,14 +340,22 @@ describe('the @ list in the composer', () => {
     ])
   })
 
-  test('a pick writes @Title and adds the record to the turn', async () => {
+  test('a pick writes its directive, shown as a chip, and adds the record to the turn', async () => {
     const { container } = await mount()
     const input = inputOf(container)
     await type(input, '@noo')
     await waitFor(() => options()[0]?.textContent === 'NoorPerson')
     await press(input, 'Enter')
     await waitFor(() => !options().length)
-    expect(composerText()).toStartWith('@Noor')
+    expect(composerText()).toStartWith(
+      ':record[Noor]{name=record:Person/person:noor}',
+    )
+    // The composer shows the directive as a chip of the title.
+    const written = await waitFor(() =>
+      input.querySelector('[data-slot="composer-directive-chip"]'),
+    )
+    expect(written.getAttribute('data-label')).toBe('Noor')
+    expect(written.getAttribute('data-directive-type')).toBe('record')
     expect(useComposerReferences.getState().references).toEqual([
       {
         location: {
@@ -370,7 +391,9 @@ describe('the @ list in the composer', () => {
     for (let step = 0; step < at; step++) await press(input, 'ArrowDown')
     await press(input, 'Enter')
     await waitFor(() => !options().length)
-    expect(composerText()).toStartWith('@Notes on the kiln visit')
+    expect(composerText()).toStartWith(
+      ':document[Notes on the kiln visit]{name=document:doc:kiln-visit}',
+    )
     expect(useComposerReferences.getState().references).toEqual([
       {
         location: {
@@ -385,7 +408,7 @@ describe('the @ list in the composer', () => {
     ])
   })
 
-  test('deleting the @ words in the composer removes their chip', async () => {
+  test('deleting the @ pick in the composer removes its reference', async () => {
     const { container } = await mount()
     const input = inputOf(container)
     await type(input, '@noo')
@@ -399,7 +422,29 @@ describe('the @ list in the composer', () => {
     expect(keys()).toEqual([])
   })
 
-  test('clearing the whole message removes the chips its @ words added', async () => {
+  test('one Backspace after a chip takes the whole pick, and its reference', async () => {
+    const { container } = await mount()
+    const input = inputOf(container)
+    await type(input, '@noo')
+    await waitFor(() => options()[0]?.textContent === 'NoorPerson')
+    await press(input, 'Enter')
+    await waitFor(() => !options().length)
+    const written = MENTION_FORMATTER.serialize(NOOR)
+    // The caret right after the chip, as a person leaves it.
+    await type(input, `ask ${written}`)
+    await waitFor(() =>
+      input.querySelector('[data-slot="composer-directive-chip"]'),
+    )
+    expect(keys()).toEqual(['person:noor'])
+    await press(input, 'Backspace')
+    await waitFor(() => composerText().trim() === 'ask')
+    expect(
+      input.querySelector('[data-slot="composer-directive-chip"]'),
+    ).toBeNull()
+    await waitFor(() => keys().length === 0)
+  })
+
+  test('clearing the whole message removes the references its @ picks added', async () => {
     const { container } = await mount()
     const input = inputOf(container)
     await type(input, '@noo')
@@ -425,7 +470,7 @@ describe('the @ list in the composer', () => {
     await waitFor(() => options()[0]?.textContent === 'NoorPerson')
     await press(input, 'Enter')
     await waitFor(() => !options().length)
-    expect(composerText()).toStartWith('@Noor')
+    expect(composerText()).toStartWith(':record[Noor]')
     await press(input, 'Enter', { ctrlKey: true })
     await waitFor(() => composerText() === '')
     await act(() => Bun.sleep(50))

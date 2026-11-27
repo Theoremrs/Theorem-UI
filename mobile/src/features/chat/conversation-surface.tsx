@@ -5,7 +5,7 @@
 // the native tabs. Native glass is decoration: accessibility/material changes do
 // not remount the input. The current runtime owns drafts, queued sends and Stop;
 // presence and recovery stay outside the writing area.
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   KeyboardAvoidingView,
   Platform,
@@ -61,7 +61,7 @@ export type SurfaceNote = {
 }
 
 /** A message waiting for the run to end: visible, and the person's to change until it goes. */
-export type QueuedItem = { id: string; text: string }
+export type QueuedItem = { id: string; text: string; uncertain?: boolean }
 
 export type QueueView = {
   items: QueuedItem[]
@@ -178,27 +178,31 @@ function QueuedChip({
 }) {
   const { palette } = useTheme()
   return (
-    <View
-      accessible
-      accessibilityLabel={`Queued message: ${item.text}`}
-      style={[styles.queued, { backgroundColor: palette.raised, borderColor: palette.lineControl }]}
-    >
-      <View style={styles.queuedBody}>
+    <View style={[styles.queued, { backgroundColor: palette.raised, borderColor: palette.lineControl }]}>
+      {/* Only the body is grouped; Edit and Remove stay separate controls, so
+        VoiceOver can reach them (an accessible parent hides nested elements). */}
+      <View
+        style={styles.queuedBody}
+        accessible
+        accessibilityLabel={`${item.uncertain ? 'Unconfirmed queued message' : 'Queued message'}: ${item.text}`}
+      >
         <Text variant="label" tone="faint">
-          Queued
+          {item.uncertain ? 'Not confirmed yet' : 'Queued'}
         </Text>
         <Text numberOfLines={2}>{item.text}</Text>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Edit queued message"
-        onPress={onEdit}
-        hitSlop={8}
-      >
-        <Text variant="label" tone="accent">
-          Edit
-        </Text>
-      </Pressable>
+      {item.uncertain ? null : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Edit queued message"
+          onPress={onEdit}
+          hitSlop={8}
+        >
+          <Text variant="label" tone="accent">
+            Edit
+          </Text>
+        </Pressable>
+      )}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Remove queued message"
@@ -257,6 +261,13 @@ export function ConversationSurface({
   const [composerHeight, setComposerHeight] = useState<number>()
   const [farFromEnd, setFarFromEnd] = useState(false)
   const [inputHeight, setInputHeight] = useState<number>(touchTarget)
+  // The notice stack floats above the composer; the transcript reserves its
+  // height too, so the last lines are not hidden behind it (Details included).
+  const [notesHeight, setNotesHeight] = useState(0)
+  const showNotes = (notes.length > 0 || !!theo) && composerHeight !== undefined
+  useEffect(() => {
+    if (!showNotes) setNotesHeight(0)
+  }, [showNotes])
 
   const onScroll = ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = nativeEvent
@@ -283,7 +294,7 @@ export function ConversationSurface({
                 <ThreadPrimitive.MessagesFlatList
                   ref={list}
                   style={styles.fill}
-                  contentContainerStyle={[styles.list, { paddingBottom: composerHeight + space.sm }]}
+                  contentContainerStyle={[styles.list, { paddingBottom: composerHeight + notesHeight + space.sm }]}
                   keyboardDismissMode="interactive"
                   keyboardShouldPersistTaps="handled"
                   onScroll={onScroll}
@@ -305,7 +316,7 @@ export function ConversationSurface({
                     styles.jump,
                     styles.lifted,
                     {
-                      bottom: composerHeight + space.xs,
+                      bottom: composerHeight + notesHeight + space.xs,
                       backgroundColor: pressed ? palette.hover : palette.raised,
                       borderColor: palette.lineControl,
                       shadowOpacity: scheme === 'dark' ? 0 : 0.08,
@@ -317,8 +328,12 @@ export function ConversationSurface({
               ) : null}
 
               {/* Status floats above the composer without taking part in its layout: the card and its input never move for it. */}
-              {(notes.length > 0 || theo) && composerHeight !== undefined ? (
-                <View pointerEvents="box-none" style={[styles.notes, { bottom: composerHeight + space.xs }]}>
+              {showNotes ? (
+                <View
+                  pointerEvents="box-none"
+                  style={[styles.notes, { bottom: composerHeight + space.xs }]}
+                  onLayout={(event) => setNotesHeight(event.nativeEvent.layout.height)}
+                >
                   {theo ? <PresenceLine signals={theo} /> : null}
                   {notes.map((note, index) => (
                     <NoteStrip key={`${note.text}-${index}`} note={note} floating />

@@ -71,6 +71,26 @@ async function authoredApp(folder: string, names: Array<string>, uses: string) {
   return { problems: checked.problems, bundle }
 }
 
+/**
+ * What the build hands the App for `import digest from './solver.ts?implementation'`
+ * (export.ts): the digest of the solver file's code and what it imports, read
+ * from the file as written in that revision.
+ */
+async function implementationOf(file: string): Promise<`sha256:${string}`> {
+  const bundle = await bundleAppSources(
+    {
+      entry: 'entry.ts',
+      files: {
+        'entry.ts':
+          'import digest from "./solver.ts?implementation"\nexport default digest',
+        'solver.ts': readFileSync(join(here, file), 'utf8'),
+      },
+    },
+    esbuild,
+  )
+  return /"(sha256:[0-9a-f]{64})"/.exec(bundle.code)![1] as `sha256:${string}`
+}
+
 const booking = (
   id: string,
   resource: string,
@@ -659,7 +679,7 @@ describe('the heat plate App', () => {
       output: {},
       reproducibility: 'deterministic',
       recovery: ['rerun', 'reopen'],
-      implementation: await digestOf(solverNow.SOLVER),
+      implementation: await implementationOf('heat-plate/solver.ts'),
       run: (given: solverNow.PlateInput) => solverNow.solvePlate(given),
     })
     const done = await operations.invoke<solverNow.PlateField>(
@@ -672,6 +692,11 @@ describe('the heat plate App', () => {
   })
 
   test('a colormap revision reuses the solved field; a boundary or solver change does not', async () => {
+    // The implementation is the solver file's code, as the App's build reads
+    // it, not a version someone has to remember to bump.
+    const now = await implementationOf('heat-plate/solver.ts')
+    const before = await implementationOf('heat-plate/revisions/1/solver.ts')
+    expect(before).not.toBe(now)
     const define = async (operations: Operations, solver: typeof solverNow) =>
       operations.define({
         name: 'solve',
@@ -681,7 +706,7 @@ describe('the heat plate App', () => {
         output: {},
         reproducibility: 'deterministic',
         recovery: ['rerun', 'reopen'],
-        implementation: await digestOf(solver.SOLVER),
+        implementation: solver === solverNow ? now : before,
         run: (input: solverNow.PlateInput) => solver.solvePlate(input),
       })
     const input = plate(9, { top: { kind: 'fixed', temperature: 100 } })
@@ -709,6 +734,93 @@ describe('the heat plate App', () => {
     expect(await older.explain('solve', input, solved.result)).toEqual({
       reusable: false,
       changed: ['version', 'implementation'],
+    })
+  })
+
+  describe('the field is checked against its physics, not only its sweep', () => {
+    const cooled = (
+      n: number,
+      top: solverNow.Boundary,
+    ): solverNow.PlateInput => ({
+      width: 0.2,
+      height: 0.1,
+      nx: 2 * n + 1,
+      ny: n + 1,
+      conductivity: 50,
+      left: { kind: 'fixed', temperature: 100 },
+      right: { kind: 'convective', h: 25, ambient: 20 },
+      bottom: { kind: 'insulated' },
+      top,
+      tolerance: 1e-12,
+    })
+
+    test('heat through a plate with insulated sides is the series resistance, edge for edge', () => {
+      const input = cooled(10, { kind: 'insulated' })
+      const check = solverNow.checkPlate(input, solverNow.solvePlate(input))
+      // q = (100 - 20) / (L / k + 1 / h) W/m², over the 0.1 m edge.
+      const exact = (80 / (0.2 / 50 + 1 / 25)) * 0.1
+      expect(Math.abs(check.edges.left - exact)).toBeLessThan(1e-6)
+      expect(Math.abs(check.edges.right + exact)).toBeLessThan(1e-6)
+      expect(check.edges.top).toBe(0)
+      expect(check.relativeImbalance).toBeLessThan(1e-9)
+      expect(check.residual).toBeLessThan(1e-9)
+    })
+
+    test('a cooled top edge: the heat balance closes at second order as the grid is refined', () => {
+      const top = { kind: 'convective', h: 200, ambient: 20 } as const
+      const ratios = [10, 20, 40].map((n) => {
+        const input = cooled(n, top)
+        const field = solverNow.solvePlate(input)
+        expect(field.converged).toBe(true)
+        const check = solverNow.checkPlate(input, field)
+        expect(check.residual).toBeLessThan(1e-9)
+        // Heat enters only at the held edge and leaves through both cooled ones.
+        expect(check.edges.left).toBeGreaterThan(0)
+        expect(check.edges.right).toBeLessThan(0)
+        expect(check.edges.top).toBeLessThan(0)
+        return check.relativeImbalance
+      })
+      expect(ratios[1]!).toBeLessThan(1e-3)
+      // Halving the spacing cuts the imbalance by close to four.
+      expect(ratios[0]! / ratios[1]!).toBeGreaterThan(3)
+      expect(ratios[1]! / ratios[2]!).toBeGreaterThan(3)
+    })
+
+    test('a sweep stopped early says so, and the check shows how far off it is', () => {
+      const input = {
+        ...cooled(20, { kind: 'convective', h: 200, ambient: 20 } as const),
+        maxSweeps: 5,
+      }
+      const field = solverNow.solvePlate(input)
+      expect(field.converged).toBe(false)
+      const check = solverNow.checkPlate(input, field)
+      expect(check.residual).toBeGreaterThan(1)
+      expect(check.relativeImbalance).toBeGreaterThan(0.5)
+    })
+
+    test('controls out of range are refused by name, never clamped into a field', () => {
+      const input: solverNow.PlateInput = {
+        ...cooled(10, { kind: 'insulated' }),
+        nx: 2.5,
+        ny: solverNow.MAX_NODES + 1,
+        conductivity: 0,
+        right: { kind: 'convective', h: -1, ambient: Number.NaN },
+        left: { kind: 'fixed', temperature: -300 },
+        tolerance: 0,
+      }
+      expect(solverNow.plateProblems(input).map((p) => p.field)).toEqual([
+        'conductivity',
+        'nx',
+        'ny',
+        'left.temperature',
+        'right.h',
+        'right.ambient',
+        'tolerance',
+      ])
+      expect(() => solverNow.solvePlate(input)).toThrow(solverNow.PlateRefused)
+      expect(
+        solverNow.plateProblems(cooled(10, { kind: 'insulated' })),
+      ).toEqual([])
     })
   })
 

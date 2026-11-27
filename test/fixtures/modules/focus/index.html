@@ -1,0 +1,155 @@
+<!doctype html>
+<!-- SOURCING: none - an example custom component installed as vault files (Modules/focus). It reaches
+the tracker only through window.theorem.capability (query and invoke, as module.json declares and the
+person allows), takes its minutes from theorem.module.onInputs and publishes its summary with
+theorem.module.output. Its look is the page's tokens, which the frame is handed. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Focus</title>
+    <style>
+      body {
+        margin: 0;
+        font: 13px/1.4 var(--font-sans, system-ui);
+        color: var(--ink, CanvasText);
+        background: var(--surface-artifact, Canvas);
+      }
+      main {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+      }
+      #status {
+        margin: 0;
+        color: var(--ink-muted, GrayText);
+      }
+      ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--line-separator, GrayText);
+      }
+      li span {
+        flex: 1;
+        min-width: 0;
+      }
+      li small {
+        color: var(--ink-faint, GrayText);
+      }
+      button {
+        font: inherit;
+        color: inherit;
+        background: var(--surface-raised, ButtonFace);
+        border: 1px solid var(--line-control, ButtonBorder);
+        border-radius: 6px;
+        padding: 2px 8px;
+      }
+      button:hover {
+        background: var(--surface-hover, ButtonFace);
+      }
+      button:focus-visible {
+        outline: 2px solid var(--focus, Highlight);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p id="status" role="status">Reading your tasks…</p>
+      <ul id="tasks" aria-label="Tasks that fit"></ul>
+    </main>
+    <script>
+      const INSTANCE = 'tracker/main'
+      const VIEW = 'next'
+      const list = document.getElementById('tasks')
+      const status = document.getElementById('status')
+      let minutes = 25
+
+      const phrase = (count) =>
+        count === 1
+          ? `1 task fits ${minutes} minutes`
+          : `${count} tasks fit ${minutes} minutes`
+
+      // A capability's refusal is an answer; what this component was not
+      // allowed is refused at the bridge, so the call itself rejects.
+      async function ask(call) {
+        try {
+          return await call()
+        } catch (error) {
+          return { ok: false, error: { message: error.message } }
+        }
+      }
+
+      async function load() {
+        const answer = await ask(() =>
+          theorem.capability.query({
+            instanceId: INSTANCE,
+            viewKey: VIEW,
+            limit: 50,
+          }),
+        )
+        if (!answer.ok) {
+          status.textContent = answer.error.message
+          return
+        }
+        const fits = answer.value.records.filter(
+          (record) =>
+            typeof record.fields.effort_minutes === 'number' &&
+            record.fields.effort_minutes <= minutes,
+        )
+        list.replaceChildren(
+          ...fits.map((record) => {
+            const item = document.createElement('li')
+            const title = document.createElement('span')
+            title.textContent = String(record.fields.title ?? record.id)
+            const effort = document.createElement('small')
+            effort.textContent = `${record.fields.effort_minutes} min`
+            const done = document.createElement('button')
+            done.type = 'button'
+            done.textContent = 'Complete'
+            done.setAttribute('aria-label', `Complete ${title.textContent}`)
+            done.addEventListener('click', () => void complete(record, done))
+            item.append(title, effort, done)
+            return item
+          }),
+        )
+        const summary = phrase(fits.length)
+        status.textContent = summary
+        await theorem.module.output('summary', summary)
+      }
+
+      async function complete(record, button) {
+        button.disabled = true
+        const answer = await ask(() =>
+          theorem.capability.invoke({
+            instanceId: INSTANCE,
+            actionKey: 'complete',
+            recordId: record.id,
+            expectedRevision: record.revision,
+            inputs: {},
+          }),
+        )
+        const outcome = answer.ok ? answer.value.outcome : undefined
+        if (!answer.ok || outcome?.outcome === 'failed') {
+          button.disabled = false
+          status.textContent = answer.ok
+            ? outcome.message
+            : answer.error.message
+          return
+        }
+        await load()
+      }
+
+      theorem.module.onInputs(({ settings }) => {
+        minutes = Number(settings.minutes) || 25
+        void load()
+      })
+    </script>
+  </body>
+</html>

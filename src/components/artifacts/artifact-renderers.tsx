@@ -1,37 +1,38 @@
-// SOURCING: react-markdown + remark-gfm + @tailwindcss/typography (documents), the TanStack Highlight SyntaxHighlighter (code), the installed beautiful-mermaid MermaidDiagram (diagrams), notebook-artifact (Observable and marimo notebooks in the hosted frame), OpenUI's Renderer over theorem-artifacts (openui/renderer)
+// SOURCING: react-markdown + remark-gfm + @tailwindcss/typography (documents), the Shiki code block (CodeFile, code), the installed beautiful-mermaid MermaidDiagram (diagrams), assistant-ui's flow-graph element (graphs), notebook-artifact (Observable and marimo notebooks in the hosted frame), OpenUI's Renderer over theorem-artifacts (openui/renderer)
 //
 // The renderers this build mounts. Which one shows an artifact at a distance
 // is the registry's answer (artifact-registry: contributions + resolve); a
 // representation with no mounted renderer gets the Theorem card, which says
 // what the artifact is and shows its fallbackText.
-import { createElement, isValidElement } from 'react'
+import { createElement, isValidElement, useMemo } from 'react'
 import type { FC, ReactElement, ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import {
+  DependencyGraph,
+  readGraph,
+} from '@/components/assistant-ui/elements/dependency-graph'
 import { MermaidDiagram } from '@/components/assistant-ui/elements/mermaid-diagram'
-import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highlighter'
+import { CodeFile } from '@/components/assistant-ui/elements/code-file'
+import { fenceTitle } from '@/components/assistant-ui/elements/code-lines'
 import { DocumentApp } from '@/components/blocks/document-app'
 import { cn } from '@/lib/utils'
 import type { Distance } from '@/lib/artifacts/contributions'
+import { useArtifactMessageId } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 import { AppPreview } from './app-revision-frame'
+import { DocumentCard } from './document-card'
 import { AppRevision } from './app-history'
-import {
-  MarimoNotebookView,
-  ObservableNotebookView,
-  UnreadableNotebook,
-} from './notebook-artifact'
+import { NotebookArtifact } from './notebook-artifact'
 import { OpenUIArtifact } from './openui/renderer'
+import { SceneInConversation, SceneInReply } from '@/components/chat/scene-part'
 import {
   mountRenderers,
   rendererFor,
   representationOf,
 } from './artifact-registry'
 import type { RendererProps } from './artifact-registry'
-
-const codeSurface =
-  '[&_pre]:rounded-lg! [&_pre]:border! [&_pre]:border-separator! [&_pre]:bg-raised!'
 
 /** A fenced block inside a document: the child of <pre> is <code class="language-x">. */
 function fencedCode(
@@ -42,13 +43,13 @@ function fencedCode(
     children as ReactElement<{ className?: string; children?: ReactNode }>
   ).props
   const language =
-    /language-([\w-]+)/.exec(props.className ?? '')?.[1] ?? 'text'
+    /language-([^\s]+)/.exec(props.className ?? '')?.[1] ?? 'text'
   const code = typeof props.children === 'string' ? props.children : undefined
   return code === undefined ? undefined : { language, code }
 }
 
 const documentComponents: Components = {
-  pre({ children }) {
+  pre({ children, node }) {
     const block = fencedCode(children)
     if (!block) return <pre>{children}</pre>
     if (block.language === 'mermaid')
@@ -57,11 +58,18 @@ const documentComponents: Components = {
           <MermaidDiagram code={block.code} className="rounded-lg" />
         </div>
       )
+    // The intrinsic code child's React props omit its HAST node. Read the
+    // fence metadata from the pre's code node, using chat's title contract.
+    const codeNode = node?.children.find(
+      (child) => child.type === 'element' && child.tagName === 'code',
+    )
+    const meta = codeNode?.type === 'element' ? codeNode.data?.meta : undefined
     return (
-      <SyntaxHighlighter
-        className={cn('not-prose my-4', codeSurface)}
+      <CodeFile
+        className="my-4"
         language={block.language}
         code={block.code}
+        title={fenceTitle(typeof meta === 'string' ? meta : undefined)}
       />
     )
   },
@@ -89,8 +97,8 @@ const DocumentArtifact: FC<RendererProps> = ({ artifact }) => (
 )
 
 const CodeArtifact: FC<RendererProps> = ({ artifact }) => (
-  <SyntaxHighlighter
-    className={cn('[&_pre]:text-[13px]', codeSurface)}
+  <CodeFile
+    className="my-0 w-full"
     language={artifact.language ?? 'text'}
     code={artifact.content}
   />
@@ -100,13 +108,32 @@ const DiagramArtifact: FC<RendererProps> = ({ artifact }) => (
   <MermaidDiagram code={artifact.content} className="rounded-lg bg-raised" />
 )
 
-/** A short opening of a long document, for the conversation. */
-const DocumentExcerpt: FC<RendererProps> = ({ artifact }) => (
-  <div className="max-h-64 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
-    <MarkdownDocument content={artifact.content} className="text-sm" />
-  </div>
+/**
+ * In the reply a diagram is the drawing alone, on the conversation's own
+ * ground and in line with its text: no card, title or fill around it.
+ */
+const DiagramReply: FC<RendererProps> = ({ artifact }) => (
+  <MermaidDiagram
+    code={artifact.content}
+    className="my-3 rounded-none bg-transparent p-0 [&_svg]:mx-0"
+  />
 )
 
+/** A DAG the agent wrote as nodes, drawn as it is, with nothing around it. */
+const GraphArtifact: FC<RendererProps> = ({ artifact }) => {
+  const graph = useMemo(() => readGraph(artifact.content), [artifact.content])
+  return graph ? (
+    <DependencyGraph
+      aria-label={artifact.title}
+      graph={graph}
+      className="my-3"
+    />
+  ) : (
+    <TheoremCard artifact={artifact} reason="The graph could not be read" />
+  )
+}
+
+/** A short opening of a long document, for the conversation. */
 const CodeExcerpt: FC<RendererProps> = ({ artifact }) => (
   <div className="max-h-64 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
     <CodeArtifact artifact={artifact} latest />
@@ -132,32 +159,78 @@ const AppPreviewArtifact: FC<RendererProps> = ({ artifact }) => (
   <AppPreview artifact={artifact} />
 )
 
-const ObservableArtifact: FC<RendererProps> = ({ artifact }) =>
-  artifact.notebook?.form === 'observable' ? (
-    <ObservableNotebookView artifact={artifact} notebook={artifact.notebook} />
+/** A notebook: its document's head for the newest revision, the pinned one for an older. */
+const ObservableArtifact: FC<RendererProps> = (props) => (
+  <NotebookArtifact {...props} form="observable" />
+)
+
+const MarimoArtifact: FC<RendererProps> = (props) => (
+  <NotebookArtifact {...props} form="marimo" />
+)
+
+/** A scene in its reply: the whole surface, wired to the conversation. */
+const SceneReplyArtifact: FC<RendererProps> = ({ artifact }) =>
+  artifact.scene ? (
+    <SceneInReply scene={artifact.scene} />
   ) : (
-    <UnreadableNotebook artifact={artifact} />
+    <TheoremCard
+      artifact={artifact}
+      reason="The scene payload could not be read"
+    />
   )
 
-const MarimoArtifact: FC<RendererProps> = ({ artifact }) =>
-  artifact.notebook?.form === 'marimo' ? (
-    <MarimoNotebookView artifact={artifact} notebook={artifact.notebook} />
+/**
+ * A scene filling a panel, in its full layout, wired to the same
+ * conversation as its reply: Ask refers to the reply that carries this
+ * revision, and Fix asks the agent in this thread.
+ */
+const SceneArtifact: FC<RendererProps> = ({ artifact }) => {
+  const messageId = useArtifactMessageId(artifact)
+  return artifact.scene ? (
+    <SceneInConversation
+      scene={artifact.scene}
+      messageId={messageId}
+      placement="panel"
+    />
   ) : (
-    <UnreadableNotebook artifact={artifact} />
+    <TheoremCard
+      artifact={artifact}
+      reason="The scene payload could not be read"
+    />
   )
+}
 
-mountRenderers({
-  'theorem-document.excerpt': DocumentExcerpt,
-  'theorem-document': DocumentArtifact,
-  'theorem-code.excerpt': CodeExcerpt,
-  'theorem-code': CodeArtifact,
-  'theorem-diagram': DiagramArtifact,
-  'theorem-app.preview': AppPreviewArtifact,
-  'theorem-app': AppArtifact,
-  'theorem-observable': ObservableArtifact,
-  'theorem-marimo': MarimoArtifact,
-  'theorem-openui': OpenUIArtifact,
-})
+mountRenderers(
+  {
+    'theorem-document.reply': DocumentCard,
+    'theorem-document': DocumentArtifact,
+    'theorem-code.excerpt': CodeExcerpt,
+    'theorem-code': CodeArtifact,
+    'theorem-diagram.reply': DiagramReply,
+    'theorem-diagram': DiagramArtifact,
+    'theorem-graph': GraphArtifact,
+    'theorem-app.preview': AppPreviewArtifact,
+    'theorem-app': AppArtifact,
+    'theorem-observable': ObservableArtifact,
+    'theorem-marimo': MarimoArtifact,
+    'theorem-openui': OpenUIArtifact,
+    'theorem-scene.reply': SceneReplyArtifact,
+    'theorem-scene': SceneArtifact,
+  },
+  {
+    // A notebook carries its own line of status, Ask and Open, so the reply
+    // shows it whole with no card around it.
+    bare: [
+      'theorem-scene.reply',
+      'theorem-diagram.reply',
+      'theorem-graph',
+      'theorem-observable',
+      'theorem-marimo',
+    ],
+    cards: ['theorem-document.reply'],
+    fills: ['theorem-scene'],
+  },
+)
 
 /** The Theorem card: what the artifact is, its summary, and why no renderer showed it. */
 const TheoremCard: FC<{ artifact: TheoremArtifact; reason?: string }> = ({

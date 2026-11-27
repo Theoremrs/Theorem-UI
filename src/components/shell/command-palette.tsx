@@ -1,24 +1,21 @@
-// SOURCING: coss ui Command over Base UI Autocomplete in a Base UI Dialog (grouped items, as coss's command dialog example), coss ui Kbd, @tanstack/react-router (navigation), lib/theorem/models (catalog and pick), lib/theorem/catalog (plugins and skills), lib/theorem/organization (threads across every project)
+// SOURCING: assistant-ui's command-palette element (assistant-ui/elements/command-palette) in coss ui's command dialog backdrop and viewport over a Base UI Dialog, Base UI's glass for menus (glass/menu-glass), @tanstack/react-router (navigation), lib/theorem/models (catalog and pick), lib/theorem/catalog (plugins and skills), lib/theorem/organization (threads across every project)
+import { Dialog } from '@base-ui/react/dialog'
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ComponentType, SVGProps } from 'react'
 import { create } from 'zustand'
 import {
-  Command,
-  CommandCollection,
+  CommandPalette as PaletteSurface,
+  paletteMatches,
+} from '@/components/assistant-ui/elements/command-palette'
+import type { PaletteCommand } from '@/components/assistant-ui/elements/command-palette'
+import {
   CommandDialog,
-  CommandDialogPopup,
-  CommandEmpty,
-  CommandFooter,
-  CommandGroup,
-  CommandGroupLabel,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandPanel,
-  CommandShortcut,
+  CommandDialogBackdrop,
+  CommandDialogPortal,
+  CommandDialogViewport,
 } from '@/components/coss/command'
-import { Kbd } from '@/components/coss/kbd'
+import { useMenuGlass } from '@/components/glass/menu-glass'
 import { Icon } from '@/components/icons'
 import { SETTINGS_GROUPS } from '@/components/settings/sections'
 import { useCatalogEntries } from '@/lib/theorem/catalog'
@@ -28,6 +25,7 @@ import {
   primaryProjectId,
   useOrganization,
 } from '@/lib/theorem/organization'
+import { cn } from '@/lib/utils'
 import { useShell } from './shell-state'
 
 type Entry = {
@@ -192,65 +190,77 @@ function useGroups(close: () => void): Group[] {
 /** The ⌘K palette: places, models, plugins and skills, filtered as the person types. */
 export function CommandPalette() {
   useHotkey()
-  const { list, error } = useModelCatalog()
-  const issue = modelCatalogIssue(list, error)
   const open = useCommandPalette((s) => s.open)
   const setOpen = useCommandPalette((s) => s.setOpen)
-  const groups = useGroups(() => setOpen(false))
-
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandDialogPopup>
-        <Command
-          items={groups}
-          itemToStringValue={(item) => {
-            const entry = item as Entry
-            return [entry.label, entry.hint, entry.keywords].filter(Boolean).join(' ')
-          }}
-        >
-          <CommandInput placeholder="Search threads, models, plugins, skills and settings" />
-          {issue && <p role="alert" className="px-3 py-2 text-sm text-ink-muted">{issue}</p>}
-          <CommandPanel>
-            <CommandEmpty>Nothing matches.</CommandEmpty>
-            <CommandList>
-              {(group: Group) => (
-                <CommandGroup key={group.label} items={group.items}>
-                  <CommandGroupLabel>{group.label}</CommandGroupLabel>
-                  <CommandCollection>
-                    {(entry: Entry) => (
-                      <CommandItem key={entry.id} value={entry} onClick={entry.run} className="gap-2">
-                        <entry.Mark className="size-4 shrink-0 text-ink-muted" />
-                        <span className="truncate">{entry.label}</span>
-                        {entry.hint && (
-                          <span className="min-w-0 truncate text-xs text-ink-faint">
-                            {entry.hint}
-                          </span>
-                        )}
-                        {entry.active && (
-                          <CommandShortcut>
-                            <Icon.Check className="size-3.5" />
-                          </CommandShortcut>
-                        )}
-                      </CommandItem>
-                    )}
-                  </CommandCollection>
-                </CommandGroup>
-              )}
-            </CommandList>
-          </CommandPanel>
-          <CommandFooter>
-            <span className="flex items-center gap-1.5">
-              <Kbd>↑</Kbd>
-              <Kbd>↓</Kbd>
-              to move
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Kbd>↵</Kbd>
-              to choose
-            </span>
-          </CommandFooter>
-        </Command>
-      </CommandDialogPopup>
+      <CommandDialogPortal>
+        <CommandDialogBackdrop />
+        <CommandDialogViewport>
+          <Dialog.Popup
+            aria-label="Command palette"
+            className="w-full max-w-xl outline-none transition-[scale,opacity] duration-(--duration-snap) ease-snap data-ending-style:scale-98 data-ending-style:opacity-0 data-starting-style:scale-98 data-starting-style:opacity-0"
+          >
+            {open && <Palette close={() => setOpen(false)} />}
+          </Dialog.Popup>
+        </CommandDialogViewport>
+      </CommandDialogPortal>
     </CommandDialog>
+  )
+}
+
+/** The palette's contents, mounted while it is open so each opening starts empty. */
+function Palette({ close }: { close: () => void }) {
+  const { list, error } = useModelCatalog()
+  const issue = modelCatalogIssue(list, error)
+  const groups = useGroups(close)
+  const glass = useMenuGlass('navigation')
+  const { commands, runs } = useMemo(() => {
+    const runs = new Map<string, () => void>()
+    const commands: PaletteCommand[] = groups.flatMap((group) =>
+      group.items.map((entry) => {
+        runs.set(entry.id, entry.run)
+        return {
+          id: entry.id,
+          label: entry.label,
+          group: group.label,
+          hint: entry.hint,
+          keywords: entry.keywords,
+          active: entry.active,
+          icon: <entry.Mark className="size-4 shrink-0 text-ink-muted" />,
+        }
+      }),
+    )
+    return { commands, runs }
+  }, [groups])
+  const [query, setQuery] = useState('')
+  const [activeId, setActiveId] = useState('')
+  // The first command the query keeps is the one Enter runs until the arrows move.
+  const shown = paletteMatches(commands, query)
+  const active = shown.some((c) => c.id === activeId)
+    ? activeId
+    : (shown[0]?.id ?? '')
+
+  return (
+    <div ref={glass.attach} className={cn('rounded-[20px]', glass.className)}>
+      <PaletteSurface
+        commands={commands}
+        query={query}
+        activeId={active}
+        onQueryChange={(next) => {
+          setQuery(next)
+          setActiveId('')
+        }}
+        onActiveChange={setActiveId}
+        onRun={(id) => runs.get(id)?.()}
+        placeholder="Search threads, models, plugins, skills and settings"
+        className={cn('max-w-none', glass.className && 'bg-transparent dark:bg-transparent')}
+      />
+      {issue && (
+        <p role="alert" className="px-3.5 pb-3 text-xs text-ink-muted">
+          {issue}
+        </p>
+      )}
+    </div>
   )
 }

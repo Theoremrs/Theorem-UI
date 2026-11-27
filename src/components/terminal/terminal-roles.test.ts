@@ -6,9 +6,11 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { wcagContrast } from 'culori'
-import { modeTokens, modes } from '../../../scripts/palettes'
+import { modeEditor, modeTokens, modes } from '../../../scripts/palettes'
 import { workspaceOf } from './terminal-theme'
 import type { Workspace } from './terminal-theme'
+import { GITHUB_DARK } from './terminal-editor'
+import type { TerminalEditor } from './terminal-editor'
 import {
   FALLBACK_ROLES,
   ILLUSTRATION_REFERENCE,
@@ -23,6 +25,11 @@ import {
 type Mode = (typeof modes)[number]
 const mode = (selector: string) => modes.find((m) => m.selector === selector)!
 const workspace = (m: Mode) => workspaceOf((name) => modeTokens(m)[name]!)
+/** Each built-in mode's dark editor; a person's own colours take GitHub Dark's. */
+const EDITORS: Record<string, TerminalEditor> = {
+  Vitesse: modeEditor(mode("[data-palette='vitesse']")),
+  'Vitesse dark': modeEditor(mode(".dark[data-palette='vitesse']")),
+}
 
 const WORKSPACES: Record<string, Workspace> = {
   'GitHub Sharp': workspace(mode(':root')),
@@ -37,7 +44,7 @@ const WORKSPACES: Record<string, Workspace> = {
 
 describe('terminal roles', () => {
   for (const [name, w] of Object.entries(WORKSPACES)) {
-    const roles = terminalRoles(w)
+    const roles = terminalRoles(w, EDITORS[name] ?? GITHUB_DARK)
     test(`${name}: every required pair reads, unrounded`, () => {
       expect(failingPairs(roles)).toEqual([])
       expect(roles.diagnostics.some((d) => d.startsWith('fallback'))).toBe(

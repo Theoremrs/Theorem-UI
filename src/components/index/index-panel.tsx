@@ -6,7 +6,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { ThreadListSearch } from '@/components/assistant-ui/elements/thread-list.aui'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { Icon } from '@/components/icons'
-import { menuPopup } from '@/components/shell/sidebar'
+import { useChromeMenuGlass } from '@/components/shell/chrome-menu'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -251,6 +251,7 @@ function PolicySwitch({
 
 /** What Theorem may change on its own. Everything it changes can be reverted. */
 function PolicyMenu() {
+  const { attach: attachGlass, className: glassClass } = useChromeMenuGlass()
   const policy = usePolicy()
   const write = useWritePolicy()
   if (!policy.data) return null
@@ -278,7 +279,7 @@ function PolicyMenu() {
           sideOffset={4}
           className="z-50"
         >
-          <Popover.Popup className={cn('w-72 p-3', menuPopup)}>
+          <Popover.Popup ref={attachGlass} className={cn('w-72 p-3', glassClass)}>
             <Popover.Title className="text-sm font-medium">
               What Theorem may change by itself
             </Popover.Title>

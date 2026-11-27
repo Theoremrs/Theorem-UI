@@ -1,0 +1,101 @@
+{
+  "spec": "docs/plans/chromeless-artifacts.md",
+  "items": [
+    {
+      "id": "fixture",
+      "item": "The Gray-Scott App the model wrote kept byte for byte as a story fixture, served as a theorem.app document with its real content digest",
+      "status": "done",
+      "evidence": "src/stories/fixtures/gray-scott.html; story chromeless-gray-scott; src/stories/fixtures/notes.ts documentSnapshot now records sha256 of the canonical bytes"
+    },
+    {
+      "id": "oracle-themes",
+      "item": "The story oracle shoots a story in any palette and mode",
+      "status": "done",
+      "evidence": "scripts/story-oracle.mjs ORACLE_SCHEME, ORACLE_PALETTE"
+    },
+    {
+      "id": "oracle-states",
+      "item": "The story oracle shoots a scripted state: a hover on the page and a click inside the App frame",
+      "status": "done",
+      "evidence": "scripts/story-oracle.mjs ORACLE_HOVER, ORACLE_FRAME_CLICK"
+    },
+    {
+      "id": "ref-before",
+      "item": "Before references: Gray-Scott inline and the CPU/GPU notebook, four palettes x two modes and 390 wide, committed with hashes in the ledger",
+      "status": "partial",
+      "evidence": "Gray-Scott: docs/plans/evidence/chromeless-artifacts/before/ (4 palettes x 2 modes + 390 wide), hashes in ledger.md 'Chromeless artifacts'. Notebook: not captured. Story cpu-gpu-tradeoff has failed since 8a0d0874 (the notebook reads its document's live state; the fake never serves the notebook document, 404 on /api/documents/v2/documents/cpu-gpu-tradeoff). Seeding it needs the notebook source with its artifactForm attribute; done with notebook-adapter"
+    },
+    {
+      "id": "ref-astryx",
+      "item": "Astryx 0.7.17 control references from upstream docs at the pin, ledger row complete (lane, source + pin, author + licence, hash)",
+      "status": "done",
+      "evidence": "Astryx 0.7.17 (upgraded from 0.7.16): docs/plans/evidence/refs/astryx-<control>@0.7.17-{dark,light}.png for Button, NumberInput, SegmentedControl, Selector, Slider, Switch; ledger rows with lane, source, author/licence and all twelve sha256 in ledger.md \"Chromeless artifacts\""
+    },
+    {
+      "id": "study",
+      "item": "Two or three inline presentation directions as stories in every palette/mode and 390 wide; owner picks (HITL)",
+      "status": "done",
+      "evidence": "Owner picked C, the overlay, on 2026-11-24"
+    },
+    {
+      "id": "decision-agent-actions",
+      "item": "Owner chooses the agent-action owner: page-declared operations or UI SDK bridge",
+      "status": "done",
+      "evidence": "Default taken: page-declared operations (app.control), recorded in the plan as open to the owner; the UI SDK bridge is not added"
+    },
+    {
+      "id": "host-chrome",
+      "item": "No persistent action row on a healthy artifact; host actions on hover, focus-within and touch; failures stay visible; aria-labels, no tooltips (static per state + interaction)",
+      "status": "partial",
+      "evidence": "Built: inline-artifact.tsx data-host-actions + styles.css \"Host actions\" (over the corner, hover/focus-within, always without hover; data-attention keeps a needing toolbar in flow; aria-labels, no tooltips). Seen: hover and focus-within in the stories at 1280 and 390, the toolbar dropping to a second row under 640px. Keyboard and touch in the real chat wait on verify-live. Live in the e2e chat (2026-11-24): hidden at rest, the icon row and toolbar appear on hover over Qwen4 Max's double pendulum and MiniMax M3's predator/prey. Over an App that draws its own title they cover the title's right end; keyboard and touch in the real chat still to do"
+    },
+    {
+      "id": "presentation",
+      "item": "Presentation context and size through the existing bridge; one scroll owner; resize and theme change keep the App running (interaction + static)",
+      "status": "done",
+      "evidence": "sandbox/presentation.ts + lib/blocks/presentation.ts; story presentation-frame-counter: expand and collapse in the browser pane left the count climbing (147 to 398 to 533) and the App read inline 1048x720 then expanded 1191x1151"
+    },
+    {
+      "id": "ui-kit",
+      "item": "@theorem/ui in the registry and library sources over Astryx in Theorem's Theme; annotate and spatial import from it; declarations reach TSRS (static per control + type check)",
+      "status": "done",
+      "evidence": "src/lib/blocks/ui (controls, theme, reach, stage, mount); APP_LIBRARIES + app-library-sources; annotate and spatial chrome import from @theorem/ui; declarations regenerated (scripts/app-declarations.ts). Stories kit-<control> with collages under evidence/chromeless-artifacts/kit/<control>/collage.png, waiting on the owner's seal"
+    },
+    {
+      "id": "kit-discovery",
+      "item": "Every artifact turn knows the page's theme and the themed component libraries without a describe call; code-mode search finds the kit docs and examples (behaviour)",
+      "status": "partial",
+      "evidence": "Changed by the owner on 2026-11-24: the components are the baseline, so the standing guidance names them. Theorem claude/artifact-forms 81a71bd5b0: guidance() states the --theorem-* variables and lists the html-app library records (library:@theorem/ui from records.ts, library:@theorem/spatial), test a_turn_knows_the_look_an_artifact_takes_and_the_components_it_has; then a sharper sentence (no page of its own, clear ground, host controls top-right). Live: Qwen4 Max drew every control with --theorem-* and no header; MiniMax M3 ignored it (own :root palette, gradient page background, title header). Neither imported @theorem/ui. Theorem b5ff72c326 adds the sharper sentence; MiniMax M3 rerun on it (chatthread_sha256:ce929a12429cac6529c5d9018) used one tool, the write, and drew the same palette to the hex (#14110f, #b8f06a), page background and title header: its own house style, not reuse. Guidance moves Qwen, not MiniMax"
+    },
+    {
+      "id": "gray-scott-kit",
+      "item": "Gray-Scott recomposed on the kit in the picked direction; shader, palette, ranges and precision unchanged (static + interaction)",
+      "status": "done",
+      "evidence": "src/stories/fixtures/gray-scott-kit/, story chromeless-gray-scott-kit: same shaders, palette, ranges and 0.0001 step, on Stage and Dock; type-checked and built in the App pipeline; shot at 1280 dark and light and 390 with Parameters open"
+    },
+    {
+      "id": "notebook-adapter",
+      "item": "Kit controls in an Observable notebook through an explicit mount with cleanup and one React identity (static + interaction)",
+      "status": "done",
+      "evidence": "The notebook runtime bundles the libraries its cells import with one React (export.ts bundleNotebookRuntime); ui.mount returns its cleanup for invalidation; observable-document.test.ts \"a cell imports @theorem/ui from the bundle…\" sets k to 7 and reads twice = 14, and the registry empties on dispose. No notebook story yet: cpu-gpu-tradeoff still 404s in the fake"
+    },
+    {
+      "id": "agent-actions",
+      "item": "Read, change, pause and reset through the same functions as the visible controls; receipt reports the observed value (interaction)",
+      "status": "done",
+      "evidence": "sandbox/controls.ts, running-apps.ts, app.control (app-operations.ts) with tests; end to end from the page: list, set feed (clamped), set preset, press pause"
+    },
+    {
+      "id": "custom-control",
+      "item": "A newly authored control checked by TSRS and built by esbuild-wasm, no new host enum or schema (static story)",
+      "status": "done",
+      "evidence": "preset-map.tsx in the Gray-Scott kit App: written in the App's own files, checked by TSRS and built by esbuild-wasm, reaching the agent as preset via useControl; no host enum or schema"
+    },
+    {
+      "id": "verify-live",
+      "item": "Real e2e chat: varied questions and models; desktop/narrow, light/dark, keyboard/touch host actions, expand, reopen saved revision, unmount cleanup; owner opens the collages",
+      "status": "partial",
+      "evidence": "Two live turns on the e2e stack after the guidance change: Qwen4 Max double pendulum (chatthread_sha256:9bd85a6440310c448167b0b1a) themed; MiniMax M3 predator/prey (chatthread_sha256:74f800352309d38dca7ce338a) not themed, and not themed on the rerun with the sharper sentence (chatthread_sha256:ce929a12429cac6529c5d9018). Still to do: narrow, light, keyboard/touch host actions, reopen a saved revision, unmount cleanup, owner opens the collages Third run, fresh data, 2026-11-25: server cb64ee1bc5 (Theorem claude/artifact-forms, with a theorem-js-cell built from the same sources), UI 7a1f4c0c, Qwen4 Max, predator/prey (chatthread_sha256:ad6afb812c0c1ab90cfc7c4d5, run harnessrun:chat-3210b7506e30acabf358493c69d47fd8). Captured requests: 8, first 150,352 bytes (system 27,671 chars, 96 native tools with 121,443 chars of schemas, none repeated in the system text; no github or palette in the system text). Artifact revisions 1366 (8 problems: model wrote `const x = { const ... }`), 2012 (4 problems), 2343 (19 cells ready, no problems). Theme: cells read theme.ink/inkMuted/line/surface/states, no hex colours. Exercised: phase-portrait click restarts from the clicked point and offers Ask about selection; fox death rate slider redraws; Restart redraws from the initial populations. Not collected: narrow, light, keyboard/touch host actions, reopen a saved revision, unmount cleanup, collages. Found: write_app refused revision \"1366\" (string) twice, and the repair note said the refused call may have had effects."
+    }
+  ]
+}

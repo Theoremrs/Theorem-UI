@@ -53,6 +53,7 @@ import {
 import { editorRead, useFieldEdit, useUnsavedEdits } from './queries'
 import type { CrmWrites, EditorRead, FieldEdit } from './queries'
 import { recordReference } from './reference'
+import { madeKind } from './made-links'
 
 /** A refusal or failure in words the person can act on. */
 export const crmErrorText = (error: unknown, type: ObjectType | undefined) =>
@@ -342,6 +343,7 @@ function PropertyRow({
   const written =
     whole &&
     typeof value === 'string' &&
+    !madeKind(type, field) &&
     (kind === 'long_text' ||
       (kind === 'text' && !displayHint(type, field.key)?.display))
   return (

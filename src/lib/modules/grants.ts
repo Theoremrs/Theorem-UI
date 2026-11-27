@@ -4,7 +4,7 @@
 // as people, so a grant stored beside it could be granted by whoever wrote it.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { RequestedCapabilities } from './contract'
+import type { InstanceRequest, RequestedCapabilities } from './contract'
 
 /** What the person allowed one module, for one exact version of its files. */
 export interface Grant {
@@ -54,19 +54,49 @@ export const grantFor = (
   return grant && digest && grant.digest === digest ? grant : undefined
 }
 
+/** Each instance's methods and actions both asked and allowed; invoke goes with no action left. */
+function grantedInstances(
+  requested: ReadonlyArray<InstanceRequest>,
+  allowed: ReadonlyArray<InstanceRequest>,
+): InstanceRequest[] {
+  return requested.flatMap((asked) => {
+    const given = allowed.find((one) => one.instanceId === asked.instanceId)
+    if (!given) return []
+    const actions = asked.actions.filter((key) => given.actions.includes(key))
+    const methods = asked.methods.filter(
+      (method) =>
+        given.methods.includes(method) &&
+        (method !== 'invoke' || actions.length > 0),
+    )
+    return methods.length
+      ? [{ instanceId: asked.instanceId, methods, actions }]
+      : []
+  })
+}
+
 /** The granted part of a request: never more than was both asked and allowed. */
 export function granted(
   requested: RequestedCapabilities,
   allowed: RequestedCapabilities,
 ): RequestedCapabilities {
-  const both = (key: keyof RequestedCapabilities) =>
+  const both = (key: 'read' | 'write' | 'state' | 'net') =>
     requested[key].filter((value) => allowed[key].includes(value))
-  return {
+  const paths = {
     read: both('read'),
     write: both('write'),
     state: both('state'),
     net: both('net'),
   }
+  // A grant kept from before capability access existed allows none of it.
+  return requested.instances
+    ? {
+        ...paths,
+        instances: grantedInstances(
+          requested.instances,
+          allowed.instances ?? [],
+        ),
+      }
+    : paths
 }
 
 /** SHA-256 over the manifest and the page, so either changing asks again. */

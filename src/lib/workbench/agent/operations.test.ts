@@ -121,7 +121,7 @@ describe('declarations', () => {
     expect(names()).toEqual([WORKBENCH_READ, WORKBENCH_ACT])
   })
 
-  test('a send never carries more than sixteen operations, all mounted', () => {
+  test('a send never carries more than the twenty operations Theorem admits, all mounted', () => {
     useKitStage.setState({ mounted: true })
     useFaceStage.setState({ mounted: true })
     setWorkbenchHandle(fakeHandle().handle)
@@ -129,7 +129,7 @@ describe('declarations', () => {
       (operation) => operation.name,
     )
     expect(names).toContain(WORKBENCH_READ)
-    expect(names.length).toBeLessThanOrEqual(16)
+    expect(names.length).toBeLessThanOrEqual(20)
     expect(new Set(names).size).toBe(names.length)
   })
 

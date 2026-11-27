@@ -104,6 +104,9 @@ const config = defineConfig({
   // cannot load a .node file, and trash's globby needs unicorn-magic's Node
   // build. The client never imports them, so they are left out.
   optimizeDeps: { exclude: serverOnlyPackages },
+  // The composer's language detector imports its model weights (a .bin) as
+  // an inlined asset in the chunk it loads on first use (chat/code-language).
+  assetsInclude: ['**/*.bin'],
   resolve: {
     tsconfigPaths: true,
     alias: cloudflare

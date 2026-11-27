@@ -15,6 +15,7 @@ import {
 } from './terminal-theme'
 import type { TerminalTheme, Workspace } from './terminal-theme'
 import { FALLBACK_ROLES, terminalRoles } from './terminal-roles'
+import { editorFor } from './terminal-editor'
 import type { TerminalRoles } from './terminal-roles'
 
 /**
@@ -50,15 +51,17 @@ let followed = ''
 
 function follow() {
   const workspace = readWorkspace()
-  const key = JSON.stringify(workspace)
+  const palette = document.documentElement.dataset.palette
+  const key = JSON.stringify([palette, workspace])
   // Setting the colours below changes the root's style, which calls this again.
   if (key === followed) return
   followed = key
   let theme: TerminalTheme
   let roles: TerminalRoles
   try {
-    theme = terminalTheme(workspace)
-    roles = terminalRoles(workspace)
+    const editor = editorFor(palette)
+    theme = terminalTheme(workspace, editor)
+    roles = terminalRoles(workspace, editor)
     if (roles.diagnostics.some((d) => d.startsWith('fallback')))
       console.warn('terminal roles:', roles.diagnostics)
   } catch (error) {

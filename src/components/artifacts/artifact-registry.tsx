@@ -17,9 +17,11 @@ import type {
   Distance,
   Representation,
 } from '@/lib/artifacts/contributions'
+import { SCENE_CONTRACT } from '@/components/chat/scene-model'
 import { resolvedTheme } from '@/lib/blocks/sandbox/theme'
 import { observableSource } from '@/lib/notebooks/observable-document'
 import { appDocumentFor } from '@/lib/theorem/apps'
+import type { SavedPublication } from '@/lib/theorem/apps'
 import { fileNameFor } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 
@@ -67,7 +69,8 @@ export const UI_CONTRIBUTIONS: ReadonlyArray<ArtifactContribution> = [
     kinds: ['document'],
     media: ['text/markdown'],
     presentations: [
-      presentation('artifact_native', 'theorem-document.excerpt', ['preview']),
+      // In the reply a document is a card that opens it in the Gallery.
+      presentation('artifact_native', 'theorem-document.reply', ['preview']),
       presentation('artifact_native', 'theorem-document', [
         'thing',
         'interactive',
@@ -86,12 +89,27 @@ export const UI_CONTRIBUTIONS: ReadonlyArray<ArtifactContribution> = [
     locators: ['code_range'],
     followsTheme: true,
   }),
+  // The agent picks how a diagram is drawn by its kind: a "diagram" is
+  // Mermaid source, drawn as written; a "graph" is a DAG of nodes naming what
+  // each depends on, laid out as a flow graph. Either sits bare in the reply.
   contribution('theorem.diagram', 'Diagram', {
     provider: 'theorem-ui',
     kinds: ['diagram'],
     media: ['text/vnd.mermaid'],
     presentations: [
+      presentation('artifact_native', 'theorem-diagram.reply', ['preview']),
       presentation('artifact_native', 'theorem-diagram', [
+        'thing',
+        'interactive',
+      ]),
+    ],
+    followsTheme: true,
+  }),
+  contribution('theorem.graph', 'Graph', {
+    provider: 'theorem-ui',
+    kinds: ['graph'],
+    presentations: [
+      presentation('artifact_native', 'theorem-graph', [
         'preview',
         'thing',
         'interactive',
@@ -132,6 +150,25 @@ export const UI_CONTRIBUTIONS: ReadonlyArray<ArtifactContribution> = [
       ]),
     ],
     locators: ['entity', 'table_rows'],
+    followsTheme: true,
+  }),
+  // An interactive scene the agent wrote, on SceneOS. In the reply it is the
+  // whole surface, with its own Expand and Ask; in a panel it fills the
+  // panel in its full layout. Its code runs only in the scene's sandboxed
+  // page, so no presentation holds a live session and none waits behind
+  // Interact.
+  contribution('theorem.scene', 'Scene', {
+    provider: 'theorem-ui',
+    kinds: ['scene'],
+    schemas: [SCENE_CONTRACT],
+    presentations: [
+      presentation('artifact_native', 'theorem-scene.reply', ['preview']),
+      presentation('artifact_native', 'theorem-scene', [
+        'thing',
+        'interactive',
+      ]),
+    ],
+    locators: ['entity'],
     followsTheme: true,
   }),
 ]
@@ -178,13 +215,56 @@ export function subjectOf(
 }
 
 let mounted: Readonly<Record<string, FC<RendererProps>>> = {}
+let bare: ReadonlySet<string> = new Set()
+let cards: ReadonlySet<string> = new Set()
+let fills: ReadonlySet<string> = new Set()
 
 /**
  * Mounts the renderers this build ships. Called once, by the module that
  * defines them (artifact-renderers), so availability is what actually loaded.
+ *
+ * A `bare` renderer draws the whole surface in the reply itself: its own
+ * sizing, expansion, loading and failure, and Ask. The conversation adds no
+ * card around it (docs/plans/interactive-answer-artifacts.md: no visible
+ * chrome, an invisible frame contract). A `card` renderer is the reply's
+ * own card for an artifact shown elsewhere: the conversation adds nothing
+ * around it, and the working turn's still opens in its panel. A renderer
+ * that `fills` takes the whole of a panel's body, with no reading column or
+ * padding, and sizes itself to it.
  */
-export function mountRenderers(table: Record<string, FC<RendererProps>>) {
+export function mountRenderers(
+  table: Record<string, FC<RendererProps>>,
+  options: {
+    bare?: ReadonlyArray<string>
+    cards?: ReadonlyArray<string>
+    fills?: ReadonlyArray<string>
+  } = {},
+) {
   mounted = { ...mounted, ...table }
+  bare = new Set([...bare, ...(options.bare ?? [])])
+  cards = new Set([...cards, ...(options.cards ?? [])])
+  fills = new Set([...fills, ...(options.fills ?? [])])
+}
+
+/** Whether the artifact at `distance` takes the whole of a panel's body. */
+export function fillsPanel(
+  artifact: TheoremArtifact,
+  distance: Distance,
+): boolean {
+  const { renderer } = representationOf(artifact, distance)
+  return renderer !== undefined && renderer in mounted && fills.has(renderer)
+}
+
+/** Whether the reply shows the artifact bare at `distance`, with no card around it. */
+export function isBare(artifact: TheoremArtifact, distance: Distance): boolean {
+  const { renderer } = representationOf(artifact, distance)
+  return renderer !== undefined && renderer in mounted && bare.has(renderer)
+}
+
+/** Whether the artifact's renderer at `distance` draws the reply's card itself. */
+export function isCard(artifact: TheoremArtifact, distance: Distance): boolean {
+  const { renderer } = representationOf(artifact, distance)
+  return renderer !== undefined && renderer in mounted && cards.has(renderer)
 }
 
 export function rendererFor(
@@ -218,6 +298,27 @@ export type ArtifactSource = {
 
 const inline = (artifact: TheoremArtifact) => async () => artifact.content
 
+/**
+ * What Copy and Download read of a revision in `form`. The newest revision of
+ * a saved artifact is its document as saved now: a revision made in another
+ * thread is in it. An older one, and one with no document, is what its
+ * message carries (undefined). A head saved since in another form is not this
+ * revision's, so its message's is read.
+ */
+async function headOf<TForm extends SavedPublication['form']>(
+  artifact: TheoremArtifact,
+  latest: boolean,
+  form: TForm,
+): Promise<Extract<SavedPublication, { form: TForm }> | undefined> {
+  if (!latest || !artifact.documentId) return undefined
+  const head = await appDocumentFor(artifact.documentId).load()
+  if (!head.publication)
+    throw new Error(head.unreadable ?? `The saved ${head.form} could not be read.`)
+  return head.publication.form === form
+    ? (head.publication as Extract<SavedPublication, { form: TForm }>)
+    : undefined
+}
+
 /** Per contribution: what Copy and Download hand over for a revision. */
 const SOURCES: Record<
   string,
@@ -228,35 +329,56 @@ const SOURCES: Record<
     mediaType: 'text/markdown',
     load: inline(artifact),
   }),
-  'theorem.openui': (artifact) => ({
+  'theorem.openui': (artifact, latest) => ({
     noun: 'program',
     mediaType: 'text/plain',
-    load: inline(artifact),
+    load: async () =>
+      (await headOf(artifact, latest, 'openui'))?.program ?? artifact.content,
+  }),
+  'theorem.scene': (artifact) => ({
+    noun: 'Scene package',
+    mediaType: 'application/json',
+    load: async () =>
+      JSON.stringify(artifact.scene?.scenePackage ?? {}, null, 2),
   }),
   'theorem.diagram': (artifact) => ({
     noun: '',
     mediaType: 'text/vnd.mermaid',
     load: inline(artifact),
   }),
+  'theorem.graph': (artifact) => ({
+    noun: '',
+    mediaType: 'application/json',
+    load: inline(artifact),
+  }),
   // A payload this build cannot read still hands over its content: the
   // publication as canonical JSON.
-  'theorem.notebook.observable': (artifact) => {
+  'theorem.notebook.observable': (artifact, latest) => {
     const { notebook } = artifact
     return notebook?.form === 'observable'
       ? {
           noun: 'Notebook',
           mediaType: 'text/html',
-          load: async () => observableSource(notebook, resolvedTheme()),
+          load: async () =>
+            observableSource(
+              (await headOf(artifact, latest, 'observable')) ?? notebook,
+              resolvedTheme(),
+            ),
         }
-      : { noun: 'Notebook', mediaType: 'application/json', load: inline(artifact) }
+      : {
+          noun: 'Notebook',
+          mediaType: 'application/json',
+          load: inline(artifact),
+        }
   },
-  'theorem.notebook.marimo': (artifact) => ({
+  'theorem.notebook.marimo': (artifact, latest) => ({
     noun: 'Notebook source',
     mediaType: 'text/x-python',
     load: async () =>
-      artifact.notebook?.form === 'marimo'
+      (await headOf(artifact, latest, 'marimo'))?.source ??
+      (artifact.notebook?.form === 'marimo'
         ? artifact.notebook.source
-        : artifact.content,
+        : artifact.content),
   }),
   'theorem.app': (artifact, latest) => ({
     noun: 'App source',

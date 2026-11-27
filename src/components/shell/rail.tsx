@@ -1,4 +1,4 @@
-// SOURCING: Base UI Menu (account menu), @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/modifiers (reordering the destinations), @dnd-kit/accessibility (saying a keyboard move aloud), Kit's home slot (the stage stands the fox in it), the agent terminal toggle, ui/tooltip over Base UI Tooltip, ThemeToggle (next-themes light/dark), the shell's mode routes and tenant hook, the opened folders (whether the Vault is offered), the sign-in helpers (sign out), glass/liquid-glass (the junction's tab is a pane of the navigation panel's glass)
+// SOURCING: Base UI Menu (account menu), @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/modifiers (reordering the destinations), @dnd-kit/accessibility (saying a keyboard move aloud), Kit's home slot (the stage stands the fox in it), the agent terminal toggle, ThemeToggle (next-themes light/dark), the shell's mode routes and tenant hook, the opened folders (whether the Vault is offered), the sign-in helpers (sign out), glass/liquid-glass (the junction's tab is a pane of the navigation panel's glass)
 import { Menu } from '@base-ui/react/menu'
 import { LiveRegion, useAnnouncement } from '@dnd-kit/accessibility'
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
@@ -30,12 +30,6 @@ import { KitPerch } from '@/components/kit/kit-stage'
 import { useSurfaceMaterial } from '@/lib/appearance'
 import { signOut, useSignInConfigured } from '@/lib/theorem/sign-in'
 import { useWorkspaces } from '@/lib/workspace/workspaces'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { useWorkbenchPlacement } from '@/components/workbench/use-workbench-placement'
 import { RailMark } from './rail-marks'
 import {
@@ -48,7 +42,7 @@ import {
 import type { ShellMode } from './modes'
 import { useTenant } from './projects'
 import { useShell } from './shell-state'
-import { menuItem, menuPopup } from './sidebar'
+import { ChromeMenuPopup, menuItem } from './chrome-menu'
 
 import { Link } from '@tanstack/react-router'
 import { useCommandPalette } from './command-palette'
@@ -78,10 +72,10 @@ function AccountMenu() {
           sideOffset={8}
           className="z-50"
         >
-          <Menu.Popup
+          <ChromeMenuPopup
             data-appearance-part="popover"
             data-appearance-recipe="ui.label"
-            className={`min-w-52 ${menuPopup}`}
+            className="min-w-52"
           >
             {tenant && (
               <>
@@ -111,7 +105,7 @@ function AccountMenu() {
                 </Menu.Item>
               </>
             )}
-          </Menu.Popup>
+          </ChromeMenuPopup>
         </Menu.Positioner>
       </Menu.Portal>
     </Menu.Root>
@@ -121,8 +115,7 @@ function AccountMenu() {
 /** Opens the workbench beside the conversation (where it was last docked), and closes it. */
 function TerminalToggle() {
   const { requestedPlacement, toggle } = useWorkbenchPlacement()
-  const open =
-    requestedPlacement === 'side' || requestedPlacement === 'bottom'
+  const open = requestedPlacement !== undefined
   return (
     <Button
       variant="ghost"
@@ -223,24 +216,15 @@ function FilesControl({ collapsible }: { collapsible: boolean }) {
     if (covered) void openMode('chat')
   }
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            aria-label="Files"
-            aria-pressed={showing}
-            onClick={toggle}
-            className={`${railButton} h-12 aria-pressed:text-ink`}
-          />
-        }
-      >
-        <RailMark.Files className="size-5" />
-      </TooltipTrigger>
-      <TooltipContent side="right">
-        {showing ? 'Hide files' : 'Show files'}
-      </TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      aria-label="Files"
+      aria-pressed={showing}
+      onClick={toggle}
+      className={`${railButton} h-12 aria-pressed:text-ink`}
+    >
+      <RailMark.Files className="size-5" />
+    </button>
   )
 }
 
@@ -336,10 +320,17 @@ function Destination({
  * while it is the active one its tab runs straight on into that edge. On the
  * desktop the active destination also shows and hides its mode's panel.
  */
-export function Rail({ collapsible = false }: { collapsible?: boolean }) {
+export function Rail({
+  collapsible = false,
+  workspaceFull = false,
+}: {
+  collapsible?: boolean
+  workspaceFull?: boolean
+}) {
   const mode = useShellMode()
   const openMode = useOpenMode()
   const panelOpen = useShell((s) => !s.panelCollapsed[mode])
+  const filesShown = useShell((s) => s.filesShown)
   const togglePanel = useShell((s) => s.togglePanel)
   const railOrder = useShell((s) => s.railOrder)
   const setRailOrder = useShell((s) => s.setRailOrder)
@@ -360,32 +351,39 @@ export function Rail({ collapsible = false }: { collapsible?: boolean }) {
   const [junction, setJunction] = useState<Omit<Junction, 'joins'>>()
   // On the desktop the Vault lays the sheet over the panel, so the tab joins the sheet there.
   const covered = collapsible && navigatorMode(mode) !== mode
-  const joins = !collapsible || (panelOpen && !covered) ? 'navigation' : 'sheet'
+  const joins =
+    !workspaceFull && (!collapsible || (panelOpen && !covered))
+      ? 'navigation'
+      : 'sheet'
+  const flush = modes[0]?.mode === mode
   useLayoutEffect(() => {
     const rail = railRef.current
     const active = destinations.current.get(mode)
     if (!rail || !active) return
-    const box = rail.getBoundingClientRect()
-    const { top, height } = active.getBoundingClientRect()
-    const y = top - box.top
-    const flush = modes[0]?.mode === mode
-    // Level with the top, the tab starts where the sheet does, which can sit
-    // a little above the first destination, so the sheet's corner never shows
-    // above the tab.
-    const sheet = rail.closest('.appearance-shell')?.querySelector('.sheet')
-    const lead =
-      flush && sheet ? sheet.getBoundingClientRect().top - box.top : y
-    // How far down the rail the tab sits, for the glow colour it takes.
-    setJunction({
-      y,
-      lead: Math.min(lead, y),
-      h: height,
-      t: box.height ? y / box.height : 0,
-      flush,
-    })
-    // `order` stands for `modes`, whose identity changes every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, order])
+    const surface = rail
+      .closest('.appearance-shell')
+      ?.querySelector('[data-active-surface]')
+    const measure = () => {
+      const box = rail.getBoundingClientRect()
+      const { top, height } = active.getBoundingClientRect()
+      const y = top - box.top
+      const lead =
+        flush && surface ? surface.getBoundingClientRect().top - box.top : y
+      setJunction({
+        y,
+        lead: Math.min(lead, y),
+        h: height,
+        t: box.height ? y / box.height : 0,
+        flush,
+      })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(rail)
+    observer.observe(active)
+    if (surface) observer.observe(surface)
+    return () => observer.disconnect()
+  }, [mode, order, workspaceFull, flush])
 
   /** Puts `moved` where `target` is, among every mode, hidden ones included. */
   const place = (moved: ShellMode, target: ShellMode) => {
@@ -428,66 +426,66 @@ export function Rail({ collapsible = false }: { collapsible?: boolean }) {
     >
       {junction && <Junction {...junction} joins={joins} />}
       <LiveRegion id="rail-modes-moved" announcement={announcement} />
-      <TooltipProvider>
-        <DndContext
-          id="rail-modes"
-          sensors={sensors}
-          modifiers={[restrictToVerticalAxis, restrictToParentElement]}
-          accessibility={{
-            announcements,
-            screenReaderInstructions: {
-              draggable:
-                'Drag to reorder, or press Alt with the up or down arrow to move this destination.',
-            },
-          }}
-          onDragStart={() => (dragged.current = true)}
-          onDragEnd={onDragEnd}
-          onDragCancel={() => setTimeout(() => (dragged.current = false))}
+      <DndContext
+        id="rail-modes"
+        sensors={sensors}
+        modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+        accessibility={{
+          announcements,
+          screenReaderInstructions: {
+            draggable:
+              'Drag to reorder, or press Alt with the up or down arrow to move this destination.',
+          },
+        }}
+        onDragStart={() => (dragged.current = true)}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setTimeout(() => (dragged.current = false))}
+      >
+        <SortableContext
+          items={modes.map((entry) => entry.mode)}
+          strategy={verticalListSortingStrategy}
         >
-          <SortableContext
-            items={modes.map((entry) => entry.mode)}
-            strategy={verticalListSortingStrategy}
-          >
-            <nav aria-label="Modes" className="flex flex-col gap-1">
-              {modes.map(({ mode: value, label, Mark }) => {
-                const active = value === mode
-                const toggles = active && collapsible
-                const tooltip = toggles
-                  ? `${panelOpen ? 'Hide' : 'Show'} ${label} panel`
-                  : label
-                return (
-                  <Tooltip key={value}>
-                    <TooltipTrigger
-                      render={
-                        <Destination
-                          data-appearance-radius-role="control"
-                          mode={value}
-                          register={register}
-                          onMove={move}
-                          aria-label={label}
-                          aria-current={active ? 'page' : undefined}
-                          aria-expanded={toggles ? panelOpen : undefined}
-                          onClick={() => {
-                            if (dragged.current) return
-                            if (!active) void openMode(value)
-                            else if (collapsible) togglePanel(value)
-                          }}
-                          className={`${railButton} h-12 aria-[current=page]:text-ink aria-[current=page]:hover:bg-transparent`}
-                        >
-                          <Mark className="size-5" />
-                        </Destination>
-                      }
-                    />
-                    <TooltipContent side="right">{tooltip}</TooltipContent>
-                  </Tooltip>
-                )
-              })}
-            </nav>
-          </SortableContext>
-        </DndContext>
-        <div aria-hidden="true" className="my-2 h-px w-5 bg-separator" />
-        <FilesControl collapsible={collapsible} />
-      </TooltipProvider>
+          <nav aria-label="Modes" className="flex flex-col gap-1">
+            {modes.map(({ mode: value, label, Mark }) => {
+              const active = value === mode
+              const toggles = active && collapsible
+              const modePanelOpen = panelOpen && !filesShown && !workspaceFull
+              return (
+                <Destination
+                  key={value}
+                  data-appearance-radius-role="control"
+                  mode={value}
+                  register={register}
+                  onMove={move}
+                  aria-label={label}
+                  aria-current={active ? 'page' : undefined}
+                  aria-expanded={toggles ? modePanelOpen : undefined}
+                  onClick={() => {
+                    if (dragged.current) return
+                    const shell = useShell.getState()
+                    const returning = shell.filesShown || workspaceFull
+                    // A destination reveals its own list when Files or
+                    // the full workspace covers it; a later press can
+                    // collapse that list.
+                    if (workspaceFull) shell.setWorkbench('closed')
+                    if (returning) {
+                      shell.setFilesShown(false)
+                      shell.setPanelOpen(navigatorMode(value), true)
+                    }
+                    if (!active) void openMode(value)
+                    else if (collapsible && !returning) togglePanel(value)
+                  }}
+                  className={`${railButton} h-12 aria-[current=page]:text-ink aria-[current=page]:hover:bg-transparent`}
+                >
+                  <Mark className="size-5" />
+                </Destination>
+              )
+            })}
+          </nav>
+        </SortableContext>
+      </DndContext>
+      <div aria-hidden="true" className="my-2 h-px w-5 bg-separator" />
+      <FilesControl collapsible={collapsible} />
       <div className="flex-1" />
       <KitPerch name="rail" className="mb-1" />
       <TerminalToggle />

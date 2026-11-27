@@ -4,15 +4,21 @@ import { afterEach, expect, test } from 'bun:test'
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
+  SimpleImageAttachmentAdapter,
   SimpleTextAttachmentAdapter,
   useAui,
   useExternalStoreRuntime,
 } from '@assistant-ui/react'
-import type { AppendMessage, ThreadMessageLike } from '@assistant-ui/react'
+import type {
+  AppendMessage,
+  AttachmentAdapter,
+  ThreadMessageLike,
+} from '@assistant-ui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { Thread } from '../assistant-ui/elements/thread.aui'
 import { ComposerEditor } from './composer-editor'
+import { PASTED_TEXT_MIN_LINES } from './pasted-text'
 import {
   buttonNamed,
   cleanup,
@@ -56,6 +62,7 @@ function Harness({
   messages = [],
   isRunning = false,
   bare = false,
+  attachments = new SimpleTextAttachmentAdapter(),
 }: {
   text?: string
   sent?: AppendMessage[]
@@ -63,6 +70,7 @@ function Harness({
   messages?: ThreadMessageLike[]
   isRunning?: boolean
   bare?: boolean
+  attachments?: AttachmentAdapter
 }) {
   const runtime = useExternalStoreRuntime({
     messages,
@@ -74,7 +82,7 @@ function Harness({
     onEdit: async (message) => {
       edited.push(message)
     },
-    adapters: { attachments: new SimpleTextAttachmentAdapter() },
+    adapters: { attachments },
   })
   return (
     <QueryClientProvider client={client}>
@@ -187,9 +195,7 @@ test('the input has a name, a role and its placeholder for assistive technology'
   expect(editor.getAttribute('role')).toBe('textbox')
   expect(editor.getAttribute('aria-multiline')).toBe('true')
   expect(editor.getAttribute('contenteditable')).toBe('true')
-  expect(editor.getAttribute('aria-placeholder')).toBe(
-    'Write a message…',
-  )
+  expect(editor.getAttribute('aria-placeholder')).toBe('Write a message…')
   // Crepe's block handle, slash menu and top bar are switched off, not hidden.
   expect(container.querySelector('.milkdown-block-handle')).toBeNull()
   expect(container.querySelector('.milkdown-slash-menu')).toBeNull()
@@ -239,6 +245,108 @@ test('a file pasted into the editor becomes an attachment, and its text stays ou
   expect(composer.getState().text).toBe('')
 })
 
+const LONG = Array.from(
+  { length: PASTED_TEXT_MIN_LINES },
+  (_, line) => `Log line ${line + 1}: request served`,
+).join('\n')
+
+/** A paste of plain text, as the browser hands it to the editor. */
+async function pasteText(target: Element, text: string) {
+  const data = new DataTransfer()
+  data.setData('text/plain', text)
+  const paste = Object.assign(
+    new Event('paste', { bubbles: true, cancelable: true }),
+    { clipboardData: data },
+  )
+  await act(async () => {
+    target.dispatchEvent(paste)
+    await Bun.sleep(10)
+  })
+  return paste
+}
+
+test('a long pasted text becomes an attachment, and the draft stays as it was', async () => {
+  const { container } = await render(<Harness text="Summarise this log" />)
+  const editor = await editorOf(container)
+  await waitFor(() => editor.textContent === 'Summarise this log')
+  const paste = await pasteText(editor, LONG)
+  expect(paste.defaultPrevented).toBe(true)
+  await waitFor(() => composer.getState().attachments.length)
+  const [attachment] = composer.getState().attachments
+  expect(attachment!.name).toBe('Pasted text.txt')
+  expect(await attachment!.file!.text()).toBe(LONG)
+  expect(composer.getState().text).toBe('Summarise this log')
+  // The tray shows the attachment element's tile, which previews the text.
+  await waitFor(
+    () =>
+      container
+        .querySelector('.aui-attachment-tile')
+        ?.getAttribute('aria-label') === 'Preview Pasted text.txt',
+  )
+
+  await pasteText(editor, LONG.toUpperCase())
+  await waitFor(() => composer.getState().attachments.length === 2)
+  expect(composer.getState().attachments[1]!.name).toBe('Pasted text 2.txt')
+})
+
+test("a long paste into a field of the editor's own, such as a link's address, stays in that field", async () => {
+  const { container } = await render(<Harness text="" />)
+  const editor = await editorOf(container)
+  // Where the editor's link tooltip puts its address field: beside the text.
+  const field = document.createElement('input')
+  editor.parentElement!.append(field)
+  const paste = await pasteText(field, LONG)
+  expect(paste.defaultPrevented).toBe(false)
+  expect(composer.getState().attachments).toHaveLength(0)
+  field.remove()
+})
+
+test('a short pasted text goes in the draft', async () => {
+  const { container } = await render(<Harness text="" />)
+  const editor = await editorOf(container)
+  await pasteText(editor, 'A short note')
+  await waitFor(() => composer.getState().text.includes('A short note'))
+  expect(composer.getState().attachments).toHaveLength(0)
+})
+
+test('a long paste stays in the draft when the attachments take no plain text', async () => {
+  const { container } = await render(
+    <Harness text="" attachments={new SimpleImageAttachmentAdapter()} />,
+  )
+  const editor = await editorOf(container)
+  await pasteText(editor, LONG)
+  await waitFor(() =>
+    composer.getState().text.includes(`Log line ${PASTED_TEXT_MIN_LINES}`),
+  )
+  expect(composer.getState().attachments).toHaveLength(0)
+})
+
+test('Paste inline puts a pasted text back in the draft and drops its attachment', async () => {
+  const { container } = await render(<Harness text="" />)
+  const editor = await editorOf(container)
+  await pasteText(editor, LONG)
+  const tile = await waitFor(() =>
+    container.querySelector<HTMLElement>('.aui-attachment-tile[role="button"]'),
+  )
+  await click(tile)
+  const body = await waitFor(() =>
+    document.querySelector('.aui-pasted-text-body'),
+  )
+  expect(body.textContent).toBe(LONG)
+  expect(
+    document.querySelector('.aui-pasted-text-dialog')?.textContent,
+  ).toContain(
+    `${PASTED_TEXT_MIN_LINES} lines · ${LONG.length.toLocaleString()} characters`,
+  )
+  await click(await waitFor(() => buttonNamed(document, 'Paste inline')))
+  await waitFor(() => composer.getState().attachments.length === 0)
+  await waitFor(() =>
+    composer.getState().text.includes(`Log line ${PASTED_TEXT_MIN_LINES}`),
+  )
+  expect(composer.getState().text).toContain('Log line 1: request served')
+  expect(container.querySelector('.aui-attachment-tile')).toBeNull()
+})
+
 test('Ctrl+Enter in an empty editor reaches the form, and a writer can clear the text', async () => {
   const sent: AppendMessage[] = []
   const { container } = await render(<Harness text="" sent={sent} />)
@@ -269,42 +377,35 @@ test('Ctrl+Enter in an empty editor reaches the form, and a writer can clear the
   expect(composer.getState().text).toBe('')
 })
 
-test('a run finishing never changes Enter from document editing into sending', async () => {
-  const sent: AppendMessage[] = []
-  const { container, rerender } = await render(
-    <Harness text="Keep writing" sent={sent} isRunning bare />,
-  )
-  const editor = await editorOf(container)
-  await waitFor(() => editor.textContent === 'Keep writing')
-  let submits = 0
-  editor.closest('form')!.addEventListener('submit', () => submits++)
-  const enter = () =>
-    act(async () => {
+test.each([true, false])(
+  'Shift+Enter inserts a break with isRunning=%s',
+  async (isRunning) => {
+    const sent: AppendMessage[] = []
+    const { container } = await render(
+      <Harness text="Keep writing" sent={sent} isRunning={isRunning} bare />,
+    )
+    const editor = await editorOf(container)
+    await waitFor(() => editor.textContent === 'Keep writing')
+    let submits = 0
+    editor.closest('form')!.addEventListener('submit', () => submits++)
+    await act(async () => {
       editor.dispatchEvent(
         new KeyboardEvent('keydown', {
           key: 'Enter',
+          shiftKey: true,
           bubbles: true,
           cancelable: true,
         }),
       )
     })
-  await enter()
-  expect(submits).toBe(0)
-  expect(sent).toHaveLength(0)
-  const blocksWhileRunning = editor.querySelectorAll('p').length
-  expect(blocksWhileRunning).toBeGreaterThan(1)
-
-  await rerender(
-    <Harness text="Keep writing" sent={sent} isRunning={false} bare />,
-  )
-  await enter()
-  expect(submits).toBe(0)
-  expect(sent).toHaveLength(0)
-  expect(editor.querySelectorAll('p').length).toBeGreaterThan(
-    blocksWhileRunning,
-  )
-  expect(composer.getState().text).toContain('Keep writing')
-})
+    expect(submits).toBe(0)
+    expect(sent).toHaveLength(0)
+    expect(
+      editor.querySelectorAll('br:not(.ProseMirror-trailingBreak)'),
+    ).toHaveLength(1)
+    expect(composer.getState().text).toContain('Keep writing')
+  },
+)
 
 for (const modifiers of [
   { ctrlKey: true },

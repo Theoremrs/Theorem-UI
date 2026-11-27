@@ -1,0 +1,2107 @@
+{
+  "generatedAt": "2026-11-25T15:22:32.661Z",
+  "engine": "156.0.8078.4",
+  "results": [
+    {
+      "case": {
+        "id": "light-1440",
+        "width": 1440,
+        "theme": "light",
+        "overrides": {}
+      },
+      "errors": [],
+      "passed": true,
+      "checks": [
+        {
+          "id": "human-voice",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "human-math",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-recipe",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-wraps",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-numeric",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-no-hover",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-opaque",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "wide-table-local-scroll",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "rhythm",
+          "authority": "target",
+          "passed": true
+        },
+        {
+          "id": "rhythm-lists",
+          "authority": "target",
+          "passed": true
+        },
+        {
+          "id": "rhythm-first-block",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "inline-code-quiet",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "inline-code-long-stays-inline",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "math",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "mermaid",
+          "authority": "contract",
+          "passed": true
+        }
+      ],
+      "hovered": "rgba(0, 0, 0, 0)",
+      "H": 27,
+      "humanBlocks": [
+        {
+          "tag": "P",
+          "text": "Can you check the release notes before F",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "tight item one",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "tight item with inline code",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "A loose item, written as its own paragra",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A loose item, written as its own paragra",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "A second loose item that wraps onto anot",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A second loose item that wraps onto anot",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "BLOCKQUOTE",
+          "text": "A quoted line from the earlier thread.",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A quoted line from the earlier thread.",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "H3",
+          "text": "A heading the person wrote",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 600
+        },
+        {
+          "tag": "P",
+          "text": "The energy is E=mc2E = mc^2E=mc2 and the",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        }
+      ],
+      "humanMath": true,
+      "humanPrice": true,
+      "transitions": [
+        {
+          "kind": "beforeSection",
+          "from": "P.aui-md-p",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "P.aui-md-p",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "paragraph",
+          "from": "P.aui-md-p",
+          "to": "P.aui-md-p",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSubsection",
+          "from": "P.aui-md-p",
+          "to": "H3.aui-md-h3",
+          "gap": 27,
+          "expected": 27
+        },
+        {
+          "kind": "afterSubsection",
+          "from": "H3.aui-md-h3",
+          "to": "UL.aui-md-ul",
+          "gap": 8.09375,
+          "expected": 8.1
+        },
+        {
+          "kind": "beforeSection",
+          "from": "BLOCKQUOTE.aui-md-blockquote",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "DIV.aui-md-table-wrapper",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "DIV.aui-md-table-wrapper",
+          "to": "DIV.aui-md-table-wrapper",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "DIV.aui-md-table-wrapper",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "FIGURE.aui-code-block",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "FIGURE.aui-code-block",
+          "to": "FIGURE.aui-code-block",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "block",
+          "from": "FIGURE.aui-code-block",
+          "to": "P.aui-md-p",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "P.aui-md-p",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "P.aui-md-p",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "P.aui-md-p",
+          "to": "SPAN.katex-display",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "SPAN.katex-display",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "DIV.aui-mermaid-zoom-wrap",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "DIV.aui-mermaid-zoom-wrap",
+          "to": "SECTION.footnotes",
+          "gap": 20.25,
+          "expected": 20.25
+        }
+      ],
+      "listGaps": [
+        6.75,
+        6.75
+      ],
+      "nestedGaps": [
+        6.75
+      ],
+      "looseInnerGap": 20.25,
+      "firstShift": [
+        0,
+        0
+      ],
+      "table": {
+        "td": {
+          "text": "Starter",
+          "family": "IBM Plex Sans Variable",
+          "size": 16,
+          "lineHeight": 24,
+          "weight": 400
+        },
+        "th": {
+          "text": "Plan",
+          "family": "IBM Plex Sans Variable",
+          "size": 16,
+          "lineHeight": 24,
+          "weight": 500
+        },
+        "thLink": {
+          "color": "rgb(40, 99, 148)",
+          "pair": "link/assistant-reading"
+        },
+        "tdWhiteSpace": "normal",
+        "longCellLines": 2,
+        "numericVariant": "tabular-nums",
+        "numericAlign": "right",
+        "rowBackground": "rgba(0, 0, 0, 0)"
+      },
+      "tables": [
+        {
+          "scrollWidth": 606,
+          "clientWidth": 606,
+          "wrapperWidth": 607.75,
+          "columnWidth": 607.75,
+          "background": "rgb(246, 248, 250)",
+          "overflowX": "auto"
+        },
+        {
+          "scrollWidth": 757,
+          "clientWidth": 606,
+          "wrapperWidth": 607.75,
+          "columnWidth": 607.75,
+          "background": "rgb(246, 248, 250)",
+          "overflowX": "auto"
+        }
+      ],
+      "inline": [
+        {
+          "text": "docs/plan.md",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 1
+        },
+        {
+          "text": "code inside it",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 1
+        },
+        {
+          "text": "src/components/assistant-ui/elements/mar",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 2
+        }
+      ],
+      "identifier": {
+        "text": "src/components/assistant-ui/elements/markdown-text.tsx:defaultComponents.code.isCodeBlock.fallback",
+        "diagnostic": false,
+        "display": "inline"
+      },
+      "inEmphasis": {
+        "weight": 400,
+        "style": "italic"
+      },
+      "math": {
+        "inline": 2,
+        "display": 1,
+        "mathml": 2
+      },
+      "mermaid": true,
+      "scrollWidth": 1440,
+      "innerWidth": 1440
+    },
+    {
+      "case": {
+        "id": "dark-1440",
+        "width": 1440,
+        "theme": "dark",
+        "overrides": {}
+      },
+      "errors": [],
+      "passed": true,
+      "checks": [
+        {
+          "id": "human-voice",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "human-math",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-recipe",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-wraps",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-numeric",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-no-hover",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-opaque",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "wide-table-local-scroll",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "rhythm",
+          "authority": "target",
+          "passed": true
+        },
+        {
+          "id": "rhythm-lists",
+          "authority": "target",
+          "passed": true
+        },
+        {
+          "id": "rhythm-first-block",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "inline-code-quiet",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "inline-code-long-stays-inline",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "math",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "mermaid",
+          "authority": "contract",
+          "passed": true
+        }
+      ],
+      "hovered": "rgba(0, 0, 0, 0)",
+      "H": 27,
+      "humanBlocks": [
+        {
+          "tag": "P",
+          "text": "Can you check the release notes before F",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "tight item one",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "tight item with inline code",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "A loose item, written as its own paragra",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A loose item, written as its own paragra",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "A second loose item that wraps onto anot",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A second loose item that wraps onto anot",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "BLOCKQUOTE",
+          "text": "A quoted line from the earlier thread.",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A quoted line from the earlier thread.",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "H3",
+          "text": "A heading the person wrote",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 600
+        },
+        {
+          "tag": "P",
+          "text": "The energy is E=mc2E = mc^2E=mc2 and the",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        }
+      ],
+      "humanMath": true,
+      "humanPrice": true,
+      "transitions": [
+        {
+          "kind": "beforeSection",
+          "from": "P.aui-md-p",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "P.aui-md-p",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "paragraph",
+          "from": "P.aui-md-p",
+          "to": "P.aui-md-p",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSubsection",
+          "from": "P.aui-md-p",
+          "to": "H3.aui-md-h3",
+          "gap": 27,
+          "expected": 27
+        },
+        {
+          "kind": "afterSubsection",
+          "from": "H3.aui-md-h3",
+          "to": "UL.aui-md-ul",
+          "gap": 8.09375,
+          "expected": 8.1
+        },
+        {
+          "kind": "beforeSection",
+          "from": "BLOCKQUOTE.aui-md-blockquote",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "DIV.aui-md-table-wrapper",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "DIV.aui-md-table-wrapper",
+          "to": "DIV.aui-md-table-wrapper",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "DIV.aui-md-table-wrapper",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "FIGURE.aui-code-block",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "FIGURE.aui-code-block",
+          "to": "FIGURE.aui-code-block",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "block",
+          "from": "FIGURE.aui-code-block",
+          "to": "P.aui-md-p",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "P.aui-md-p",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "P.aui-md-p",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "P.aui-md-p",
+          "to": "SPAN.katex-display",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "SPAN.katex-display",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "DIV.aui-mermaid-zoom-wrap",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "DIV.aui-mermaid-zoom-wrap",
+          "to": "SECTION.footnotes",
+          "gap": 20.25,
+          "expected": 20.25
+        }
+      ],
+      "listGaps": [
+        6.75,
+        6.75
+      ],
+      "nestedGaps": [
+        6.75
+      ],
+      "looseInnerGap": 20.25,
+      "firstShift": [
+        0,
+        0
+      ],
+      "table": {
+        "td": {
+          "text": "Starter",
+          "family": "IBM Plex Sans Variable",
+          "size": 16,
+          "lineHeight": 24,
+          "weight": 400
+        },
+        "th": {
+          "text": "Plan",
+          "family": "IBM Plex Sans Variable",
+          "size": 16,
+          "lineHeight": 24,
+          "weight": 500
+        },
+        "thLink": {
+          "color": "rgb(126, 189, 247)",
+          "pair": "link/assistant-reading"
+        },
+        "tdWhiteSpace": "normal",
+        "longCellLines": 2,
+        "numericVariant": "tabular-nums",
+        "numericAlign": "right",
+        "rowBackground": "rgba(0, 0, 0, 0)"
+      },
+      "tables": [
+        {
+          "scrollWidth": 606,
+          "clientWidth": 606,
+          "wrapperWidth": 607.75,
+          "columnWidth": 607.75,
+          "background": "rgb(17, 18, 19)",
+          "overflowX": "auto"
+        },
+        {
+          "scrollWidth": 757,
+          "clientWidth": 606,
+          "wrapperWidth": 607.75,
+          "columnWidth": 607.75,
+          "background": "rgb(17, 18, 19)",
+          "overflowX": "auto"
+        }
+      ],
+      "inline": [
+        {
+          "text": "docs/plan.md",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.863328 -0.0018333 -0.00281316)",
+          "parentColor": "oklab(0.863328 -0.0018333 -0.00281316)",
+          "background": "oklab(0.863328 -0.0018333 -0.00281316 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 1
+        },
+        {
+          "text": "code inside it",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.863328 -0.0018333 -0.00281316)",
+          "parentColor": "oklab(0.863328 -0.0018333 -0.00281316)",
+          "background": "oklab(0.863328 -0.0018333 -0.00281316 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 1
+        },
+        {
+          "text": "src/components/assistant-ui/elements/mar",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.863328 -0.0018333 -0.00281316)",
+          "parentColor": "oklab(0.863328 -0.0018333 -0.00281316)",
+          "background": "oklab(0.863328 -0.0018333 -0.00281316 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 2
+        }
+      ],
+      "identifier": {
+        "text": "src/components/assistant-ui/elements/markdown-text.tsx:defaultComponents.code.isCodeBlock.fallback",
+        "diagnostic": false,
+        "display": "inline"
+      },
+      "inEmphasis": {
+        "weight": 400,
+        "style": "italic"
+      },
+      "math": {
+        "inline": 2,
+        "display": 1,
+        "mathml": 2
+      },
+      "mermaid": true,
+      "scrollWidth": 1440,
+      "innerWidth": 1440
+    },
+    {
+      "case": {
+        "id": "light-1440-content-125",
+        "width": 1440,
+        "theme": "light",
+        "overrides": {
+          "scales": {
+            "content": 1.25
+          }
+        }
+      },
+      "errors": [],
+      "passed": true,
+      "checks": [
+        {
+          "id": "human-voice",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "human-math",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-recipe",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-wraps",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-numeric",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-no-hover",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-opaque",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "wide-table-local-scroll",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "rhythm",
+          "authority": "target",
+          "passed": true
+        },
+        {
+          "id": "rhythm-lists",
+          "authority": "target",
+          "passed": true
+        },
+        {
+          "id": "rhythm-first-block",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "inline-code-quiet",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "inline-code-long-stays-inline",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "math",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "mermaid",
+          "authority": "contract",
+          "passed": true
+        }
+      ],
+      "hovered": "rgba(0, 0, 0, 0)",
+      "H": 33.75,
+      "humanBlocks": [
+        {
+          "tag": "P",
+          "text": "Can you check the release notes before F",
+          "family": "Manrope Variable",
+          "size": 20,
+          "lineHeight": 32.5,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "tight item one",
+          "family": "Manrope Variable",
+          "size": 20,
+          "lineHeight": 32.5,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "tight item with inline code",
+          "family": "Manrope Variable",
+          "size": 20,
+          "lineHeight": 32.5,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "A loose item, written as its own paragra",
+          "family": "Manrope Variable",
+          "size": 20,
+          "lineHeight": 32.5,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A loose item, written as its own paragra",
+          "family": "Manrope Variable",
+          "size": 20,
+          "lineHeight": 32.5,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "A second loose item that wraps onto anot",
+          "family": "Manrope Variable",
+          "size": 20,
+          "lineHeight": 32.5,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A second loose item that wraps onto anot",
+          "family": "Manrope Variable",
+          "size": 20,
+          "lineHeight": 32.5,
+          "weight": 400
+        },
+        {
+          "tag": "BLOCKQUOTE",
+          "text": "A quoted line from the earlier thread.",
+          "family": "Manrope Variable",
+          "size": 20,
+          "lineHeight": 32.5,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A quoted line from the earlier thread.",
+          "family": "Manrope Variable",
+          "size": 20,
+          "lineHeight": 32.5,
+          "weight": 400
+        },
+        {
+          "tag": "H3",
+          "text": "A heading the person wrote",
+          "family": "Manrope Variable",
+          "size": 20,
+          "lineHeight": 32.5,
+          "weight": 600
+        },
+        {
+          "tag": "P",
+          "text": "The energy is E=mc2E = mc^2E=mc2 and the",
+          "family": "Manrope Variable",
+          "size": 20,
+          "lineHeight": 32.5,
+          "weight": 400
+        }
+      ],
+      "humanMath": true,
+      "humanPrice": true,
+      "transitions": [
+        {
+          "kind": "beforeSection",
+          "from": "P.aui-md-p",
+          "to": "H2.aui-md-h2",
+          "gap": 42.1875,
+          "expected": 42.1875
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "P.aui-md-p",
+          "gap": 13.5,
+          "expected": 13.5
+        },
+        {
+          "kind": "paragraph",
+          "from": "P.aui-md-p",
+          "to": "P.aui-md-p",
+          "gap": 25.3125,
+          "expected": 25.3125
+        },
+        {
+          "kind": "beforeSubsection",
+          "from": "P.aui-md-p",
+          "to": "H3.aui-md-h3",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSubsection",
+          "from": "H3.aui-md-h3",
+          "to": "UL.aui-md-ul",
+          "gap": 10.125,
+          "expected": 10.125
+        },
+        {
+          "kind": "beforeSection",
+          "from": "BLOCKQUOTE.aui-md-blockquote",
+          "to": "H2.aui-md-h2",
+          "gap": 42.1875,
+          "expected": 42.1875
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "DIV.aui-md-table-wrapper",
+          "gap": 13.5,
+          "expected": 13.5
+        },
+        {
+          "kind": "block",
+          "from": "DIV.aui-md-table-wrapper",
+          "to": "DIV.aui-md-table-wrapper",
+          "gap": 25.3125,
+          "expected": 25.3125
+        },
+        {
+          "kind": "beforeSection",
+          "from": "DIV.aui-md-table-wrapper",
+          "to": "H2.aui-md-h2",
+          "gap": 42.1875,
+          "expected": 42.1875
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "FIGURE.aui-code-block",
+          "gap": 13.5,
+          "expected": 13.5
+        },
+        {
+          "kind": "block",
+          "from": "FIGURE.aui-code-block",
+          "to": "FIGURE.aui-code-block",
+          "gap": 25.3125,
+          "expected": 25.3125
+        },
+        {
+          "kind": "block",
+          "from": "FIGURE.aui-code-block",
+          "to": "P.aui-md-p",
+          "gap": 25.3125,
+          "expected": 25.3125
+        },
+        {
+          "kind": "beforeSection",
+          "from": "P.aui-md-p",
+          "to": "H2.aui-md-h2",
+          "gap": 42.1875,
+          "expected": 42.1875
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "P.aui-md-p",
+          "gap": 13.5,
+          "expected": 13.5
+        },
+        {
+          "kind": "block",
+          "from": "P.aui-md-p",
+          "to": "SPAN.katex-display",
+          "gap": 25.3125,
+          "expected": 25.3125
+        },
+        {
+          "kind": "beforeSection",
+          "from": "SPAN.katex-display",
+          "to": "H2.aui-md-h2",
+          "gap": 42.1875,
+          "expected": 42.1875
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "DIV.aui-mermaid-zoom-wrap",
+          "gap": 13.5,
+          "expected": 13.5
+        },
+        {
+          "kind": "block",
+          "from": "DIV.aui-mermaid-zoom-wrap",
+          "to": "SECTION.footnotes",
+          "gap": 25.3125,
+          "expected": 25.3125
+        }
+      ],
+      "listGaps": [
+        8.4375,
+        8.4375
+      ],
+      "nestedGaps": [
+        8.4375
+      ],
+      "looseInnerGap": 25.3125,
+      "firstShift": [
+        0,
+        0
+      ],
+      "table": {
+        "td": {
+          "text": "Starter",
+          "family": "IBM Plex Sans Variable",
+          "size": 20,
+          "lineHeight": 30,
+          "weight": 400
+        },
+        "th": {
+          "text": "Plan",
+          "family": "IBM Plex Sans Variable",
+          "size": 20,
+          "lineHeight": 30,
+          "weight": 500
+        },
+        "thLink": {
+          "color": "rgb(40, 99, 148)",
+          "pair": "link/assistant-reading"
+        },
+        "tdWhiteSpace": "normal",
+        "longCellLines": 2,
+        "numericVariant": "tabular-nums",
+        "numericAlign": "right",
+        "rowBackground": "rgba(0, 0, 0, 0)"
+      },
+      "tables": [
+        {
+          "scrollWidth": 758,
+          "clientWidth": 758,
+          "wrapperWidth": 759.6875,
+          "columnWidth": 759.6875,
+          "background": "rgb(246, 248, 250)",
+          "overflowX": "auto"
+        },
+        {
+          "scrollWidth": 891,
+          "clientWidth": 758,
+          "wrapperWidth": 759.6875,
+          "columnWidth": 759.6875,
+          "background": "rgb(246, 248, 250)",
+          "overflowX": "auto"
+        }
+      ],
+      "inline": [
+        {
+          "text": "docs/plan.md",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 24,
+          "line": 33.75,
+          "lines": 1
+        },
+        {
+          "text": "code inside it",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 24,
+          "line": 33.75,
+          "lines": 1
+        },
+        {
+          "text": "src/components/assistant-ui/elements/mar",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 24,
+          "line": 33.75,
+          "lines": 2
+        }
+      ],
+      "identifier": {
+        "text": "src/components/assistant-ui/elements/markdown-text.tsx:defaultComponents.code.isCodeBlock.fallback",
+        "diagnostic": false,
+        "display": "inline"
+      },
+      "inEmphasis": {
+        "weight": 400,
+        "style": "italic"
+      },
+      "math": {
+        "inline": 2,
+        "display": 1,
+        "mathml": 2
+      },
+      "mermaid": true,
+      "scrollWidth": 1440,
+      "innerWidth": 1440
+    },
+    {
+      "case": {
+        "id": "light-1440-wide",
+        "width": 1440,
+        "theme": "light",
+        "overrides": {
+          "reading": "wide"
+        }
+      },
+      "errors": [],
+      "passed": true,
+      "checks": [
+        {
+          "id": "human-voice",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "human-math",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-recipe",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-wraps",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-numeric",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-no-hover",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-opaque",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "wide-table-local-scroll",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "rhythm",
+          "authority": "target",
+          "passed": true
+        },
+        {
+          "id": "rhythm-lists",
+          "authority": "target",
+          "passed": true
+        },
+        {
+          "id": "rhythm-first-block",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "inline-code-quiet",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "inline-code-long-stays-inline",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "math",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "mermaid",
+          "authority": "contract",
+          "passed": true
+        }
+      ],
+      "hovered": "rgba(0, 0, 0, 0)",
+      "H": 27,
+      "humanBlocks": [
+        {
+          "tag": "P",
+          "text": "Can you check the release notes before F",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "tight item one",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "tight item with inline code",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "A loose item, written as its own paragra",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A loose item, written as its own paragra",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "A second loose item that wraps onto anot",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A second loose item that wraps onto anot",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "BLOCKQUOTE",
+          "text": "A quoted line from the earlier thread.",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A quoted line from the earlier thread.",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "H3",
+          "text": "A heading the person wrote",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 600
+        },
+        {
+          "tag": "P",
+          "text": "The energy is E=mc2E = mc^2E=mc2 and the",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        }
+      ],
+      "humanMath": true,
+      "humanPrice": true,
+      "transitions": [
+        {
+          "kind": "beforeSection",
+          "from": "P.aui-md-p",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "P.aui-md-p",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "paragraph",
+          "from": "P.aui-md-p",
+          "to": "P.aui-md-p",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSubsection",
+          "from": "P.aui-md-p",
+          "to": "H3.aui-md-h3",
+          "gap": 27,
+          "expected": 27
+        },
+        {
+          "kind": "afterSubsection",
+          "from": "H3.aui-md-h3",
+          "to": "UL.aui-md-ul",
+          "gap": 8.09375,
+          "expected": 8.1
+        },
+        {
+          "kind": "beforeSection",
+          "from": "BLOCKQUOTE.aui-md-blockquote",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "DIV.aui-md-table-wrapper",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "DIV.aui-md-table-wrapper",
+          "to": "DIV.aui-md-table-wrapper",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "DIV.aui-md-table-wrapper",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "FIGURE.aui-code-block",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "FIGURE.aui-code-block",
+          "to": "FIGURE.aui-code-block",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "block",
+          "from": "FIGURE.aui-code-block",
+          "to": "P.aui-md-p",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "P.aui-md-p",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "P.aui-md-p",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "P.aui-md-p",
+          "to": "SPAN.katex-display",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "SPAN.katex-display",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "DIV.aui-mermaid-zoom-wrap",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "DIV.aui-mermaid-zoom-wrap",
+          "to": "SECTION.footnotes",
+          "gap": 20.25,
+          "expected": 20.25
+        }
+      ],
+      "listGaps": [
+        6.75,
+        6.75
+      ],
+      "nestedGaps": [
+        6.75
+      ],
+      "looseInnerGap": 20.25,
+      "firstShift": [
+        0,
+        0
+      ],
+      "table": {
+        "td": {
+          "text": "Starter",
+          "family": "IBM Plex Sans Variable",
+          "size": 16,
+          "lineHeight": 24,
+          "weight": 400
+        },
+        "th": {
+          "text": "Plan",
+          "family": "IBM Plex Sans Variable",
+          "size": 16,
+          "lineHeight": 24,
+          "weight": 500
+        },
+        "thLink": {
+          "color": "rgb(40, 99, 148)",
+          "pair": "link/assistant-reading"
+        },
+        "tdWhiteSpace": "normal",
+        "longCellLines": 2,
+        "numericVariant": "tabular-nums",
+        "numericAlign": "right",
+        "rowBackground": "rgba(0, 0, 0, 0)"
+      },
+      "tables": [
+        {
+          "scrollWidth": 759,
+          "clientWidth": 759,
+          "wrapperWidth": 760.75,
+          "columnWidth": 760.75,
+          "background": "rgb(246, 248, 250)",
+          "overflowX": "auto"
+        },
+        {
+          "scrollWidth": 759,
+          "clientWidth": 759,
+          "wrapperWidth": 760.75,
+          "columnWidth": 760.75,
+          "background": "rgb(246, 248, 250)",
+          "overflowX": "auto"
+        }
+      ],
+      "inline": [
+        {
+          "text": "docs/plan.md",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 1
+        },
+        {
+          "text": "code inside it",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 1
+        },
+        {
+          "text": "src/components/assistant-ui/elements/mar",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 2
+        }
+      ],
+      "identifier": {
+        "text": "src/components/assistant-ui/elements/markdown-text.tsx:defaultComponents.code.isCodeBlock.fallback",
+        "diagnostic": false,
+        "display": "inline"
+      },
+      "inEmphasis": {
+        "weight": 400,
+        "style": "italic"
+      },
+      "math": {
+        "inline": 2,
+        "display": 1,
+        "mathml": 2
+      },
+      "mermaid": true,
+      "scrollWidth": 1440,
+      "innerWidth": 1440
+    },
+    {
+      "case": {
+        "id": "light-390",
+        "width": 390,
+        "theme": "light",
+        "overrides": {}
+      },
+      "errors": [],
+      "passed": true,
+      "checks": [
+        {
+          "id": "human-voice",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "human-math",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-recipe",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-wraps",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-numeric",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-no-hover",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "prose-table-opaque",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "wide-table-local-scroll",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "rhythm",
+          "authority": "target",
+          "passed": true
+        },
+        {
+          "id": "rhythm-lists",
+          "authority": "target",
+          "passed": true
+        },
+        {
+          "id": "rhythm-first-block",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "inline-code-quiet",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "inline-code-long-stays-inline",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "math",
+          "authority": "contract",
+          "passed": true
+        },
+        {
+          "id": "mermaid",
+          "authority": "contract",
+          "passed": true
+        }
+      ],
+      "hovered": "rgba(0, 0, 0, 0)",
+      "H": 27,
+      "humanBlocks": [
+        {
+          "tag": "P",
+          "text": "Can you check the release notes before F",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "tight item one",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "tight item with inline code",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "A loose item, written as its own paragra",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A loose item, written as its own paragra",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "LI",
+          "text": "A second loose item that wraps onto anot",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A second loose item that wraps onto anot",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "BLOCKQUOTE",
+          "text": "A quoted line from the earlier thread.",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "P",
+          "text": "A quoted line from the earlier thread.",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        },
+        {
+          "tag": "H3",
+          "text": "A heading the person wrote",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 600
+        },
+        {
+          "tag": "P",
+          "text": "The energy is E=mc2E = mc^2E=mc2 and the",
+          "family": "Manrope Variable",
+          "size": 16,
+          "lineHeight": 26,
+          "weight": 400
+        }
+      ],
+      "humanMath": true,
+      "humanPrice": true,
+      "transitions": [
+        {
+          "kind": "beforeSection",
+          "from": "P.aui-md-p",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "P.aui-md-p",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "paragraph",
+          "from": "P.aui-md-p",
+          "to": "P.aui-md-p",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSubsection",
+          "from": "P.aui-md-p",
+          "to": "H3.aui-md-h3",
+          "gap": 27,
+          "expected": 27
+        },
+        {
+          "kind": "afterSubsection",
+          "from": "H3.aui-md-h3",
+          "to": "UL.aui-md-ul",
+          "gap": 8.09375,
+          "expected": 8.1
+        },
+        {
+          "kind": "beforeSection",
+          "from": "BLOCKQUOTE.aui-md-blockquote",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "DIV.aui-md-table-wrapper",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "DIV.aui-md-table-wrapper",
+          "to": "DIV.aui-md-table-wrapper",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "DIV.aui-md-table-wrapper",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "FIGURE.aui-code-block",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "FIGURE.aui-code-block",
+          "to": "FIGURE.aui-code-block",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "block",
+          "from": "FIGURE.aui-code-block",
+          "to": "P.aui-md-p",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "P.aui-md-p",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "P.aui-md-p",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "P.aui-md-p",
+          "to": "SPAN.katex-display",
+          "gap": 20.25,
+          "expected": 20.25
+        },
+        {
+          "kind": "beforeSection",
+          "from": "SPAN.katex-display",
+          "to": "H2.aui-md-h2",
+          "gap": 33.75,
+          "expected": 33.75
+        },
+        {
+          "kind": "afterSection",
+          "from": "H2.aui-md-h2",
+          "to": "DIV.aui-mermaid-zoom-wrap",
+          "gap": 10.796875,
+          "expected": 10.8
+        },
+        {
+          "kind": "block",
+          "from": "DIV.aui-mermaid-zoom-wrap",
+          "to": "SECTION.footnotes",
+          "gap": 20.25,
+          "expected": 20.25
+        }
+      ],
+      "listGaps": [
+        6.75,
+        6.75
+      ],
+      "nestedGaps": [
+        6.75
+      ],
+      "looseInnerGap": 20.25,
+      "firstShift": [
+        0,
+        0
+      ],
+      "table": {
+        "td": {
+          "text": "Starter",
+          "family": "IBM Plex Sans Variable",
+          "size": 16,
+          "lineHeight": 24,
+          "weight": 400
+        },
+        "th": {
+          "text": "Plan",
+          "family": "IBM Plex Sans Variable",
+          "size": 16,
+          "lineHeight": 24,
+          "weight": 500
+        },
+        "thLink": {
+          "color": "rgb(40, 99, 148)",
+          "pair": "link/assistant-reading"
+        },
+        "tdWhiteSpace": "normal",
+        "longCellLines": 5,
+        "numericVariant": "tabular-nums",
+        "numericAlign": "right",
+        "rowBackground": "rgba(0, 0, 0, 0)"
+      },
+      "tables": [
+        {
+          "scrollWidth": 346,
+          "clientWidth": 346,
+          "wrapperWidth": 348,
+          "columnWidth": 348,
+          "background": "rgb(246, 248, 250)",
+          "overflowX": "auto"
+        },
+        {
+          "scrollWidth": 757,
+          "clientWidth": 346,
+          "wrapperWidth": 348,
+          "columnWidth": 348,
+          "background": "rgb(246, 248, 250)",
+          "overflowX": "auto"
+        }
+      ],
+      "inline": [
+        {
+          "text": "docs/plan.md",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 1
+        },
+        {
+          "text": "code inside it",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 1
+        },
+        {
+          "text": "src/components/assistant-ui/elements/mar",
+          "display": "inline",
+          "weight": 400,
+          "color": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "parentColor": "oklab(0.216544 -0.00374879 -0.0070836)",
+          "background": "oklab(0.216544 -0.00374879 -0.0070836 / 0.07)",
+          "diagnostic": false,
+          "tallest": 19,
+          "line": 27,
+          "lines": 4
+        }
+      ],
+      "identifier": {
+        "text": "src/components/assistant-ui/elements/markdown-text.tsx:defaultComponents.code.isCodeBlock.fallback",
+        "diagnostic": false,
+        "display": "inline"
+      },
+      "inEmphasis": {
+        "weight": 400,
+        "style": "italic"
+      },
+      "math": {
+        "inline": 2,
+        "display": 1,
+        "mathml": 2
+      },
+      "mermaid": true,
+      "scrollWidth": 390,
+      "innerWidth": 390
+    }
+  ]
+}

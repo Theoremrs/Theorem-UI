@@ -143,11 +143,11 @@ afterEach(async () => {
   await cleanup()
 })
 
-test('Ctrl+Enter and Cmd+Enter in the editor send into the running response, one message each', async () => {
+test('Enter and Cmd+Enter in the editor send into the running response, one message each', async () => {
   const { container, editor } = await open()
 
   await draft(editor, 'Use the smaller design')
-  await key(editor, { ctrlKey: true })
+  await key(editor, {})
   expect(send).toHaveBeenCalledTimes(1)
   expect(send.mock.calls[0]?.slice(0, 2)).toEqual([
     'run-1',
@@ -173,12 +173,12 @@ test('Ctrl+Enter and Cmd+Enter in the editor send into the running response, one
   expect(runtime.thread.getState().isRunning).toBe(true)
 })
 
-test('plain Enter during a running response edits the document and sends nothing', async () => {
+test('Shift+Enter during a running response edits the document without sending', async () => {
   const { editor } = await open()
   await draft(editor, 'Keep writing')
-  await key(editor, {})
+  await key(editor, { shiftKey: true })
   expect(send).toHaveBeenCalledTimes(0)
   expect(runs).toBe(1)
-  expect(editor.querySelectorAll('p').length).toBeGreaterThan(1)
+  expect(editor.querySelectorAll('br:not(.ProseMirror-trailingBreak)')).toHaveLength(1)
   expect(runtime.thread.composer.getState().text).toContain('Keep writing')
 })

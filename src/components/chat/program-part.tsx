@@ -1,5 +1,5 @@
 // SOURCING: @assistant-ui/react data parts; the installed CollapsibleRoot over
-// Base UI Collapsible; the chat's TanStack Highlight code block (code-highlighter.tsx),
+// Base UI Collapsible; the chat's Shiki highlighter (shiki-highlighter.tsx),
 // as its code blocks use it. What a program part says and when it is drawn is
 // this app's.
 import { useAuiState } from '@assistant-ui/react'
@@ -10,7 +10,7 @@ import {
   CollapsibleRoot,
   CollapsibleTrigger,
 } from '@/components/assistant-ui/elements/collapsible-root'
-import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highlighter'
+import { SyntaxHighlighter } from '@/components/assistant-ui/elements/shiki-highlighter'
 import { liveEnter } from '@/components/assistant-ui/elements/surfaces'
 import { Icon } from '@/components/icons'
 import { cn } from '@/lib/utils'
@@ -105,6 +105,7 @@ export const ProgramPart: DataMessagePartComponent = ({ data }) => {
       <CollapsibleContent>
         <div className="max-h-96 overflow-auto border-t border-separator text-xs">
           <SyntaxHighlighter
+            className="py-2"
             code={program.source}
             language={program.shiki}
             streaming={program.writing}

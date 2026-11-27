@@ -637,6 +637,14 @@ export type EditorProps = {
   onDiscard: () => void
   /** Lets a popover save what the editor holds when it closes. */
   commitRef?: Ref<(move?: Move) => void>
+  /**
+   * Whether the editor may empty the field; on unless a store cannot clear
+   * one (a capability record, whose actions refuse a null input). Off, no
+   * Clear control is shown and an emptied value is never committed: it is
+   * refused in place, or, where the field was empty to begin with, the editor
+   * leaves without saving.
+   */
+  clearable?: boolean
 }
 
 /**
@@ -677,6 +685,7 @@ function TextEditor({
   onCommit,
   onDiscard,
   commitRef,
+  clearable = true,
 }: EditorProps) {
   const kind = field.field_type.kind
   const numeric = kind === 'integer' || kind === 'number'
@@ -691,10 +700,13 @@ function TextEditor({
   }
   const commit = (move?: Move) => {
     if (left.current) return
-    if (!numeric) return onCommit(text.trim() ? text.trim() : null, move)
-    const n = parseNumber(text, kind === 'integer')
-    if (n === undefined) return setInvalid(true)
-    onCommit(n, move)
+    const next = numeric
+      ? parseNumber(text, kind === 'integer')
+      : text.trim() || null
+    if (next === undefined) return setInvalid(true)
+    if (next === null && !clearable)
+      return isEmptyValue(value) ? discard() : setInvalid(true)
+    onCommit(next, move)
   }
   useImperativeHandle(commitRef, () => commit)
   const className = cn(
@@ -707,6 +719,7 @@ function TextEditor({
     value: text,
     'aria-label': field.label,
     'aria-invalid': invalid || undefined,
+    placeholder: invalid && !clearable ? 'Cannot be emptied' : undefined,
     onFocus: (event: {
       currentTarget: HTMLInputElement | HTMLTextAreaElement
     }) => {
@@ -740,6 +753,40 @@ function TextEditor({
   )
 }
 
+/** An instant as a datetime-local input shows it: the person's wall time, to the minute. */
+export function localDateTimeText(ms: number) {
+  const offset = new Date(ms).getTimezoneOffset() * 60_000
+  return new Date(ms - offset).toISOString().slice(0, 16)
+}
+
+/** Beside a date: its Clear, or, where it cannot be emptied, why an empty one was refused. */
+function ClearOrRefusal({
+  clearable,
+  refused,
+  onClear,
+}: {
+  clearable: boolean
+  refused: boolean
+  onClear: () => void
+}) {
+  if (clearable)
+    return (
+      <button
+        type="button"
+        onClick={onClear}
+        className="text-xs text-ink-muted hover:text-ink"
+      >
+        Clear
+      </button>
+    )
+  if (!refused) return null
+  return (
+    <span role="alert" className="text-xs text-error-ink">
+      Cannot be emptied
+    </span>
+  )
+}
+
 /** Dates travel as ISO strings: a date as YYYY-MM-DD, a timestamp in UTC. */
 function DateEditor({
   field,
@@ -747,6 +794,7 @@ function DateEditor({
   onCommit,
   onDiscard,
   commitRef,
+  clearable = true,
 }: EditorProps) {
   const withTime = field.field_type.kind === 'timestamp'
   const initial = (() => {
@@ -754,11 +802,13 @@ function DateEditor({
     const d = new Date(value)
     if (Number.isNaN(d.getTime())) return ''
     if (!withTime) return d.toISOString().slice(0, 10)
-    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000)
-    return local.toISOString().slice(0, 16)
+    return localDateTimeText(d.getTime())
   })()
   const [text, setText] = useState(initial)
+  const [refused, setRefused] = useState(false)
   const commit = (move?: Move) => {
+    if (!text && !clearable)
+      return isEmptyValue(value) ? onDiscard() : setRefused(true)
     if (!text) return onCommit(null, move)
     onCommit(withTime ? new Date(text).toISOString() : text, move)
   }
@@ -769,18 +819,20 @@ function DateEditor({
         autoFocus
         type={withTime ? 'datetime-local' : 'date'}
         aria-label={field.label}
+        aria-invalid={refused || undefined}
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          setRefused(false)
+          setText(event.target.value)
+        }}
         onKeyDown={(event) => commitKeys(event, commit, onDiscard)}
         className="rounded-md border border-separator bg-background px-2 py-1 text-sm text-ink"
       />
-      <button
-        type="button"
-        onClick={() => onCommit(null)}
-        className="text-xs text-ink-muted hover:text-ink"
-      >
-        Clear
-      </button>
+      <ClearOrRefusal
+        clearable={clearable}
+        refused={refused}
+        onClear={() => onCommit(null)}
+      />
     </div>
   )
 }
@@ -791,12 +843,15 @@ function JsonEditor({
   onCommit,
   onDiscard,
   commitRef,
+  clearable = true,
 }: EditorProps) {
   const [text, setText] = useState(
     value === undefined || value === null ? '' : JSON.stringify(value, null, 2),
   )
   const [error, setError] = useState<string>()
   const commit = (move?: Move) => {
+    if (!text.trim() && !clearable)
+      return isEmptyValue(value) ? onDiscard() : setError('Cannot be emptied')
     if (!text.trim()) return onCommit(null, move)
     try {
       onCommit(JSON.parse(text), move)
@@ -853,6 +908,7 @@ export function OptionList({
   onDone,
   onCancel,
   render,
+  clearable = true,
 }: {
   label: string
   options: { value: string; label: string }[]
@@ -863,6 +919,8 @@ export function OptionList({
   onDone: (move?: Move) => void
   onCancel: () => void
   render?: (value: string) => ReactNode
+  /** Off, the list offers no Clear and never picks null. */
+  clearable?: boolean
 }) {
   return (
     <Command
@@ -916,7 +974,7 @@ export function OptionList({
           )}
         </CommandList>
         <CommandEmpty>{emptyText}</CommandEmpty>
-        {selected.length > 0 && (
+        {clearable && selected.length > 0 && (
           <button
             type="button"
             onClick={() => onPick(null)}
@@ -936,6 +994,7 @@ function SelectEditor({
   onCommit,
   onDiscard,
   commitRef,
+  clearable = true,
 }: EditorProps) {
   const type = field.field_type
   const multiple = type.kind === 'enum_many'
@@ -948,9 +1007,12 @@ function SelectEditor({
         ? []
         : [asString(value)],
   )
-  // Multi-select saves when it closes, with everything picked meanwhile.
-  const commit = (move?: Move) =>
+  // Multi-select saves when it closes, with everything picked meanwhile; a
+  // list that may not clear leaves without saving when nothing is picked.
+  const commit = (move?: Move) => {
+    if (!clearable && picked.length === 0) return onDiscard()
     onCommit(multiple ? picked : (picked[0] ?? null), move)
+  }
   useImperativeHandle(commitRef, () => commit)
   return (
     <OptionList
@@ -958,6 +1020,7 @@ function SelectEditor({
       options={variants.map((v) => ({ value: v, label: v }))}
       selected={picked}
       multiple={multiple}
+      clearable={clearable}
       emptyText="No options match"
       render={(v) => <Tag field={field} value={v} />}
       onPick={(v) => {
@@ -980,6 +1043,7 @@ function RelationEditor({
   onCommit,
   onDiscard,
   commitRef,
+  clearable = true,
 }: EditorProps) {
   const type = field.field_type
   const multiple = type.kind === 'relation' && type.cardinality === 'many'
@@ -987,8 +1051,10 @@ function RelationEditor({
   const [picked, setPicked] = useState<string[]>(
     row ? relationIds(row, field) : [],
   )
-  const commit = (move?: Move) =>
+  const commit = (move?: Move) => {
+    if (!clearable && picked.length === 0) return onDiscard()
     onCommit(multiple ? picked : (picked[0] ?? null), move)
+  }
   useImperativeHandle(commitRef, () => commit)
   if (!target)
     return (
@@ -1005,6 +1071,7 @@ function RelationEditor({
       }))}
       selected={picked}
       multiple={multiple}
+      clearable={clearable}
       emptyText={`No ${target.label_plural.toLowerCase()} match`}
       render={(id) => title(id)}
       onPick={(id) => {

@@ -282,8 +282,9 @@ pub(crate) fn running_block(
 ) -> Vec<Line<'static>> {
     let p = palette();
     let set = border::ROUNDED;
-    let ground = Style::new().bg(p.running_row());
-    let edge = ground.fg(p.accent);
+    // No band behind it: the accent outline and the coloured text carry the
+    // state; only a diff is drawn on a ground (owner, 2026-11-22).
+    let edge = Style::new().fg(p.accent);
     let w = usize::from(width).saturating_sub(INDENT.len());
     if w < 12 {
         return vec![crate::tool_row(name, summary, "running", false, width)];
@@ -304,11 +305,11 @@ pub(crate) fn running_block(
         Span::styled(left, edge),
         Span::styled(
             name.to_owned(),
-            ground.fg(p.bright).add_modifier(Modifier::BOLD),
+            Style::new().fg(p.bright).add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" ", ground),
-        Span::styled(summary, ground.fg(p.muted)),
-        Span::styled(" ", ground),
+        Span::raw(" "),
+        Span::styled(summary, Style::new().fg(p.muted)),
+        Span::raw(" "),
         Span::styled(set.horizontal_top.repeat(fill), edge),
         Span::styled(right, edge),
     ]));
@@ -326,9 +327,9 @@ pub(crate) fn running_block(
             }
             let text = fit(&span.content, left);
             used += text.width();
-            spans.push(Span::styled(text, span.style.patch(ground)));
+            spans.push(Span::styled(text, span.style));
         }
-        spans.push(Span::styled(" ".repeat(inner.saturating_sub(used)), ground));
+        spans.push(Span::raw(" ".repeat(inner.saturating_sub(used))));
         spans.push(Span::styled(format!(" {}", set.vertical_right), edge));
         lines.push(Line::from(spans));
     }
@@ -413,8 +414,8 @@ pub(crate) fn pieces(text: &str) -> Vec<Piece> {
     out
 }
 
-/// A code block's lines with no fences, each on the raised surface the
-/// caller paints across its row.
+/// A code block's lines with no fences, indented under the prose, in their
+/// syntax colours on no band.
 pub(crate) fn code_block(code: &[Vec<Token>]) -> Vec<Line<'static>> {
     code.iter()
         .map(|tokens| {

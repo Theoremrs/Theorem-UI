@@ -20,6 +20,8 @@ import { noteLabel } from './note-kinds'
 
 const SCHEMA = 'theorem-document/2'
 const KIND = 'authored'
+/** A saved artifact (theorem/apps.ts): opened as its form, never edited as Markdown. */
+export const APP_KIND = 'theorem.app'
 const SAVE_DELAY_MS = 800
 /** Saves that merge with a newer revision before the note reports a conflict. */
 const MERGE_ATTEMPTS = 3
@@ -34,7 +36,12 @@ export type Note = {
   revision: Theorem.DocumentRevision
   /** Canonical snapshot at `revision`; undefined when the server holds it as an artifact. */
   canonical: Uint8Array | undefined
-  /** False for read-only and retired documents, and for block layouts other than one Markdown paragraph. */
+  /** The document's kind, as Theorem stores it. */
+  documentKind: string
+  /**
+   * False for read-only and retired documents, for saved artifacts, and for
+   * block layouts other than one Markdown paragraph.
+   */
   editable: boolean
   /** Written by a person, or encoded by an agent (and perhaps already made editable). */
   origin: Theorem.DocumentOrigin
@@ -74,12 +81,16 @@ function toNote(snapshot: Theorem.DocumentSnapshot): Note {
     savedMarkdown: snapshot.markdownProjection,
     revision: snapshot.summary.revision,
     canonical,
+    documentKind: snapshot.summary.documentKind,
     origin: snapshot.summary.origin,
     retired: isRetired(snapshot.summary),
     // Theorem refuses revisions to a retired document until it is restored.
+    // A saved artifact's one paragraph is its source, which a note save would
+    // file as an authored note.
     editable:
       !isRetired(snapshot.summary) &&
       !snapshot.summary.readOnly &&
+      snapshot.summary.documentKind !== APP_KIND &&
       canonical !== undefined &&
       isEditableNote(canonical),
   }
@@ -124,6 +135,7 @@ export async function createNote(markdown: string): Promise<Note> {
     savedMarkdown: markdown,
     revision: document.revision,
     canonical,
+    documentKind: KIND,
     editable: true,
     origin: document.origin,
     retired: false,
@@ -224,8 +236,12 @@ async function save(queryClient: QueryClient, documentId: string) {
         throw error
       }
       const remote = await fetchNote(documentId)
+      // A newer revision that is no longer a note, such as one saved as an
+      // artifact, is not merged into.
       const merged =
-        remote.canonical && mergeNote(local, typed, remote.canonical)
+        remote.editable &&
+        remote.canonical &&
+        mergeNote(local, typed, remote.canonical)
       if (!merged) {
         setStatus(documentId, 'conflict')
         return

@@ -8,16 +8,22 @@
 // look as the page sends it (theme.ts).
 import { CellContext } from './cell'
 import { connectToPage } from './connect'
+import { actOnControl, listControls, registerControl } from './controls'
+import type { ControlSpec } from './controls'
 import { Databases } from './db'
+import { collectDesignObservations } from './design-collector'
 import {
   lookNow,
   markSelectedCell,
   observeHeight,
   observeSnapshots,
 } from './display'
-import { MAX_FRAME_ERRORS, call, rpcOver, serve } from './protocol'
+import { CELL_STATUS_EVENT, MAX_CELL_ERROR, MAX_CELL_SHOWS, MAX_CELL_STATUSES, MAX_FRAME_ERRORS, call, rpcOver, serve } from './protocol'
 import type {
   ArtifactObservation,
+  CapabilityInvokeParams,
+  CapabilityQueryParams,
+  CellStatus,
   DossierContext,
   DossierState,
   FrameError,
@@ -26,6 +32,7 @@ import type {
   PageMethods,
   SandboxMethods,
 } from './protocol'
+import { applyPresentation, onPresentation, presentationNow } from './presentation'
 import { THEME_EVENT, applyAppTheme, applyTheme } from './theme'
 
 type ModuleListener = (values: ModuleValues) => void
@@ -41,6 +48,15 @@ const tellDossier = (state: DossierState) => {
   dossierState = state
   for (const listener of dossierListeners) listener(state)
 }
+
+/** What a view named of its selection with `theorem.select`, until it says otherwise. */
+interface ViewSelection {
+  label: string
+  ids?: Array<string>
+  state?: Record<string, unknown>
+}
+let chosen: ViewSelection | null = null
+let reportSelection: (event?: Event) => void = () => {}
 
 const context = connectToPage().then((port) => {
   const rpc = rpcOver(port)
@@ -87,9 +103,39 @@ const context = connectToPage().then((port) => {
     }
     return null
   })
+  serve<SandboxMethods, 'presentation.changed'>(rpc, 'presentation.changed', (presentation) => {
+    applyPresentation(presentation)
+    return null
+  })
+  serve<SandboxMethods, 'controls.list'>(rpc, 'controls.list', () => listControls())
+  serve<SandboxMethods, 'controls.act'>(rpc, 'controls.act', (act) => actOnControl(act))
   // A page that never stops changing never settles into a snapshot, so the
   // page can ask for one.
   serve<SandboxMethods, 'frame.look'>(rpc, 'frame.look', () => lookNow())
+  // The live document supplies layout and computed styles. A serialized
+  // snapshot cannot reconstruct its font loading, line boxes or scroll sizes.
+  // Measured at once, after the run: fonts still loading are reported as
+  // such, and a timer here would be throttled past the host's deadline
+  // whenever the person's tab is in the background.
+  // A transition started by a theme change is ended first, so its colours are
+  // the ones the App settles on rather than the ones it is leaving.
+  serve<SandboxMethods, 'frame.design'>(
+    rpc,
+    'frame.design',
+    ({ captureId, scheme, canvas }) => {
+      for (const animation of document.getAnimations())
+        if (animation instanceof CSSTransition) animation.finish()
+      return collectDesignObservations({
+        captureId,
+        evidenceKind: 'rendered-artifact',
+        maxElements: 300,
+        maxNodes: 5000,
+        maxTextLength: 160,
+        colorScheme: scheme,
+        canvas,
+      })
+    },
+  )
   observeHeight((height, fills) => {
     void call<PageMethods, 'frame.resize'>(rpc, 'frame.resize', { height, fills })
   })
@@ -141,16 +187,21 @@ const context = connectToPage().then((port) => {
       target
         ?.closest('[data-theorem-source]')
         ?.getAttribute('data-theorem-source') ?? undefined
+    // A view's own selection (a brush, a chosen node) stands until the view
+    // clears it; a click inside the view does not replace it.
     void call<PageMethods, 'frame.selection'>(rpc, 'frame.selection', {
       text: text.slice(0, 4096),
       rowId: rowId?.slice(0, 200),
       field: field?.slice(0, 200),
       entityId: entityId?.slice(0, 200),
-      entityLabel: entityLabel?.slice(0, 200),
+      entityLabel: (entityLabel ?? chosen?.label)?.slice(0, 200),
       cellId: cellId?.slice(0, 200),
       source: source?.slice(0, 300),
+      ids: chosen?.ids?.slice(0, 200).map((id) => String(id).slice(0, 200)),
+      state: chosen?.state,
     }).catch(() => {})
   }
+  reportSelection = selection
   // A person's input inside the frame never reaches the page; say so, so a
   // module's next event starts its own chain.
   const used = () => {
@@ -202,6 +253,23 @@ window.addEventListener('error', (event) => {
 })
 window.addEventListener('unhandledrejection', (event) => {
   report(thrown(event.reason))
+})
+
+// How a notebook's cells first settle (notebook.ts), so the page can say
+// when the first outputs are on screen and which cells failed.
+let statuses = 0
+window.addEventListener(CELL_STATUS_EVENT, (event) => {
+  if (statuses++ >= MAX_CELL_STATUSES) return
+  const { cell, stage, error, shows } = (event as CustomEvent<CellStatus>).detail
+  const status: CellStatus = {
+    cell: cell.slice(0, 200),
+    stage,
+    ...(error !== undefined && { error: error.slice(0, MAX_CELL_ERROR) }),
+    ...(shows !== undefined && { shows: shows.slice(0, MAX_CELL_SHOWS) }),
+  }
+  void context
+    .then(({ cells }) => call<PageMethods, 'frame.status'>(cells.rpc, 'frame.status', status))
+    .catch(() => {})
 })
 
 const context_ = async () => (await context).cells
@@ -277,9 +345,65 @@ const theorem = {
      */
     open: async (id: string) =>
       call<PageMethods, 'artifacts.open'>((await context_()).rpc, 'artifacts.open', { id }),
+    /**
+     * A kept run by its id, from this or any other conversation or App: the
+     * RunRef, every moment it holds in order from index 0 (each with its state
+     * when one was kept, checked against its digest) and its checkpoints.
+     */
+    run: async (id: string) =>
+      call<PageMethods, 'artifacts.run'>((await context_()).rpc, 'artifacts.run', { id }),
+  },
+  /**
+   * Capability instances a page module's manifest declared and the person
+   * allowed, reached through the page with its own session: the App never
+   * holds a credential. A refusal comes back as `{ ok: false, error }` with
+   * the capability's code; an instance, method or action that was not allowed
+   * is refused by the page before anything is reached.
+   */
+  capability: {
+    describe: async (instanceId: string) =>
+      call<PageMethods, 'capability.describe'>((await context_()).rpc, 'capability.describe', { instanceId }),
+    query: async (request: CapabilityQueryParams) =>
+      call<PageMethods, 'capability.query'>((await context_()).rpc, 'capability.query', request),
+    invoke: async (request: CapabilityInvokeParams) =>
+      call<PageMethods, 'capability.invoke'>((await context_()).rpc, 'capability.invoke', request),
+  },
+  /**
+   * Names what the person selected in a view the DOM cannot see, such as a
+   * brushed range or a chosen node: a `label`, the records' `ids` and the
+   * view's `state` (JSON, at most 4 KB). The page carries it into the next
+   * question asked about this App. `null` clears it.
+   */
+  select: async (selection: ViewSelection | null) => {
+    chosen = selection
+    await context
+    reportSelection()
   },
   /** Resolves once the page has connected this app. */
   ready: context.then(() => undefined),
+  /**
+   * The controls this App names for the agent. Register a control with the
+   * functions its visible element already calls; the agent reads and changes
+   * it through them (the client operation `app.control`), and the reply says
+   * the value read back. `@theorem/ui`'s controls do this when given a
+   * `control` name.
+   */
+  controls: {
+    /** Names a control for the agent until the returned function is called. */
+    register: (spec: ControlSpec): (() => void) => registerControl(spec),
+    /** Every registered control, with its value now. */
+    list: listControls,
+  },
+  /**
+   * Where the page shows this App (`inline` in a reply, the side `panel`, or
+   * `expanded`) and the CSS pixels it may fill. Also on the root as
+   * `data-theorem-presentation` and `--theorem-available-width/height`.
+   */
+  presentation: {
+    now: presentationNow,
+    /** Calls `listener` with the presentation now, if any, and after each change. */
+    onChange: onPresentation,
+  },
   files: {
     text: files('text'),
     json: files('json'),

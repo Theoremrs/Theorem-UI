@@ -99,6 +99,11 @@ type ShellState = {
   cabinetWidth: number
   /** Whether the cabinet uses the whole workspace (§4.3). Not persisted. */
   cabinetExpanded: boolean
+  /**
+   * The artifact the Gallery was asked to show, until its card is selected
+   * there. Not persisted.
+   */
+  galleryArtifact: string | undefined
   /** Each project's right-hand terminal tabs, in order, and the one showing. */
   terminalTabs: Readonly<
     Record<string, { tabs: readonly TerminalTab[]; active: string }>
@@ -134,6 +139,10 @@ type ShellState = {
   setTerminalHeight: (height: number) => void
   setTerminalThread: (projectId: string, threadId: string | undefined) => void
   setSideDrawer: (drawer: SideDrawer | undefined) => void
+  /** Opens the drawer's Gallery on an artifact's card. */
+  openInGallery: (artifactId: string) => void
+  /** The Gallery selected the card it was asked to show. */
+  shownInGallery: () => void
   setSideWidth: (width: number) => void
   setCabinetWidth: (width: number) => void
   setCabinetExpanded: (expanded: boolean) => void
@@ -179,6 +188,7 @@ export const useShell = create<ShellState>()(
       sideWidth: 620,
       cabinetWidth: 466,
       cabinetExpanded: false,
+      galleryArtifact: undefined,
       terminalTabs: {},
       setNoteOrder: (noteOrder) => set({ noteOrder }),
       setProjectId: (projectId) => set({ projectId }),
@@ -227,6 +237,9 @@ export const useShell = create<ShellState>()(
           }
         }),
       setSideDrawer: (sideDrawer) => set({ sideDrawer }),
+      openInGallery: (galleryArtifact) =>
+        set({ sideDrawer: 'outputs', galleryArtifact }),
+      shownInGallery: () => set({ galleryArtifact: undefined }),
       setSideWidth: (sideWidth) => set({ sideWidth }),
       setCabinetWidth: (cabinetWidth) => set({ cabinetWidth }),
       setCabinetExpanded: (cabinetExpanded) => set({ cabinetExpanded }),

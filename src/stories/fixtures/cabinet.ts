@@ -5,7 +5,7 @@ type CabinetArtifact = {
   /** The output this part stands behind. */
   outputId: string
   threadId: string
-  kind: 'app' | 'document' | 'diagram'
+  kind: 'app' | 'document' | 'diagram' | 'graph'
   title: string
   language: string
   content: string
@@ -39,10 +39,21 @@ export const CABINET_ARTIFACTS: readonly CabinetArtifact[] = [
   {
     outputId: 'output-5',
     threadId: 'thread-app-gallery',
-    kind: 'diagram',
+    kind: 'graph',
     title: 'Headland map',
-    language: 'mermaid',
-    content: 'flowchart LR\n  harbor --> headland\n  headland --> lighthouse\n  headland --> cove\n',
+    language: 'json',
+    content: JSON.stringify(
+      {
+        nodes: [
+          { id: 'harbor' },
+          { id: 'headland', dependsOn: ['harbor'] },
+          { id: 'lighthouse', dependsOn: ['headland'] },
+          { id: 'cove', dependsOn: ['headland'] },
+        ],
+      },
+      null,
+      2,
+    ),
   },
   {
     outputId: 'output-6',
@@ -65,7 +76,7 @@ export const CABINET_DESCRIPTIONS: Readonly<Record<string, { text: string; prove
   'output-6': { text: 'Release steps, two of four done.', provenance: 'derived' },
 }
 
-const RENDERER = { app: 'theorem-app', document: 'theorem-document', diagram: 'theorem-diagram' } as const
+const RENDERER = { app: 'theorem-app', document: 'theorem-document', diagram: 'theorem-diagram', graph: 'theorem-graph' } as const
 
 const part = (a: CabinetArtifact): Theorem.StoredPart => ({
   partId: `part-${a.outputId}`,

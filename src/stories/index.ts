@@ -1,13 +1,14 @@
 // SOURCING: none: the list /stories.json serves and the story route looks up, kept free of components so the server route can read it. Each story's lane and reference are the license ledger's, docs/plans/evidence/ledger.md.
 import { ACTIVITY_STATES } from './fixtures/activity'
 import { ARTIFACT_STORIES } from './fixtures/artifacts'
+import { SCENE_STORIES } from './fixtures/scenes'
 import type { StoryRouteOptions } from './routes'
 import { PALETTE_STORIES } from './palette-matrix'
 
 export type StoryMeta = {
   id: string
   title: string
-  lane: 'translation' | 'original'
+  lane: 'verbatim' | 'translation' | 'original'
   /** Under docs/plans/evidence/refs/; an original drawn to no reference has none, and the oracle skips it. */
   reference?: string
   /** Width and height the reference's region is read at. */
@@ -30,6 +31,12 @@ const SIDEBAR_REF = 'sidebar-compare@2026-11-05.webp'
 const CANVAS_REF = 'canvas-note-types@2026-11-05.png'
 /** The coding-workspace mockup the person attached: the terminal against the code pane, and the fox. */
 const CODING_REF = 'coding-workspace-mockup@2026-11-08.png'
+/** Where a kit control's App draws its 912 by 513 sheet, the size its Astryx reference was shot at. */
+const KIT_SHEET = [184, 28, 912, 513] as const
+const KIT_TOLERANCE = {
+  threshold: 0.2,
+  note: 'Package-bound reference: the same Astryx component from the same package, so its parts, sizes and spacing should land on the reference. Colours, font and radius are Theorem\'s theme by design (the accent, the surface, IBM Plex for the system face), so those pixels differ, and the kit\'s Slider shows its value as text where Astryx shows a tooltip. The differing share is reported, never a verdict.',
+}
 
 export const STORIES: readonly StoryMeta[] = [
   {
@@ -95,6 +102,7 @@ export const STORIES: readonly StoryMeta[] = [
   { id: 'design-oracle-reflow', title: 'Design oracle F09: scale and narrow reflow', lane: 'original', viewport: { width: 390, height: 844 } },
   { id: 'design-oracle-rtl', title: 'Design oracle F10: RTL and CJK fallback', lane: 'original', viewport: { width: 390, height: 844 } },
   { id: 'design-oracle-continuity', title: 'Design oracle F11: draft continuity', lane: 'original', viewport: { width: 1440, height: 900 } },
+  { id: 'design-oracle-markdown', title: 'Design oracle F12: Markdown inventory across both voices', lane: 'original', viewport: { width: 1024, height: 900 } },
   {
     id: 'workbench-default',
     title: 'Workbench: Files, main and tools with the picker',
@@ -248,6 +256,13 @@ export const STORIES: readonly StoryMeta[] = [
     threadId: 'thread-app-gallery',
     routes: { populated: true, reviewless: true },
   },
+  {
+    id: 'new-chat',
+    title: 'New chat: the composer with its three most recent artifacts under it',
+    lane: 'original',
+    viewport: { width: 1440, height: 900 },
+    routes: { populated: true, reviewless: true },
+  },
   { id: 'project-home', title: 'Project home: composer, sessions and context on one page', lane: 'original', viewport: { width: 1440, height: 900 } },
   { id: 'session-graph', title: 'Session graph on the canvas: forks from the main, connections, outputs, Make main chat and saved views', lane: 'original', viewport: { width: 1440, height: 900 } },
   {
@@ -296,6 +311,18 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 900, height: 600 },
   },
   {
+    id: 'response-details',
+    title: 'Response details for a reply',
+    lane: 'original',
+    viewport: { width: 760, height: 620 },
+  },
+  {
+    id: 'response-styles-settings',
+    title: 'Settings, response styles',
+    lane: 'original',
+    viewport: { width: 760, height: 900 },
+  },
+  {
     id: 'canvas-note-types',
     title: 'Canvas with typed notes',
     lane: 'original',
@@ -316,6 +343,24 @@ export const STORIES: readonly StoryMeta[] = [
     lane: 'original',
     viewport: { width: 1440, height: 900 },
     threadId: 'thread-app-gallery',
+  },
+  {
+    id: 'command-live',
+    title: 'A command\'s terminal as it runs, a line at a time, then closing when it ends well',
+    lane: 'original',
+    viewport: { width: 900, height: 700 },
+  },
+  {
+    id: 'present-view',
+    title: 'A reply with an interactive view, its cells editable under it',
+    lane: 'original',
+    viewport: { width: 1100, height: 900 },
+  },
+  {
+    id: 'view-cells',
+    title: 'A view\'s cells in the terminal, edited and run again',
+    lane: 'original',
+    viewport: { width: 900, height: 700 },
   },
   {
     id: 'face-feel',
@@ -354,6 +399,102 @@ export const STORIES: readonly StoryMeta[] = [
     title: 'Response defaults: style, detail, effort and budgets',
     lane: 'original',
     viewport: { width: 1440, height: 900 },
+  },
+  {
+    id: 'chromeless-gray-scott',
+    title: 'Chromeless artifacts: the Gray–Scott App in a reply, as the model wrote it',
+    lane: 'original',
+    viewport: { width: 1280, height: 1100 },
+  },
+  {
+    id: 'chromeless-gray-scott-kit',
+    title: 'Chromeless artifacts: the Gray–Scott App on @theorem/ui, study C, built from its source',
+    lane: 'original',
+    viewport: { width: 1280, height: 1100 },
+  },
+  {
+    id: 'kit-button',
+    title: '@theorem/ui Button: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-button@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/button',
+  },
+  {
+    id: 'kit-number-input',
+    title: '@theorem/ui NumberInput: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-number-input@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/number-input',
+  },
+  {
+    id: 'kit-segmented-control',
+    title: '@theorem/ui SegmentedControl: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-segmented-control@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/segmented-control',
+  },
+  {
+    id: 'kit-selector',
+    title: '@theorem/ui Selector: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-selector@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/selector',
+  },
+  {
+    id: 'kit-slider',
+    title: '@theorem/ui Slider: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-slider@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/slider',
+  },
+  {
+    id: 'kit-switch',
+    title: '@theorem/ui Switch: the first example on its Astryx page, in Theorem\'s theme, as an App',
+    lane: 'verbatim',
+    reference: 'astryx-switch@0.7.17-dark.png',
+    viewport: { width: 1280, height: 720 },
+    renderRegion: KIT_SHEET,
+    tolerance: KIT_TOLERANCE,
+    evidenceDir: 'chromeless-artifacts/kit/switch',
+  },
+  {
+    id: 'presentation-frame-counter',
+    title: 'Presentation: an App counting its frames shows where it is shown; expanding and collapsing leave the count climbing',
+    lane: 'original',
+    viewport: { width: 1280, height: 720 },
+  },
+  {
+    id: 'chromeless-study-strip',
+    title: 'Chromeless artifacts study A: the picture, a caption, one strip of controls; host actions over the corner',
+    lane: 'original',
+    viewport: { width: 1280, height: 1100 },
+  },
+  {
+    id: 'chromeless-study-inspector',
+    title: 'Chromeless artifacts study B: an inspector beside the picture; host actions beneath',
+    lane: 'original',
+    viewport: { width: 1280, height: 1100 },
+  },
+  {
+    id: 'chromeless-study-overlay',
+    title: 'Chromeless artifacts study C: the picture alone, controls over it on demand; host actions over the corner',
+    lane: 'original',
+    viewport: { width: 1280, height: 1100 },
   },
   {
     id: 'cpu-gpu-tradeoff',
@@ -465,6 +606,12 @@ export const STORIES: readonly StoryMeta[] = [
     evidenceDir: 'theo-face-inverse',
   },
   {
+    id: 'code-blocks',
+    title: 'Code blocks: a diff, a named file, a command and plain text',
+    lane: 'original',
+    viewport: { width: 900, height: 900 },
+  },
+  {
     id: 'tool-pills',
     title: 'Tool calls: done, failed and running',
     lane: 'original',
@@ -493,6 +640,12 @@ export const STORIES: readonly StoryMeta[] = [
     title: `Artifact: ${title}`,
     lane: 'original',
     viewport: { width: 760, height: 900 },
+  })),
+  ...SCENE_STORIES.map(({ id, title }): StoryMeta => ({
+    id,
+    title: `Scene: ${title}`,
+    lane: 'original',
+    viewport: { width: 1280, height: 900 },
   })),
   ...PALETTE_STORIES,
 ]

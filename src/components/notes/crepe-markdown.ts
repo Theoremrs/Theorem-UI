@@ -35,11 +35,14 @@ export function useCrepeMarkdown({
   onChange,
   build,
   read = asWritten,
+  reportEditsSynchronously = false,
 }: {
   markdown: string
   onChange: (markdown: string) => void
   build: (root: HTMLElement, editor: CrepeMarkdown) => Crepe
   read?: (markdown: string) => string
+  /** The caller already reports every document transaction in its own plugin. */
+  reportEditsSynchronously?: boolean
 }) {
   /** The Markdown the owner holds: what it last passed in or was handed. */
   const shown = useRef(markdown)
@@ -75,6 +78,7 @@ export function useCrepeMarkdown({
         serialize = ctx.get(serializerCtx)
         own.current = read(crepe.getMarkdown())
       })
+      if (reportEditsSynchronously) return
       listener.markdownUpdated((_ctx, next) => report(read(next)))
       // markdownUpdated waits 200ms and is dropped when the editor closes, so
       // a closing editor hands over its last text itself.

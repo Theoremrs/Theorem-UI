@@ -1,10 +1,13 @@
 // SOURCING: @openuidev/react-lang Renderer (Root and Content slots, onParseResult
 // and onError) running an artifact's program locally, with no model in the loop;
 // @openuidev/lang-core isElementNode to read subjects off the parsed tree;
-// ui/button; askAbout puts selection and repair references in the composer.
+// ui/button; askAbout puts selection and repair references in the composer;
+// saved-artifact's head for the newest revision.
 //
 // The renderer for form "openui". It draws no outer title: the artifact card
-// above it shows one. Interaction is local and needs no activation step.
+// above it shows one. Interaction is local and needs no activation step. The
+// newest revision of a saved program is its document's head; an older one is
+// the program its message pinned.
 import { isElementNode } from '@openuidev/lang-core'
 import type { ElementNode } from '@openuidev/lang-core'
 import { Renderer } from '@openuidev/react-lang'
@@ -16,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import type { AppSelection } from '@/lib/blocks/sandbox/protocol'
 import { cn } from '@/lib/utils'
 import type { RendererProps } from '../artifact-registry'
+import { useSavedArtifact } from '../saved-artifact'
 import { SelectionContext, SubjectsContext } from './context'
 import { LIBRARY_ID, LIBRARY_VERSION, artifactLibrary } from './library'
 import { repairReference, selectionReference } from './selection'
@@ -111,8 +115,28 @@ function storedProblems(parsed: ParseResult | null): RepairProblem[] {
  * keying by it lets them all go when a new revision replaces the one shown.
  */
 export function OpenUIArtifact(props: RendererProps) {
-  const { artifactId, revision } = props.artifact
-  return <ArtifactProgram key={`${artifactId}@${revision}`} {...props} />
+  const saved = useSavedArtifact(props.artifact, props.latest)
+  if (saved.pending)
+    return (
+      <p role="status" className="p-4 text-sm text-ink-muted">
+        Opening the program…
+      </p>
+    )
+  const { artifactId, revision, documentPosition } = saved.artifact
+  return (
+    <>
+      {saved.error && (
+        <p role="status" className="px-4 pt-4 text-xs text-ink-muted">
+          {saved.error}
+        </p>
+      )}
+      <ArtifactProgram
+        key={`${artifactId}@${revision}@${documentPosition ?? ''}`}
+        {...props}
+        artifact={saved.artifact}
+      />
+    </>
+  )
 }
 
 function ArtifactProgram({ artifact }: RendererProps) {

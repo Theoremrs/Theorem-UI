@@ -603,6 +603,11 @@ await ac('AC-30', async () => {
 // ---- AC-32: reload ---------------------------------------------------------------------------
 
 await ac('AC-32', async () => {
+  // A saved arrangement can change the focused group while the workspace starts.
+  await a.getByRole('status')
+    .filter({ hasText: /^(Using the default layout|Layout saved to account|Using this device’s layout copy|Could not restore layout)$/ })
+    .first()
+    .waitFor({ state: 'visible' })
   const mine = await attachFresh(a, 'wb-reload')
   await inputWorks(a)
   await say(a, 'echo WBPID=$$=')
@@ -612,7 +617,8 @@ await ac('AC-32', async () => {
   await waitFor(a, STATUS, 'the pane to be bound again after the reload', 60_000)
   const now = await status(a)
   chk('AC-32', 'the pane is bound to the same session after a reload', now.id === was.id, `${was.id} -> ${now.id}`, a)
-  chk('AC-32', 'earlier output is still on the screen', (await screen(a)).includes('WBPID='), '', a)
+  const replayed = await waitFor(a, /\nWBPID=(\d+)=/, 'output replayed after reload')
+  chk('AC-32', 'earlier output is still on the screen', replayed[1] === pid, '', a)
   await shot(a, 'ac32-reloaded')
   await say(a, 'echo WBPID2=$$=')
   const after = await waitFor(a, /\nWBPID2=(\d+)=/, 'a new command to run')

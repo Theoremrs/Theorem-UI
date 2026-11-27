@@ -190,3 +190,37 @@ async function until(condition: () => boolean) {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
 }
+
+test('a check’s page asks every WebGL context to keep its drawn frame, and an App on screen keeps the default', async () => {
+  const checked = new DOMParser().parseFromString(
+    await hostedAppDocument('<canvas></canvas>', esbuild, { keepDrawnFrames: true }),
+    'text/html',
+  )
+  const shown = await hostedAppDocument('<canvas></canvas>', esbuild)
+  expect(shown).not.toContain('preserveDrawingBuffer')
+  // It runs ahead of the App's own scripts: in the head, before the body.
+  const keep = [...checked.head.querySelectorAll('script')].find((script) =>
+    script.textContent?.includes('preserveDrawingBuffer'),
+  )
+  expect(keep).toBeDefined()
+  const original = HTMLCanvasElement.prototype.getContext
+  const asked: Array<[string, unknown]> = []
+  HTMLCanvasElement.prototype.getContext = function (type: string, options?: unknown) {
+    asked.push([type, options])
+    return null
+  } as typeof original
+  try {
+    new Function(keep!.textContent!)()
+    const canvas = document.createElement('canvas')
+    canvas.getContext('webgl2', { alpha: false })
+    canvas.getContext('webgl')
+    canvas.getContext('2d', { alpha: false })
+    expect(asked).toEqual([
+      ['webgl2', { alpha: false, preserveDrawingBuffer: true }],
+      ['webgl', { preserveDrawingBuffer: true }],
+      ['2d', { alpha: false }],
+    ])
+  } finally {
+    HTMLCanvasElement.prototype.getContext = original
+  }
+}, 30_000)

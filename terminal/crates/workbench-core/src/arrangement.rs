@@ -57,6 +57,8 @@ pub enum ArrangementMsg {
     /// Read the record: the named layouts, and the layout the workbench was
     /// left in. Sent by the host after it starts and after an account change.
     Load,
+    /// Retry saving the current local layout against the same account revision.
+    RetrySave,
     /// Keep the arrangement as it is now under `name` (replacing one of that
     /// name).
     Save {
@@ -141,6 +143,9 @@ pub enum ArrangementNotice {
     },
     /// The owner did not take the save: the arrangement is kept here, not yet
     /// in the account.
+    NotRestored {
+        reason: String,
+    },
     NotSaved {
         reason: String,
     },
@@ -351,7 +356,20 @@ impl Model {
 
     pub(crate) fn on_arrangement(&mut self, msg: ArrangementMsg) -> Vec<Effect> {
         match msg {
-            ArrangementMsg::Load => self.send_layout(EffectBody::LayoutLoad, LayoutOp::Load, None),
+            ArrangementMsg::Load => {
+                if self
+                    .layout_pending
+                    .values()
+                    .any(|operation| *operation == LayoutOp::Load)
+                {
+                    return vec![];
+                }
+                self.send_layout(EffectBody::LayoutLoad, LayoutOp::Load, None)
+            }
+            ArrangementMsg::RetrySave if self.arrangements.revision.is_some() => {
+                self.save_arrangements()
+            }
+            ArrangementMsg::RetrySave => self.on_arrangement(ArrangementMsg::Load),
             ArrangementMsg::Save { .. }
             | ArrangementMsg::Rename { .. }
             | ArrangementMsg::Delete { .. }
@@ -598,7 +616,12 @@ impl Model {
                     | Outcome::Uncertain { reason } => reason.clone(),
                     Outcome::Accepted => "The answer carried nothing to read.".into(),
                 };
-                self.notify(Notice::Arrangement(ArrangementNotice::NotSaved { reason }));
+                let notice = if op == LayoutOp::Load {
+                    ArrangementNotice::NotRestored { reason }
+                } else {
+                    ArrangementNotice::NotSaved { reason }
+                };
+                self.notify(Notice::Arrangement(notice));
             }
         }
         Some(effects)

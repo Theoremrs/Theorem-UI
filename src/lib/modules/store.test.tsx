@@ -10,9 +10,11 @@ import {
   render,
   waitFor,
 } from '../../../test/workspace'
+import { stubPageOwner } from '../../../test/page-owner'
 import { WorkspaceConflictError } from '@/lib/workspace/types'
 import type { WorkspaceClient } from '@/lib/workspace/types'
 import { pageText, parsePage } from './contract'
+import type { PageDocument } from './contract'
 import { newPage } from './layout'
 import { useModuleCatalog } from './registry'
 import {
@@ -21,8 +23,10 @@ import {
   useInstalledModules,
   useModePage,
   usePage,
+  usePageHistory,
   usePages,
   useResetModePage,
+  useRestorePage,
   useSavePage,
   useVaultTemplates,
 } from './store'
@@ -278,4 +282,140 @@ test("a page made from a template starts as the template's layout; saved templat
   )
   expect(made.title).toBe('Code')
   expect(made.layout).toEqual(CODING_TEMPLATE.layout)
+})
+
+// ── Through Theorem's page owner ────────────────────────────────────────────
+
+const happy = (
+  window as unknown as { happyDOM: { setURL: (url: string) => void } }
+).happyDOM
+
+/** The fake vault as the Theorem vault, whose page writes go to /api/pages/v1. */
+function ownedVault(files: Record<string, string>) {
+  happy.setURL('http://localhost:3000/')
+  const fake = fakeWorkspace(files)
+  const owner = stubPageOwner(fake)
+  stops.push(() => {
+    owner.restore()
+    happy.setURL('about:blank')
+  })
+  return { fake, owner }
+}
+const stops: Array<() => void> = []
+afterEach(() => {
+  for (const stop of stops.splice(0)) stop()
+})
+
+const desk = (): PageDocument => ({
+  schema: 'theorem.page/1',
+  title: 'Desk',
+  pinned: false,
+  layout: {
+    root: { props: {} },
+    content: [
+      { type: 'theorem.text', props: { id: 'note', text: 'Hello' } },
+      {
+        type: 'theorem.capability.table',
+        props: { id: 'tasks', instanceId: 'tracker/main', viewKey: 'next' },
+      },
+    ],
+  },
+})
+
+test('in the Theorem vault one component edited is a patch by its id, a structural edit a whole save, and a stale revision a conflict', async () => {
+  const path = 'Pages/Desk.page.json'
+  const { fake, owner } = ownedVault({ [path]: pageText(desk()) })
+  let save: ReturnType<typeof useSavePage> | undefined
+  function Probe({ client }: { client: WorkspaceClient }) {
+    save = useSavePage(client)
+    return null
+  }
+  await render(<Probe client={owner.client} />)
+  const opened = (await fake.client.readText(path)).hash
+
+  const edited = desk()
+  edited.layout.content[1]!.props.viewKey = 'done'
+  const patched = await act(() =>
+    save!.mutateAsync({ path, page: edited, hash: opened, base: desk() }),
+  )
+  expect(owner.calls.at(-1)).toEqual({
+    route: '/patch',
+    body: {
+      path,
+      expectedRevision: opened,
+      ops: [
+        { op: 'set_props', componentId: 'tasks', props: { viewKey: 'done' } },
+      ],
+    },
+  })
+  expect(patched.hash).toBe((await fake.client.readText(path)).hash)
+  expect(parsePage(path, fake.text(path)!)).toEqual(edited)
+
+  const grown = structuredClone(edited)
+  grown.layout.content.push({ type: 'theorem.text', props: { id: 'more' } })
+  const saved = await act(() =>
+    save!.mutateAsync({ path, page: grown, hash: patched.hash, base: edited }),
+  )
+  expect(owner.calls.at(-1)!.route).toBe('/save')
+  expect(owner.calls.at(-1)!.body).toMatchObject({
+    path,
+    expectedRevision: patched.hash,
+  })
+
+  // The revision it opened at is gone: Keep mine / Use the vault's, as before.
+  const stale = await act(() =>
+    save!
+      .mutateAsync({ path, page: desk(), hash: opened, base: desk() })
+      .catch((error: unknown) => error),
+  )
+  expect(stale).toBeInstanceOf(WorkspaceConflictError)
+  expect((stale as WorkspaceConflictError).currentHash).toBe(saved.hash)
+
+  // Create-only over a page that is there is a conflict too, and writes nothing.
+  const exists = await act(() =>
+    save!
+      .mutateAsync({ path, page: desk(), hash: null })
+      .catch((error: unknown) => error),
+  )
+  expect(exists).toBeInstanceOf(WorkspaceConflictError)
+  expect(parsePage(path, fake.text(path)!)).toEqual(grown)
+})
+
+test('a restore through the owner writes the old layout as a new revision and lists it in history', async () => {
+  const path = 'Pages/Desk.page.json'
+  const { fake, owner } = ownedVault({})
+  let save: ReturnType<typeof useSavePage> | undefined
+  let restore: ReturnType<typeof useRestorePage> | undefined
+  let history: ReturnType<typeof usePageHistory> | undefined
+  function Probe({ client }: { client: WorkspaceClient }) {
+    save = useSavePage(client)
+    restore = useRestorePage(client)
+    history = usePageHistory(client, path)
+    return null
+  }
+  await render(<Probe client={owner.client} />)
+  const first = await act(() =>
+    save!.mutateAsync({ path, page: desk(), hash: null }),
+  )
+  const edited = { ...desk(), title: 'Study' }
+  const second = await act(() =>
+    save!.mutateAsync({ path, page: edited, hash: first.hash, base: desk() }),
+  )
+  await waitFor(() => history?.revisions.length === 2)
+
+  const restored = await act(() =>
+    restore!.mutateAsync({
+      path,
+      revision: first.hash,
+      expectedRevision: second.hash,
+    }),
+  )
+  expect(restored.page).toEqual(desk())
+  expect(parsePage(path, fake.text(path)!)).toEqual(desk())
+  await waitFor(() => history?.revisions.length === 3)
+  expect(history!.revisions.map((r) => [r.seq, r.reason])).toEqual([
+    [3, 'restored'],
+    [2, 'patched'],
+    [1, 'saved'],
+  ])
 })

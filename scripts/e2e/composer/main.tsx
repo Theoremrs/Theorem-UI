@@ -1,18 +1,22 @@
-// The real composer in an actual form; only the receiving runtime is in memory.
+// The real composer in an actual form; only the receiving runtime is in memory,
+// with assistant-ui's text attachment adapter standing in for Theorem's.
 // Native key and button behavior is the browser's, with no mocked editor parts.
 import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   AssistantRuntimeProvider,
   ComposerPrimitive,
+  SimpleTextAttachmentAdapter,
   useAui,
   useAuiState,
   useExternalStoreRuntime,
 } from '@assistant-ui/react'
 import type { AppendMessage, ThreadMessageLike } from '@assistant-ui/react'
-import { ComposerEditor } from '@/components/chat/composer-editor'
+import { ComposerEditor, insertInComposer } from '@/components/chat/composer-editor'
+import { ComposerAttachments } from '@/components/assistant-ui/elements/attachment.aui'
 
 const samples = {
+  Empty: '',
   Plain: 'First paragraph',
   Code: '```ts\nconst first = 1\n```',
   List: '- First item',
@@ -22,6 +26,9 @@ const samples = {
 function Composer({ sent, reset }: { sent: string[]; reset: () => void }) {
   const aui = useAui()
   const draft = useAuiState((s) => s.composer.text)
+  const attached = useAuiState((s) =>
+    s.composer.attachments.map((attachment) => attachment.name).join('\n'),
+  )
   const [submits, setSubmits] = useState(0)
   useEffect(() => aui.composer.setText(samples.Plain), [aui])
   return (
@@ -36,6 +43,7 @@ function Composer({ sent, reset }: { sent: string[]; reset: () => void }) {
               reset()
               setSubmits(0)
               aui.composer.setText(text)
+              void aui.composer.clearAttachments()
             }}
           >
             Load {name}
@@ -43,9 +51,14 @@ function Composer({ sent, reset }: { sent: string[]; reset: () => void }) {
         ))}
       </nav>
       <ComposerPrimitive.Root
+        data-slot="aui_composer-shell"
         onSubmitCapture={() => setSubmits((count) => count + 1)}
       >
+        <ComposerAttachments />
         <ComposerEditor label="Message input" />
+        <button type="button" onClick={(event) => insertInComposer(event.currentTarget)}>
+          Insert code block
+        </button>
         <ComposerPrimitive.Send aria-label="Send message">
           Send message
         </ComposerPrimitive.Send>
@@ -58,6 +71,8 @@ function Composer({ sent, reset }: { sent: string[]; reset: () => void }) {
       </p>
       <h2>Draft Markdown</h2>
       <pre data-testid="draft">{draft}</pre>
+      <h2>Attachments</h2>
+      <pre data-testid="attachments">{attached}</pre>
       <h2>Accepted messages</h2>
       <pre data-testid="sent">{JSON.stringify(sent)}</pre>
     </>
@@ -70,6 +85,7 @@ function Harness() {
     messages: [],
     convertMessage: (message: ThreadMessageLike) => message,
     isRunning: false,
+    adapters: { attachments: new SimpleTextAttachmentAdapter() },
     onNew: async (message: AppendMessage) => {
       const text = message.content
         .flatMap((part) => (part.type === 'text' ? [part.text] : []))

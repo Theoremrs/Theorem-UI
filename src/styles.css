@@ -3,7 +3,7 @@
 @import 'tw-shimmer';
 @import '@fontsource-variable/ibm-plex-sans';
 @import '@fontsource-variable/ibm-plex-sans/wght-italic.css';
-@import '@fontsource-variable/jetbrains-mono';
+@import '@fontsource-variable/manrope';
 @import 'dockview-react/dist/styles/dockview.css';
 @import 'katex/dist/katex.min.css';
 @import './palettes.css';
@@ -14,6 +14,17 @@
 @source not '../scripts/design-oracles';
 @source not '../tests/design-oracles';
 @plugin "@tailwindcss/typography";
+
+/* Paper Mono is not on Fontsource, so it is vendored with its licence
+   (assets/fonts/paper-mono/PROVENANCE.md): one variable upright, 100-800. */
+@font-face {
+  font-family: 'Paper Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('./assets/fonts/paper-mono/paper-mono-wght.woff2')
+    format('woff2-variations');
+}
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -41,6 +52,20 @@
   --glow-to: transparent;
 
   --shadow-tint: 36 41 46;
+
+  /* The ground a code block sits on, the editor's own where the palette
+     follows one: GitHub's code ground in light. */
+  --surface-code: #f6f8fa;
+  /* The code block's header and number gutter: a tint of its ground in the
+     palette's ink, so they read apart from the code without a rule. In light
+     the code is the paler step above the page, so the tint has to pass the
+     page's own tone to stay part of the block; dark needs half of it. */
+  --code-gutter-ink: 8%;
+  --surface-code-gutter: color-mix(
+    in oklab,
+    var(--ink) var(--code-gutter-ink),
+    var(--surface-code)
+  );
 
   /* shadcn / assistant-ui element contract */
   --background: var(--surface-neutral);
@@ -87,6 +112,15 @@
   --glow-to: rgb(53 132 185 / 0.38);
 
   --shadow-tint: 0 0 0;
+
+  /* The near-black of the rail, so code reads as an editor set into the sheet. */
+  --surface-code: var(--surface-frame);
+  --code-gutter-ink: 4.5%;
+}
+
+/* Ember: the warm raised step in light, its near-black frame in dark. */
+[data-palette='ember']:not(.dark) {
+  --surface-code: var(--surface-raised);
 }
 
 /* Stone (DESIGN.md), the warm palette the app was authored in. */
@@ -97,6 +131,9 @@
   --glow-to: transparent;
 
   --shadow-tint: 48 49 45;
+
+  /* Stone's lightest paper, the rail's. */
+  --surface-code: var(--surface-rail);
 }
 
 /* Stone's dark. */
@@ -122,6 +159,9 @@
   --glow-to: transparent;
 
   --shadow-tint: 57 58 52;
+
+  /* Vitesse Light's editor. */
+  --surface-code: #ffffff;
 }
 
 /* Vitesse Dark, after franmc01's JetBrains theme: the #121212 rail takes a
@@ -135,6 +175,15 @@
   --glow-to: rgb(99 148 191 / 0.3);
 
   --shadow-tint: 0 0 0;
+
+  /* Vitesse Dark's editor, the ground its code colours were drawn on. */
+  --surface-code: #121212;
+}
+
+/* A custom palette names no code ground; its popover stands in. */
+[data-palette='custom'],
+.dark[data-palette='custom'] {
+  --surface-code: var(--popover);
 }
 
 /* Dock theme. Structure follows dockview's light theme; colours map to the
@@ -289,6 +338,45 @@
     display: none;
   }
 }
+/* Host actions over an inline artifact (chromeless-artifacts study C): the
+   icon row and the App's toolbar sit over the frame's top corner, shown on
+   hover and when focus is inside, always on a screen without hover. A toolbar
+   that needs the person (data-attention) stays in the flow and in view. */
+[data-slot='inline-artifact'][data-layout='inline'] > [data-host-actions],
+[data-slot='inline-artifact'][data-layout='inline'] [data-slot='app-toolbar']:not([data-attention]) {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  height: 40px;
+  padding: 0 4px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  transition: opacity 120ms ease-out;
+}
+[data-slot='inline-artifact'][data-layout='inline'] > [data-host-actions] {
+  right: 8px;
+}
+[data-slot='inline-artifact'][data-layout='inline'] [data-slot='app-toolbar']:not([data-attention]) {
+  right: 120px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+[data-slot='inline-artifact'][data-layout='inline'] [data-slot='app-toolbar'][data-attention] {
+  padding-right: 120px;
+}
+@media (hover: hover) {
+  [data-slot='inline-artifact'][data-layout='inline']:not(:hover):not(:focus-within) > [data-host-actions],
+  [data-slot='inline-artifact'][data-layout='inline']:not(:hover):not(:focus-within)
+    [data-slot='app-toolbar']:not([data-attention]) {
+    opacity: 0;
+  }
+}
+@container artifact (width < 640px) {
+  [data-slot='inline-artifact'][data-layout='inline'] [data-slot='app-toolbar']:not([data-attention]) {
+    right: 8px;
+    top: 56px;
+  }
+}
 /* The block menu opens inside the page, and dockview sets a pane's page in an
    overlay under the pills. While the menu is open that page stands over
    them, so the menu is never cut by a pill. */
@@ -370,6 +458,8 @@
   --color-selected: var(--surface-selected);
   --color-composer: var(--surface-composer);
   --color-artifact: var(--surface-artifact);
+  --color-code: var(--surface-code);
+  --color-code-gutter: var(--surface-code-gutter);
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
   --color-ink-faint: var(--ink-faint);
@@ -418,6 +508,8 @@
      (components/terminal/terminal-theme.ts): palettes.css carries each
      mode's, and the page sets them again when a person's own colours change. */
   --color-term: var(--term-bg);
+  /* The canvas the conversation sits on, a step below: the drawer's one colour. */
+  --color-term-canvas: var(--term-canvas);
   --color-term-raised: var(--term-raised);
   --color-term-line: var(--term-line);
   --color-term-ink: var(--term-ink);
@@ -427,14 +519,17 @@
   --color-term-gold: var(--term-gold);
   --color-term-error: var(--term-error);
 
+  /* Plex for the interface and the agent's writing, Manrope for what the
+     person writes (their messages and the composer), Paper Mono for code and
+     the terminal (owner, 2026-11-22). */
   --font-sans:
     'IBM Plex Sans Variable', 'IBM Plex Sans', ui-sans-serif, system-ui,
     sans-serif;
+  --font-human:
+    'Manrope Variable', 'Manrope', ui-sans-serif, system-ui, sans-serif;
   /* Titles share the sans; weight and size carry the hierarchy. */
   --font-heading: var(--font-sans);
-  --font-mono:
-    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular,
-    monospace;
+  --font-mono: 'Paper Mono', ui-monospace, SFMono-Regular, monospace;
 
   /* Geometry: control/row 6, popover 8, sheet 12, artifact 15, frame 16. */
   --radius-sm: 4px;
@@ -595,7 +690,9 @@
     color-scheme: light;
     /* Inherited by every scroller. A scroller draws its bar only while it overflows. */
     scrollbar-color: var(--line-control) transparent;
-    font-synthesis: none;
+    /* Weights come from the variable fonts; only the slant is synthesised,
+       for Manrope and Paper Mono, which have no italic; Plex brings its own. */
+    font-synthesis: style;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
@@ -652,6 +749,8 @@
     font-family: var(--font-mono);
     /* Mono keeps its own metrics; the sans tracking does not reach code. */
     letter-spacing: normal;
+    /* Paper Mono's slashed zero, so 0 and O never read alike. */
+    font-variant-numeric: slashed-zero;
   }
 
   ::selection {
@@ -787,7 +886,9 @@
   --paper-texture-size: 512px;
   --paper-grain-opacity: 0.1;
   --paper-depth: 1;
-  --paper-highlight: rgb(255 255 255 / 0.34);
+  /* No lit top edge: the white line read as gloss across the UI (owner,
+     2026-11-22). */
+  --paper-highlight: transparent;
   --paper-edge: color-mix(in oklab, var(--line-separator) 60%, transparent);
 }
 
@@ -796,7 +897,7 @@
    edge is the ink's. */
 .dark {
   --paper-depth: 2.5;
-  --paper-highlight: color-mix(in srgb, var(--ink) 5%, transparent);
+  --paper-highlight: transparent;
 }
 
 @utility surface-paper {
@@ -899,11 +1000,14 @@
     var(--surface-composer) 94%,
     transparent
   );
-  --glass-rim: rgb(255 255 255 / 0.95);
-  --glass-rim-low: rgb(255 255 255 / 0.16);
+  /* No white rim, glow or sheen (owner, 2026-11-22): the lit edges read as a
+     white line around every glass surface and menu. The frost, the tint, the
+     faint shade along the bottom and the element's own border remain. */
+  --glass-rim: transparent;
+  --glass-rim-low: transparent;
   --glass-shade: rgb(0 0 0 / 0.05);
-  --glass-glow: rgb(255 255 255 / 0.9);
-  --glass-specular: rgb(255 255 255 / 0.42);
+  --glass-glow: transparent;
+  --glass-specular: transparent;
   --glass-depth: 1;
   --glass-edge: rgb(0 0 0 / 0.1);
   --glass-edge-focus: rgb(0 0 0 / 0.2);
@@ -913,45 +1017,14 @@
   --glass-blur: 8px;
   --glass-saturate: 1.7;
   --glass-tint: color-mix(in oklab, var(--surface-composer) 36%, transparent);
-  --glass-rim: rgb(255 255 255 / 0.07);
-  --glass-rim-low: rgb(255 255 255 / 0.015);
-  --glass-shade: rgb(255 255 255 / 0.015);
-  --glass-glow: rgb(255 255 255 / 0.015);
-  --glass-specular: rgb(255 255 255 / 0.03);
+  --glass-rim: transparent;
+  --glass-rim-low: transparent;
+  --glass-shade: transparent;
+  --glass-glow: transparent;
+  --glass-specular: transparent;
   --glass-depth: 2.5;
   --glass-edge: rgb(255 255 255 / 0.06);
   --glass-edge-focus: rgb(255 255 255 / 0.12);
-}
-
-/* The glass code block (glass-code-block.tsx): the frosted glass above, at a
-   code block's strength: thin enough that the Life field moves through it
-   as soft blots, as it does through the side panel. The tint is the sheet's
-   bottom colour, not the warmer code surface, so the block reads top to
-   bottom as its lower edge does over the field (owner's review,
-   2026-11-16); the frame is a hairline lit
-   from the top and fading down, as the framecn source draws it, dark ink in
-   light where a white rim would vanish. */
-:root {
-  --glass-code-tint: color-mix(in oklab, var(--sheet-to) 50%, transparent);
-  --glass-code-blur: 4px;
-  --glass-code-rim: rgb(0 0 0 / 0.12);
-  --glass-code-rim-low: rgb(0 0 0 / 0.05);
-  --glass-code-inner: rgb(255 255 255 / 0.7);
-  --glass-code-line: rgb(0 0 0 / 0.06);
-  --glass-code-shadow:
-    0 1px 2px rgb(var(--shadow-tint) / 0.06),
-    0 14px 36px -14px rgb(var(--shadow-tint) / 0.22);
-}
-
-.dark {
-  --glass-code-tint: color-mix(in oklab, var(--sheet-to) 55%, transparent);
-  --glass-code-blur: 5px;
-  --glass-code-rim: rgb(255 255 255 / 0.18);
-  --glass-code-rim-low: rgb(255 255 255 / 0);
-  --glass-code-inner: rgb(255 255 255 / 0.06);
-  --glass-code-line: rgb(255 255 255 / 0.06);
-  --glass-code-shadow:
-    0 1px 2px rgb(0 0 0 / 0.3), 0 18px 40px -16px rgb(0 0 0 / 0.55);
 }
 
 @utility surface-glass {
@@ -1067,9 +1140,12 @@
   --lg-rim-body: 0.16;
   --lg-lift: 0;
   --lg-saturate: 1.35;
-  --lg-light: 0.32;
-  --lg-sheen: 0.11;
-  --lg-stroke: 0.42;
+  /* Unlit and unstroked (owner, 2026-11-22): every liquid pane loses its
+     reflection, sheen and the light contour that drew a white line around
+     it. Its edge is the bevel's shade and the pane's shadow. */
+  --lg-light: 0;
+  --lg-sheen: 0;
+  --lg-stroke: 0;
   --lg-shade: 0.12;
   --liquid-fallback: color-mix(
     in oklab,
@@ -1094,7 +1170,7 @@
   --glass-ink: color-mix(in oklab, var(--ink) 72%, #000);
   --glass-ink-muted: color-mix(
     in oklab,
-    var(--ink-muted) 38%,
+    var(--ink-muted) var(--glass-ink-muted-share, 38%),
     var(--glass-ink)
   );
   --glass-ink-faint: color-mix(
@@ -1110,16 +1186,24 @@
   --lg-body: 0.42;
   --lg-rim-body: 0.22;
   --lg-saturate: 1.25;
-  --lg-light: 0.2;
-  --lg-sheen: 0.045;
-  --lg-stroke: 0.09;
+  --lg-light: 0;
+  --lg-sheen: 0;
+  --lg-stroke: 0;
   --lg-shade: 0.4;
-  --liquid-contact: 0 1px 2px rgb(0 0 0 / 0.45), 0 4px 8px -4px rgb(0 0 0 / 0.6);
+  --liquid-contact:
+    0 1px 2px rgb(0 0 0 / 0.45), 0 4px 8px -4px rgb(0 0 0 / 0.6);
   --liquid-elevation:
     0 0 0 1px rgb(0 0 0 / 0.55), 0 1px 1px rgb(0 0 0 / 0.35),
     0 10px 22px -8px rgb(0 0 0 / 0.55), 0 30px 60px -24px rgb(0 0 0 / 0.65);
   --glass-ink: color-mix(in oklab, var(--ink) 55%, #fff);
   --lg-show: 0.5;
+}
+
+/* Stone's light muted ink is already dark, so on the pane it keeps more of
+   itself: a step below the glass ink (1.38:1, where 38% left 1.13:1) at 4.6:1
+   on the darkest glass measured over a thread, with a menu row's highlight. */
+:root:not(.dark)[data-palette='stone'] {
+  --glass-ink-muted-share: 75%;
 }
 
 :root[data-glass-study='curved'] {
@@ -1289,10 +1373,10 @@
 @utility glass-panel-liquid {
   --lg-tone: var(--glass-panel-tone);
   --lg-show: 0;
-  /* Matte: a surface first, with only a faint lit edge and no sheen. */
-  --lg-light: 0.06;
+  /* Matte: a surface first, with no lit edge or sheen (owner, 2026-11-22). */
+  --lg-light: 0;
   --lg-sheen: 0;
-  --lg-stroke: 0.05;
+  --lg-stroke: 0;
   /* The field's ink is faint, so the panel keeps the frost's light hand
      (glass-panel below): the cells soften to moving blots behind the list
      instead of vanishing under the composer's heavier body. */
@@ -1389,24 +1473,32 @@
    On a light sheet the default light (contour 0.42, reflection 0.32, sheen
    0.11) drew a white hairline and a bright band down the bevel that read as
    a shiny edge rather than glass (design review, 2026-11-17), so this glass
-   carries less light. In dark, with no focus ring over it, the contour is the
-   whole edge, so it carries a little more light along the top than the dark
-   default. */
+   carries less light. Even that read as glossy on the sidebar, the composer
+   and code blocks (owner, 2026-11-22, study B "matte"): the glass keeps its
+   blur and transparency but no reflection, sheen or light contour: the
+   contour drew a white line around every pane and menu (owner, 2026-11-22). */
 :root {
   --composer-glass-tone: var(--surface-composer);
-  --composer-glass-stroke: 0.22;
-  --composer-glass-light: 0.16;
-  --composer-glass-sheen: 0.05;
+  --composer-glass-stroke: 0;
+  --composer-glass-light: 0;
+  --composer-glass-sheen: 0;
 }
 
 .dark {
-  --composer-glass-tone: color-mix(in oklab, var(--surface-composer) 48%, #221c17);
-  --composer-glass-stroke: 0.16;
-  --composer-glass-light: 0.2;
-  --composer-glass-sheen: 0.045;
+  --composer-glass-tone: color-mix(
+    in oklab,
+    var(--surface-composer) 48%,
+    #221c17
+  );
+  --composer-glass-stroke: 0;
+  --composer-glass-light: 0;
+  --composer-glass-sheen: 0;
 }
 
-:is([data-surface-role='composer'], [data-surface-role='navigation']).surface-liquid,
+:is(
+  [data-surface-role='composer'],
+  [data-surface-role='navigation']
+).surface-liquid,
 .rail-junction-tab,
 .glass-menu {
   --lg-tone: var(--composer-glass-tone);
@@ -1433,7 +1525,11 @@
   background-color: var(--composer-menu-fill);
 }
 .dark .composer-menu:not(.glass-menu) {
-  --composer-menu-fill: color-mix(in oklab, var(--surface-composer) 44%, #191613);
+  --composer-menu-fill: color-mix(
+    in oklab,
+    var(--surface-composer) 44%,
+    #191613
+  );
 }
 
 /* Under glass the menus the composer and the navigation panel open are
@@ -1466,11 +1562,7 @@
     background-repeat: no-repeat;
     opacity: var(--glass-panel-veil);
     /* As the liquid pane: the veil thins over the lower third. */
-    mask-image: linear-gradient(
-      to bottom,
-      #000 57%,
-      rgb(0 0 0 / 0.45) 77%
-    );
+    mask-image: linear-gradient(to bottom, #000 57%, rgb(0 0 0 / 0.45) 77%);
   }
 
   @supports not (
@@ -2022,8 +2114,7 @@
   max-width: calc(var(--container-note) + 96px);
   margin-inline: auto;
   padding: 24px 48px 96px;
-  /* Prose keeps Plex's own spacing; the interface's tighter tracking stays
-     with the interface. */
+  /* Prose keeps the font's own spacing, whatever the interface sets. */
   letter-spacing: normal;
 }
 /* A note set as a page in a notes workspace pane: the margins grow with the
@@ -2165,6 +2256,28 @@
 
 .theorem-composer .milkdown .crepe-placeholder::before {
   color: var(--ink-faint);
+}
+
+/* A directive the composer wrote (a / tool, a + skill, an @ record or
+   document) reads as a chip of its label, as assistant-ui's directive-text
+   chip reads in the sent message. Its text stays in the document, unseen. */
+.theorem-composer .milkdown .ProseMirror .theorem-composer-directive {
+  font-size: 0;
+}
+
+.theorem-composer .milkdown .ProseMirror .theorem-composer-directive::after {
+  content: attr(data-label);
+  display: inline-block;
+  margin-inline: 1px;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  background: var(--color-secondary);
+  color: var(--color-secondary-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  vertical-align: baseline;
+  white-space: nowrap;
 }
 
 /* Editing an earlier message keeps that input's own measure, and no limit. */

@@ -1,5 +1,5 @@
 // SOURCING: coss ui sidebar and collapsible, @dnd-kit/core useDraggable (a row carries its thread to another project), Base UI ContextMenu with coss menu parts, @tanstack/react-router Link, assistant-ui (the open thread's run state), thread-tree (the thread's last reply, for unread), date-fns for a sleeping thread's wake time. A row is one session: conversation branches (edits, regenerations) stay inside the conversation, and only forked sessions nest (docs/plans/projects-sidebar-and-session-graph.md §2.2, §4.3).
-import { useAuiState } from '@assistant-ui/react'
+import { ThreadListItemPrimitive, useAuiState } from '@assistant-ui/react'
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { useDraggable } from '@dnd-kit/core'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
@@ -7,6 +7,7 @@ import { format, isToday, isTomorrow } from 'date-fns'
 import { useContext, createContext, useEffect, useRef, useState } from 'react'
 import {
   OriginMark,
+  ThreadListItemByRemoteId,
   TreeGuide,
   originLabel,
 } from '@/components/assistant-ui/elements/thread-list.aui'
@@ -43,9 +44,8 @@ import { appearancePair } from '@/lib/appearance-policy'
 import { SessionGlyph } from './glyphs'
 import { ThreadMenuItems } from './thread-menu'
 
-/** The branch from the tree's guide line to a row. */
-export const TREE_TICK =
-  'relative before:pointer-events-none before:absolute before:top-1/2 before:-start-2.5 before:w-2 before:border-t before:border-sidebar-border'
+/** A nested row: indented, with no guide line or tick (owner, 2026-11-24). */
+export const TREE_TICK = 'relative'
 
 /** What a dragged row carries: the thread, and the project it was listed under. */
 export type RowDrag = { thread: ThreadEntry; from: string }
@@ -176,14 +176,7 @@ export function RenameField({
  * every occurrence reads as open. Sessions forked from it open under it; its
  * own conversation branches never do.
  */
-export function ThreadRow({
-  thread,
-  place,
-  childThreads = [],
-  childrenOf,
-  hint,
-  nested = false,
-}: {
+type ThreadRowProps = {
   thread: ThreadEntry
   /** The project this occurrence is listed under, or a quick view. */
   place: string
@@ -193,13 +186,39 @@ export function ThreadRow({
   hint?: 'reason' | 'later'
   /** Shown beneath the session it was forked from, so its origin needs no mark. */
   nested?: boolean
-}) {
+}
+
+/**
+ * One session where it is listed, as an assistant-ui thread-list item: the
+ * row takes the runtime's item for its thread once the runtime lists it.
+ */
+export function ThreadRow(props: ThreadRowProps) {
+  return (
+    <ThreadListItemByRemoteId remoteId={props.thread.threadId}>
+      {(scoped) => <Row {...props} scoped={scoped} />}
+    </ThreadListItemByRemoteId>
+  )
+}
+
+function Row({
+  thread,
+  place,
+  childThreads = [],
+  childrenOf,
+  hint,
+  nested = false,
+  scoped,
+}: ThreadRowProps & { scoped: boolean }) {
   const { projects, views, served } = useTree()
   const navigate = useNavigate()
   const { threadId: openId } = useParams({ strict: false })
   const isOpen = openId === thread.threadId
   const openHere = useAuiState((s) => s.thread.isRunning)
-  const running = thread.attention.running || (isOpen && openHere)
+  // Outside its own scope the item is the open thread's.
+  const itemRunning = useAuiState((s) => s.threadListItem.isRunning)
+  const running =
+    thread.attention.running ||
+    (scoped ? itemRunning : isOpen && openHere)
 
   const ref = useRef<HTMLLIElement>(null)
   const seen = useSeen(ref)
@@ -294,7 +313,16 @@ export function ThreadRow({
       <Collapsible open={expanded} onOpenChange={setExpanded}>
         <ContextMenu.Root>
           <ContextMenu.Trigger
-            render={<div className="relative flex items-center" />}
+            render={
+              scoped ? (
+                <ThreadListItemPrimitive.Root
+                  data-slot="aui_thread-list-item"
+                  className="relative flex items-center"
+                />
+              ) : (
+                <div className="relative flex items-center" />
+              )
+            }
           >
             {renaming ? (
               <RenameField

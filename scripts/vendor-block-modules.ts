@@ -17,9 +17,9 @@
 //
 // Some builds load further modules from jsdelivr (notebook-kit's library does,
 // for d3, Plot, htl and Inputs). ALIASES sends those URLs to the vendored build of
-// the same package. A dynamic import of anything else outside esm.sh becomes a
-// rejected promise that names the URL, so a frame that needs it fails there
-// instead of reaching the network; a static one still stops the script.
+// the same package. A dynamic import of anything else outside esm.sh stays an
+// import of its absolute URL, which a frame fetches when a cell needs it (a
+// frame is open to the network); a static one still stops the script.
 import { createHash } from 'node:crypto'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -143,12 +143,7 @@ async function vendor(url: string): Promise<string> {
       }
     } catch (error) {
       if (!(error instanceof OutsideEsm) || !dynamic) throw error
-      const message = `${resolved} is not vendored; a block frame loads nothing from the network`
-      out.overwrite(
-        dynamic.start,
-        dynamic.end,
-        `Promise.reject(new Error(${JSON.stringify(message)}))`,
-      )
+      out.overwrite(source.start, source.end, JSON.stringify(resolved))
     }
   }
   served.set(at, { url: build, text: out.toString(), upstream: sri(text) })

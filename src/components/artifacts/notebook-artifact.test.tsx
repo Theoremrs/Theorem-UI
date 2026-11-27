@@ -1,15 +1,26 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, spyOn, test } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as esbuild from 'esbuild-wasm'
+import { LoroDoc } from 'loro-crdt/base64'
 import { act } from 'react'
 import type { ReactNode } from 'react'
 import * as bundles from '@/lib/blocks/export'
 import { BLOCK_SANDBOX } from '@/lib/blocks/executor'
 import * as hosted from '@/lib/blocks/hosted-app'
+import { fromBase64 } from '@/lib/blocks/state'
 import { call } from '@/lib/blocks/sandbox/protocol'
 import type { PageMethods } from '@/lib/blocks/sandbox/protocol'
+import { documentViewKey, useViewInstances } from '@/lib/generative/view-instances'
 import type { NotebookForm, RetainedOutputs } from '@/lib/notebooks/forms'
 import { BROWSER_RUN_HOSTS } from '@/lib/notebooks/marimo'
+import { encodeNote } from '@/lib/theorem/note-canonical'
+import {
+  editNote,
+  noteKey,
+  settleNote,
+  useNoteStatus,
+} from '@/lib/theorem/notes'
+import type { Note } from '@/lib/theorem/notes'
 import type { ExecuteEnvironment } from '@/lib/theorem/artifact-host'
 import { installFakeTheorem } from '@/stories/fake-theorem'
 import {
@@ -17,6 +28,11 @@ import {
   notebookPart,
   outputsAnswer,
 } from '@/stories/fixtures/notebook-parts'
+import {
+  appDocumentFixture,
+  documentRoutes,
+  savedArtifactBody,
+} from '../../../test/blocks/app-documents'
 import { connectAppFrame } from '../../../test/blocks/app-frame'
 import {
   buttonNamed,
@@ -34,6 +50,7 @@ import {
   sourceOf,
 } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
+import { NotePanel } from '../notes/note-panel'
 
 const MARIMO_SOURCE = `import marimo
 
@@ -85,11 +102,19 @@ function fakeTheorem({
   execute = 'browser',
   runs = [],
   held = false,
-}: { execute?: ExecuteEnvironment; runs?: Array<RetainedOutputs>; held?: boolean } = {}) {
+  documents = [],
+}: {
+  execute?: ExecuteEnvironment
+  runs?: Array<RetainedOutputs>
+  held?: boolean
+  /** Saved documents parts name, answered as the Documents API does. */
+  documents?: Parameters<typeof documentRoutes>[0]
+} = {}) {
   let release = () => {}
   const gate = held ? new Promise<void>((resolve) => (release = resolve)) : undefined
   const reads: Array<string> = []
   const restore = installFakeTheorem({
+    ...documentRoutes(documents),
     'GET /api/artifacts/v1/host': () => artifactHost(execute),
     'GET /api/artifacts/v1/documents/:documentId/outputs': async (_params, request) => {
       reads.push(new URL(request.url).search)
@@ -214,14 +239,234 @@ test('a notebook in a newer form version reaches its renderer, which says it can
 
 test('Download hands over a Notebook Kit file and a marimo .py', async () => {
   expect(fileNameOf(observable(), true)).toBe('gpu-crossover.html')
-  const kit = await sourceOf(observable(), true).load()
+  const kit = await sourceOf(observable(), false).load()
   expect(kit).toContain('<notebook')
   expect(kit).toContain('const data =')
   expect(kit).toContain('const theme =')
   expect(kit).toContain('data.n / 2')
   expect(fileNameOf(marimo(), true)).toBe('gpu-timings.py')
-  expect(await sourceOf(marimo(), true).load()).toBe(MARIMO_SOURCE)
+  expect(await sourceOf(marimo(), false).load()).toBe(MARIMO_SOURCE)
 })
+
+/** The rents notebook as its message carried it, revision 3 of document `rents`. */
+const RENTS = {
+  form: 'observable',
+  title: 'Rents',
+  cells: [
+    { id: 'rent', kind: 'js', source: 'views.param(Inputs.range([500, 4000], { value: 1200 }), "rent")' },
+    { id: 'share', kind: 'js', source: 'rent / 3000' },
+  ],
+  data: {},
+} as const
+
+/** The same notebook as revised since, in another thread: the document's head. */
+const RENTS_HEAD = {
+  ...RENTS,
+  cells: [...RENTS.cells, { id: 'yearly', kind: 'js', source: 'rent * 12' }],
+} as const
+
+const rents = (documentId: string) =>
+  part(documentId, RENTS as unknown as NotebookForm)
+
+/** The document a part names, saved at `position` with `state` in its collections. */
+async function savedHead(
+  documentId: string,
+  publication: { form: string; title: string },
+  { position = 5, state = {} }: { position?: number; state?: Record<string, Record<string, unknown>> } = {},
+) {
+  const doc = LoroDoc.fromSnapshot(savedArtifactBody(publication))
+  for (const [name, records] of Object.entries(state))
+    for (const [id, value] of Object.entries(records))
+      doc.getMap(`app-state:${name}`).set(id, value as never)
+  doc.commit()
+  return appDocumentFixture({
+    documentId,
+    position,
+    canonical: doc.export({ mode: 'snapshot' }),
+    markdownProjection: `# ${publication.title}`,
+  })
+}
+
+/** A state collection of the document as it is saved now. */
+function savedState(head: Awaited<ReturnType<typeof savedHead>>, name: string) {
+  const { canonical } = head.saved()
+  if (canonical.placement !== 'inline') throw new Error('fixture must be inline')
+  return LoroDoc.fromSnapshot(fromBase64(canonical.bytesBase64))
+    .getMap(`app-state:${name}`)
+    .toJSON() as Record<string, unknown>
+}
+
+test('Copy and Download read the newest revision from its document, and an older one from its message', async () => {
+  const head = await savedHead('rents-download', RENTS_HEAD)
+  serve({ documents: [head] })
+  const message = rents('rents-download')
+  expect(await sourceOf(message, true).load()).toContain('rent * 12')
+  const pinned = await sourceOf(message, false).load()
+  expect(pinned).toContain('rent / 3000')
+  expect(pinned).not.toContain('rent * 12')
+})
+
+test('the newest revision runs its document\'s head, starts from where its views were left, and saves where they are left', async () => {
+  const head = await savedHead('rents-head', RENTS_HEAD, {
+    state: { notebook: { saved: { params: { rent: 1800 } } } },
+  })
+  serve({ documents: [head] })
+  const capture = captureDocuments()
+  let close = () => {}
+  try {
+    const { container } = await render(
+      <ArtifactView artifact={rents('rents-head')} distance="thing" latest />,
+    )
+    const frame = await connectAppFrame(container)
+    close = frame.close
+    const built = capture.documents.at(-1)!
+    // The head, revised in another thread, not the revision the message carried.
+    expect(built).toContain('rent * 12')
+    expect(built).toContain('"params":{"rent":1800}')
+
+    // Cells reach the document's own state collections.
+    await act(() =>
+      call<PageMethods, 'state.set'>(frame.rpc, 'state.set', {
+        name: 'picks',
+        key: 'austin',
+        value: { rent: 1800 },
+      }),
+    )
+    await waitFor(() => savedState(head, 'picks').austin)
+    expect(savedState(head, 'picks')).toEqual({ austin: { rent: 1800 } })
+
+    // A moved parameter is saved once the views rest.
+    const writes = head.writes.length
+    for (const rent of [1900, 2000, 2100])
+      await act(() =>
+        call<PageMethods, 'frame.selection'>(frame.rpc, 'frame.selection', {
+          text: '',
+          label: 'Parameters',
+          state: { params: { rent } },
+        } as never),
+      )
+    await waitFor(
+      () => (savedState(head, 'notebook').saved as { params?: { rent?: number } } | undefined)?.params?.rent === 2100,
+      3000,
+    )
+    expect(head.writes.length).toBe(writes + 1)
+
+    // A click that moves nothing saves nothing.
+    await act(() =>
+      call<PageMethods, 'frame.selection'>(frame.rpc, 'frame.selection', {
+        text: '',
+        cellId: 'share',
+        state: { params: { rent: 2100 } },
+      }),
+    )
+    await act(() => new Promise((resolve) => setTimeout(resolve, 600)))
+    expect(head.writes.length).toBe(writes + 1)
+  } finally {
+    close()
+  }
+  await cleanup()
+
+  // A view opened later starts from where the last one left its views.
+  try {
+    await render(<ArtifactView artifact={rents('rents-head')} distance="thing" latest />)
+    await waitFor(() => capture.documents.at(-1)!.includes('"params":{"rent":2100}'), 10_000)
+  } finally {
+    capture.restore()
+  }
+}, 30_000)
+
+test('an older revision runs as its message pinned it, and keeps what changes in its frame', async () => {
+  const head = await savedHead('rents-pinned', RENTS_HEAD, {
+    state: { notebook: { saved: { params: { rent: 1800 } } } },
+  })
+  serve({ documents: [head] })
+  const capture = captureDocuments()
+  let close = () => {}
+  try {
+    const { container } = await render(
+      <ArtifactView artifact={rents('rents-pinned')} distance="thing" latest={false} />,
+    )
+    const frame = await connectAppFrame(container)
+    close = frame.close
+    const built = capture.documents.at(-1)!
+    expect(built).toContain('rent / 3000')
+    expect(built).not.toContain('rent * 12')
+    // Revision 3 is not the document's current one, so its views start where the message left them.
+    expect(built).not.toContain('"rent":1800')
+    expect(status(container)).toContain('Saved revision 3. Changes you make here are not saved.')
+    expect(buttonNamed(container, 'Open latest')).toBeDefined()
+
+    await act(() =>
+      call<PageMethods, 'state.set'>(frame.rpc, 'state.set', { name: 'picks', key: 'austin', value: 1 }),
+    )
+    await act(() =>
+      call<PageMethods, 'frame.selection'>(frame.rpc, 'frame.selection', {
+        text: '',
+        state: { params: { rent: 2500 } },
+      }),
+    )
+    await act(() => new Promise((resolve) => setTimeout(resolve, 600)))
+    expect(head.writes).toHaveLength(0)
+  } finally {
+    close()
+    capture.restore()
+  }
+}, 20_000)
+
+test('an open view of the newest revision reports how its cells settle, under its document, until it closes', async () => {
+  const head = await savedHead('rents-open', RENTS_HEAD)
+  serve({ documents: [head] })
+  const key = documentViewKey('rents-open')
+  const view = () => useViewInstances.getState().byKey[key]
+  const capture = captureDocuments()
+  let close = () => {}
+  try {
+    const { container } = await render(
+      <ArtifactView artifact={rents('rents-open')} distance="thing" latest />,
+    )
+    const frame = await connectAppFrame(container)
+    close = frame.close
+    // The head's cells, not the ones the message carried.
+    await waitFor(() => view()?.cells.length === 3)
+    expect(view()?.cells).toEqual(['rent', 'share', 'yearly'])
+    await act(() =>
+      call<PageMethods, 'frame.status'>(frame.rpc, 'frame.status', {
+        cell: 'yearly',
+        stage: 'ready',
+        shows: '14400',
+      }),
+    )
+    expect(view()?.settled).toEqual({ yearly: 'ready' })
+    expect(view()?.shows).toEqual({ yearly: '14400' })
+  } finally {
+    close()
+    capture.restore()
+  }
+  await cleanup()
+  // Nobody has it open, so nothing is reported as shown.
+  expect(view()).toBeUndefined()
+}, 20_000)
+
+test('an older revision reports nothing as its document\'s open view', async () => {
+  const head = await savedHead('rents-old-open', RENTS_HEAD)
+  serve({ documents: [head] })
+  const capture = captureDocuments()
+  let close = () => {}
+  try {
+    const { container } = await render(
+      <ArtifactView artifact={rents('rents-old-open')} distance="thing" latest={false} />,
+    )
+    const frame = await connectAppFrame(container)
+    close = frame.close
+    await act(() =>
+      call<PageMethods, 'frame.status'>(frame.rpc, 'frame.status', { cell: 'share', stage: 'ready' }),
+    )
+    expect(useViewInstances.getState().byKey[documentViewKey('rents-old-open')]).toBeUndefined()
+  } finally {
+    close()
+    capture.restore()
+  }
+}, 20_000)
 
 test('an Observable notebook runs in an App frame with no policy of the host\'s', async () => {
   const capture = captureDocuments()
@@ -392,4 +637,64 @@ test('a part that names no App document offers no reference to it', async () => 
     <ArtifactView artifact={unnamed} distance="thing" latest />,
   )
   expect(buttonNamed(container, 'Ask about this')).toBeUndefined()
+})
+
+test('a notebook opened from Notes runs as its form from its document\'s head, never in the Markdown editor', async () => {
+  const head = await savedHead('rents-note', RENTS_HEAD, {
+    state: { notebook: { saved: { params: { rent: 1600 } } } },
+  })
+  serve({ documents: [head] })
+  const capture = captureDocuments()
+  let close = () => {}
+  try {
+    const { container } = await render(<NotePanel documentId="rents-note" />)
+    const frame = await connectAppFrame(container)
+    close = frame.close
+    const built = capture.documents.at(-1)!
+    expect(built).toContain('rent * 12')
+    expect(built).toContain('"params":{"rent":1600}')
+    expect(container.querySelector('.ProseMirror')).toBeNull()
+    expect(head.writes.length).toBe(0)
+  } finally {
+    close()
+    capture.restore()
+  }
+}, 30_000)
+
+test('a note save that meets a revision saved as an App stops instead of filing it as a note', async () => {
+  // The note as it was cached, and the same document since saved as a
+  // notebook: one history, so Loro would merge the two.
+  const typed = encodeNote('Rents')
+  const doc = LoroDoc.fromSnapshot(typed)
+  const [block] = doc.getTree('blocks').getNodes().filter(
+    (node) => doc.getMap(`attrs:${node.id}`).get('kind') === 'paragraph',
+  )
+  doc.getMap(`attrs:${block!.id}`).set('artifactForm', 'observable')
+  doc.getText(`text:${block!.id}`).update(JSON.stringify(RENTS_HEAD))
+  doc.commit()
+  const head = await appDocumentFixture({
+    documentId: 'rents-retagged',
+    position: 2,
+    canonical: doc.export({ mode: 'snapshot' }),
+  })
+  serve({ documents: [head] })
+  const note: Note = {
+    documentId: 'rents-retagged',
+    title: 'Rents',
+    markdown: 'Rents',
+    savedMarkdown: 'Rents',
+    revision: { position: 1, contentDigest: 'earlier' },
+    canonical: typed,
+    documentKind: 'authored',
+    editable: true,
+    origin: { kind: 'user_authored', actorId: 'person:test', originSurface: 'test' },
+    retired: false,
+  }
+  const queryClient = new QueryClient()
+  queryClient.setQueryData(noteKey(note.documentId), note)
+  editNote(queryClient, note.documentId, 'Rents, revised')
+  await settleNote(queryClient, note.documentId).catch(() => undefined)
+  expect(useNoteStatus.getState().status[note.documentId]).toBe('conflict')
+  expect(head.writes.length).toBe(0)
+  expect(head.saved().summary.documentKind).toBe('theorem.app')
 })

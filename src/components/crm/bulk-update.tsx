@@ -392,6 +392,7 @@ function ChangeRow({
                       field={field}
                       value={value}
                       tabIndex={-1}
+                      plain
                     />
                   )}
                 </button>

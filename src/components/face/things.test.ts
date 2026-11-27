@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+// The real <diffs-container>, as on the page: its constructor opens the shadow root a diff's
+// lines are drawn into. Loading it here keeps the test the same whichever file loaded it first.
+import '@pierre/diffs'
 import { thingProps } from '@/lib/face/things'
 import { forget, locate, reveal, spanOf, thingsOnPage } from './things'
 
@@ -188,20 +191,18 @@ describe('the things on a page', () => {
       ]),
       { left: 140, top: 180, width: 560, height: 20 },
     )
-    diff
-      .attachShadow({ mode: 'open' })
-      .append(
-        make('div', { 'data-line': '12', 'data-column-number': '12' }, ['12']),
-        measured(
-          make(
-            'div',
-            { 'data-line': '12', 'data-line-type': 'change-deletion' },
-            ['const total = 0'],
-          ),
-          { left: 140, top: 160, width: 560, height: 20 },
+    diff.shadowRoot!.append(
+      make('div', { 'data-line': '12', 'data-column-number': '12' }, ['12']),
+      measured(
+        make(
+          'div',
+          { 'data-line': '12', 'data-line-type': 'change-deletion' },
+          ['const total = 0'],
         ),
-        added,
-      )
+        { left: 140, top: 160, width: 560, height: 20 },
+      ),
+      added,
+    )
     change.append(diff)
     document.body.append(change)
     expect(locate({ thing: 'change:d/a.ts', line: 12 }, 0)).toMatchObject({

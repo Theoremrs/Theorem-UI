@@ -278,7 +278,7 @@ function HostViews({
             role="tab"
             aria-selected={view === v.id}
             onClick={() => useShell.getState().setSideDrawer(v.id)}
-            className="min-h-6 rounded px-2 py-0.5 text-term-muted outline-none pointer-coarse:min-h-11 hover:text-term-ink focus-visible:outline-1 focus-visible:outline-term-sage aria-selected:bg-term-raised aria-selected:text-term-bright"
+            className="min-h-6 rounded px-2 py-0.5 text-term-muted outline-none pointer-coarse:min-h-11 hover:text-term-ink focus-visible:outline-1 focus-visible:outline-term-sage aria-selected:text-term-bright"
           >
             {v.label}
           </button>
@@ -385,6 +385,9 @@ export function SideTerminal() {
       >
         <Drawer.Portal keepMounted>
           <Drawer.Viewport className="pointer-events-none fixed inset-0 z-40">
+            {/* One colour across the drawer: the canvas the terminal's
+                conversation sits on, or the gallery's own ground (owner,
+                2026-11-22). */}
             <Drawer.Popup
               ref={popup}
               data-terminal-drawer=""
@@ -397,7 +400,7 @@ export function SideTerminal() {
                 } as CSSProperties
               }
               initialFocus={() => document.getElementById(HOST_ID)}
-              className="pointer-events-auto absolute top-[3px] right-[3px] bottom-[3px] flex w-[calc(100vw-6px)] overflow-hidden rounded-xl bg-term shadow-[-8px_0_32px_rgb(0_0_0/0.28)] outline-none [transform:translateX(var(--drawer-swipe-movement-x))] transition-transform duration-[calc(var(--duration-glide)*var(--drawer-swipe-strength))] ease-glide data-ending-style:duration-(--duration-exit) data-ending-style:ease-exit data-ending-style:[transform:translateX(calc(100%+8px))] data-starting-style:[transform:translateX(calc(100%+8px))] data-swiping:duration-0 data-swiping:select-none md:w-[min(var(--side-width),calc(100vw-120px))] data-[cabinet-layout=docked]:shadow-none data-[cabinet-layout=expanded]:md:w-(--side-width)"
+              className="pointer-events-auto absolute top-[3px] right-[3px] bottom-[3px] flex w-[calc(100vw-6px)] overflow-hidden rounded-xl bg-term-canvas data-cabinet-layout:bg-term shadow-[-8px_0_32px_rgb(0_0_0/0.28)] outline-none [transform:translateX(var(--drawer-swipe-movement-x))] transition-transform duration-[calc(var(--duration-glide)*var(--drawer-swipe-strength))] ease-glide data-ending-style:duration-(--duration-exit) data-ending-style:ease-exit data-ending-style:[transform:translateX(calc(100%+8px))] data-starting-style:[transform:translateX(calc(100%+8px))] data-swiping:duration-0 data-swiping:select-none md:w-[min(var(--side-width),calc(100vw-120px))] data-[cabinet-layout=docked]:shadow-none data-[cabinet-layout=expanded]:md:w-(--side-width)"
             >
               <Drawer.Title className="sr-only">
                 {cabinet ? 'Gallery' : 'Agent terminal'}

@@ -3,7 +3,10 @@ import { LoroDoc } from 'loro-crdt/base64'
 import { TheoremError } from '@theoremharness/sdk'
 import { AppDocument } from './apps'
 import { noteMarkdown } from './note-canonical'
-import { appDocumentFixture as fixture } from '../../../test/blocks/app-documents'
+import {
+  appDocumentFixture as fixture,
+  savedArtifactBody,
+} from '../../../test/blocks/app-documents'
 
 test('editing an App persists the same document and survives a new view', async () => {
   const server = await fixture()
@@ -48,6 +51,48 @@ test('App state merges into a newer source revision without replacing its HTML',
   const count = server.writes.length
   await app.flush()
   expect(server.writes).toHaveLength(count)
+})
+
+
+test('a saved notebook reads as its form, and saving its state keeps what search reads', async () => {
+  const notebook = {
+    form: 'observable',
+    title: 'Rents',
+    cells: [{ id: 'rent', kind: 'js', source: 'rent = 1200' }],
+  }
+  const server = await fixture({
+    canonical: savedArtifactBody(notebook),
+    markdownProjection: '# Rents\n\n```js\nrent = 1200\n```\n',
+  })
+  const app = new AppDocument('app-document', server.api, server.change)
+  const loaded = await app.load()
+  expect(loaded.form).toBe('observable')
+  expect(loaded.publication).toEqual(notebook as never)
+  expect(loaded.unreadable).toBeUndefined()
+
+  const local = LoroDoc.fromSnapshot(loaded.canonical)
+  const before = local.oplogVersion()
+  local.getMap('app-state:notebook').set('saved', { params: { city: 'Austin' } })
+  local.commit()
+  await app.pushState(local.export({ mode: 'update', from: before }))
+  // The projection is the writer's reading of the notebook, not its JSON.
+  expect(server.saved().markdownProjection).toBe('# Rents\n\n```js\nrent = 1200\n```\n')
+  expect(server.saved().summary.documentKind).toBe('theorem.app')
+  const reopened = await new AppDocument('app-document', server.api, server.change).load()
+  expect(reopened.form).toBe('observable')
+  expect(reopened.publication).toEqual(notebook as never)
+
+  // Its source is revised as a notebook, never replaced by a page.
+  await expect(app.saveSource('<p>page</p>', reopened.revision)).rejects.toThrow('observable')
+})
+
+test('a saved artifact this build cannot read says why instead of passing as a page', async () => {
+  const doc = LoroDoc.fromSnapshot(savedArtifactBody({ form: 'observable', title: 'Half' }))
+  const server = await fixture({ canonical: doc.export({ mode: 'snapshot' }) })
+  const loaded = await new AppDocument('app-document', server.api, server.change).load()
+  expect(loaded.form).toBe('observable')
+  expect(loaded.publication).toBeUndefined()
+  expect(loaded.unreadable).toContain('observable notebook')
 })
 
 test('failed state saves report failure and retain the update for retry', async () => {

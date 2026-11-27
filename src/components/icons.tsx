@@ -84,7 +84,6 @@ import {
 } from 'lucide-react'
 import PenroseTriangle from '@/assets/icons/rail/noun-penrose-triangle-881122.svg?react'
 import Projects from '@/assets/icons/rail/noun-projects-8375031.svg?react'
-import Check from '@/assets/icons/records/noun-checkmark-8086058.svg?react'
 import Coding from '@/assets/icons/records/noun-coding-8259870.svg?react'
 import Menu from '@/assets/icons/records/noun-menu-8086045.svg?react'
 import ProjectRow from '@/assets/icons/tree/noun-data-8394841.svg?react'
@@ -99,7 +98,6 @@ import HierarchyFive from '@/assets/icons/streamline/streamline-hierarchy-5.png'
 import PaginateMail from '@/assets/icons/streamline/streamline-paginate-filter-mail.png'
 import WorkflowClosed from '@/assets/icons/streamline/streamline-workflow-request-closed.png'
 import AiScienceSpark from '@/assets/icons/streamline/streamline-ai-science-spark.png'
-import BrowserPageLayout from '@/assets/icons/streamline/streamline-browser-page-layout.png'
 import CodeWrite from '@/assets/icons/streamline/streamline-code-write-1.png'
 import CommonFileTextEdit from '@/assets/icons/streamline/streamline-common-file-text-edit.png'
 import HierarchyOrganize from '@/assets/icons/streamline/streamline-hierarchy-5-organize.png'
@@ -109,11 +107,12 @@ import PencilNote from '@/assets/icons/streamline/streamline-pencil-write-1.png'
 import PaperPlane from '@/assets/icons/streamline/streamline-travel-paper-plane.png'
 import WorkflowBranch from '@/assets/icons/streamline/streamline-workflow-branch.png'
 import WorkflowPullRequest from '@/assets/icons/streamline/streamline-workflow-pull-request.png'
-import CopyPaste from '@/assets/icons/streamline/streamline-copy-paste-1.png'
 import CrossRegion from '@/assets/icons/streamline/streamline-cross-region-data-delivery-2.png'
 import DownloadBox from '@/assets/icons/streamline/streamline-download-box.png'
 import ShipmentUpload from '@/assets/icons/streamline/streamline-shipment-upload.png'
 import SearchSquare from '@/assets/icons/streamline/streamline-search-square.png'
+import Checkmark from '@/assets/icons/streamline/streamline-glyphs-checkmark.png'
+import CheckmarkCircle from '@/assets/icons/streamline/streamline-glyphs-checkmark-circle.png'
 import SquareWireframe from '@/assets/icons/streamline/streamline-square-wireframe-3d.png'
 import ShareBox from '@/assets/icons/streamline/streamline-share-1.png'
 import XMark from '@/assets/icons/streamline/streamline-x.png'
@@ -281,16 +280,19 @@ const FileEntry: SvgMark = ({ className, ...props }) => (
 const Artifact = masked(SquareWireframe)
 const Ide = masked(AppWindowCode)
 const Todo = masked(ListEdit)
-const Copy = masked(CopyPaste)
 const Download = masked(DownloadBox)
 const TreeFile = solid(TreeFileMark)
 const Diagram = masked(CodeWrite)
 const Search = masked(SearchSquare)
+const Check = masked(Checkmark)
+/** Done, as a status beside a label: the tick in its ring. */
+const CheckCircle = masked(CheckmarkCircle)
 const Share = masked(ShareBox)
 const Web = masked(CrossRegion)
 const Exit = masked(XMark)
 
-const Panels = masked(BrowserPageLayout)
+/** The layout menu's mark: Streamline's Composition Layout 3, painted (owner, 2026-11-24). */
+const Panels = painted(CONTROL_LAYERS.layout, 180, true)
 
 const flap =
   'icon-mask box-flap absolute inset-0 duration-(--duration-exit) ease-exit group-hover/open:duration-(--duration-lift) group-hover/open:ease-lift group-focus-visible/open:duration-(--duration-lift) group-focus-visible/open:ease-lift'
@@ -359,7 +361,7 @@ const Outline = masked(HierarchyTwo)
 const Reject = masked(WorkflowClosed)
 const Route = masked(AiRouting)
 const Article = masked(OfficeFileText)
-const Layout = masked(BrowserPageLayout)
+const Layout = Panels
 const Canvas = masked(CodeWrite)
 const Draft = masked(CommonFileTextEdit)
 const Fork = masked(WorkflowBranch)
@@ -412,6 +414,8 @@ const Thread = painted(CONTROL_LAYERS.thread, 180, true)
 const ChatSearch = painted(CONTROL_LAYERS.chatSearch, 180, true)
 const Send = painted(CONTROL_LAYERS.send, 0, true)
 const Attachment = painted(CONTROL_LAYERS.upload, 180, true)
+/** An attached file the composer has no picture of. */
+const AttachedFile = painted(CONTROL_LAYERS.officeFileText, 180, true)
 const AttachFolder = painted(CONTROL_LAYERS.attachFolder, 45, true)
 const Plan = painted(CONTROL_LAYERS.plan, 180, true)
 // The owner's 2026-11-16 + menu set: a browser window for Web search, a Lego
@@ -419,6 +423,10 @@ const Plan = painted(CONTROL_LAYERS.plan, 180, true)
 const WebSearch = painted(CONTROL_LAYERS.browser, 180, true)
 const Plugins = painted(CONTROL_LAYERS.plugins, 180, true)
 const CodeMode = painted(CONTROL_LAYERS.fileCode, 180, true)
+// The / menu's Read aloud (owner, 2026-11-21): Streamline's page with a
+// speaker, in the painted family beside Code mode. The reply toolbar keeps
+// Theorem's own solid speaker with the rest of its marks.
+const ReadAloudControl = painted(CONTROL_LAYERS.readAloud, 180, true)
 // Skills in the same menu: Icon.Skill's atom traced as a control mark, so it
 // sits in the painted family beside them rather than as a thinner mask.
 const SkillControl = painted(CONTROL_LAYERS.skill, 180, true)
@@ -447,6 +455,8 @@ const SessionImage = painted(CONTROL_LAYERS.imageFileEdit, 180, true)
 const SessionForked = painted(CONTROL_LAYERS.fileModule, 45, true)
 const SessionContinued = painted(CONTROL_LAYERS.fileDouble, 45, true)
 const SessionPair = painted(CONTROL_LAYERS.fileDouble2, 45, true)
+/** Copy: the owner's two stacked pages (Streamline's Common File Double 2, 2026-11-23) wherever something is copied. */
+const Copy = painted(CONTROL_LAYERS.fileDouble2, 180, true)
 const SessionEmpty = painted(CONTROL_LAYERS.fileEmpty, 180, true)
 
 /* The owner's 2026-11-15 Streamline set, in place of the Noun marks and the
@@ -498,6 +508,7 @@ export const Icon = {
   Article,
   AttachFolder,
   Attachment,
+  AttachedFile,
   Calendar,
   Chat,
   ChatSearch,
@@ -511,6 +522,7 @@ export const Icon = {
   SessionPair,
   SessionEmpty,
   Check,
+  CheckCircle,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -591,6 +603,7 @@ export const Icon = {
   WebSearch,
   Plugins,
   CodeMode,
+  ReadAloudControl,
   SkillControl,
   Agent,
   Attachments,
