@@ -28,6 +28,13 @@ import type {
   RepresentationKind,
 } from '@/lib/theorem/agent-profile'
 import { describeError } from '@/lib/theorem/client'
+import {
+  agentName,
+  chosenAgentId,
+  useChosenAgent,
+  useOrganizationAgents,
+} from '@/lib/theorem/organization-agents'
+import { useOrganizationAgentsDialog } from './agents-dialog-store'
 import { TheoremError } from '@theoremharness/sdk'
 
 export const useAgentProfileDialog = create<{
@@ -42,16 +49,26 @@ export const useAgentProfileDialog = create<{
 export function AgentIdentityChip() {
   const identity = useAgentIdentity()
   const setOpen = useAgentProfileDialog((state) => state.setOpen)
-  const name = shownProfile(identity.data).name
+  const openAgents = useOrganizationAgentsDialog((state) => state.setOpen)
+  const chosenId = useChosenAgent(chosenAgentId)
+  const agents = useOrganizationAgents()
+  // A further agent the composer talks to names the chip, and pressing it opens the agents.
+  const chosen =
+    chosenId && agents.data?.served
+      ? agents.data.agents.find((agent) => agent.agent_id === chosenId)
+      : undefined
+  const name = chosen ? agentName(chosen) : shownProfile(identity.data).name
   return (
     <button
       type="button"
       data-activity-chrome=""
-      onClick={() => setOpen(true)}
-      title="Agent profile"
+      onClick={() => (chosen ? openAgents(true) : setOpen(true))}
+      title={chosen ? 'Agents' : 'Agent profile'}
       className="max-w-40 truncate rounded px-1.5 py-0.5 text-xs text-ink-muted outline-focus hover:bg-hover hover:text-ink focus-visible:outline-2"
     >
-      <span className="sr-only">Agent profile: </span>
+      <span className="sr-only">
+        {chosen ? 'Talking to' : 'Agent profile'}:{' '}
+      </span>
       {name}
     </button>
   )
@@ -244,7 +261,8 @@ function ProfileForm({
               onChange={(event) => setPreferences(event.target.value)}
             />
             <span className="text-xs text-ink-muted">
-              Saved with the profile. Runs do not read them yet.
+              New runs follow these unless you ask otherwise in the turn. They
+              shape manner only and never widen what the agent may do.
             </span>
           </label>
           <label className="flex flex-col gap-1.5">

@@ -2577,7 +2577,7 @@
       "status": "not_run",
       "blocker": "No durable agent-profile authority exists yet; Gate 0 decision 2 (2026-11-26) chose to extend the Theorem backend organization record (ownership map 5 and 7 item 2).",
       "evidence": [],
-      "progress": "Gate 3: the name is saved on the organization record, so a new run and a client restart read it back; saving bumps the organization revision and leaves roles and models alone. Backend tests written, not compiled here; not run live."
+      "progress": "Gate 3: the name is saved on the organization record, so a new run and a client restart read it back; saving bumps the organization revision and leaves roles and models alone. Gate 4: further agents (behind the organization's multiple_agents setting) keep their own profiles, and a turn seated on one speaks with its profile and follows its working preferences. Backend tests cover the record; not run live."
     },
     {
       "id": "UAE-AC-22",
@@ -2592,8 +2592,9 @@
       "procedure": "Fail an explicitly configured provider and exercise concurrent runs/scoped retrieval.",
       "required_observations": "Preserve the binding; do not create empty fallback memory or leak another agent's data.",
       "status": "not_run",
-      "blocker": "Portable state gate; no second provider and no agent-scoped memory binding exist yet.",
-      "evidence": []
+      "blocker": "Needs a live stack with fault injection; the backend behaviour is covered by tests only.",
+      "evidence": [],
+      "progress": "Gate 4 (Theoremrs/Theorem, claude/unified-agent-portability): each agent has a knowledge binding resolved in the DB-03 order (explicit, host-supplied, default). A failed explicit binding is kept and shown, and a turn for that agent is refused with chat_agent_knowledge_unavailable instead of falling back to empty memory. Memory is scoped per agent on writes, lists, recall and export; tests check that an imported agent's memories do not reach the primary."
     },
     {
       "id": "UAE-AC-23",
@@ -2608,8 +2609,9 @@
       "procedure": "Export/import a template and selected memory with external payloads.",
       "required_observations": "Check lineage, required bindings, missing-object handling, and independence from window geometry.",
       "status": "not_run",
-      "blocker": "Portable state gate; export/import is not designed beyond the spec.",
-      "evidence": []
+      "blocker": "Needs a live stack; covered by backend tests and the Agents dialog, not run live.",
+      "evidence": [],
+      "progress": "Gate 4: theorem.agent-package with a content hash, template and selected_memory modes (checkpoint is refused), lineage, role and model requirements and dependencies. Selected memories carry their links as optional dependencies; an import check reports missing bindings before import; an import is always a copy with a new agent id and the source in its lineage; a tampered package is refused. The package holds no window geometry. The UI exports, checks and imports from the Agents dialog."
     },
     {
       "id": "UAE-AC-24",
@@ -2624,8 +2626,9 @@
       "procedure": "Evaluate two provider configurations from one fixed snapshot.",
       "required_observations": "Verify candidate isolation, recorded differences, and unchanged source-agent memory.",
       "status": "not_run",
-      "blocker": "Provider experiment gate; isolated evaluation forks do not exist yet.",
-      "evidence": []
+      "blocker": "Needs a live stack; covered by backend tests and the Agents dialog, not run live.",
+      "evidence": [],
+      "progress": "Gate 5: a second, materially different provider (theorem.lexical beside rustyred.embedded) declares its capabilities. An evaluation copies the agent's memories into one fixed snapshot, runs each candidate in its own isolated store, records the differences and the snapshot hash, and checks the source agent's memory and the organization revision are unchanged. The Agents dialog runs it and shows recall and time per candidate."
     }
   ],
   "execution_record": {

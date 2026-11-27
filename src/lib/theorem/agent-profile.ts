@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { mutate } from './client'
+import { organizationAgentsKey } from './organization-agents'
 import { isNotServed, theoremJson } from './passthrough'
 
 const ORGANIZATION = '/v1/theorem/organization'
@@ -169,8 +170,16 @@ export function useSaveAgentProfile() {
       profile: AgentProfile
       expectedRevision: number
     }) => saveAgentProfile(profile, expectedRevision),
-    onSuccess: (saved) => client.setQueryData(agentIdentityKey, saved),
+    onSuccess: (saved) => {
+      client.setQueryData(agentIdentityKey, saved)
+      // The save moved the organization's revision, which the agents list writes against too.
+      void client.invalidateQueries({ queryKey: organizationAgentsKey })
+    },
     // A refused save (above all a 409) means the cached record is behind: reopening reads anew.
-    onError: () => client.invalidateQueries({ queryKey: agentIdentityKey }),
+    onError: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: agentIdentityKey }),
+        client.invalidateQueries({ queryKey: organizationAgentsKey }),
+      ]),
   })
 }

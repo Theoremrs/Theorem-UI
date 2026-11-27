@@ -186,22 +186,36 @@ The question each decision answered is kept so later readers see what was weighe
 
 | Gap | What Gate 3 built | Still open |
 | --- | --- | --- |
-| 5 profile authority | Theorem (Theoremrs/Theorem#1176): `OrganizationDefinition` gains an optional `profile` (name, representation, description, characteristics, working preferences, instruction references), validated and bounded, saved through `PUT /v1/theorem/organization/profile` with an expected revision and a 409 on a stale save. Changing it bumps the organization revision and leaves roles and models alone, so running work keeps the version it started with (AG-04). Here: `src/lib/theorem/agent-profile.ts` reads and saves it, `agent-profile-dialog.tsx` edits it (command palette, and the agent's name in the activity drawer). | The record still holds one agent per organization; more than one, and copying with lineage, are not modelled. Runs do not read working preferences yet. |
+| 5 profile authority | Theorem (Theoremrs/Theorem#1176): `OrganizationDefinition` gains an optional `profile` (name, representation, description, characteristics, working preferences, instruction references), validated and bounded, saved through `PUT /v1/theorem/organization/profile` with an expected revision and a 409 on a stale save. Changing it bumps the organization revision and leaves roles and models alone, so running work keeps the version it started with (AG-04). Here: `src/lib/theorem/agent-profile.ts` reads and saves it, `agent-profile-dialog.tsx` edits it (command palette, and the agent's name in the activity drawer). | Closed in Gate 4 (section 7e): further agents, copies with lineage, and runs that read working preferences. |
 | 2.6 artifact view state | `artifact-view.ts` records each panel's view as separate choices: follow the newest, the revision shown when not following, and keep open across chats. A chosen revision stays fixed while newer ones arrive, with a quiet "Newer version" action. | One view per artifact (the panel id is the artifact id); two views of the same artifact side by side are not possible. |
 | 2.6 reopen after changing chats | A kept panel survives a chat change and a saved layout, records its origin conversation on the panel, and reads revisions from it (`readArtifactVersions`). A live App there refers to its answer and goes to that chat. | The runtime host (AR-08 to AR-12) is not built: a live App still runs only in its answer, as the referral guard requires. |
 
-## 7d. Gates 4 and 5: what they wait on (2026-11-26)
+## 7d. Gates 4 and 5: what they waited on (2026-11-26)
 
-Neither gate is started. Each exit needs a backend capability that does not exist yet, and one needs an owner decision first.
+Recorded before the work started. The owner settled the open choice: an organization may hold several agents when its own setting allows it. Section 7e is what was built.
 
-| Gate | Needs | Why it cannot start from the UI |
+| Gate | Needed |
+| --- | --- |
+| 4 template export | A package format and an export route on the organization. |
+| 4 import as a copy | A second agent identity to mint (PT-03). |
+| 4 selected memory | Memory scoping per agent (DB-04), and an export that names payloads as dependencies (PT-02). |
+| 4 host-supplied store and standalone embedded Rusty Red | Provider resolution in the DB-03 order, with a failed explicit binding kept and shown. |
+| 5 second knowledge provider and evaluation forks | A materially different provider declaring its capabilities (DB-05), and isolated candidate forks from one snapshot (11.3). |
+| 5 advanced arrangements | Two views of one artifact, remote handoff, cross-window presentation. |
+
+## 7e. Gates 4 and 5 status (2026-11-26)
+
+Backend: Theoremrs/Theorem, branch `claude/unified-agent-portability`, stacked on #1176. UI: this branch.
+
+| Gap | What was built | Still open |
 | --- | --- | --- |
-| 4 template export | A package format (schema version, agent identity and lineage, profile, role and model requirements, asset references) and an export route on the organization. | The organization is the only agent record, so a template is the organization's definition plus its profile. Building the package is small once the format is agreed. |
-| 4 import as a copy | A second agent identity to mint (PT-03). | The record holds one agent per organization (Gate 0 decision 2 leaves "more than one agent" to Gate 3, and it is still open). A copy cannot get a new identity with lineage until the organization can hold more than one agent, or a copy makes a new organization. That is the owner's choice. |
-| 4 selected memory | Memory scoping on reads, writes, retrieval and export per agent (DB-04), and an export that includes payloads or names them as dependencies (PT-02). | No per-agent memory scope or memory export route exists. |
-| 4 host-supplied store and standalone embedded Rusty Red | Provider resolution in the order DB-03 sets, with a failed explicit binding kept and shown. | Backend provider binding; nothing for the UI to show yet. |
-| 5 second knowledge provider and evaluation forks | A materially different retrieval provider declaring its capabilities (DB-05), and isolated candidate forks from one snapshot (11.3). | Backend. |
-| 5 advanced arrangements | Two views of one artifact side by side, remote handoff, cross-window presentation. | Waits on the runtime host (AR-08 to AR-12), which Gate 3 deferred; today one panel per artifact. |
+| Several agents | `OrganizationSettings.multiple_agents` (off by default). With it on, `OrganizationDefinition.agents` holds further agents, each with its own profile, knowledge binding and lineage; the existing fields stay the primary agent. Roles, tools, models and policy stay the organization's. Turning the setting off with further agents present is refused. A send may name `agent`; the turn is seated on that agent's profile and memory, and an unknown agent is refused. Here: the Agents dialog (command palette) lists, adds, edits and removes agents, and "Talk to" makes the composer send as one; the identity chip then names it. | Agents share the organization's roles; per-agent roles are not modelled. |
+| Working preferences | A seated turn's front role context carries the agent's profile layer: name, description, characteristics and working preferences, marked as manner only, never authority. | Instruction references are saved but not resolved into the prompt. |
+| Memory scope (DB-04) | The `agent_scope` metadata key carries a memory's agent; unscoped memories belong to the primary. Writes, lists, recall in the personal context and the context bridge, and export filter by scope. | Code mode recall and memory writes from MCP tools are not agent-seated yet. |
+| Knowledge binding (DB-03) | Each agent binds a provider: explicit, else the host-supplied one (`THEOREM_HOST_KNOWLEDGE_PROVIDER`), else `rustyred.embedded`. A failed explicit binding is kept, shown in the dialog, and refuses that agent's turns (`chat_agent_knowledge_unavailable`) rather than falling back. | Only shipped providers resolve; a host provider is named by configuration, not registered at run time. |
+| Template and selected memory (PT-01 to PT-04) | `theorem.agent-package`: a content hash, the mode, the agent's identity, profile and lineage, role and model requirements, knowledge binding, and dependencies. Selected memories carry their links as optional dependencies. An import check reports what the host is missing; an import is always a copy with a new id and the source in its lineage, and is rolled back if its memories cannot be written. A tampered or foreign package is refused. Here: export downloads a template or ticked memories; import reads a file, shows the check, then imports. | Checkpoint packages are refused. A model the host cannot route is reported and does not block. |
+| Second provider and evaluation (DB-05, 11.3) | `theorem.lexical` beside `rustyred.embedded`, each declaring its retrieval features. An evaluation copies the agent's memories into one fixed snapshot, runs each candidate in its own store, and reports recall, time, the snapshot hash and differences, with the source memory and organization revision checked unchanged. Here: "Try another knowledge provider" compares and shows the result. | An evaluation is storage only; it does not adopt the winner. |
+| Advanced arrangements | Not built. | Still waits on the runtime host (AR-08 to AR-12). |
 
 ## 8. Overlap note
 

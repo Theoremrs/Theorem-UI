@@ -28,6 +28,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useActivityView } from '@/lib/workbench/activity/arrangement'
 import { useAgentProfileDialog } from '@/components/agent/agent-profile-dialog'
+import { useOrganizationAgentsDialog } from '@/components/agent/agents-dialog-store'
 import { useShell } from './shell-state'
 
 type Entry = {
@@ -184,6 +185,20 @@ function useGroups(close: () => void): Group[] {
               useCommandPalette.setState({
                 afterClose: () =>
                   useAgentProfileDialog.getState().setOpen(true),
+              })
+              close()
+            },
+          },
+          {
+            id: 'organization-agents',
+            label: 'Agents',
+            keywords:
+              'agents organization import export package knowledge provider evaluate several',
+            Mark: Icon.Agent,
+            run: () => {
+              useCommandPalette.setState({
+                afterClose: () =>
+                  useOrganizationAgentsDialog.getState().setOpen(true),
               })
               close()
             },

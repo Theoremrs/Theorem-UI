@@ -87,6 +87,7 @@ import { speechAdapter } from '@/lib/speech/adapter'
 import { dictationAdapter } from '@/lib/speech/dictation'
 import { useNarrateReplies } from '@/lib/speech/narrate'
 import { clientSurfaceTurnOptions } from './client-surface'
+import { agentTurnOptions } from './organization-agents'
 
 type RemoteThreadMetadata = Awaited<
   ReturnType<RemoteThreadListAdapter['fetch']>
@@ -703,7 +704,7 @@ function useTheoremThreadRuntime() {
           // The composer's context, Web, Plan and Code mode toggles, client surface and connection choice, read at each send like the model pick.
           // The skills picked in the draft ride as structured ids, so the harness loads them.
           const draftText = options.messages.at(-1)?.content.map((part) => part.type === 'text' ? part.text : '').join('\n') ?? ''
-          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(localId,remoteId),...codingTurnOptions(localId,remoteId),...clientSurfaceTurnOptions(),...connectionTurnOptions(localId,remoteId),...skillTurnOptions(draftText),...generationTurnOptions(remoteId),...style}
+          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(localId,remoteId),...codingTurnOptions(localId,remoteId),...clientSurfaceTurnOptions(),...connectionTurnOptions(localId,remoteId),...skillTurnOptions(draftText),...generationTurnOptions(remoteId),...agentTurnOptions(),...style}
           const composed = Object.keys(added).length ? {
             ...options,
             runConfig:{...options.runConfig,custom:{...custom,theoremTurnOptions:{...configured,...added}}},
