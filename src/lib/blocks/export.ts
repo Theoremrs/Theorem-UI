@@ -27,6 +27,18 @@ import { appLibrary } from './app-libraries'
 import { libraryModule } from './app-library-sources'
 import { canonicalJson, digestBytes } from './artifact-runtime'
 
+const INLINE_SCRIPT_CHAR_MAP: Record<string, string> = {
+  '<': '\\u003C',
+  '>': '\\u003E',
+  '/': '\\u002F',
+  '\u2028': '\\u2028',
+  '\u2029': '\\u2029',
+}
+
+function escapeInlineScriptString(value: string): string {
+  return value.replace(/[<>/\u2028\u2029]/g, (char) => INLINE_SCRIPT_CHAR_MAP[char] ?? char)
+}
+
 type Bundler = Pick<typeof Esbuild, 'build'>
 
 export interface ExportOptions {
@@ -357,7 +369,7 @@ export async function bundleNotebookRuntime(
   const css = result.outputFiles.find((file) => file.path.endsWith('.css'))?.text ?? ''
   // The libraries' stylesheets go in ahead of the page's own, as an App's do.
   const styles = css
-    ? `(()=>{const s=document.createElement('style');s.textContent=${JSON.stringify(css)};document.head.prepend(s)})();\n`
+    ? `(()=>{const s=document.createElement('style');s.textContent=${escapeInlineScriptString(JSON.stringify(css))};document.head.prepend(s)})();\n`
     : ''
   return inlineSafe(styles + code)
 }
