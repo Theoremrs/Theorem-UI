@@ -3,6 +3,7 @@ import type { TheoremError } from '@theoremharness/sdk'
 import { isNotServed, theoremJson } from '@/lib/theorem/passthrough'
 import type { BackendRoutes } from './backend'
 import type {
+  PreviewResult,
   ReferenceOccurrence,
   ReferencesPage,
   ReferencesRequest,
@@ -54,6 +55,12 @@ interface WireResolved {
   display?: { label?: string; icon?: string; typeLabel?: string }
   currentRevision?: number | string
   operations: WireOperation[]
+}
+
+interface WirePreview {
+  resource: WireResolved
+  summary?: string
+  fields?: Array<{ label: string; value: string }>
 }
 
 interface WireResolveResponse {
@@ -273,6 +280,30 @@ export const relationshipFromWire = (
 
 // ── Answers ────────────────────────────────────────────────────────────────
 
+export function previewFromWire(answer: WirePreview): PreviewResult {
+  const resolved = resolveFromWire({
+    index: 0,
+    state: answer.resource.state,
+    resolved: answer.resource,
+  })
+  if (resolved.state !== 'ready') return { state: resolved.state }
+  return {
+    state: 'ready',
+    preview: {
+      title: resolved.meta.title,
+      typeLabel: resolved.meta.typeLabel,
+      ...(answer.summary && { excerpt: answer.summary }),
+      ...(answer.fields?.length && {
+        fields: answer.fields.map((field, index) => ({
+          key: `${index}:${field.label}`,
+          label: field.label,
+          value: field.value,
+        })),
+      }),
+    },
+  }
+}
+
 export function resolveFromWire(
   result: WireResolveResponse['results'][number] | undefined,
 ): ResolveResult {
@@ -378,6 +409,16 @@ export function httpBackend(send: Post = post): BackendRoutes {
           references: [location],
         })
         return resolveFromWire(answer.results.find((r) => r.index === 0))
+      } catch (error) {
+        if (routeMissing(error)) return { state: 'unsupported' }
+        throw error
+      }
+    },
+    async preview(ref) {
+      const location = toWireLocation(ref)
+      if (!location) return { state: 'unsupported' }
+      try {
+        return previewFromWire(await send<WirePreview>('preview', { location }))
       } catch (error) {
         if (routeMissing(error)) return { state: 'unsupported' }
         throw error

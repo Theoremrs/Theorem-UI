@@ -121,8 +121,10 @@ export async function preview(
   ctx: OpCtx = {},
 ): Promise<PreviewResult | Unsupported> {
   const provider = providerFor(ref.resource)
-  if (!supports(provider, 'preview')) return unsupported('preview')
-  return guarded(() => provider!.preview!(ref, ctx), ctx.signal)
+  if (supports(provider, 'preview'))
+    return guarded(() => provider!.preview!(ref, ctx), ctx.signal)
+  // As resolve: the served Preview route answers where no provider here can.
+  return guarded(() => backend.preview(ref, ctx), ctx.signal)
 }
 
 // Search

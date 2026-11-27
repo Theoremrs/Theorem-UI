@@ -470,3 +470,40 @@ describe('first-slice providers', () => {
     expect(seen).toEqual([undefined, 'n1'])
   })
 })
+
+test('a preview this provider cannot draw comes from the backend; one it can is its own', async () => {
+  const served: string[] = []
+  const uninstall = installBackend({
+    preview: async (ref) => {
+      served.push(canonicalKey(ref.resource))
+      return {
+        state: 'ready',
+        preview: { title: 'From the owner', typeLabel: 'Document' },
+      }
+    },
+  })
+  try {
+    registerProvider(fake('acme.docs', ['document']))
+    expect(await preview(doc('d1'))).toMatchObject({
+      state: 'ready',
+      preview: { title: 'From the owner' },
+    })
+    expect(served).toHaveLength(1)
+    reset()
+    registerProvider(
+      fake('acme.docs', ['document'], {
+        support: { preview: true },
+        preview: async () => ({
+          state: 'ready',
+          preview: { title: 'Drawn here', typeLabel: 'Document' },
+        }),
+      }),
+    )
+    expect(await preview(doc('d1'))).toMatchObject({
+      preview: { title: 'Drawn here' },
+    })
+    expect(served).toHaveLength(1)
+  } finally {
+    uninstall()
+  }
+})

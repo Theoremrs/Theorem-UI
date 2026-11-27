@@ -118,7 +118,8 @@ export function builtInProviders(): ResourceProvider[] {
       },
     }),
     runsProvider({ run: (runId) => theorem().chat.runs.get({ runId }) }),
-    // No route finds an artifact by id alone yet; the provider opens one whose thread is known.
+    // An artifact found by id alone resolves and previews through the served
+    // Resources routes (ART-02); this provider opens one whose thread is known.
     artifactsProvider({}),
   ]
 }

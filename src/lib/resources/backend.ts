@@ -1,6 +1,7 @@
 // SOURCING: none yet. This is the one adapter where Theorem's Resolve, Search and References routes plug in when the backend serves them (REF-02). Until a route exists each operation answers `unsupported`, so nothing is fabricated and nothing falls back to unrelated content.
 import type {
   OpCtx,
+  PreviewResult,
   ReferencesPage,
   ReferencesRequest,
   ResolveResult,
@@ -9,8 +10,9 @@ import type {
 } from './provider'
 import type { ResourceRef } from './types'
 
-const unsupported = (operation: 'resolve' | 'search' | 'references') =>
-  ({ state: 'unsupported', operation }) as const
+const unsupported = (
+  operation: 'resolve' | 'search' | 'preview' | 'references',
+) => ({ state: 'unsupported', operation }) as const
 
 /**
  * The routes this adapter calls, replaced by `installBackend` when the
@@ -20,6 +22,7 @@ const unsupported = (operation: 'resolve' | 'search' | 'references') =>
 export interface BackendRoutes {
   resolve?: (ref: ResourceRef, ctx: OpCtx) => Promise<ResolveResult>
   search?: (request: SearchRequest, ctx: OpCtx) => Promise<SearchPage>
+  preview?: (ref: ResourceRef, ctx: OpCtx) => Promise<PreviewResult>
   /** Answers unsupported when no provider behind the route records them. */
   references?: (
     ref: ResourceRef,
@@ -40,6 +43,9 @@ export function installBackend(next: BackendRoutes): () => void {
 
 export const resolve = async (ref: ResourceRef, ctx: OpCtx) =>
   routes.resolve ? routes.resolve(ref, ctx) : unsupported('resolve')
+
+export const preview = async (ref: ResourceRef, ctx: OpCtx) =>
+  routes.preview ? routes.preview(ref, ctx) : unsupported('preview')
 
 /** Cross-owner search stays grouped per provider; this serves a provider that has none of its own. */
 export const search = async (request: SearchRequest, ctx: OpCtx) =>

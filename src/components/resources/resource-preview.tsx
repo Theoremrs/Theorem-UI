@@ -9,6 +9,7 @@ import { STATE_DETAIL, STATE_LABEL } from '@/lib/resources/state'
 import { serveKeys } from '@/lib/resources/types'
 import type { ResourceRef } from '@/lib/resources/types'
 import { openResource } from './open-resource'
+import { ReferencesPanel } from './references-panel'
 import { usePreview } from './use-resource'
 
 export type PreviewRendererProps = {
@@ -60,6 +61,46 @@ export function DefaultPreviewBody({ preview }: { preview: PreviewData }) {
 /** Work's command, reached by id so this layer does not depend on Work. */
 const MAKE_WORK = 'theorem.work.create-from'
 
+/**
+ * What a resource came from and what refers to it, read only when asked. An
+ * artifact's provenance is its outgoing references: its producing run, its
+ * source revisions and inputs (ART-02); each opens through the same
+ * reference contract as anything else.
+ */
+function Related({ resourceRef }: { resourceRef: ResourceRef }) {
+  const [shown, setShown] = useState<'outgoing' | 'incoming'>()
+  const artifact = resourceRef.resource.kind === 'artifact'
+  const toggle = (direction: 'outgoing' | 'incoming') =>
+    setShown((current) => (current === direction ? undefined : direction))
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-1">
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-pressed={shown === 'outgoing'}
+          onClick={() => toggle('outgoing')}
+        >
+          {artifact ? 'Made from' : 'Refers to'}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-pressed={shown === 'incoming'}
+          onClick={() => toggle('incoming')}
+        >
+          Referenced by
+        </Button>
+      </div>
+      {shown && (
+        <div className="max-h-60 overflow-y-auto">
+          <ReferencesPanel target={resourceRef} direction={shown} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ResourcePreview({
   resourceRef,
   enabled = true,
@@ -108,6 +149,7 @@ export function ResourcePreview({
           {refusal}
         </p>
       )}
+      <Related resourceRef={resourceRef} />
       <div className="flex gap-2">
         <Button
           size="sm"

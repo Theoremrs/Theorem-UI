@@ -17,6 +17,7 @@ import { Embed, EmbedRoot } from './embed'
 import { ReferencesPanel } from './references-panel'
 import { ResourceChip, chipLabel } from './resource-chip'
 import { ResourcePicker } from './resource-picker'
+import { ResourcePreview } from './resource-preview'
 
 beforeEach(() => {
   useResourceProviders.setState({ providers: new Map() })
@@ -358,3 +359,56 @@ describe('registerResourceLayer', () => {
     expect(listProviders()).toHaveLength(0)
   })
 })
+
+describe('preview', () => {
+  test('an artifact shows what it was made from, read only when asked', async () => {
+    const asked: string[] = []
+    const result: ResourceRef = {
+      resource: { kind: 'artifact', artifactId: 'a1' },
+      revision: { mode: 'live' },
+    }
+    registerProvider(
+      provider({
+        id: 'theorem.artifacts',
+        serves: ['artifact'],
+        support: { preview: true, references: true },
+        preview: async () => ({
+          state: 'ready',
+          preview: { title: 'kiln.gltf', typeLabel: 'Artifact result' },
+        }),
+        references: async (_target, { direction }) => {
+          asked.push(direction)
+          return {
+            occurrences: [occurrenceTo(result, 'run-7')],
+          }
+        },
+      }),
+    )
+    const { container } = await render(<ResourcePreview resourceRef={result} />)
+    await waitFor(() => container.textContent.includes('kiln.gltf'))
+    expect(asked).toEqual([])
+    await act(async () =>
+      [...container.querySelectorAll('button')]
+        .find((b) => b.textContent === 'Made from')!
+        .click(),
+    )
+    await waitFor(() => asked.length > 0)
+    expect(asked).toEqual(['outgoing'])
+  })
+})
+
+const occurrenceTo = (
+  target: ResourceRef,
+  source: string,
+): ReferenceOccurrence => ({
+  id: `${source}->${canonical(target)}`,
+  source: {
+    resource: { kind: 'extension', extensionKind: 'acme.ticket', id: source },
+  },
+  target,
+  relationship: 'authored-mention',
+  destination: {
+    resource: { kind: 'extension', extensionKind: 'acme.ticket', id: source },
+  },
+})
+const canonical = (ref: ResourceRef) => JSON.stringify(ref.resource)

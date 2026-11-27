@@ -9,7 +9,7 @@ import {
   relationshipToWire,
   toWireRef,
 } from './backend-http'
-import { references, resolve } from './registry'
+import { preview, references, resolve } from './registry'
 import { RELATIONSHIP_KINDS } from './relationships'
 import { live } from './types'
 import type { ResourceIdentity } from './types'
@@ -283,4 +283,57 @@ test('a partial index says its count is not exact; a page every provider failed 
   expect(
     await page([{ provider: 'theorem.work.items', state: 'unsupported' }]),
   ).toEqual({ state: 'unsupported', operation: 'references' })
+})
+
+test('an artifact’s preview comes from the route when no provider here previews it', async () => {
+  const ref = live({ kind: 'artifact', artifactId: 'a1' })
+  uninstall = installBackend(
+    httpBackend(
+      answering(() => ({
+        resource: {
+          reference: { resource: { kind: 'artifact', artifactId: 'a1' } },
+          state: 'available',
+          display: { label: 'model/gltf+json', typeLabel: 'Artifact result' },
+          currentRevision: 'sha256:abc',
+          operations: ['resolve', 'preview'],
+        },
+        fields: [
+          { label: 'Media type', value: 'model/gltf+json' },
+          { label: 'Reproducibility', value: 'deterministic' },
+        ],
+      })),
+    ),
+  )
+  expect(await preview(ref)).toEqual({
+    state: 'ready',
+    preview: {
+      title: 'model/gltf+json',
+      typeLabel: 'Artifact result',
+      fields: [
+        { key: '0:Media type', label: 'Media type', value: 'model/gltf+json' },
+        {
+          key: '1:Reproducibility',
+          label: 'Reproducibility',
+          value: 'deterministic',
+        },
+      ],
+    },
+  })
+  expect(calls).toEqual([
+    {
+      operation: 'preview',
+      body: { location: { resource: { kind: 'artifact', artifactId: 'a1' } } },
+    },
+  ])
+  // A result the owner no longer has is not a preview.
+  const gone = await httpBackend(
+    answering(() => ({
+      resource: {
+        reference: { resource: { kind: 'artifact', artifactId: 'a1' } },
+        state: 'not_found',
+        operations: [],
+      },
+    })),
+  ).preview!(ref, {})
+  expect(gone).toEqual({ state: 'unavailable' })
 })
