@@ -36,11 +36,14 @@ function Harness({
   documentId = 'inline-app-test',
   running = false,
   content = '# Document',
+  payload,
 }: {
   kind?: string
   documentId?: string
   running?: boolean
   content?: string
+  /** The part's whole payload, in place of the App-shaped one. */
+  payload?: Record<string, unknown>
 }) {
   const messages: ThreadMessageLike[] = [
     {
@@ -60,7 +63,7 @@ function Harness({
             rendererId: `theorem-${kind}`,
             lifecycle: 'ready',
             patchSequence: 1,
-            payload: {
+            payload: payload ?? {
               title: 'Browser shortlist',
               documentId,
               revision: { position: 1 },
@@ -301,6 +304,26 @@ test('a graph is drawn bare in the reply: its nodes, with no card, title or grou
   expect(
     container.querySelector('[data-slot="theorem-artifact-card"]'),
   ).toBeNull()
+})
+
+test('a notebook is drawn bare in the reply, and its own line opens it beside the conversation', async () => {
+  const { container } = await render(
+    <Harness
+      kind="observable"
+      payload={{ form: 'observable', title: 'Tide tables', cells: [] }}
+    />,
+  )
+  const notebook = await waitFor(() =>
+    container.querySelector('[data-slot="notebook"]'),
+  )
+  expect(
+    container.querySelector('[data-slot="theorem-artifact-card"]'),
+  ).toBeNull()
+  expect(
+    container.querySelector('[aria-label="Open Tide tables"]'),
+  ).toBeNull()
+  await click(notebook.querySelector('[aria-label="Open in larger view"]')!)
+  expect(useArtifactView.getState().openId).toBe('inline-result')
 })
 
 test('a kind this build has no renderer for shows the Theorem card, not a guess', async () => {

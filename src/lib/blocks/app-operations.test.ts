@@ -10,6 +10,7 @@ import { FACE_OPERATIONS } from '@/lib/face/operations'
 import { useFaceStage } from '@/lib/face/store'
 import { WORKBENCH_OPERATIONS } from '@/lib/workbench/agent/operations'
 import { clientSurfaceTurnOptions } from '@/lib/theorem/client-surface'
+import { DISPLAYED_CAPABILITIES } from '@/lib/artifacts/capabilities/records'
 import type { AppInspection } from './app-inspect'
 import { libraryDeclarations } from './check/theorem-app.generated'
 import {
@@ -20,9 +21,14 @@ import {
   serveAppRequests,
 } from './app-operations'
 import type { AppOperationHost, AppReceipt, AppRequest } from './app-operations'
+import type { ObservableNotebook } from '@/lib/notebooks/forms'
+import { actOnControl, listControls, registerControl } from './sandbox/controls'
+import { rpcOver, serve } from './sandbox/protocol'
+import type { SandboxMethods } from './sandbox/protocol'
 
 const CLEAN: AppInspection = {
   built: true,
+  started: true,
   files: ['main.tsx'],
   problems: [],
   omitted: 0,
@@ -36,21 +42,34 @@ function host(overrides: Partial<AppOperationHost> = {}) {
     html: string
     runMs?: number
     picture?: boolean
+    cells?: ReadonlyArray<string>
     design?: boolean
   }> = []
   const loaded: Array<string> = []
+  const notebooks: Array<ObservableNotebook> = []
+  const asked: Array<string> = []
   const value: AppOperationHost = {
+    running: { app: () => undefined, list: () => [] },
     inspect: async (html, options) => {
       inspected.push({ html, ...options })
       return CLEAN
     },
     load: async (documentId) => {
       loaded.push(documentId)
-      return { html: '<p>Saved</p>', revision: { position: 7 } }
+      const html = '<p>Saved</p>'
+      return { html, form: 'html-app', publication: { form: 'html-app', title: 'Saved', html }, revision: { position: 7 } }
+    },
+    notebookPage: async (notebook) => {
+      notebooks.push(notebook)
+      return `<title>${notebook.title}</title>`
+    },
+    visible: async (documentId) => {
+      asked.push(documentId)
+      return undefined
     },
     ...overrides,
   }
-  return { host: value, inspected, loaded }
+  return { host: value, inspected, loaded, notebooks, asked }
 }
 
 const request = (
@@ -74,11 +93,11 @@ const assistant = (...content: Array<ReturnType<typeof operation>>) =>
   }) as unknown as ThreadMessage
 
 describe('the operations a turn declares', () => {
-  test('app.check, which also reads library declarations, is declared within what Theorem admits of a declaration', () => {
-    expect(APP_OPERATIONS.map(({ name }) => name)).toEqual(['app.check'])
+  test('app.check, which also reads library declarations, and app.control are declared within what Theorem admits of a declaration', () => {
+    expect(APP_OPERATIONS.map(({ name }) => name)).toEqual(['app.check', 'app.control'])
     for (const declared of APP_OPERATIONS) {
       expect(declared.name).toMatch(/^[a-z][a-z0-9_.]{2,63}$/)
-      expect(declared.description.length).toBeLessThanOrEqual(1024)
+      expect(new TextEncoder().encode(declared.description).length).toBeLessThanOrEqual(1024)
       expect(JSON.stringify(declared.inputSchema).length).toBeLessThanOrEqual(
         8 * 1024,
       )
@@ -94,20 +113,20 @@ describe('the operations a turn declares', () => {
         ...WORKBENCH_OPERATIONS,
         ...GENERATIVE_OPERATIONS,
       ],
-      clientSurface: { revision: 0 },
+      clientSurface: { revision: 0, capabilities: [...DISPLAYED_CAPABILITIES] },
     })
     useKitStage.setState({ mounted: true, revision: 12 })
     try {
       const options = clientSurfaceTurnOptions()
-      expect(options.clientSurface).toEqual({ revision: 12 })
+      expect(options.clientSurface).toEqual({ revision: 12, capabilities: [...DISPLAYED_CAPABILITIES] })
       expect(options.clientOperations).toEqual([
         ...KIT_OPERATIONS,
         ...APP_OPERATIONS,
         ...WORKBENCH_OPERATIONS,
         ...GENERATIVE_OPERATIONS,
       ])
-      // Theorem admits at most 16 operations for a run.
-      expect(options.clientOperations.length).toBeLessThanOrEqual(16)
+      // Theorem admits at most 20 operations for a run (client_operations.rs).
+      expect(options.clientOperations.length).toBeLessThanOrEqual(20)
       // With Theo on screen too, every surface is declared and still within it.
       useFaceStage.setState({ mounted: true })
       const everything = clientSurfaceTurnOptions().clientOperations
@@ -118,7 +137,7 @@ describe('the operations a turn declares', () => {
         ...WORKBENCH_OPERATIONS,
         ...GENERATIVE_OPERATIONS,
       ])
-      expect(everything.length).toBeLessThanOrEqual(16)
+      expect(everything.length).toBeLessThanOrEqual(20)
       expect(new Set(everything.map(({ name }) => name)).size).toBe(everything.length)
     } finally {
       useKitStage.setState({ mounted: false })
@@ -258,6 +277,7 @@ describe('answering a check', () => {
     const [check] = APP_OPERATIONS
     expect(Object.keys(check.inputSchema.properties)).toEqual([
       'html',
+      'artifact',
       'documentId',
       'runMs',
       'picture',
@@ -271,6 +291,62 @@ describe('answering a check', () => {
     ).toBeLessThanOrEqual(1024)
   })
 
+  const rainfall = {
+    form: 'observable',
+    title: 'Rainfall by month',
+    cells: [
+      { id: 'intro', kind: 'md', source: 'Rain in ${unit}, by month.' },
+      { id: 'chart', kind: 'js', source: 'Plot.barY(data.rows, {x: "month", y: "mm"}).plot()' },
+    ],
+    data: { rows: [{ month: 'Jan', mm: 80 }] },
+  }
+
+  test('a notebook is read cell by cell, then its page is run as an App is', async () => {
+    const page = host()
+    const answer = await answerAppRequest(
+      request({ artifact: rainfall, runMs: 0 }),
+      page.host,
+    )
+    expect(page.notebooks.map((notebook) => notebook.title)).toEqual(['Rainfall by month'])
+    expect(page.inspected).toEqual([
+      { html: '<title>Rainfall by month</title>', runMs: 0, cells: ['intro', 'chart'] },
+    ])
+    // The Markdown cell is read as Markdown, and the name it reads is undefined.
+    expect(answer).toEqual({
+      outcome: 'applied',
+      result: {
+        ...CLEAN,
+        problems: [{ kind: 'build', message: 'Cell 1 reads `unit`, which no cell defines.' }],
+      },
+    })
+  })
+
+  test('an App given as an artifact is checked as its html', async () => {
+    const page = host()
+    await answerAppRequest(
+      request({ artifact: { form: 'html-app', title: 'List', html: '<p>Milk</p>' } }),
+      page.host,
+    )
+    expect(page.inspected).toEqual([{ html: '<p>Milk</p>' }])
+  })
+
+  test('a form this page does not run first says what checks it instead', async () => {
+    const page = host()
+    const marimo = await answerAppRequest(
+      request({ artifact: { form: 'marimo', title: 'Fit', source: 'import marimo', runtime: 'pyodide' } }),
+      page.host,
+    )
+    expect(marimo.outcome).toBe('rejected')
+    expect(marimo.reason).toContain('marimo')
+    const broken = await answerAppRequest(
+      request({ artifact: { form: 'observable', title: 'Empty' } }),
+      page.host,
+    )
+    expect(broken.outcome).toBe('rejected')
+    expect(broken.reason).toContain('cells')
+    expect(page.inspected).toEqual([])
+  })
+
   test('a published App is checked as it is saved, and says which revision', async () => {
     const page = host()
     const answer = await answerAppRequest(
@@ -280,6 +356,76 @@ describe('answering a check', () => {
     expect(page.loaded).toEqual(['app-document'])
     expect(page.inspected).toEqual([{ html: '<p>Saved</p>' }])
     expect(answer.result).toEqual({ ...CLEAN, revision: '7' })
+  })
+
+  test('a saved notebook is checked as the notebook it is saved as, the way its draft was', async () => {
+    const page = host({
+      load: async () => ({
+        html: JSON.stringify(rainfall),
+        form: 'observable',
+        publication: rainfall as ObservableNotebook,
+        revision: { position: 12 },
+      }),
+    })
+    const answer = await answerAppRequest(request({ documentId: 'notebook-document' }), page.host)
+    // Its page is built from the publication, not its saved JSON read as HTML.
+    expect(page.notebooks.map((notebook) => notebook.title)).toEqual(['Rainfall by month'])
+    expect(page.inspected).toEqual([
+      { html: '<title>Rainfall by month</title>', cells: ['intro', 'chart'] },
+    ])
+    // Nobody has it open, so there is no open view to report.
+    expect(page.asked).toEqual(['notebook-document'])
+    expect(answer).toEqual({
+      outcome: 'applied',
+      result: {
+        ...CLEAN,
+        problems: [{ kind: 'build', message: 'Cell 1 reads `unit`, which no cell defines.' }],
+        revision: '12',
+      },
+    })
+  })
+
+  test('a saved notebook someone has open adds what their view shows, apart from the check', async () => {
+    const shown = {
+      revision: 'r1',
+      stage: 'mounted',
+      cells: [{ id: 'chart', stage: 'ready', shows: 'figure' }],
+    }
+    const page = host({
+      load: async () => ({
+        html: JSON.stringify(rainfall),
+        form: 'observable',
+        publication: rainfall as ObservableNotebook,
+        revision: { position: 12 },
+      }),
+      visible: async (documentId, notebook) =>
+        documentId === 'notebook-document' && notebook.title === 'Rainfall by month'
+          ? shown
+          : undefined,
+    })
+    const answer = await answerAppRequest(request({ documentId: 'notebook-document' }), page.host)
+    // The hidden run's own facts stay its own beside it.
+    expect(answer).toMatchObject({
+      outcome: 'applied',
+      result: { visible: shown, started: true, revision: '12' },
+    })
+  })
+
+  test('a saved artifact this page cannot read says why, and nothing runs', async () => {
+    const page = host({
+      load: async () => ({
+        html: '{"form":"observable"',
+        form: 'observable',
+        unreadable: 'The saved observable source is not a publication: JSON Parse error',
+        revision: { position: 3 },
+      }),
+    })
+    const answer = await answerAppRequest(request({ documentId: 'broken' }), page.host)
+    expect(answer).toEqual({
+      outcome: 'rejected',
+      reason: 'The saved observable source is not a publication: JSON Parse error',
+    })
+    expect(page.inspected).toEqual([])
   })
 
   test('problems are a check that was made, not one that failed', async () => {
@@ -324,6 +470,59 @@ describe('answering a check', () => {
         )
       ).outcome,
     ).toBe('rejected')
+  })
+})
+
+describe('acting on a running App\'s controls', () => {
+  // The App's end of the bridge, serving what app-bridge.ts serves, over a real channel.
+  function runningFrame() {
+    const channel = new MessageChannel()
+    const app = rpcOver(channel.port2)
+    serve<SandboxMethods, 'controls.list'>(app, 'controls.list', () => listControls())
+    serve<SandboxMethods, 'controls.act'>(app, 'controls.act', (act) => actOnControl(act))
+    return rpcOver(channel.port1)
+  }
+  const control = (args: Record<string, unknown>): AppRequest => ({ ...request(args), operation: 'app.control' })
+
+  test('lists, sets and presses through the functions the visible control calls, and reads back the value drawn', async () => {
+    let feed = 0.037
+    let paused = false
+    const unregister = [
+      registerControl({ name: 'feed', label: 'Feed rate', kind: 'number', min: 0.01, max: 0.09, step: 0.0001, read: () => feed, set: (value) => { feed = value as number } }),
+      registerControl({ name: 'pause', label: 'Pause', kind: 'action', invoke: () => { paused = !paused } }),
+    ]
+    const rpc = runningFrame()
+    const page = host({ running: { app: (id) => (id === 'doc-1' ? rpc : undefined), list: () => [{ documentId: 'doc-1', title: 'Gray–Scott' }] } })
+    try {
+      const listed = await answerAppRequest(control({ action: 'list' }), page.host)
+      expect(listed).toEqual({
+        outcome: 'applied',
+        result: {
+          documentId: 'doc-1',
+          controls: [
+            { name: 'feed', label: 'Feed rate', kind: 'number', value: 0.037, min: 0.01, max: 0.09, step: 0.0001 },
+            { name: 'pause', label: 'Pause', kind: 'action' },
+          ],
+        },
+      })
+      // Held to the slider's range and step, as the slider would hold it.
+      const set = await answerAppRequest(control({ action: 'set', name: 'feed', value: 0.12345 }), page.host)
+      expect(set.result).toEqual({ documentId: 'doc-1', control: expect.objectContaining({ name: 'feed', value: 0.09 }) })
+      await answerAppRequest(control({ action: 'set', name: 'feed', value: 0.05555 }), page.host)
+      expect(feed).toBe(0.0556)
+      await answerAppRequest(control({ action: 'invoke', name: 'pause', documentId: 'doc-1' }), page.host)
+      expect(paused).toBe(true)
+      const unknown = await answerAppRequest(control({ action: 'set', name: 'kill', value: 1 }), page.host)
+      expect(unknown).toEqual({ outcome: 'rejected', reason: expect.stringContaining('["feed","pause"]') })
+    } finally {
+      for (const undo of unregister) undo()
+    }
+  })
+
+  test('with no App running, or one not running, it says which are', async () => {
+    expect(await answerAppRequest(control({ action: 'list' }), host().host)).toEqual({ outcome: 'rejected', reason: 'No App is running on the page.' })
+    const page = host({ running: { app: () => undefined, list: () => [{ documentId: 'doc-1', title: 'A' }, { documentId: 'doc-2', title: 'B' }] } })
+    expect((await answerAppRequest(control({ action: 'list' }), page.host)).reason).toBe('Name the App by documentId: doc-1 (A), doc-2 (B).')
   })
 })
 

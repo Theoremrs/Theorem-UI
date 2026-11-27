@@ -12,6 +12,7 @@ import { styledGenerativeUILibrary } from '@/components/assistant-ui/elements/ge
 import { a2uiActionMessage, openUrlOf, presentation } from '@/lib/generative/a2ui'
 import type { GenerativeUIAction } from '@assistant-ui/generative-ui/react'
 import { inVocabulary, PRESENT } from '@/lib/generative/operations'
+import { reviseViews } from '@/lib/generative/view-instances'
 import { CatchBoundary } from '@tanstack/react-router'
 import type {
   AssistantState,
@@ -50,6 +51,7 @@ import {
   RecordChangeProposalPart,
 } from '@/components/crm/record-change-proposal-part'
 import { ProgramPart } from '@/components/chat/program-part'
+import { ModelRequests } from '@/components/chat/model-requests'
 import { CompletionFooter } from '@/components/chat/run-footer'
 import { UserMarkdown } from '@/components/chat/user-markdown'
 import { ReviewAnswerCard } from '@/components/review/review-card'
@@ -298,7 +300,7 @@ export function toolCallEntries(
     const check = appCheckSummary(part.data, running)
     if (!check) return []
     // Why the check fell short, then what it found.
-    const output = [check.reason, appCheckProblems(part.data)]
+    const output = [appCheckEvidence(part.data), check.reason, appCheckProblems(part.data)]
       .filter(Boolean)
       .join('\n')
     return [
@@ -340,10 +342,8 @@ const HostCallPart: DataMessagePartComponent = ({ data }) => {
 }
 
 /**
- * What the row for an `app.check` request says, or null for any other
- * operation. `wrong` is anything short of a check that was made and found
- * nothing: a type check that could not be made found nothing either, and says
- * so with its `reason`.
+ * A declaration read and an inspection share app.check's transport, but they
+ * carry different evidence. Missing inspection fields never mean a clean run.
  */
 export function appCheckSummary(
   data: unknown,
@@ -351,28 +351,88 @@ export function appCheckSummary(
 ): { words: string; pending: boolean; wrong: boolean; reason?: string } | null {
   const call = object(data)
   if (str(call.operation) !== 'app.check') return null
-  const state = str(call.state) ?? 'pending'
   const receipt = object(call.receipt)
   const result = object(receipt.result)
+  const pending = (str(call.state) ?? 'pending') === 'pending' && running
+  const applied = call.state === 'answered' && receipt.outcome === 'applied'
+  const library = str(result.library) ?? str(object(call.args).library)
+  if (library) {
+    return {
+      words: pending
+        ? `Reading ${library} declarations`
+        : applied && str(result.library) && typeof result.text === 'string'
+          ? `Read ${library} declarations`
+          : `Could not read ${library} declarations`,
+      pending,
+      wrong: !pending && !(applied && str(result.library) && typeof result.text === 'string'),
+      reason: str(receipt.reason),
+    }
+  }
+  const answer = (words: string, wrong: boolean, reason?: string) => ({
+    words, pending, wrong, reason,
+  })
+  if (pending) return answer('Checking the App', false)
+  if (!applied) return answer('The App was not checked', true, str(receipt.reason))
+  if (typeof result.built !== 'boolean')
+    return answer('The App check returned no inspection result', true)
+  if (!result.built) return answer('The App does not build', true)
   const problems = Array.isArray(result.problems) ? result.problems.length : 0
-  const found =
-    problems + (typeof result.omitted === 'number' ? result.omitted : 0)
-  const pending = state === 'pending' && running
-  const checked = state === 'answered' && str(receipt.outcome) === 'applied'
-  const reason = checked ? str(result.typeCheckError) : undefined
-  const wrong = !pending && (!checked || found > 0 || reason !== undefined)
-  const words = pending
-    ? 'Checking the App'
-    : !checked
-      ? 'The App was not checked'
-      : result.built === false
-        ? 'The App does not build'
-        : found > 0
-          ? `Checked the App: ${found === 1 ? '1 problem' : `${found} problems`}`
-          : reason !== undefined
-            ? 'Checked the App: its types could not be checked'
-            : 'Checked the App: no problems'
-  return { words, pending, wrong, reason }
+  const found = problems + (typeof result.omitted === 'number' ? result.omitted : 0)
+  if (found > 0)
+    return answer(`Checked the App: ${found === 1 ? '1 problem' : `${found} problems`}`, true)
+  const reason = str(result.typeCheckError)
+  if (reason !== undefined)
+    return answer('Checked the App: its types could not be checked', true, reason)
+  if (result.started === false)
+    return answer('Built the App; it was not run', false)
+  if (result.started !== true)
+    return answer('Built the App; its run was not reported', false)
+  const cells = object(result.cells)
+  const failed = Array.isArray(cells.failed) ? cells.failed.length : 0
+  if (failed)
+    return answer(`Built and ran the App: ${failed} ${failed === 1 ? 'cell' : 'cells'} failed`, true)
+  const remaining = Array.isArray(cells.pending) ? cells.pending.length : 0
+  if (remaining)
+    return answer(`Built and ran the App: ${remaining} ${remaining === 1 ? 'cell' : 'cells'} still pending`, false)
+  return answer(
+    Array.isArray(result.problems)
+      ? 'Built and ran the App: no reported problems'
+      : 'Built and ran the App; diagnostics were not reported',
+    false,
+  )
+}
+
+/** Facts from the receipt, without promoting a build or a capture into verification. */
+export function appCheckEvidence(data: unknown): string | undefined {
+  const call = object(data)
+  const receipt = object(call.receipt)
+  const result = object(receipt.result)
+  if (receipt.outcome !== 'applied') return undefined
+  const library = str(result.library)
+  if (library)
+    return [
+      str(result.file) && `File: ${str(result.file)}`,
+      str(result.digest) && `API digest: ${str(result.digest)}`,
+    ].filter(Boolean).join('\n') || undefined
+  if (typeof result.built !== 'boolean') return undefined
+  const facts = [
+    `Build: ${result.built ? 'completed' : 'failed'}`,
+    `Types: ${result.typesChecked === true ? 'checked' : result.typesChecked === false ? 'not checked' : 'not reported'}`,
+    `Run: ${result.started === true ? 'started' : result.started === false ? 'not run' : 'not reported'}`,
+  ]
+  if (typeof result.ranMs === 'number') facts.push(`Observed for: ${result.ranMs} ms`)
+  const cells = object(result.cells)
+  for (const [key, label] of [['ready', 'Ready cells'], ['failed', 'Failed cells'], ['pending', 'Pending cells']] as const) {
+    const ids = cells[key]
+    if (Array.isArray(ids)) facts.push(`${label}: ${ids.filter((id) => typeof id === 'string').join(', ') || 'none'}`)
+  }
+  if (str(result.revision)) facts.push(`Saved revision: ${str(result.revision)}`)
+  if (result.picture) facts.push('Picture: reconstructed check-frame capture')
+  const rendered = object(result.rendered)
+  if (typeof rendered.elements === 'number') facts.push(`Elements reported: ${rendered.elements}`)
+  if (typeof rendered.text === 'string') facts.push(`Rendered text:\n${rendered.text || '(empty)'}`)
+  if (typeof rendered.outline === 'string') facts.push(`Element outline:\n${rendered.outline || '(empty)'}`)
+  return facts.join('\n')
 }
 
 /** The problems an App check listed, one to a line, each after where it is when the check says. */
@@ -396,18 +456,26 @@ export function appCheckProblems(data: unknown): string | undefined {
  * what Kit's operations did. A `ui.present` call is the exception: the tree
  * or A2UI surfaces it carries are the reply's interface, drawn from the
  * styled vocabulary, with any component it does not name drawn from its
- * properties.
+ * properties. A View the reply presents again under the same `id` is drawn
+ * once, where it first appeared, as its latest definition (reviseViews).
  */
 const ClientOperationPart: DataMessagePartComponent = ({ data }) => {
   const call = object(data)
-  const args = object(call.args)
   const aui = useAui()
-  const running = useAuiState((s) => s.message.status?.type === 'running')
+  const parts = useAuiState((s) => s.message.parts)
+  const args = useMemo(() => {
+    const presented = parts.flatMap((part) =>
+      part.type === 'data' &&
+      part.name === 'theorem-client_operation' &&
+      str(object(part.data).operation) === PRESENT
+        ? [object(part.data)]
+        : [],
+    )
+    const index = presented.findIndex((other) => other === call || other.requestRef === call.requestRef)
+    return index < 0 ? object(call.args) : (reviseViews(presented.map((other) => object(other.args)))[index] ?? {})
+  }, [parts, call])
   const trees = useMemo(() => presentation(args, inVocabulary).trees, [args])
-  if (str(call.operation) !== PRESENT) return null
-  const state = str(call.state) ?? 'pending'
-  // While the call streams, the tree is partial; the renderer tolerates that.
-  const status = state === 'pending' && running ? 'streaming' : 'done'
+  if (str(call.operation) !== PRESENT || !trees.length) return null
   // An A2UI surface's actions go to the agent that wrote it; `openUrl` opens
   // a web address.
   const dispatch = (action: GenerativeUIAction) => {
@@ -420,7 +488,10 @@ const ClientOperationPart: DataMessagePartComponent = ({ data }) => {
     <div data-slot="theorem-present" className="aui-p-present my-2 flex flex-col gap-3">
       {trees.map(({ key, tree }) => (
         <Fragment key={key}>
-          {renderGenerativeUI(tree, styledGenerativeUILibrary, { status, dispatch })}
+          {/* The part arrives once Theorem has admitted the call, so its tree is
+              whole while the call waits on its receipt, and a View must mount
+              to answer it. */}
+          {renderGenerativeUI(tree, styledGenerativeUILibrary, { status: 'done', dispatch })}
         </Fragment>
       ))}
     </div>
@@ -687,6 +758,10 @@ export const Activity: FC<{
   work?: ReactNode
 }> = ({ speaker, work }) => {
   const running = useAuiState((s) => s.message.status?.type === 'running')
+  const runId = useAuiState((s) => {
+    const id = (s.message.metadata.custom as { theoremRunId?: unknown } | undefined)?.theoremRunId
+    return typeof id === 'string' ? id : undefined
+  })
   // Select the store's own content array; deriving inside the selector would
   // hand back a fresh array on every read and loop the subscription.
   const content = useAuiState((s) => s.message.content)
@@ -750,7 +825,7 @@ export const Activity: FC<{
   )
 
   const steps = labels.length > 1
-  const openable = steps || Boolean(work)
+  const openable = steps || Boolean(work) || Boolean(runId)
   const notes: ReactNode[] = []
   if (running) {
     const doing = (
@@ -777,7 +852,7 @@ export const Activity: FC<{
         doing
       ),
     )
-  } else if (labels.length > 0 || work) {
+  } else if (labels.length > 0 || work || runId) {
     const result =
       outcome ??
       (DONE_STATUSES.has(status ?? 'complete') ? 'Done' : 'Did not finish')
@@ -863,6 +938,7 @@ export const Activity: FC<{
                 </ol>
               )}
               {work}
+              {open && runId && <ModelRequests runId={runId} />}
             </div>
           </div>
         </CollapsiblePanel>

@@ -50,7 +50,8 @@ const SNAPSHOT_DELAY_MS = 400
 /**
  * The page as static HTML: its style elements and a copy of its body, with
  * form state written into attributes (it lives in properties), canvases as
- * images, and no scripts. The page sanitizes it again before showing it.
+ * images, no scripts, and nothing the page does not display. The page
+ * sanitizes it again before showing it.
  * Pictures of canvases are most of a large copy: past MAX_SNAPSHOT they are
  * left out, blank at their size, until the rest fits: first a canvas hidden
  * from assistive technology (decoration, such as glass over a scene), then
@@ -87,6 +88,7 @@ export function snapshotHtml(): string {
       target.replaceWith(image)
     }
   })
+  leaveOutUndisplayed(document.body, copy)
   for (const script of copy.querySelectorAll('script')) script.remove()
   const styles = [...document.querySelectorAll('style')]
     .map((style) => style.outerHTML)
@@ -99,6 +101,29 @@ export function snapshotHtml(): string {
     html = styles + copy.innerHTML
   }
   return html
+}
+
+/**
+ * Takes out of `copy` what `live` does not display: `hidden`, as the outline
+ * reads it, or `display: none`. A copy is read without its page's styles, so a
+ * fallback the App hides ("WebGL2 unavailable") would otherwise read as shown.
+ * What is only invisible keeps its box, and stays. Style elements stay: they
+ * style what is left. An SVG stays whole: what its defs hold has no box of its
+ * own, and a gradient taken out would change it.
+ */
+function leaveOutUndisplayed(live: Element, copy: Element) {
+  const shown = live.children
+  const copied = copy.children
+  // From the end, so taking one out leaves the earlier pairs aligned.
+  for (let index = copied.length - 1; index >= 0; index--) {
+    const element = shown[index]
+    const target = copied[index]
+    if (!element || !target || element.localName === 'style') continue
+    if (element.hasAttribute('hidden') || getComputedStyle(element).display === 'none')
+      target.remove()
+    else if (element instanceof HTMLElement && element.localName !== 'canvas')
+      leaveOutUndisplayed(element, target)
+  }
 }
 
 /**
@@ -182,16 +207,18 @@ export function observeSnapshots(
  *
  * A page laid out by its viewport (100vh, or height: 100% down from the root)
  * has no height of its own, and `fills` says so: the page then gives it one.
- * Such a page either exactly fills the frame it loaded in, or outgrows every
- * frame it is given (62vh + 38vh under a caption is always the caption
- * taller), so it is known by growing when nothing but its frame changed.
- * Its root and body do not resize as its content arrives, so content changes
- * are measured too.
+ * Such a page either has a box exactly the frame it loaded in, whether its
+ * content fits that box or overflows it (a 100vh grid whose side column needs
+ * more than the first frame squeezes the rest of the grid to nothing), or
+ * outgrows every frame it is given (62vh + 38vh under a caption, in a body
+ * with margins, is always the caption and the margins taller), so it is known
+ * by growing when nothing but its frame changed. Its root and body do not
+ * resize as its content arrives, so content changes are measured too.
  *
- * A page that exactly fills its frame goes on being measured: laid out by its
- * viewport, it is as tall as any frame the host gives it, so resizing the
- * frame changes nothing it reports. A page that measures any other height
- * only happened to fit its first frame, and goes back to its content height.
+ * A page that fills its frame goes on being measured: laid out by its
+ * viewport, its box is any frame the host gives it, so resizing the frame
+ * changes nothing it reports. A page whose box is any other height only
+ * happened to fit its first frame, and goes back to its content height.
  */
 export function observeHeight(
   report: (height: number, fills?: boolean) => void,
@@ -204,15 +231,20 @@ export function observeHeight(
   const measure = (resized = false) => {
     if (!following) return
     const root = document.documentElement
-    const height = Math.ceil(
-      root.scrollHeight > window.innerHeight
-        ? root.scrollHeight
-        : root.getBoundingClientRect().height,
-    )
+    const box = root.getBoundingClientRect().height
+    const overflows = root.scrollHeight > window.innerHeight
+    const height = Math.ceil(overflows ? root.scrollHeight : box)
+    // Its box is its frame: laid out by the viewport, not by its content.
+    const framed = Math.round(box) === window.innerHeight
     if (filling) {
-      if (height === window.innerHeight) return
+      if (framed) return
       filling = false
       report((last = height))
+      return
+    }
+    if (framed && overflows && window.innerHeight === initial) {
+      filling = true
+      report((last = height), true)
       return
     }
     if (resized && window.innerHeight === last) {

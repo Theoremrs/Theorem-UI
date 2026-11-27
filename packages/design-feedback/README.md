@@ -28,6 +28,7 @@ Captures operate on the actual browser viewport. Keep viewport, scroll position,
 | Target size | Configurable design target. The rectangle alone does not adjudicate WCAG spacing, inline, equivalent-control, or other exceptions. |
 | Typography | Opt-in line-height and approximate reading-measure targets. Defaults do not impose a universal font scale or preferred reading width. |
 | Overflow | A localized geometry diagnostic. Some overflow is intentional; inspect the associated evidence before changing it. |
+| Lone wrapped item | A wrapping flex row or a grid whose last row holds one item under rows of several. A review diagnostic for the measured width, not a rule that every row must be full. |
 | Geometry changes | Matched element position and size changes, with shared displacement distinguished from local resizing. |
 | Pixel differences | Exact changed pixels and a thresholded pixelmatch diagnostic. Changed pixels are not counted as design regressions. |
 | Probes | Evidence from controlled text-spacing, viewport, and reduced-motion variations, with their coverage stated explicitly. |
@@ -40,7 +41,7 @@ The first adapter covers ordinary DOM text and boxes. Canvas/image content, nest
 
 Theorem's existing `app.check` operation accepts `design: true` to request measurements from the running App sandbox before it is disposed. The shared evaluator returns these as `design` feedback. This is opt-in and preserves the normal build/type/runtime inspection path.
 
-The artifact path measures the live iframe DOM. Its optional `picture` is still an approximate reconstruction and is labeled accordingly. `runMs: 0`, a connection timeout, a malformed response, or a failed design measurement produces an explicit unavailable result. This integration adds no new Rust service or vision model. A deployed client must include this change before an agent using that client can request it.
+The artifact path measures the live iframe DOM, in the page's light theme and again in its dark one: the page's look for the scheme it is not showing is read from its own stylesheets in a hidden document, handed to the App as a theme change, and transitions are ended before measuring. Text with no opaque background of its own is measured against the page's background in that scheme. An issue found in only one scheme names it. Its optional `picture` is still an approximate reconstruction and is labeled accordingly. `runMs: 0`, a connection timeout, a malformed response, or a failed design measurement produces an explicit unavailable result. This integration adds no new Rust service or vision model. A deployed client must include this change before an agent using that client can request it.
 
 ## Maintain
 

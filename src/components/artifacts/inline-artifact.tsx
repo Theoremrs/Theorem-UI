@@ -7,6 +7,7 @@ import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { useComposerReferences } from '@/components/chat/composer-references'
 import { OPENS_WHOLE, thingProps } from '@/lib/face/things'
+import { FramePresentation, PRESENTATION_ROOM } from '@/lib/blocks/presentation'
 import { cn } from '@/lib/utils'
 
 /** Bring an existing live revision into view; never mount a second App. */
@@ -110,12 +111,13 @@ export function InlineArtifact({
       {...(artifactId && thingProps('artifact', artifactId, { label: title, whole: full }))}
       data-layout={full ? 'full' : 'inline'}
       className={cn(
-        'relative m-0 my-3 w-full max-w-none flex-col border-0 bg-transparent p-0 text-ink open:flex',
+        'relative m-0 my-3 w-full max-w-none flex-col border-0 bg-transparent p-0 text-ink open:flex @container/artifact',
         '[&:modal]:fixed [&:modal]:inset-2 [&:modal]:m-0 [&:modal]:size-auto [&:modal]:max-h-none [&:modal]:rounded-artifact [&:modal]:bg-artifact [&:modal]:p-3 sm:[&:modal]:inset-6',
         'backdrop:bg-black/40 supports-backdrop-filter:backdrop:backdrop-blur-xs',
       )}
     >
-      <div className="flex shrink-0 items-center justify-end gap-1 pb-1">
+      {/* Over the frame's corner while inline (styles.css, "Host actions"). */}
+      <div data-host-actions="" className="flex shrink-0 items-center justify-end gap-1 pb-1">
         {actions}
         <Button
           ref={toggle}
@@ -131,8 +133,8 @@ export function InlineArtifact({
           <span className="sr-only">{full ? 'Collapse' : 'Expand'}</span>
         </Button>
       </div>
-      <div className={cn('min-h-0 w-full', full && 'flex-1 overflow-auto')}>
-        {children}
+      <div {...{ [PRESENTATION_ROOM]: '' }} className={cn('min-h-0 w-full', full && 'flex-1 overflow-auto')}>
+        <FramePresentation value={full ? 'expanded' : 'inline'}>{children}</FramePresentation>
       </div>
     </dialog>
   )

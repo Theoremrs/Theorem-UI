@@ -21,6 +21,7 @@ import { SCENE_CONTRACT } from '@/components/chat/scene-model'
 import { resolvedTheme } from '@/lib/blocks/sandbox/theme'
 import { observableSource } from '@/lib/notebooks/observable-document'
 import { appDocumentFor } from '@/lib/theorem/apps'
+import type { SavedPublication } from '@/lib/theorem/apps'
 import { fileNameFor } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 
@@ -297,6 +298,27 @@ export type ArtifactSource = {
 
 const inline = (artifact: TheoremArtifact) => async () => artifact.content
 
+/**
+ * What Copy and Download read of a revision in `form`. The newest revision of
+ * a saved artifact is its document as saved now: a revision made in another
+ * thread is in it. An older one, and one with no document, is what its
+ * message carries (undefined). A head saved since in another form is not this
+ * revision's, so its message's is read.
+ */
+async function headOf<TForm extends SavedPublication['form']>(
+  artifact: TheoremArtifact,
+  latest: boolean,
+  form: TForm,
+): Promise<Extract<SavedPublication, { form: TForm }> | undefined> {
+  if (!latest || !artifact.documentId) return undefined
+  const head = await appDocumentFor(artifact.documentId).load()
+  if (!head.publication)
+    throw new Error(head.unreadable ?? `The saved ${head.form} could not be read.`)
+  return head.publication.form === form
+    ? (head.publication as Extract<SavedPublication, { form: TForm }>)
+    : undefined
+}
+
 /** Per contribution: what Copy and Download hand over for a revision. */
 const SOURCES: Record<
   string,
@@ -307,10 +329,11 @@ const SOURCES: Record<
     mediaType: 'text/markdown',
     load: inline(artifact),
   }),
-  'theorem.openui': (artifact) => ({
+  'theorem.openui': (artifact, latest) => ({
     noun: 'program',
     mediaType: 'text/plain',
-    load: inline(artifact),
+    load: async () =>
+      (await headOf(artifact, latest, 'openui'))?.program ?? artifact.content,
   }),
   'theorem.scene': (artifact) => ({
     noun: 'Scene package',
@@ -330,13 +353,17 @@ const SOURCES: Record<
   }),
   // A payload this build cannot read still hands over its content: the
   // publication as canonical JSON.
-  'theorem.notebook.observable': (artifact) => {
+  'theorem.notebook.observable': (artifact, latest) => {
     const { notebook } = artifact
     return notebook?.form === 'observable'
       ? {
           noun: 'Notebook',
           mediaType: 'text/html',
-          load: async () => observableSource(notebook, resolvedTheme()),
+          load: async () =>
+            observableSource(
+              (await headOf(artifact, latest, 'observable')) ?? notebook,
+              resolvedTheme(),
+            ),
         }
       : {
           noun: 'Notebook',
@@ -344,13 +371,14 @@ const SOURCES: Record<
           load: inline(artifact),
         }
   },
-  'theorem.notebook.marimo': (artifact) => ({
+  'theorem.notebook.marimo': (artifact, latest) => ({
     noun: 'Notebook source',
     mediaType: 'text/x-python',
     load: async () =>
-      artifact.notebook?.form === 'marimo'
+      (await headOf(artifact, latest, 'marimo'))?.source ??
+      (artifact.notebook?.form === 'marimo'
         ? artifact.notebook.source
-        : artifact.content,
+        : artifact.content),
   }),
   'theorem.app': (artifact, latest) => ({
     noun: 'App source',

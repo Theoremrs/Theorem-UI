@@ -245,6 +245,10 @@ export const styledGenerativeUILibrary: GenerativeUILibrary = {
     description:
       "Live Observable cells the reader works. Each string in `cells` is one Observable JavaScript cell; `data` is any JSON the cells read as `data`.",
     properties: z.object({
+      id: z
+        .string()
+        .optional()
+        .describe("Names the view for receipts and ui.view; presented again in this reply, it is revised in place."),
       title: z.string().optional(),
       cells: z.array(z.string()),
       data: z.unknown().optional(),

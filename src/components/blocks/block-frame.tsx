@@ -4,12 +4,13 @@
 // what any page can on an origin of its own (executor.ts, plan D9), unless the
 // person limited it; a snapshot frame is a still copy and runs no scripts.
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { BridgeHost } from '@/lib/blocks/bridge'
 import type { CompiledCell } from '@/lib/blocks/compile'
 import { FrameConnection, openFrame } from '@/lib/blocks/executor'
 import { blockOrigin, cellUrl } from '@/lib/blocks/frames'
+import { FramePresentation, followPresentation } from '@/lib/blocks/presentation'
 import { useBlocksQueryClient } from '@/lib/blocks/query-client'
 import type { BlockSession } from '@/lib/blocks/session'
 import { saveSnapshot } from '@/lib/blocks/snapshots'
@@ -74,6 +75,13 @@ export function BlockFrame({
   useEffect(() => {
     connect.current = onConnection
   })
+  const mode = useContext(FramePresentation)
+  const modeNow = useRef(mode)
+  const presenting = useRef<ReturnType<typeof followPresentation>>(undefined)
+  useEffect(() => {
+    modeNow.current = mode
+    presenting.current?.update()
+  }, [mode])
 
   useLayoutEffect(() => {
     const parent = container.current
@@ -104,7 +112,10 @@ export function BlockFrame({
     frame.src = src
     parent.append(frame)
     undo = connect.current?.(connection)
+    const presented = followPresentation(connection, parent, () => modeNow.current)
+    presenting.current = presented
     return () => {
+      presented.stop()
       undo?.()
       connection.dispose()
       frame.remove()

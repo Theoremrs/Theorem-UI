@@ -22,7 +22,8 @@
       "#/*": ["./src/*"],
       "@/*": ["./src/*"],
       "@theorem/annotate": ["./src/lib/blocks/annotate/index.ts"],
-      "@theorem/runtime": ["./src/lib/blocks/artifact-runtime/index.ts"]
+      "@theorem/runtime": ["./src/lib/blocks/artifact-runtime/index.ts"],
+      "@theorem/ui": ["./src/lib/blocks/ui/index.ts"]
     },
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["vite/client", "bun"],

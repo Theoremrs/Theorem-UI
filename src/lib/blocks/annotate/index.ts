@@ -1,8 +1,7 @@
 // SOURCING: none: what @theorem/annotate offers an App. An App may use any of
 // it, copy and change a piece, or write its own: nothing in Theorem requires
 // these components.
-import '@astryxdesign/core/astryx.css'
-import '@astryxdesign/theme-neutral/theme.css'
+import './annotate.css'
 
 export { anchorStore, boxAround } from './anchors'
 export type { Anchor, AnchorStore, Anchors, Box } from './anchors'
@@ -19,4 +18,5 @@ export { attachOffset, connectorEnds, connectorPath, LEADER_RUN, leaderEnds, sub
 export type { Attach, Connector, Point, Subject } from './paths'
 export { choose, cost, nearest, overlap } from './place'
 export type { Candidate, Placement, PlaceOptions } from './place'
-export { Theme } from './theme'
+// Astryx in Theorem's theme is @theorem/ui's; kept here for Apps that import it from annotate.
+export { Theme } from '@theorem/ui'

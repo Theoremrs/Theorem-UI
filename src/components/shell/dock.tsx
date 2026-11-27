@@ -120,11 +120,11 @@ function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
   )
   // Chat's breadcrumb stands in for the tab while the conversation is
   // alone in its group, and Notes' panes draw their own pills; a tab dropped
-  // beside it brings the tab bar back.
+  // beside it, or stacked behind it in a narrow dock, brings the tab bar back.
   const inChat = mode === 'chat'
   const ownTop = inChat || mode === 'notes'
   const alone = useSyncExternalStore(
-    subscribe(api.group.api.onDidActivePanelChange),
+    subscribe(containerApi.onDidLayoutChange),
     () => api.group.panels.length === 1,
   )
   useEffect(() => {

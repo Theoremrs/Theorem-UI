@@ -18,6 +18,11 @@ import {
   outputsAnswer,
 } from './fixtures/notebook-parts'
 import { CABINET_ARTIFACTS, CABINET_DESCRIPTIONS, cabinetMessages, cabinetRevision } from './fixtures/cabinet'
+import GRAY_SCOTT from './fixtures/gray-scott.html?raw'
+import { GRAY_SCOTT_KIT } from './fixtures/gray-scott-kit'
+import { KIT_CONTROLS, kitControlApp } from './fixtures/kit-controls'
+import { FRAME_COUNTER } from './fixtures/frame-counter'
+import { GRAY_SCOTT_DIRECTIONS, grayScottDirection } from './fixtures/gray-scott-study'
 import { organizationFixture } from './fixtures/organization'
 import { projectContextRoutes, uploadedItem } from './fixtures/project-context'
 import { responseStylesRoutes } from './fixtures/response-styles'
@@ -94,15 +99,32 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
     [nestedSpace.space.id, nestedSpace],
   ])
   // Notes and uploads a scripted story writes stay readable for its life.
-  const notes = new Map(Object.entries(documentFixtures))
+  // An App document holds its page as its body, as createAppDocument writes it.
+  const notes = new Map([
+    ...Object.entries(documentFixtures),
+    ['doc_gray_scott', GRAY_SCOTT],
+    ['doc_gray_scott_kit', GRAY_SCOTT_KIT],
+    ...KIT_CONTROLS.map((control) => [`doc_kit_${control}`, kitControlApp(control)] as const),
+    ['doc_kit_frame_counter', FRAME_COUNTER],
+    ...GRAY_SCOTT_DIRECTIONS.map((d) => [`doc_gray_scott_${d}`, grayScottDirection(d)] as const),
+  ])
   const uploads = new Map<string, Response>()
   // What goes up is in the Library a project picks its documents from.
   const added: LibraryItem[] = []
-  const snapshot = (documentId: string) => {
+  const snapshot = async (documentId: string) => {
     const markdown = notes.get(documentId)
     return markdown === undefined
       ? undefined
-      : documentSnapshot(documentId, markdown, now)
+      : documentSnapshot(
+          documentId,
+          markdown,
+          now,
+          documentId.startsWith('doc_gray_scott')
+            ? { documentKind: 'theorem.app', title: 'Gray-Scott Reaction-Diffusion' }
+            : documentId.startsWith('doc_kit_')
+              ? { documentKind: 'theorem.app', title: documentId.slice('doc_kit_'.length) }
+              : undefined,
+        )
   }
   const missing = () => new Response(null, { status: 404 })
   const bump = (next: Partial<Review>) => {
@@ -208,21 +230,21 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
         },
       }
     },
-    [`GET /api/documents/v2/documents`]: () => ({
-      documents: [...notes.keys()].map((id) => snapshot(id)?.summary),
+    [`GET /api/documents/v2/documents`]: async () => ({
+      documents: (await Promise.all([...notes.keys()].map(snapshot))).map((s) => s?.summary),
     }),
     'GET /api/documents/v2/collections': () => ({ collections: [] }),
     [`POST /api/documents/v2/documents`]: async (_, request) => {
       const documentId = `doc-new-${notes.size}`
       notes.set(documentId, await writtenMarkdown(request))
-      return { document: snapshot(documentId)?.summary }
+      return { document: (await snapshot(documentId))?.summary }
     },
-    [`GET /api/documents/v2/documents/:documentId`]: ({ documentId = '' }) =>
-      snapshot(decodeURIComponent(documentId)) ?? missing(),
+    [`GET /api/documents/v2/documents/:documentId`]: async ({ documentId = '' }) =>
+      (await snapshot(decodeURIComponent(documentId))) ?? missing(),
     [`PUT /api/documents/v2/documents/:documentId`]: async ({ documentId = '' }, request) => {
       const id = decodeURIComponent(documentId)
       notes.set(id, await writtenMarkdown(request))
-      return { document: snapshot(id)?.summary }
+      return { document: (await snapshot(id))?.summary }
     },
     [`GET /api/spaces/v1/:spaceId`]: ({ spaceId = '' }) =>
       spaces.get(decodeURIComponent(spaceId)) ?? missing(),

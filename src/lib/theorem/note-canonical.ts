@@ -92,6 +92,20 @@ export function noteMarkdown(canonical: Uint8Array): string | undefined {
   return block && doc.getText(textKey(block)).toString()
 }
 
+/**
+ * A string attribute of the block that holds a note's text, as
+ * theorem-doc-session's `attr_str` reads one: the form an App's source is in.
+ */
+export function noteAttribute(
+  canonical: Uint8Array,
+  key: string,
+): string | undefined {
+  const doc = LoroDoc.fromSnapshot(canonical)
+  const block = noteBlock(doc)
+  const value = block && doc.getMap(attrsKey(block)).get(key)
+  return typeof value === 'string' ? value : undefined
+}
+
 /** Theorem's content digest: sha256 over the exact bytes. */
 export async function contentDigest(bytes: Uint8Array): Promise<string> {
   const hash = new Uint8Array(

@@ -60,7 +60,12 @@ test('the live App sandbox returns bounded design feedback through its real RPC'
   const host = await build({
     stdin: { contents: `
       import { rpcOver, call, serve, READY_MESSAGE, CONNECT_MESSAGE } from './src/lib/blocks/sandbox/protocol.ts';
-      import { appDesignFeedback } from './src/lib/blocks/app-design.ts';
+      import { schemesDesignFeedback } from './src/lib/blocks/app-design.ts';
+      // Two looks as the page hands them: each scheme's ink and the background behind the App.
+      const looks = {
+        light: { scheme: 'light', tokens: { ink: '#24292d', background: '#ffffff' } },
+        dark: { scheme: 'dark', tokens: { ink: '#c3c6c8', background: '#1c1d1e' } },
+      };
       window.checkDesignFixture = (html) => new Promise((resolve, reject) => {
         const frame = document.createElement('iframe');
         frame.setAttribute('sandbox', 'allow-scripts');
@@ -78,8 +83,16 @@ test('the live App sandbox returns bounded design feedback through its real RPC'
           serve(rpc, 'frame.error', (error) => { errors.push(error); return null; });
           frame.contentWindow.postMessage({type: CONNECT_MESSAGE}, '*', [channel.port2]);
           try {
-            const observed = await call(rpc, 'frame.design', { captureId: 'sandbox-browser-test' });
-            const feedback = appDesignFeedback(observed, 'sandbox-browser-test');
+            const measurements = [];
+            let observed;
+            for (const scheme of ['light', 'dark']) {
+              await call(rpc, 'theme.changed', looks[scheme]);
+              const captureId = 'sandbox-browser-test-' + scheme;
+              const value = await call(rpc, 'frame.design', { captureId, scheme, canvas: looks[scheme].tokens.background });
+              observed ??= value;
+              measurements.push({ scheme, captureId, value });
+            }
+            const feedback = schemesDesignFeedback(measurements);
             cleanup(); resolve({ observed, feedback, errors, framesRemaining: document.querySelectorAll('iframe').length });
           } catch (error) { cleanup(); reject(error); }
         };
@@ -99,9 +112,14 @@ test('the live App sandbox returns bounded design feedback through its real RPC'
     page.on('pageerror', (error) => errors.push(error.message))
     await page.setContent('<!doctype html><title>App design feedback test host</title><body></body>')
     await page.addScriptTag({ content: host.outputFiles[0].text })
-    const html = `<!doctype html><style>html{background:#fff}body{margin:24px;font:16px/24px sans-serif}#bad{color:#bbb;width:100px}#gradient{background:linear-gradient(white,black)}</style>
+    // A transparent App, as one in a conversation is: the page's background is behind it.
+    const html = `<!doctype html><style>body{margin:24px;font:16px/24px sans-serif}#bad{color:#bbb;width:100px}#gradient{background:linear-gradient(white,black)}
+      #themed{color:var(--theorem-ink);transition:color 10s linear}
+      #chips{display:flex;flex-wrap:wrap;gap:8px;width:330px}#chips>span{width:100px;color:var(--theorem-ink)}</style>
       <p id="bad" data-theorem-source="main.tsx:8:3">Contrast should fail</p>
       <p id="gradient">Paint requires inspection</p>
+      <p id="themed" data-theorem-source="main.tsx:20:3">Ink follows the scheme</p>
+      <div id="chips" data-theorem-source="main.tsx:30:3"><span>1 cup</span><span>2 tbsp</span><span>1 tsp</span><span>100 g</span></div>
       <script>document.querySelector('#bad').style.width='321px'</script>
       <script>${bridge.outputFiles[0].text}</script>`
     const result = await page.evaluate((documentHtml) => window.checkDesignFixture(documentHtml), html)
@@ -114,10 +132,22 @@ test('the live App sandbox returns bounded design feedback through its real RPC'
     assert.equal(result.observed.capture.viewport.width, 1024)
     assert.equal(result.observed.capture.viewport.height, 768)
     assert.equal(result.observed.elements.find((element) => element.id === 'id:bad').rect.width, 321)
-    assert.ok(result.feedback.report.findings.some((finding) =>
-      finding.elementId === 'id:bad' && finding.status === 'fail' && finding.source === 'main.tsx:8:3'))
-    assert.ok(result.feedback.report.findings.some((finding) =>
-      finding.elementId === 'id:gradient' && finding.status === 'unknown'))
+    const { issues, summary } = result.feedback.report
+    assert.deepEqual(result.feedback.schemes, ['light', 'dark'])
+    // Light grey fails on the light page and reads on the dark one.
+    const bad = issues.find((issue) => issue.status === 'fail' && issue.at.includes('main.tsx:8:3'))
+    assert.deepEqual(bad?.schemes, ['light'])
+    // Its ink is the theme's, so each scheme's unresolved paint is its own measurement.
+    const gradient = issues.filter((issue) =>
+      issue.status === 'unknown' && issue.at.includes('[id="gradient"]'))
+    assert.deepEqual(gradient.flatMap((issue) => issue.schemes ?? ['light', 'dark']).sort(), ['dark', 'light'])
+    // The ink's transition is ended before measuring, so dark is measured in dark ink.
+    assert.ok(!issues.some((issue) => issue.rule === 'color.text-contrast' && issue.at.includes('main.tsx:20:3')))
+    assert.ok(summary.light.pass > 0 && summary.dark.pass > 0)
+    const lone = issues.find((issue) => issue.rule === 'layout.lone-wrapped-item')
+    assert.deepEqual(lone?.measured.rows, [3, 1])
+    assert.deepEqual(lone?.at, ['main.tsx:30:3'])
+    assert.equal(lone?.schemes, undefined)
   } finally {
     await browser.close()
   }

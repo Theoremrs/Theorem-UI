@@ -1,11 +1,12 @@
 // SOURCING: @observablehq/notebook-kit's transpile (each cell's inputs,
-// outputs and body, as Notebook Kit compiles them) and serialize (the
+// outputs and body, as Notebook Kit compiles them, through cells.ts) and serialize (the
 // notebook as a Notebook Kit file, for Copy and Download), acorn and magic-string (a
-// cell's dynamic imports pointed at the frame's bundled modules), the hosted
+// cell's dynamic imports pointed at the frame's bundled modules, and
+// notebook-kit's resolveImportDefault for the rest), the hosted
 // App document and bridge (the frame), notebook-kit's inspector and highlight
 // styles and Inputs' stylesheet. No library builds a notebook into an
-// opaque frame that loads nothing.
-import { serialize, toCell, toNotebook, transpile } from '@observablehq/notebook-kit'
+// opaque frame of its own.
+import { resolveImportDefault, serialize, toCell, toNotebook } from '@observablehq/notebook-kit'
 import highlightStyle from '@observablehq/notebook-kit/highlight.css?raw'
 import inspectorStyle from '@observablehq/notebook-kit/inspector.css?raw'
 import inputsStyle from '@observablehq/inputs/dist/index.css?raw'
@@ -18,6 +19,8 @@ import { bundleNotebookRuntime } from '@/lib/blocks/export'
 import { hostedAppDocument } from '@/lib/blocks/hosted-app'
 import { chartTheme } from '@/lib/blocks/sandbox/theme'
 import type { ThemeState } from '@/lib/blocks/sandbox/theme'
+import type { AppSelection } from '@/lib/blocks/sandbox/protocol'
+import { cellParts, transpileCell } from './cells'
 import type { ObservableCell, ObservableNotebook } from './forms'
 import { inlineCode, notebookPage, scriptJson } from './page'
 
@@ -26,10 +29,15 @@ type Bundler = Pick<typeof Esbuild, 'build'>
 /** notebook-kit's and Inputs' styles, under the notebook surface page.ts adds. */
 const OBSERVABLE_STYLE = [inputsStyle, inspectorStyle, highlightStyle].join('\n')
 
+/** Where a module the bundle does not hold is fetched from: a bare name is an npm package, as in Observable. */
+const remoteOf = (specifier: string) =>
+  resolveImportDefault(/^[@\w]/.test(specifier) && !/^\w+:/.test(specifier) ? `npm:${specifier}` : specifier)
+
 /**
- * A cell's `import("d3")` as the frame resolves it. The frame has no import
- * map URL to fetch from; its bundle holds the import map's modules and
- * answers by specifier.
+ * A cell's `import("d3")` as the frame resolves it: from the bundle, which
+ * holds the import map's modules (by a bare name or `npm:` and that name), or
+ * else from where notebook-kit resolves it (a URL as written, `npm:` and bare
+ * names from jsDelivr).
  */
 function pointImports(body: string, imports: Set<string>): string {
   const out = new MagicString(body)
@@ -37,41 +45,26 @@ function pointImports(body: string, imports: Set<string>): string {
     ImportExpression(node) {
       const { source } = node as AcornNode & { source: AcornNode & { value?: unknown } }
       out.overwrite(node.start, source.start, '__theoremImport(')
-      if (typeof source.value === 'string') imports.add(source.value)
+      if (typeof source.value !== 'string') return
+      // `npm:d3` is the bundle's `d3` when the bundle holds it, as a bare name is.
+      const held = source.value.replace(/^npm:/, '')
+      if (held !== source.value) out.overwrite(source.start, source.end, JSON.stringify(held))
+      imports.add(held)
+      out.appendLeft(source.end, `, ${JSON.stringify(remoteOf(source.value))}`)
     },
   })
   return out.toString()
 }
 
-/**
- * A cell compiled by Notebook Kit. JavaScript that does not parse is tried as
- * Observable JavaScript (`viewof x = ...`, `x = 2`), which Notebook Kit also
- * compiles, so a cell written in either dialect runs; when neither parses,
- * the JavaScript error is the one shown.
- */
-function transpileCell(cell: ObservableCell, index: number) {
-  const options = { resolveImport: (specifier: string) => specifier }
-  try {
-    return transpile(toCell({ id: index, value: cell.source, mode: cell.kind }), options)
-  } catch (error) {
-    if (cell.kind !== 'js') throw error
-    try {
-      return transpile(toCell({ id: index, value: cell.source, mode: 'ojs' }), options)
-    } catch {
-      throw error
-    }
-  }
-}
-
-/** One cell's definition, as the source of an object literal. */
-function compileCell(
-  cell: ObservableCell,
+/** One declaration's definition, as the source of an object literal. */
+function compilePart(
+  meta: { id: string; kind: 'js' | 'md' },
+  source: string,
   index: number,
   imports: Set<string>,
 ): string {
-  const meta = { id: cell.id, kind: cell.kind }
   try {
-    const compiled = transpileCell(cell, index)
+    const compiled = transpileCell(source, index, meta.kind)
     const definition = {
       ...meta,
       inputs: compiled.inputs ?? [],
@@ -89,8 +82,33 @@ function compileCell(
   }
 }
 
+/** A cell's definitions, one per declaration it holds (cellParts), each carrying the cell's id. */
+function compileCell(
+  cell: ObservableCell,
+  index: number,
+  imports: Set<string>,
+): Array<string> {
+  const meta = { id: cell.id, kind: cell.kind }
+  return cellParts(cell.source, cell.kind).map((part) => compilePart(meta, part, index, imports))
+}
+
 /** What a saved view was saved with, which its views start from (sandbox/views.ts). */
 export type SavedView = { params?: Record<string, unknown>; state?: Record<string, unknown> }
+
+/**
+ * What a notebook's views hold now, as a selection carries it: the
+ * parameters moved with `views.param` and each view's own state. Undefined
+ * when they hold nothing, so there is nothing to start from.
+ */
+export function savedViewOf(selection?: AppSelection): SavedView | undefined {
+  const state = selection?.state
+  if (!state) return undefined
+  const { params, ...views } = state as { params?: Record<string, unknown> }
+  return {
+    ...(params && { params }),
+    ...(Object.keys(views).length && { state: views }),
+  }
+}
 
 /**
  * What a page runs: a notebook's title, cells and data. A view in a reply is
@@ -105,7 +123,7 @@ export type ObservableRun = Omit<ObservableNotebook, 'form' | 'data'> & {
 function compileNotebook(notebook: ObservableRun, saved?: SavedView) {
   const imports = new Set<string>()
   const cells = notebook.cells
-    .map((cell, index) => compileCell(cell, index, imports))
+    .flatMap((cell, index) => compileCell(cell, index, imports))
     .join(',\n')
   const options = `{ data: ${scriptJson(notebook.data ?? {})}${saved ? `, saved: ${scriptJson(saved)}` : ''} }`
   return {
@@ -152,7 +170,7 @@ function runtimeFor(imports: Array<string>, esbuild?: Bundler) {
 /**
  * An Observable notebook's page before it is hosted: the notebook runtime
  * with the modules its cells import, the cells, and the theme it opened
- * with. It loads nothing it does not carry, so it is also what a view is
+ * with. It carries every bundled module it uses, so it is also what a view is
  * saved as: an App document that runs the same notebook anywhere an App runs.
  */
 export async function observablePage(
@@ -185,6 +203,15 @@ export async function observableDocument(
   )
 }
 
+/** The dialect a cell is written in, as it compiles; one that does not compile keeps its kind. */
+function modeOf(cell: { source: string; kind: 'js' | 'md' }) {
+  try {
+    return transpileCell(cell.source, 0, cell.kind).mode
+  } catch {
+    return cell.kind
+  }
+}
+
 /**
  * The notebook as a Notebook Kit file, which Observable Desktop and
  * `notebooks preview` open. Its data and the theme it was drawn in, builtins
@@ -202,13 +229,14 @@ export function observableSource(
   const sources = [
     ...(notebook.data ? [constant('data', notebook.data)] : []),
     constant('theme', chartTheme(theme)),
-    ...notebook.cells,
+    // Notebook Kit takes one Observable declaration to a cell.
+    ...notebook.cells.flatMap((cell) => cellParts(cell.source, cell.kind).map((source) => ({ ...cell, source }))),
   ]
   return serialize(
     toNotebook({
       title: notebook.title,
       cells: sources.map((cell, index) =>
-        toCell({ id: index + 1, value: cell.source, mode: cell.kind }),
+        toCell({ id: index + 1, value: cell.source, mode: modeOf(cell) }),
       ),
     }),
   )

@@ -338,6 +338,45 @@
     display: none;
   }
 }
+/* Host actions over an inline artifact (chromeless-artifacts study C): the
+   icon row and the App's toolbar sit over the frame's top corner, shown on
+   hover and when focus is inside, always on a screen without hover. A toolbar
+   that needs the person (data-attention) stays in the flow and in view. */
+[data-slot='inline-artifact'][data-layout='inline'] > [data-host-actions],
+[data-slot='inline-artifact'][data-layout='inline'] [data-slot='app-toolbar']:not([data-attention]) {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  height: 40px;
+  padding: 0 4px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  transition: opacity 120ms ease-out;
+}
+[data-slot='inline-artifact'][data-layout='inline'] > [data-host-actions] {
+  right: 8px;
+}
+[data-slot='inline-artifact'][data-layout='inline'] [data-slot='app-toolbar']:not([data-attention]) {
+  right: 120px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+[data-slot='inline-artifact'][data-layout='inline'] [data-slot='app-toolbar'][data-attention] {
+  padding-right: 120px;
+}
+@media (hover: hover) {
+  [data-slot='inline-artifact'][data-layout='inline']:not(:hover):not(:focus-within) > [data-host-actions],
+  [data-slot='inline-artifact'][data-layout='inline']:not(:hover):not(:focus-within)
+    [data-slot='app-toolbar']:not([data-attention]) {
+    opacity: 0;
+  }
+}
+@container artifact (width < 640px) {
+  [data-slot='inline-artifact'][data-layout='inline'] [data-slot='app-toolbar']:not([data-attention]) {
+    right: 8px;
+    top: 56px;
+  }
+}
 /* The block menu opens inside the page, and dockview sets a pane's page in an
    overlay under the pills. While the menu is open that page stands over
    them, so the menu is never cut by a pill. */

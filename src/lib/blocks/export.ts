@@ -23,8 +23,21 @@ import { encodeRows } from './sandbox/standalone'
 import { toBase64 } from './state'
 import { importMap } from './vendor/manifest'
 import { vendorModules } from './vendor/modules'
+import { appLibrary } from './app-libraries'
 import { libraryModule } from './app-library-sources'
 import { canonicalJson, digestBytes } from './artifact-runtime'
+
+const INLINE_SCRIPT_CHAR_MAP: Record<string, string> = {
+  '<': '\\u003C',
+  '>': '\\u003E',
+  '/': '\\u002F',
+  '\u2028': '\\u2028',
+  '\u2029': '\\u2029',
+}
+
+function escapeInlineScriptString(value: string): string {
+  return value.replace(/[<>/\u2028\u2029]/g, (char) => INLINE_SCRIPT_CHAR_MAP[char] ?? char)
+}
 
 type Bundler = Pick<typeof Esbuild, 'build'>
 
@@ -45,19 +58,37 @@ export interface ExportedTool {
 /** The most file data one export carries. */
 export const MAX_EXPORT_BYTES = 10 * 1024 * 1024
 
-let browserBuild: Promise<Bundler> | null = null
+/**
+ * What `make` resolves to, made once per JavaScript realm under `key` and
+ * shared by every copy of the module that asks. The value is held on
+ * `globalThis`, not in this module, because a module can be evaluated again
+ * (hot reload, a second chunk) while what it made lives on. A `make` that
+ * fails is let go, so the next caller tries again.
+ */
+export function oncePerRealm<T>(key: string, make: () => Promise<T>): Promise<T> {
+  const held = globalThis as unknown as Record<symbol, Promise<T> | undefined>
+  const slot = Symbol.for(key)
+  const made = (held[slot] ??= make().catch((error: unknown) => {
+    if (held[slot] === made) held[slot] = undefined
+    throw error
+  }))
+  return made
+}
 
-/** esbuild-wasm in the page, its wasm served with the app's own assets. */
+/**
+ * esbuild-wasm in the page, its wasm served with the app's own assets.
+ * esbuild allows one `initialize` per realm and throws on a second
+ * (esbuild#1266), so the realm, not this module, owns the started compiler.
+ */
 export function browserEsbuild(): Promise<Bundler> {
-  browserBuild ??= (async () => {
+  return oncePerRealm('theorem.esbuild-wasm', async () => {
     const [esbuild, wasm] = await Promise.all([
       import('esbuild-wasm'),
       import('esbuild-wasm/esbuild.wasm?url'),
     ])
     await esbuild.initialize({ wasmURL: wasm.default })
     return esbuild
-  })()
-  return browserBuild
+  })
 }
 
 const NAMESPACE = {
@@ -138,9 +169,10 @@ function vendored(path: string): Esbuild.OnResolveResult {
 /**
  * Resolves the entry and the compiled cell from memory, `./name` to the
  * sandbox runtime's sources and bare names through the import map to the
- * vendored files: the same modules a block frame loads, and no others.
+ * vendored files: the same modules a block frame loads. A URL stays an
+ * import the frame fetches when it runs.
  */
-function exportPlugin(entry: string, cell: string): Esbuild.Plugin {
+function exportPlugin(entry: string, cell: string, dependencies?: AppDependencies): Esbuild.Plugin {
   return {
     name: 'theorem-export',
     setup(build) {
@@ -149,10 +181,23 @@ function exportPlugin(entry: string, cell: string): Esbuild.Plugin {
         namespace: NAMESPACE.entry,
       }))
       build.onResolve({ filter: /^\.\/[\w-]+$/ }, ({ path, namespace }) =>
-        namespace === NAMESPACE.vendor
+        namespace === NAMESPACE.vendor || namespace === NAMESPACE.library
           ? undefined
           : { path: path.slice(2), namespace: NAMESPACE.runtime },
       )
+      if (dependencies) {
+        // A notebook runtime that carries a library: its own modules stay the
+        // vendored files a frame loads, and the library and what it imports
+        // resolve as an App's do.
+        build.onResolve({ filter: /.*/ }, ({ path, namespace }) => {
+          if (namespace === NAMESPACE.library || namespace === NAMESPACE.dependency || appLibrary(path)) return undefined
+          if (/^https?:\/\//.test(path)) return { path, external: true }
+          const resolved = vendored(path)
+          return resolved.errors ? undefined : resolved
+        })
+        resolveDependencies(build, dependencies)
+      }
+      build.onResolve({ filter: /^https?:\/\// }, ({ path }) => ({ path, external: true }))
       build.onResolve({ filter: /.*/ }, ({ path }) => vendored(path))
       build.onLoad(
         { filter: /.*/, namespace: NAMESPACE.entry },
@@ -286,7 +331,10 @@ export async function bundleNotebookRuntime(
   esbuild?: Bundler,
   imports?: ReadonlyArray<string>,
 ): Promise<string> {
-  const modules = Object.keys(importMap.imports)
+  // A library a cell imports (`import('@theorem/ui')`) is built in with its
+  // pinned packages, on the same vendored React as the cells' `import('react')`.
+  const libraries = (imports ?? []).filter((specifier) => appLibrary(specifier))
+  const modules = [...Object.keys(importMap.imports), ...libraries]
     .filter((specifier) => !imports || imports.includes(specifier))
     .map((specifier) => {
       const name = JSON.stringify(specifier)
@@ -300,7 +348,30 @@ export async function bundleNotebookRuntime(
     `  start: (cells, options) => start(cells, options, modules),`,
     `}`,
   ].join('\n')
-  return bundleScript(entry, '', esbuild ?? (await browserEsbuild()), 'iife')
+  const bundler = esbuild ?? (await browserEsbuild())
+  if (!libraries.length) return bundleScript(entry, '', bundler, 'iife')
+  const files = { 'notebook.ts': libraries.map((name) => `import '${name}'`).join('\n') }
+  const result = await bundler.build({
+    entryPoints: ['theorem:entry'],
+    outfile: 'notebook.js',
+    bundle: true,
+    write: false,
+    format: 'iife',
+    target: 'es2022',
+    jsx: 'automatic',
+    minify: true,
+    legalComments: 'none',
+    logLevel: 'silent',
+    plugins: [exportPlugin(entry, '', appDependencies({ entry: 'notebook.ts', files }))],
+  })
+  const code = result.outputFiles.find((file) => file.path.endsWith('.js'))?.text
+  if (code === undefined) throw new Error('esbuild wrote nothing')
+  const css = result.outputFiles.find((file) => file.path.endsWith('.css'))?.text ?? ''
+  // The libraries' stylesheets go in ahead of the page's own, as an App's do.
+  const styles = css
+    ? `(()=>{const s=document.createElement('style');s.textContent=${escapeInlineScriptString(JSON.stringify(css))};document.head.prepend(s)})();\n`
+    : ''
+  return inlineSafe(styles + code)
 }
 
 const LOADERS: Record<string, Esbuild.Loader> = {
@@ -496,58 +567,68 @@ function appPlugin(
           return { errors }
         }
       })
-      // A library's own modules, `./name` beside the one importing them.
-      build.onResolve(
-        { filter: /^\.\/[\w-]+(?:\.\w+)?$/, namespace: NAMESPACE.library },
-        ({ path, importer }) => ({
-          path: `${importer.slice(0, importer.lastIndexOf('/'))}/${path.slice(2)}`,
-          namespace: NAMESPACE.library,
-        }),
-      )
-      build.onResolve({ filter: /.*/ }, async ({ path, importer, namespace, kind }) => {
-        if (kind === 'url-token' && /^(?:data:|#)/.test(path))
-          return { path, external: true }
-        try {
-          const resolved = dependencies.resolve(
-            path,
-            namespace === NAMESPACE.dependency ? importer : undefined,
-          )
-          if (resolved.kind === 'vendor')
-            return { path: resolved.path, namespace: NAMESPACE.vendor }
-          if (resolved.kind === 'library')
-            return { path: `${resolved.path}/index`, namespace: NAMESPACE.library }
-          // Follow redirects before choosing the namespace path, so a remote
-          // module's relative imports use its final URL, not its request URL.
-          const module = await dependencies.load(resolved.path)
-          return { path: module.url, namespace: NAMESPACE.dependency }
-        } catch (error) {
-          return { errors: [{ text: error instanceof Error ? error.message : String(error) }] }
-        }
-      })
       build.onLoad({ filter: /.*/, namespace: NAMESPACE.app }, ({ path }) => ({
         contents: files[path],
         loader: LOADERS[path.slice(path.lastIndexOf('.') + 1)] ?? 'js',
       }))
-      build.onLoad(
-        { filter: /.*/, namespace: NAMESPACE.vendor },
-        ({ path }) => ({ contents: vendorModules[path], loader: 'js' }),
-      )
-      build.onLoad({ filter: /.*/, namespace: NAMESPACE.library }, ({ path }) => {
-        const slash = path.lastIndexOf('/')
-        const module = libraryModule(path.slice(0, slash), path.slice(slash + 1))
-        return module === undefined
-          ? { errors: [{ text: `No module "${path}"` }] }
-          : { contents: module.source, loader: LOADERS[module.file.slice(module.file.lastIndexOf('.') + 1)] ?? 'ts' }
-      })
-      build.onLoad(
-        { filter: /.*/, namespace: NAMESPACE.dependency },
-        async ({ path }) => {
-          const module = await dependencies.load(path)
-          return { contents: module.bytes ?? module.source, loader: module.loader }
-        },
-      )
+      resolveDependencies(build, dependencies)
     },
   }
+}
+
+/**
+ * Resolves what an App's own files do not: a library Theorem ships, its
+ * modules, the vendored modules and npm packages, and loads each. The App
+ * build and a notebook runtime that carries a library share it, so both get
+ * the one vendored React and the library's pinned packages.
+ */
+function resolveDependencies(build: Esbuild.PluginBuild, dependencies: AppDependencies) {
+  // A library's own modules, `./name` beside the one importing them.
+  build.onResolve(
+    { filter: /^\.\/[\w-]+(?:\.\w+)?$/, namespace: NAMESPACE.library },
+    ({ path, importer }) => ({
+      path: `${importer.slice(0, importer.lastIndexOf('/'))}/${path.slice(2)}`,
+      namespace: NAMESPACE.library,
+    }),
+  )
+  build.onResolve({ filter: /.*/ }, async ({ path, importer, namespace, kind }) => {
+    if (kind === 'url-token' && /^(?:data:|#)/.test(path))
+      return { path, external: true }
+    try {
+      const resolved = dependencies.resolve(
+        path,
+        namespace === NAMESPACE.dependency ? importer : undefined,
+      )
+      if (resolved.kind === 'vendor')
+        return { path: resolved.path, namespace: NAMESPACE.vendor }
+      if (resolved.kind === 'library')
+        return { path: `${resolved.path}/index`, namespace: NAMESPACE.library }
+      // Follow redirects before choosing the namespace path, so a remote
+      // module's relative imports use its final URL, not its request URL.
+      const module = await dependencies.load(resolved.path)
+      return { path: module.url, namespace: NAMESPACE.dependency }
+    } catch (error) {
+      return { errors: [{ text: error instanceof Error ? error.message : String(error) }] }
+    }
+  })
+  build.onLoad(
+    { filter: /.*/, namespace: NAMESPACE.vendor },
+    ({ path }) => ({ contents: vendorModules[path], loader: 'js' }),
+  )
+  build.onLoad({ filter: /.*/, namespace: NAMESPACE.library }, ({ path }) => {
+    const slash = path.lastIndexOf('/')
+    const module = libraryModule(path.slice(0, slash), path.slice(slash + 1))
+    return module === undefined
+      ? { errors: [{ text: `No module "${path}"` }] }
+      : { contents: module.source, loader: LOADERS[module.file.slice(module.file.lastIndexOf('.') + 1)] ?? 'ts' }
+  })
+  build.onLoad(
+    { filter: /.*/, namespace: NAMESPACE.dependency },
+    async ({ path }) => {
+      const module = await dependencies.load(path)
+      return { contents: module.bytes ?? module.source, loader: module.loader }
+    },
+  )
 }
 
 /** An App's files as one module, the styles they import, and where each line came from. */

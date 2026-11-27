@@ -96,6 +96,15 @@ export function validateObservation(input) {
       for (const field of ['x', 'y', 'scrollableX', 'scrollableY']) boolean(overflow[field], `${path}.overflow.${field}`)
       for (const field of ['clientWidth', 'clientHeight', 'scrollWidth', 'scrollHeight']) number(overflow[field], `${path}.overflow.${field}`, 0)
     }
+    if (element.wrap !== undefined) {
+      const wrap = record(element.wrap, `${path}.wrap`)
+      choice(wrap.kind, ['flex', 'grid'], `${path}.wrap.kind`)
+      if (!Array.isArray(wrap.rows) || wrap.rows.length < 2 || wrap.rows.length > 64) bad(`${path}.wrap.rows`, 'expected 2 to 64 rows')
+      wrap.rows.forEach((count, index) => {
+        integer(count, `${path}.wrap.rows[${index}]`, 5000)
+        if (!count) bad(`${path}.wrap.rows[${index}]`, 'a row holds at least one item')
+      })
+    }
   }
   const coverage = record(input.coverage, 'coverage')
   integer(coverage.nodesSeen, 'coverage.nodesSeen', 50000)
@@ -239,6 +248,18 @@ export function inspectDesign(input, policy = {}) {
         { x: overflow.x, y: overflow.y, scrollableX: overflow.scrollableX, scrollableY: overflow.scrollableY, clientWidth: overflow.clientWidth, clientHeight: overflow.clientHeight, scrollWidth: overflow.scrollWidth, scrollHeight: overflow.scrollHeight }, 'Content fits its box or has an intentional scrolling/overflow treatment.',
         'Content exceeds its measured box on an axis without auto/scroll overflow; visible overflow may be intentional.',
         'Inspect this element for clipping, overlap or inaccessible text before changing dimensions or overflow.')
+    }
+    const wrap = element.wrap
+    if (wrap) {
+      // One item left alone on the last row, under rows of several, reads as
+      // a leftover rather than a layout.
+      const lone = wrap.rows.at(-1) === 1 && wrap.rows.slice(0, -1).some((count) => count > 1)
+      add('layout.lone-wrapped-item', element, 'diagnostic', lone ? 'review' : 'pass',
+        { kind: wrap.kind, rows: [...wrap.rows], viewportWidth: viewport.width },
+        'The last row holds more than one item, or every item fits on one row.',
+        lone ? 'One item wrapped onto a row of its own below rows of several.'
+          : 'The wrapped rows hold their items without one left alone at the end.',
+        lone ? 'Balance the rows (fewer items per row, grid columns that divide the count, or items that grow to fill), or let the row scroll; check the widths the App is shown at.' : undefined)
     }
   }
   const summary = { pass: 0, fail: 0, review: 0, unknown: 0, omitted: 0 }

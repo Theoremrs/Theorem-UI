@@ -14,7 +14,7 @@ import { attachOffset, connectorEnds, connectorPath, LEADER_RUN, leaderEnds, sub
 import type { Attach, Connector, Point, Subject } from './paths'
 import { choose, cleared, overlap } from './place'
 import type { Candidate, Placement } from './place'
-import { Theme } from './theme'
+import { Theme } from '@theorem/ui'
 
 /** One annotation as the layer places it. */
 export interface Entry {

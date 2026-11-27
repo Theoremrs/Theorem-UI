@@ -1,3 +1,6 @@
+// SOURCING: esbuild-wasm (an App's source is bundled), the App bridge
+// (export.ts) and the page's look (sandbox/theme.ts); WebGL's own
+// preserveDrawingBuffer context attribute keeps a check's canvases readable.
 // Hosted documents use the same frame and bridge as desktop HTML Apps. They
 // also take the page's look (sandbox/theme.ts): a host stylesheet ahead of the
 // App's own content, kept current over the bridge by followTheme. The
@@ -24,7 +27,23 @@ let bridgeScript: Promise<string> | undefined
 export interface HostedAppOptions {
   net?: Array<string>
   theme?: AppTheme
+  /**
+   * WebGL canvases keep their last frame, for a check's picture. A browser
+   * clears a WebGL canvas once it shows a frame, so a copy read after that
+   * is blank; on screen an App keeps the browser's default.
+   */
+  keepDrawnFrames?: boolean
 }
+
+/** Asks every WebGL context the page makes to keep its drawn frame. */
+const KEEP_DRAWN_FRAMES = `(() => {
+  const getContext = HTMLCanvasElement.prototype.getContext
+  HTMLCanvasElement.prototype.getContext = function (type, options) {
+    return getContext.call(this, type, /^(experimental-)?webgl2?$/.test(type)
+      ? { ...options, preserveDrawingBuffer: true }
+      : options)
+  }
+})()`
 
 /** What tracing a failure in a built App back to its source needs. */
 export interface HostedBuild {
@@ -125,7 +144,15 @@ export async function hostedApp(
   for (const declared of page.querySelectorAll('meta[charset]')) declared.remove()
   const charset = page.createElement('meta')
   charset.setAttribute('charset', 'utf-8')
-  page.head.prepend(charset, ...(limit ? [limit] : []), theme, bridge)
+  const keep = options.keepDrawnFrames && page.createElement('script')
+  if (keep) keep.textContent = KEEP_DRAWN_FRAMES
+  page.head.prepend(
+    charset,
+    ...(limit ? [limit] : []),
+    theme,
+    bridge,
+    ...(keep ? [keep] : []),
+  )
   if (!appSources || !bundle)
     return { page: `<!doctype html>\n${page.documentElement.outerHTML}` }
   removeAppSources(page)

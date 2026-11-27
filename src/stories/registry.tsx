@@ -153,6 +153,12 @@ import {
 import { WorkbenchChangesReviewStory } from '@/components/workbench/workbench-review-story'
 import { WorkbenchTheoBlocksStory } from '@/components/workbench/workbench-theo-blocks-story'
 import { WorkbenchTheoComposerStory } from '@/components/workbench/workbench-theo-composer-story'
+import GRAY_SCOTT from './fixtures/gray-scott.html?raw'
+import { GRAY_SCOTT_KIT } from './fixtures/gray-scott-kit'
+import { KIT_CONTROLS, kitControlApp } from './fixtures/kit-controls'
+import { FRAME_COUNTER } from './fixtures/frame-counter'
+import { grayScottDirection } from './fixtures/gray-scott-study'
+import type { GrayScottDirection } from './fixtures/gray-scott-study'
 
 // The table's settings route is not needed to boot every conversation fixture.
 const SettingsAiStory = lazy(() =>
@@ -566,6 +572,116 @@ function partsStory(messages: ThreadMessageLike[]) {
           />
         </div>
       </AssistantRuntimeProvider>
+    )
+  }
+}
+
+/** A finished reply holding an App document, after `text` when there is any. */
+const appReply = (documentId: string, title: string, content: string, text?: string) =>
+  partsStory([
+    {
+      id: `message-${documentId}`,
+      role: 'assistant',
+      status: { type: 'complete', reason: 'stop' },
+      content: [
+        ...(text ? [{ type: 'text' as const, text }] : []),
+        {
+          type: 'data',
+          name: ARTIFACT_PART,
+          data: {
+            artifactId: `art_${documentId}`,
+            artifactRevision: '6',
+            artifactKind: 'app',
+            rendererId: 'theorem-app',
+            contractVersion: 'theorem-artifact-v1',
+            lifecycle: 'ready',
+            patchSequence: 6,
+            fallbackText: title,
+            payload: {
+              documentId,
+              revision: { position: 1 },
+              title,
+              content,
+              language: 'html',
+            },
+          },
+        },
+      ],
+    },
+  ])
+
+/** A finished reply holding a Gray–Scott App document. */
+const grayScottReply = (documentId: string, content: string) =>
+  appReply(
+    documentId,
+    'Gray-Scott Reaction-Diffusion',
+    content,
+    'Here is a Gray–Scott reaction–diffusion simulation running on the GPU. Drag on it to seed new growth.',
+  )
+
+/** An App counting its frames: expanding, collapsing or a theme change must leave the count climbing. */
+const frameCounterStory = appReply('doc_kit_frame_counter', 'Frame counter', FRAME_COUNTER)
+
+/** Each @theorem/ui control alone, drawing its Astryx reference's example, built as an App the agent writes is. */
+const kitControlStories = Object.fromEntries(
+  KIT_CONTROLS.map((control) => [`kit-${control}`, appReply(`doc_kit_${control}`, control, kitControlApp(control))]),
+)
+
+/**
+ * The Gray–Scott App Qwen4 Max wrote on 2026-11-24, exactly as it ran, in a
+ * finished reply: the baseline for chromeless artifacts.
+ */
+const grayScottStory = grayScottReply('doc_gray_scott', GRAY_SCOTT)
+
+/** The same App on @theorem/ui in study C, built from its source as an App the agent writes is. */
+const grayScottKitStory = grayScottReply('doc_gray_scott_kit', GRAY_SCOTT_KIT)
+
+/**
+ * Where a healthy App's host actions go, for the study: over the frame's
+ * corner, or in a bar beneath it as a message's own actions are. Either way
+ * they show on hover and on focus within, and always on a touch screen. Drawn
+ * over the existing rows with CSS for the owner to compare; nothing here is
+ * the implementation.
+ */
+const HOST_STUDY_CSS = `
+[data-host-study] [data-slot="inline-artifact"] > div:first-child,
+[data-host-study] section > [data-revision] {
+  transition: opacity 120ms ease-out;
+}
+@media (hover: hover) {
+  [data-host-study] [data-slot="inline-artifact"]:not(:hover):not(:focus-within) > div:first-child,
+  [data-host-study] [data-slot="inline-artifact"]:not(:hover):not(:focus-within) section > [data-revision] {
+    opacity: 0;
+  }
+}
+[data-host-study="corner"] [data-slot="inline-artifact"] > div:first-child,
+[data-host-study="corner"] section > [data-revision] {
+  position: absolute; top: 8px; z-index: 2; height: 40px; padding: 0 4px;
+  display: flex; align-items: center; border-radius: var(--radius-md); background: var(--surface-raised);
+}
+[data-host-study="corner"] [data-slot="inline-artifact"] > div:first-child { right: 8px; }
+[data-host-study="corner"] section > [data-revision] { right: 120px; flex-wrap: nowrap; white-space: nowrap; }
+[data-host-study="beneath"] [data-slot="inline-artifact"] > div:first-child {
+  order: 2; padding: 4px 0 0;
+}
+[data-host-study="beneath"] section > [data-revision] {
+  order: 2; position: absolute; left: 0; bottom: 0; z-index: 1;
+}
+/* Last, so the narrow placements win over the wide ones above. */
+@media (max-width: 640px) {
+  [data-host-study="corner"] section > [data-revision] { right: 8px; top: 56px; }
+  [data-host-study="beneath"] section > [data-revision] { position: static; }
+}
+`
+
+const grayScottStudy = (direction: GrayScottDirection, host: 'corner' | 'beneath') => {
+  const Reply = grayScottReply(`doc_gray_scott_${direction}`, grayScottDirection(direction))
+  return function GrayScottStudy() {
+    return (
+      <div data-host-study={host}>
+        <style>{HOST_STUDY_CSS}</style>
+        <Reply />
+      </div>
     )
   }
 }
@@ -1577,6 +1693,13 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'composer-paper': threadStory(),
   'composer-markdown': threadStory(undefined, [], COMPOSER_DRAFT),
   'chat-program': programStory,
+  'chromeless-gray-scott': grayScottStory,
+  'chromeless-gray-scott-kit': grayScottKitStory,
+  ...kitControlStories,
+  'presentation-frame-counter': frameCounterStory,
+  'chromeless-study-strip': grayScottStudy('strip', 'corner'),
+  'chromeless-study-inspector': grayScottStudy('inspector', 'beneath'),
+  'chromeless-study-overlay': grayScottStudy('overlay', 'corner'),
   ...Object.fromEntries(
     ACTIVITY_STATES.map((state) => [`activity-${state}`, threadStory(state)]),
   ),

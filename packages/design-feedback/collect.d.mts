@@ -6,6 +6,10 @@ export interface CollectOptions {
   maxElements?: number
   maxNodes?: number
   maxTextLength?: number
+  /** The scheme the document was given, where it is not the browser's preference. */
+  colorScheme?: 'light' | 'dark'
+  /** A CSS colour the embedding page paints behind a transparent document. */
+  canvas?: string
 }
 
 /** Run inside the observed document. The function has no outer dependencies. */

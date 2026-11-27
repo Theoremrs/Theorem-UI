@@ -237,8 +237,8 @@
   },
   "devDependencies": {
     "@assistant-ui/vite": "^0.0.21",
-    "@astryxdesign/core": "0.7.16",
-    "@astryxdesign/theme-neutral": "0.7.16",
+    "@astryxdesign/core": "0.7.17",
+    "@astryxdesign/theme-neutral": "0.7.17",
     "@better-auth/oauth-provider": "1.7.12",
     "@floating-ui/core": "1.8.0",
     "@happy-dom/global-registrator": "21.0.3",
