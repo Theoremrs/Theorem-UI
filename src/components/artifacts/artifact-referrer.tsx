@@ -10,6 +10,11 @@
 // it, and brings the answer's instance forward. Nothing here runs it: no
 // frame, no document read — even the App preview is left out, because a
 // preview frame re-executes the App's startup.
+//
+// With the runtime host mounted (artifact-runtime-host), the dock's panel is a
+// view of the App's one runtime instead, and this body serves only the
+// surfaces the host cannot show over: the cabinet's modal dialog, and any
+// surface without a host.
 import { useRouter } from '@tanstack/react-router'
 import { useCallback, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'

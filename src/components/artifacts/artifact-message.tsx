@@ -5,8 +5,11 @@
 // the same mounted instance. Other results keep their excerpt and panel.
 // The representation chooses the behavior, never the artifact kind.
 //
-// Excerpts can open in the dock's panel. A live artifact always belongs to
-// its answer; expanding it does not open a second runtime in the dock.
+// Excerpts can open in the dock's panel. A live artifact's runtime belongs
+// to the runtime host when one is mounted (artifact-runtime-host): the answer
+// is one view of it, and Expand moves it to the host's expanded view. Without
+// a host it belongs to its answer, and expanding it does not open a second
+// runtime in the dock.
 import { appearancePair } from '@/lib/appearance-policy'
 import { useAuiState } from '@assistant-ui/react'
 import { useCallback, useContext, useEffect, useRef } from 'react'
@@ -25,6 +28,14 @@ import { focusInlineArtifact, InlineArtifact } from './inline-artifact'
 import { OpenLatestContext } from './app-history'
 import { ArtifactPlacement, useArtifactView } from './artifact-view'
 import { OPENS_WHOLE, thingProps } from '@/lib/face/things'
+import { useArtifactRuntimes } from './artifact-runtime'
+import {
+  inlineViewId,
+  isHostedRenderer,
+  RuntimeSurfaceContext,
+  RuntimeVersionsContext,
+  useRuntimeHostPresent,
+} from './artifact-runtime-host'
 
 export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
   const artifacts = useThreadArtifacts()
@@ -48,6 +59,18 @@ export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
   const position = versions.findIndex((v) => v.revision === artifact.revision)
   const newest = versions.at(-1) ?? artifact
   const latest = position === versions.length - 1 && newest.partId === artifact.partId
+  // With the runtime host, the answer's live App is one view of a runtime the
+  // host owns, and Expand moves it to the host's expanded view (AR-08).
+  const hosted =
+    useRuntimeHostPresent() &&
+    liveInline &&
+    latest &&
+    isHostedRenderer(representationOf(artifact, 'interactive').renderer)
+  const viewId = inlineViewId(artifact.partId)
+  const expandedHere = useArtifactRuntimes((s) => {
+    const id = s.views[viewId]
+    return id !== undefined && s.expanded === id
+  })
   if (bare || card)
     return (
       <div
@@ -77,6 +100,19 @@ export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
         artifactId={artifact.artifactId}
         partId={artifact.partId}
         current={latest}
+        expand={
+          hosted
+            ? {
+                expanded: expandedHere,
+                toggle: () => {
+                  const runtimes = useArtifactRuntimes.getState()
+                  const id = runtimes.views[viewId]
+                  if (expandedHere && id) runtimes.restore(id)
+                  else if (id) runtimes.expand(viewId)
+                },
+              }
+            : undefined
+        }
         actions={
           <ArtifactActions
             key={artifact.revision}
@@ -91,7 +127,15 @@ export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
           open(artifact.artifactId)
           if (inline) void openMode('chat')
         }}>
-          <ArtifactView artifact={artifact} distance="interactive" latest={latest} />
+          <RuntimeSurfaceContext value="inline">
+            <RuntimeVersionsContext value={versions}>
+              <ArtifactView
+                artifact={artifact}
+                distance="interactive"
+                latest={latest}
+              />
+            </RuntimeVersionsContext>
+          </RuntimeSurfaceContext>
         </OpenLatestContext>
       </InlineArtifact>
     )

@@ -1079,7 +1079,8 @@
 .appearance-conversation-track :focus-visible,
 [data-appearance-part='navigation'] :focus-visible,
 [data-appearance-part='popover'] :focus-visible,
-[data-appearance-part='drawer'] :focus-visible {
+[data-appearance-part='drawer'] :focus-visible,
+[data-appearance-part='runtime-stage'] :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
@@ -1162,7 +1163,8 @@
   .appearance-composer-box :focus-visible,
   .appearance-conversation-track :focus-visible,
   [data-appearance-part='navigation'] :focus-visible,
-  [data-appearance-part='popover'] :focus-visible {
+  [data-appearance-part='popover'] :focus-visible,
+  [data-appearance-part='runtime-stage'] :focus-visible {
     outline-color: Highlight;
   }
 }

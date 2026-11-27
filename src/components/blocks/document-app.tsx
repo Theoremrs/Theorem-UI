@@ -51,12 +51,25 @@ import type { ConversationMessage, Displayed } from '@/lib/theorem/app-dossier'
 import { hold, queued, sent, undelivered, useQueued } from '@/lib/theorem/dossier-queue'
 import type { Queued } from '@/lib/theorem/dossier-queue'
 import type { AppDocument, AppSnapshot } from '@/lib/theorem/apps'
+import type { RuntimeRevisions } from '@/components/artifacts/artifact-runtime-revisions'
 import { AppElement } from './app-element'
 import { AppProblems } from './app-problems'
 import { BlockFrame } from './block-frame'
 import { BlockMessage } from './block-status'
 import { appDeclarations } from './html-app-handler'
 import { SourceEditor } from './source-editor'
+
+/** What the running App shows, as a runtime host reports it (artifact-runtime-revisions). */
+export type AppRunReport = {
+  /** The revision the frame was built from. */
+  running?: string
+  /** The saved revision is being built to run. */
+  building: boolean
+  /** The saved revision did not build; an earlier one may still run. */
+  failed: boolean
+  /** The frame runs the saved revision's own source. */
+  current?: boolean
+}
 
 function useDocumentReplica(app: AppDocument) {
   const [state, setState] = useState<ReturnType<typeof documentAppState>>()
@@ -214,12 +227,20 @@ function AppPreview({
   onSelection,
   dossier,
   displayedRef,
+  onStart,
+  onReport,
+  elsewhere = false,
 }: {
   app: AppDocument
   snapshot: AppSnapshot
   onSelection: (value: AppSelectionContext | undefined) => void
   dossier: AppDossier
   displayedRef: { current: Displayed }
+  /** Called each time a frame starts the App: its startup runs. */
+  onStart?: () => void
+  onReport?: (report: AppRunReport) => void
+  /** Its conversation is not the one on screen: no Ask to fix there. */
+  elsewhere?: boolean
 }) {
   const { state, error: stateError } = useDocumentReplica(app)
   const preview = useHostedPreview(snapshot, state?.ready)
@@ -232,6 +253,32 @@ function AppPreview({
     }
   })
   const types = useTypeCheck(snapshot.html, preview.current)
+  const runningPosition = shown && String(shown.snapshot.revision.position)
+  const failedBuild = Boolean(preview.problems.length || preview.error)
+  const runsCurrent = preview.current
+  const report = useRef(onReport)
+  useEffect(() => {
+    report.current = onReport
+  })
+  useEffect(() => {
+    report.current?.({
+      running: runningPosition || undefined,
+      building: !runsCurrent && !failedBuild,
+      failed: !runsCurrent && failedBuild,
+      current: runsCurrent,
+    })
+  }, [runningPosition, runsCurrent, failedBuild])
+  const start = useRef(onStart)
+  useEffect(() => {
+    start.current = onStart
+  })
+  const connected = useCallback(
+    (connection: Parameters<typeof hosted.followTheme>[0]) => {
+      start.current?.()
+      return hosted.followTheme(connection)
+    },
+    [],
+  )
   const [thrown, setThrown] = useState<{
     src: string
     problems: Array<AppProblem>
@@ -325,18 +372,22 @@ function AppPreview({
         kept={Boolean(shown) && !preview.current}
         checking={types.checking}
         checkError={types.error}
-        onFix={() => {
-          const current = app.getSnapshot()
-          if (current && !current.pendingState)
-            askAbout(appRepairReference(current, problems))
-        }}
+        onFix={
+          elsewhere
+            ? undefined
+            : () => {
+                const current = app.getSnapshot()
+                if (current && !current.pendingState)
+                  askAbout(appRepairReference(current, problems))
+              }
+        }
       />
       {shown && host ? (
         <BlockFrame
           src={shown.src}
           host={host}
           title={snapshot.title}
-          onConnection={hosted.followTheme}
+          onConnection={connected}
         />
       ) : (
         !error && !problems.length && <p role="status">Loading App…</p>
@@ -504,7 +555,8 @@ function AppToolbar({
   running: boolean
   toggle: () => void
   edit: () => void
-  about: () => void
+  /** Left out when the App's conversation is not the one on screen. */
+  about?: () => void
   selected: boolean
   reload: () => void
 }) {
@@ -523,14 +575,16 @@ function AppToolbar({
       <Button size="xs" variant="ghost" onClick={edit}>
         Edit source
       </Button>
-      <Button
-        size="xs"
-        variant="ghost"
-        onClick={about}
-        disabled={snapshot.pendingState}
-      >
-        {selected ? 'Ask about selection' : 'Ask about this App'}
-      </Button>
+      {about && (
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={about}
+          disabled={snapshot.pendingState}
+        >
+          {selected ? 'Ask about selection' : 'Ask about this App'}
+        </Button>
+      )}
       <Button size="xs" variant="ghost" onClick={reload}>
         Reload
       </Button>
@@ -586,17 +640,21 @@ function useAppDossier(
   app: AppDocument,
   openSource: (reveal: { file: string; line: number }) => void,
   displayedRef: { current: Displayed },
+  elsewhere = false,
 ): AppDossier {
   const aui = useAui()
-  const available = useAuiState((s) => s.optional.thread !== undefined)
+  // A runtime kept while its conversation is not on screen asks nothing of
+  // the conversation that is.
+  const threadShown = useAuiState((s) => s.optional.thread !== undefined)
+  const available = threadShown && !elsewhere
   const running = useAuiState((s) => s.optional.thread?.isRunning ?? false)
   const conversation = useAuiState((s) => s.optional.threads?.mainThreadId)
   const messages = useAuiState(
     (s) => s.optional.thread?.messages ?? NO_MESSAGES,
   ) as ReadonlyArray<ConversationMessage>
-  const latest = useRef({ aui, openSource, running, conversation })
+  const latest = useRef({ aui, openSource, running, conversation, elsewhere })
   useEffect(() => {
-    latest.current = { aui, openSource, running, conversation }
+    latest.current = { aui, openSource, running, conversation, elsewhere }
   })
   // What this App is holding in this conversation, from the queue's store: a
   // revision flip unmounts this view and mounts the next, and the questions
@@ -608,6 +666,8 @@ function useAppDossier(
     const listeners = new Set<(next: DossierState) => void>()
     const send = (question: Omit<Queued, 'id' | 'failed'>) => {
       const { thread } = latest.current.aui
+      if (latest.current.elsewhere)
+        throw new Error('This App’s conversation is not the one open.')
       if (!thread.source)
         throw new Error('This App is not shown in a conversation.')
       if (question.conversation !== latest.current.conversation)
@@ -657,6 +717,8 @@ function useAppDossier(
           conversation: latest.current.conversation,
           documentId: app.documentId,
         }
+        if (latest.current.elsewhere)
+          throw new Error('This App’s conversation is not the one open.')
         if (!latest.current.aui.thread.source)
           throw new Error('This App is not shown in a conversation.')
         if (latest.current.running) {
@@ -681,7 +743,7 @@ function useAppDossier(
   // sending, so two views of one App in one conversation each see what the
   // other has already sent.
   useEffect(() => {
-    if (running) return
+    if (running || elsewhere) return
     const next = queued(conversation, app.documentId).find(
       (question) => question.failed === undefined && question.conversation === conversation,
     )
@@ -694,7 +756,7 @@ function useAppDossier(
       const reason = error instanceof Error ? error.message : String(error)
       undelivered(next, reason)
     }
-  }, [running, held, dossier, conversation, app.documentId])
+  }, [running, elsewhere, held, dossier, conversation, app.documentId])
   useEffect(() => {
     dossier.set(withHeld(dossierState(messages, app.documentId, available), held))
   }, [dossier, messages, available, app.documentId, held])
@@ -705,10 +767,19 @@ export function DocumentAppView({
   app,
   pinnedPosition,
   initiallyRunning = false,
+  elsewhere = false,
+  onStart,
+  onRevisions,
 }: {
   app: AppDocument
   pinnedPosition?: number | string
   initiallyRunning?: boolean
+  /** Its conversation is not the one on screen: it asks nothing of the one that is. */
+  elsewhere?: boolean
+  /** Called each time a frame executes the App's startup. */
+  onStart?: () => void
+  /** What runs, what is saved and what is being edited, for a runtime host. */
+  onRevisions?: (revisions: RuntimeRevisions) => void
 }) {
   const { snapshot, error, attempt } = useAppSnapshot(app, pinnedPosition)
   const [edit, setEdit] = useState<Edit>()
@@ -722,7 +793,45 @@ export function DocumentAppView({
       if (current) setEdit({ html: current.html, base: current, reveal })
     },
     displayedRef,
+    elsewhere,
   )
+  const [run, setRun] = useState<AppRunReport>({
+    building: false,
+    failed: false,
+  })
+  const committed = snapshot && String(snapshot.revision.position)
+  const pending = Boolean(snapshot?.pendingState)
+  const saveError = error || snapshot?.saveError
+  const reportRevisions = useRef(onRevisions)
+  useEffect(() => {
+    reportRevisions.current = onRevisions
+  })
+  useEffect(() => {
+    reportRevisions.current?.({
+      committed: committed || undefined,
+      ...(running
+        ? {
+            running: run.running,
+            building: run.building,
+            failed: run.failed,
+            runsCommittedSource: run.current,
+          }
+        : { building: false, failed: false }),
+      stopped: !running,
+      editing: edit !== undefined,
+      content: { pending, ...(saveError && { error: saveError }) },
+    })
+  }, [
+    committed,
+    running,
+    run.running,
+    run.building,
+    run.failed,
+    run.current,
+    edit,
+    pending,
+    saveError,
+  ])
   // What was pointed at, while it is still this revision that is on screen.
   const pointed = snapshot && selectionForSource(snapshot, selection)
   if (!snapshot)
@@ -742,10 +851,15 @@ export function DocumentAppView({
           setSelection(undefined)
         }}
         edit={() => setEdit({ html: snapshot.html, base: snapshot })}
-        about={() =>
-          void attempt(async () => {
-            askAbout(appContextReference(app.getSnapshot()!, selection))
-          })
+        // Asking adds to the composer on screen, which belongs to another
+        // conversation when this App's is elsewhere.
+        about={
+          elsewhere
+            ? undefined
+            : () =>
+                void attempt(async () => {
+                  askAbout(appContextReference(app.getSnapshot()!, selection))
+                })
         }
         selected={Boolean(selectionForSource(snapshot, selection))}
         reload={() => void attempt(() => app.load())}
@@ -790,6 +904,9 @@ export function DocumentAppView({
           onSelection={setSelection}
           dossier={dossier}
           displayedRef={displayedRef}
+          onStart={onStart}
+          onReport={setRun}
+          elsewhere={elsewhere}
         />
       ) : (
         <p className="text-sm text-ink-muted">
