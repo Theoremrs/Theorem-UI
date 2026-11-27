@@ -16,6 +16,24 @@ export const MACHINE_COMPUTE = 'machine.compute'
 export const MAX_WAIT_SECONDS = 50
 const CALL_TIMEOUT_MS = (MAX_WAIT_SECONDS + 5) * 1000
 const WAITING_ACTIONS = new Set(['run', 'wait', 'rerun'])
+const CALL_ACTIONS = [
+  'run',
+  'submit',
+  'status',
+  'wait',
+  'logs',
+  'progress',
+  'cancel',
+  'result',
+  'receipt',
+  'output',
+  'rerun',
+  'compare',
+  'jobs',
+  'environments',
+  'create_environment',
+  'discover',
+]
 
 export const MACHINE_OPERATIONS = [
   {
@@ -27,14 +45,50 @@ export const MACHINE_OPERATIONS = [
       additionalProperties: false,
       required: ['call'],
       properties: {
+        // theorem-compute's ComputeCall, flattened: its full schema is over
+        // the 8 KiB a client operation may declare, and a schema naming only
+        // `action` left the model writing calls with nothing else.
         call: {
           type: 'object',
           required: ['action'],
           properties: {
-            action: { type: 'string', minLength: 1, maxLength: 64 },
+            action: { enum: CALL_ACTIONS },
+            request: {
+              type: 'object',
+              description:
+                'For run and submit: the computation, as compute takes it.',
+              properties: {
+                source: { type: 'string' },
+                source_path: { type: 'string' },
+                entry: { type: 'string' },
+                params: { type: 'object' },
+                seed: { type: 'integer' },
+                inputs: { type: 'object' },
+                outputs: { type: 'array', items: { type: 'string' } },
+                environment: { type: 'object' },
+                resources: { type: 'object' },
+                permissions: { type: 'object' },
+                budget: { type: 'object' },
+                target: { type: 'string' },
+                label: { type: 'string' },
+              },
+            },
+            job: { type: 'string' },
+            wait_seconds: { type: 'integer', minimum: 0 },
+            name: { type: 'string', description: 'For output.' },
+            stream: { type: 'string', description: 'For logs.' },
+            offset: { type: 'integer', minimum: 0 },
+            last: { type: 'integer', minimum: 0, description: 'For progress.' },
+            params: { type: 'object', description: 'For rerun.' },
+            seed: { type: 'integer', description: 'For rerun.' },
+            a: { type: 'string', description: 'For compare.' },
+            b: { type: 'string', description: 'For compare.' },
+            limit: { type: 'integer', minimum: 1, description: 'For jobs.' },
+            environment: {
+              type: 'object',
+              description: 'For create_environment.',
+            },
           },
-          description:
-            'One call of the compute interface, as compute takes it: {action, ...}.',
         },
       },
     },

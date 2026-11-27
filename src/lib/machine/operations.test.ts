@@ -41,6 +41,14 @@ test('the call is declared only while this browser is paired', () => {
   expect(
     new TextEncoder().encode(MACHINE_OPERATIONS[0].description).length,
   ).toBeLessThanOrEqual(1024)
+  const schema = MACHINE_OPERATIONS[0].inputSchema
+  expect(
+    new TextEncoder().encode(JSON.stringify(schema)).length,
+  ).toBeLessThanOrEqual(8 * 1024)
+  // The call declares its fields, so a run's request is something to write.
+  expect(Object.keys(schema.properties.call.properties)).toEqual(
+    expect.arrayContaining(['action', 'request', 'job', 'wait_seconds']),
+  )
 })
 
 test('a pairing link fills the pairing from the fragment', () => {
