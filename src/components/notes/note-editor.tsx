@@ -35,6 +35,11 @@ import { useCrepeMarkdown } from './crepe-markdown'
 import { remarkTheoremBlocks, theoremBlockNode } from './kinds/block-syntax'
 import { theoremBlockView } from './kinds/block-view'
 import { DataTable } from './kinds/embed-block'
+import {
+  remarkResourceMention,
+  resourceMentionNode,
+  resourceMentionView,
+} from './resource-mention'
 import { useBlockPickers } from './kinds/pickers'
 import type { BlockRequest } from './kinds/pickers'
 import { EMBED_ATTR } from './note-excerpt'
@@ -60,8 +65,7 @@ function fencePreview(
   applyPreview: (value: string) => void,
 ) {
   const fence = language.toLowerCase()
-  if (fence === 'csv')
-    return renderToStaticMarkup(<DataTable csv={content} />)
+  if (fence === 'csv') return renderToStaticMarkup(<DataTable csv={content} />)
   if (fence === 'mermaid') {
     renderMermaidSvg(content).then(applyPreview, () =>
       applyPreview('<p>This diagram has an error in it.</p>'),
@@ -233,6 +237,9 @@ function CrepeEditor({
         .use(remarkTheoremBlocks)
         .use(theoremBlockNode)
         .use(theoremBlockView)
+        .use(remarkResourceMention)
+        .use(resourceMentionNode)
+        .use(resourceMentionView)
       crepeRef.current = crepe
       if (autoFocus)
         crepe.on((listener) =>
