@@ -33,6 +33,8 @@ import type { ModuleManifest, PageDocument } from './contract'
 import {
   MODULE_SCHEMA,
   ModuleFileError,
+  NewerFormatError,
+  guardedWrite,
   PAGE_SUFFIX,
   manifestText,
   pageText,
@@ -480,9 +482,16 @@ async function writeFile(
   page: PageDocument,
   hash: string | null | undefined,
 ) {
-  const written = await client.write(path, pageText(page), {
-    ...(hash !== undefined && { expectedHash: hash }),
-  })
+  // A file a newer Theorem wrote is shown read-only, never flattened by this client.
+  const stored =
+    hash === null
+      ? undefined
+      : await client.readText(path).catch(() => undefined)
+  const written = await client.write(
+    path,
+    guardedWrite(path, stored?.text, pageText(page)),
+    { ...(hash !== undefined && { expectedHash: hash }) },
+  )
   // A merging store keeps something other than what was sent.
   return written.merged
     ? await readPage(client, path)
@@ -730,10 +739,13 @@ export function useInstalledModules(client: WorkspaceClient) {
       else
         problems.push({
           path,
+          // A newer format shows as a limited, read-only entry: what can be read, nothing rewritten.
           message:
-            result.error instanceof ModuleFileError
-              ? result.error.message
-              : `${path}: ${result.error.message}`,
+            result.error instanceof NewerFormatError
+              ? `${result.error.limited.label ?? result.error.limited.id ?? path} (read-only): ${result.error.message}`
+              : result.error instanceof ModuleFileError
+                ? result.error.message
+                : `${path}: ${result.error.message}`,
         })
     })
     setInstalled(installed, problems)

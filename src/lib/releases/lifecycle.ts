@@ -9,6 +9,8 @@ import { useCommandRegistry } from '@/lib/commands/registry'
 import type { CommandSource } from '@/lib/commands/registry'
 import { resolveHandler, useContributions } from '@/lib/contributions/registry'
 import type { RegisteredContribution } from '@/lib/contributions/registry'
+import { syncModuleContributions } from '@/lib/modules/contribute'
+import { allModules } from '@/lib/modules/registry'
 import { activeInstances } from './instance-scope'
 import { releaseRecords } from './store'
 import { addHistory } from './state'
@@ -31,22 +33,32 @@ export interface RemovedContributions {
 export function removeContributionsBySource(
   identity: string,
 ): RemovedContributions {
+  const mine = <T extends { source: CommandSource }>(entries: Iterable<T>) =>
+    [...entries].filter((entry) => ownedBy(entry.source, identity))
+  const commandsBefore = mine(useCommandRegistry.getState().commands.values())
+  const contributionsBefore = [...useContributions.getState().contributions]
+    .filter(([, c]) => ownedBy(c.source, identity))
+    .map(([key]) => key)
+  // The modules owner unregisters a catalog module's own commands and
+  // contributions when it leaves the set it syncs from; go through that.
+  syncModuleContributions(
+    allModules().filter((m) => m.id !== identity && !isModuleDisabled(m.id)),
+  )
+  // Whatever the sync did not own (an extension's registrations) goes by source.
   const commands = useCommandRegistry.getState().commands
-  const removedCommands = [...commands.values()]
-    .filter((c) => ownedBy(c.source, identity))
-    .map((c) => c.id)
-  if (removedCommands.length) {
+  const stray = mine(commands.values()).map((c) => c.id)
+  if (stray.length) {
     const next = new Map(commands)
-    for (const id of removedCommands) next.delete(id)
+    for (const id of stray) next.delete(id)
     useCommandRegistry.setState({ commands: next })
   }
   const registry = useContributions.getState().contributions
-  const removedKeys = [...registry.entries()]
+  const strayKeys = [...registry]
     .filter(([, c]) => ownedBy(c.source, identity))
     .map(([key]) => key)
-  if (removedKeys.length) {
+  if (strayKeys.length) {
     const next = new Map(registry)
-    for (const key of removedKeys) next.delete(key)
+    for (const key of strayKeys) next.delete(key)
     useContributions.setState({ contributions: next })
   }
   // A refused claim by this source is not a registration either.
@@ -56,8 +68,18 @@ export function removeContributionsBySource(
   useContributions.setState((s) => ({
     conflicts: s.conflicts.filter((c) => !ownedBy(c.refused, identity)),
   }))
-  return { commands: removedCommands, contributions: removedKeys }
+  return {
+    commands: commandsBefore.map((c) => c.id),
+    contributions: contributionsBefore,
+  }
 }
+
+/**
+ * Whether a module is turned off. The catalog sync should leave a disabled
+ * module's contributions unregistered; it reads this.
+ */
+export const isModuleDisabled = (identity: string) =>
+  releaseRecords.get(identity)?.disabled === true
 
 export type LifecycleResult = {
   removed: RemovedContributions

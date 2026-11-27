@@ -5,6 +5,7 @@
 // puts a release's files back for a rollback. It writes only inside the
 // module's own folder and always with the hash it last read.
 import { useEffect, useRef } from 'react'
+import { guardedWrite } from '@/lib/modules/contract'
 import { useModuleCatalog } from '@/lib/modules/registry'
 import {
   grantKey,
@@ -68,13 +69,18 @@ export function vaultWriter(client: WorkspaceClient): ReleaseWriter {
     async restore(_identity, release: Release) {
       for (const [path, text] of Object.entries(release.files)) {
         let expected: string | null = null
+        let stored: string | undefined
         try {
-          expected = (await client.readText(path)).hash
+          const read = await client.readText(path)
+          expected = read.hash
+          stored = read.text
         } catch {
           expected = null
         }
         try {
-          await client.write(path, text, { expectedHash: expected })
+          await client.write(path, guardedWrite(path, stored, text), {
+            expectedHash: expected,
+          })
         } catch (error) {
           if (error instanceof WorkspaceConflictError)
             throw new Error(
@@ -185,12 +191,17 @@ export async function writeImport(
   )
   for (const path of ordered) {
     let expected: string | null = null
+    let stored: string | undefined
     try {
-      expected = (await client.readText(path)).hash
+      const read = await client.readText(path)
+      expected = read.hash
+      stored = read.text
     } catch {
       expected = null
     }
-    await client.write(path, files[path]!, { expectedHash: expected })
+    await client.write(path, guardedWrite(path, stored, files[path]!), {
+      expectedHash: expected,
+    })
     written.push(path)
   }
   return { identity, folder, written }
