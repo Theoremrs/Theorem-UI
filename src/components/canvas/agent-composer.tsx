@@ -12,7 +12,11 @@ import { NoteExcerpt } from '@/components/notes/note-excerpt'
 import { useNoteView } from '@/components/notes/note-view'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { askOnCanvas, CANVAS_ACTIONS } from '@/lib/theorem/canvas-agent'
+import {
+  askOnCanvas,
+  CANVAS_ACTIONS,
+  STOP_RUN,
+} from '@/lib/theorem/canvas-agent'
 import type { CanvasSource } from '@/lib/theorem/canvas-agent'
 import type { Theorem } from '@/lib/theorem/client'
 import { describeError } from '@/lib/theorem/client'
@@ -115,7 +119,8 @@ function ComposerBody({
   const crumb = useCanvasView((s) => s.trail.at(-1))
   const spaceId = crumb?.spaceId ?? spaceIdFor(projectId)
 
-  // Closing the composer stops a run that is still streaming.
+  // Closing the composer stops watching a run, not the run: it finishes in
+  // its conversation. Only Stop cancels it.
   useEffect(() => () => abort.current?.abort(), [])
 
   const start = async (text: string, label: string) => {
@@ -255,7 +260,7 @@ function ComposerBody({
               <Button
                 variant="outline"
                 size="xs"
-                onClick={() => abort.current?.abort()}
+                onClick={() => abort.current?.abort(STOP_RUN)}
               >
                 <Icon.Stop />
                 Stop

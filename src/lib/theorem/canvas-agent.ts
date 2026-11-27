@@ -109,6 +109,13 @@ function textOf(content: readonly { type: string; text?: string }[]) {
     .join('\n\n')
 }
 
+/**
+ * The abort reason that means the person stopped the run. Any other abort
+ * (the composer closing, the view going away) only stops watching it: the
+ * run is durable and finishes in its conversation (AGENT-03).
+ */
+export const STOP_RUN = 'theorem.canvas.stop'
+
 export type CanvasRunUpdate = {
   threadId: string
   runId: string
@@ -170,7 +177,7 @@ export async function* askOnCanvas({
       }
     }
   } finally {
-    if (!settled && signal.aborted)
+    if (!settled && signal.aborted && signal.reason === STOP_RUN)
       await mutate((headers) =>
         theorem().chat.runs.cancel({
           runId,

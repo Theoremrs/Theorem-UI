@@ -2,10 +2,11 @@
 import { afterAll, beforeAll, beforeEach, expect, spyOn, test } from 'bun:test'
 import { noteSource } from '@/components/notes/note-panel'
 import type { Note } from './notes'
-import { askOnCanvas } from './canvas-agent'
+import { STOP_RUN, askOnCanvas } from './canvas-agent'
 
 let requests: Array<{ path: string; body: Record<string, unknown> }> = []
 let refusal = false
+let holdEvents = false
 const note = (overrides: Partial<Note> = {}): Note => ({
   documentId: 'note-42',
   title: 'Evidence',
@@ -36,6 +37,18 @@ beforeAll(() => {
     const path = new URL(request.url).pathname
     if (path.endsWith('/bootstrap'))
       return Response.json({ csrfToken: 'csrf', tenantId: 't' })
+    if (path.endsWith('/events') && holdEvents)
+      // A run still going: the stream stays open until the reader aborts.
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            request.signal.addEventListener('abort', () =>
+              controller.error(request.signal.reason),
+            )
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } },
+      )
     if (path.endsWith('/events'))
       return new Response(
         'data: {"seq":1,"sourceEventType":"RUN.CLOSED","payload":{}}\n\n',
@@ -70,6 +83,7 @@ afterAll(() => {
 beforeEach(() => {
   requests = []
   refusal = false
+  holdEvents = false
 })
 
 const send = async (sources: ReturnType<typeof noteSource>[]) => {
@@ -193,4 +207,38 @@ test('mixed whole notes and passages retain each canonical source and only valid
     selected: [{ id: 'note-42' }, { id: 'note-43' }],
     locators: [{ object: { id: 'note-43' }, placement: 'placement-2' }],
   })
+})
+
+test('closing the composer stops watching the run; only Stop cancels it', async () => {
+  holdEvents = true
+  const detach = new AbortController()
+  const stop = new AbortController()
+  const consume = async (signal: AbortSignal) => {
+    try {
+      for await (const _update of askOnCanvas({
+        projectId: 'project-1',
+        spaceId: 'space-1',
+        prompt: 'Explain',
+        sources: [],
+        signal,
+      }))
+        void _update
+    } catch {
+      /* the aborted read */
+    }
+  }
+  // Abort the way the composer does on unmount, with no reason.
+  requests = []
+  const detached = consume(detach.signal)
+  await Bun.sleep(20)
+  detach.abort()
+  await detached
+  expect(requests.some((r) => r.path.endsWith('/cancel'))).toBe(false)
+
+  requests = []
+  const stopped = consume(stop.signal)
+  await Bun.sleep(20)
+  stop.abort(STOP_RUN)
+  await stopped
+  expect(requests.filter((r) => r.path.endsWith('/cancel'))).toHaveLength(1)
 })
