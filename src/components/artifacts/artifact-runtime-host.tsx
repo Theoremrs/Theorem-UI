@@ -31,6 +31,7 @@ import {
 } from 'react'
 import type { FC, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useComposerReferences } from '@/components/chat/composer-references'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -524,6 +525,20 @@ export function ArtifactRuntimeHost() {
       node.removeEventListener('close', close)
     }
   }, [])
+
+  // Asking about the expanded App collapses it first, so the composer it
+  // focuses is not behind the modal view (as inline-artifact does).
+  useEffect(
+    () =>
+      useComposerReferences.subscribe((next, previous) => {
+        if (
+          useArtifactRuntimes.getState().expanded !== undefined &&
+          next.references.some((ref) => !previous.references.includes(ref))
+        )
+          useArtifactRuntimes.getState().restore()
+      }),
+    [],
+  )
 
   const shownExpanded = expanded ? runtimes[expanded] : undefined
   return createPortal(

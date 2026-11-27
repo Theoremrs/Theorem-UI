@@ -8,6 +8,11 @@ import {
   render,
   waitFor,
 } from '../../../test/blocks/render'
+import {
+  askAbout,
+  useComposerReferences,
+} from '@/components/chat/composer-references'
+import { pinnedAppReference } from '@/lib/theorem/app-references'
 import type { TheoremArtifact } from './artifact-model'
 import { useArtifactRuntimes } from './artifact-runtime'
 import type { RuntimeRecord, RuntimeSurface } from './artifact-runtime'
@@ -33,6 +38,19 @@ function CounterRuntime({ runtime }: { runtime: RuntimeRecord }) {
   return (
     <div data-testid="runtime" data-for={runtime.id}>
       <button onClick={() => setCount((n) => n + 1)}>Count {count}</button>
+      <button
+        onClick={() =>
+          askAbout(
+            pinnedAppReference({
+              documentId: runtime.documentId,
+              title: runtime.title,
+              position: '1',
+            }),
+          )
+        }
+      >
+        Ask
+      </button>
       <iframe title="Counter frame" />
     </div>
   )
@@ -107,6 +125,7 @@ function Shell({ children }: { children: ReactNode }) {
 
 afterEach(async () => {
   await cleanup()
+  useComposerReferences.getState().take()
   useArtifactRuntimes.getState().reset()
   startups = 0
   stops = 0
@@ -290,4 +309,27 @@ test('what covers the scrolling content clips the runtime under it', () => {
     rect.mockRestore()
     scroller.remove()
   }
+})
+
+test('asking about the expanded App returns it to its view before the composer takes focus', async () => {
+  await render(
+    <Shell>
+      <View surface="inline" />
+    </Shell>,
+  )
+  await waitFor(frame)
+  await act(() => useArtifactRuntimes.getState().expand('inline:part-1'))
+  const stage = document.querySelector<HTMLDialogElement>(
+    'dialog[data-runtime-stage]',
+  )!
+  await waitFor(() =>
+    stage.querySelector('[data-slot="artifact-runtime-expanded"]'),
+  )
+  await click(buttonNamed(document.body, 'Ask')!)
+  expect(useArtifactRuntimes.getState().expanded).toBeUndefined()
+  expect(
+    Object.values(useArtifactRuntimes.getState().runtimes)[0]?.holder,
+  ).toBe('inline:part-1')
+  expect(useComposerReferences.getState().references).toHaveLength(1)
+  expect(startups).toBe(1)
 })
