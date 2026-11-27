@@ -40,6 +40,7 @@ import { Route as SettingsImportRouteImport } from './routes/settings/import'
 import { Route as SettingsKeysRouteImport } from './routes/settings/keys'
 import { Route as SettingsPluginsRouteImport } from './routes/settings/plugins'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
+import { Route as SettingsReleasesRouteImport } from './routes/settings/releases'
 import { Route as SettingsResponsesRouteImport } from './routes/settings/responses'
 import { Route as SettingsStylesRouteImport } from './routes/settings/styles'
 import { Route as SettingsWorkRouteImport } from './routes/settings/work'
@@ -247,6 +248,11 @@ const SettingsPluginsRoute = SettingsPluginsRouteImport.update({
 const SettingsProfileRoute = SettingsProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsReleasesRoute = SettingsReleasesRouteImport.update({
+  id: '/releases',
+  path: '/releases',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsResponsesRoute = SettingsResponsesRouteImport.update({
@@ -567,6 +573,7 @@ export interface FileRoutesByFullPath {
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/profile': typeof SettingsProfileRoute
+  '/settings/releases': typeof SettingsReleasesRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/styles': typeof SettingsStylesRoute
   '/settings/work': typeof SettingsWorkRoute
@@ -650,6 +657,7 @@ export interface FileRoutesByTo {
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/profile': typeof SettingsProfileRoute
+  '/settings/releases': typeof SettingsReleasesRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/styles': typeof SettingsStylesRoute
   '/settings/work': typeof SettingsWorkRoute
@@ -737,6 +745,7 @@ export interface FileRoutesById {
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/profile': typeof SettingsProfileRoute
+  '/settings/releases': typeof SettingsReleasesRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/styles': typeof SettingsStylesRoute
   '/settings/work': typeof SettingsWorkRoute
@@ -825,6 +834,7 @@ export interface FileRouteTypes {
     | '/settings/keys'
     | '/settings/plugins'
     | '/settings/profile'
+    | '/settings/releases'
     | '/settings/responses'
     | '/settings/styles'
     | '/settings/work'
@@ -908,6 +918,7 @@ export interface FileRouteTypes {
     | '/settings/keys'
     | '/settings/plugins'
     | '/settings/profile'
+    | '/settings/releases'
     | '/settings/responses'
     | '/settings/styles'
     | '/settings/work'
@@ -994,6 +1005,7 @@ export interface FileRouteTypes {
     | '/settings/keys'
     | '/settings/plugins'
     | '/settings/profile'
+    | '/settings/releases'
     | '/settings/responses'
     | '/settings/styles'
     | '/settings/work'
@@ -1329,6 +1341,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/settings/profile'
       preLoaderRoute: typeof SettingsProfileRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/releases': {
+      id: '/settings/releases'
+      path: '/releases'
+      fullPath: '/settings/releases'
+      preLoaderRoute: typeof SettingsReleasesRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/responses': {
@@ -1766,6 +1785,7 @@ interface SettingsRouteChildren {
   SettingsKeysRoute: typeof SettingsKeysRoute
   SettingsPluginsRoute: typeof SettingsPluginsRoute
   SettingsProfileRoute: typeof SettingsProfileRoute
+  SettingsReleasesRoute: typeof SettingsReleasesRoute
   SettingsResponsesRoute: typeof SettingsResponsesRoute
   SettingsStylesRoute: typeof SettingsStylesRoute
   SettingsWorkRoute: typeof SettingsWorkRoute
@@ -1783,6 +1803,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsKeysRoute: SettingsKeysRoute,
   SettingsPluginsRoute: SettingsPluginsRoute,
   SettingsProfileRoute: SettingsProfileRoute,
+  SettingsReleasesRoute: SettingsReleasesRoute,
   SettingsResponsesRoute: SettingsResponsesRoute,
   SettingsStylesRoute: SettingsStylesRoute,
   SettingsWorkRoute: SettingsWorkRoute,
