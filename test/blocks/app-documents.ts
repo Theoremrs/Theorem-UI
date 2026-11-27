@@ -191,7 +191,10 @@ export function documentRoutes(documents: ReadonlyArray<DocumentFixture>): FakeR
         )
       } catch (error) {
         const status = (error as { statusCode?: number }).statusCode ?? 500
-        return new Response(JSON.stringify({ detail: String(error) }), { status })
+        return new Response(
+          JSON.stringify({ detail: 'An unexpected error occurred' }),
+          { status },
+        )
       }
     },
   }
