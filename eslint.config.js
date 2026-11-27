@@ -36,6 +36,37 @@ export default [
     },
   },
   {
+    // UI-06: one table engine. Feature code builds tables through the shared
+    // TanStack Table v9 wrapper (components/data-table/table-hook: useAppTable,
+    // createAppColumnHelper); types from the library stay importable.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/components/data-table/**',
+      'src/lib/data-table.ts',
+      // Recorded exceptions, predating the rule: read-only sorted previews
+      // that need no wrapper features. Move them onto useAppTable when next
+      // changed; do not add to this list without a recorded rationale.
+      'src/components/handlers/data/csv-handler.tsx',
+      'src/components/settings/observe/observe-page.tsx',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@tanstack/react-table',
+              importNames: ['useTable', 'useReactTable', 'createColumnHelper'],
+              allowTypeImports: true,
+              message:
+                'Build tables with useAppTable / createAppColumnHelper from @/components/data-table/table-hook (spec UI-01/UI-03).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // The microphone AudioWorklet is plain JavaScript: Vite hands its text to
     // audioWorklet.addModule as a data URL, and the worklet's scope parses no
     // types. It is not in the TypeScript project, so it is linted without the
