@@ -30,11 +30,16 @@ const rule = (report, name) => report.findings.find((finding) => finding.rule ==
 test('opaque sRGB contrast uses real luminance and rejects unsupported paint', () => {
   assert.equal(contrastRatio('#000', '#fff'), 21)
   assert.equal(contrastRatio('rgb(0 0 0)', 'rgb(100% 100% 100%)'), 21)
+  assert.equal(contrastRatio('rgb(0 0 0 / 1)', 'rgb(255 255 255 / 100%)'), 21)
   assert.equal(contrastRatio('rgba(0, 0, 0, 1)', '#ffffff'), 21)
   assert.equal(contrastRatio('rgba(0, 0, 0, .5)', '#ffffff'), null)
+  assert.equal(contrastRatio('rgb(0 0 0 / .5)', '#ffffff'), null)
   assert.equal(contrastRatio('color(display-p3 0 0 0)', '#ffffff'), null)
   assert.equal(contrastRatio('rgb(0 invalid 0)', '#fff'), null)
+  assert.equal(contrastRatio('rgb(0. 0 0)', '#fff'), null)
   assert.equal(contrastRatio('rgb(256 0 0)', '#fff'), null)
+  assert.equal(contrastRatio(`rgb(${' '.repeat(5000)}0 0 0)`, '#fff'), 21)
+  assert.equal(contrastRatio(`rgb(${'0'.repeat(5000)}x 0 0)`, '#fff'), null)
 })
 
 test('text contrast applies unrounded minimums and exact CSS large-text boundaries', () => {

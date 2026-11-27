@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  copiedText,
   outputShows,
   printedAnything,
   readCommand,
@@ -288,5 +289,29 @@ describe('a command the agent runs on the host', () => {
         ({ message }) => message,
       ),
     ).toEqual(['Terminal'])
+  })
+})
+
+describe('the copy', () => {
+  test('takes the command and what it printed, as plain text', () => {
+    expect(
+      copiedText({
+        command: 'python3 -c "import numpy"',
+        stdout: '',
+        stderr:
+          'Traceback (most recent call last):\n\x1b[31mModuleNotFoundError: No module named numpy\x1b[0m\n',
+      }),
+    ).toBe(
+      '$ python3 -c "import numpy"\nTraceback (most recent call last):\nModuleNotFoundError: No module named numpy',
+    )
+    expect(
+      copiedText({ command: 'ls', stdout: 'a\nb\n', stderr: 'warn\n' }),
+    ).toBe('$ ls\na\nb\nwarn')
+  })
+
+  test('takes a command that printed nothing bare, ready to run', () => {
+    expect(copiedText({ command: 'true', stdout: '\n', stderr: '' })).toBe(
+      'true',
+    )
   })
 })

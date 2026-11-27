@@ -48,7 +48,7 @@ export function collectDesignObservations(options = {}) {
     if (value === 'transparent') return 0
     const match = value.match(/^rgba?\(([^)]+)\)$/i)
     if (!match) return null
-    const components = match[1].replace(/\s*\/\s*/, ',').split(/[\s,]+/).filter(Boolean)
+    const components = match[1].replace('/', ',').split(/[\s,]+/).filter(Boolean)
     if (components.length === 3) return 1
     if (components.length === 4) {
       const alpha = Number.parseFloat(components[3]) / (components[3].endsWith('%') ? 100 : 1)
