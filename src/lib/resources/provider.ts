@@ -124,23 +124,23 @@ export interface ResourceProvider {
   serves: readonly string[]
   support: Support
   /** Whether `resource` is a well-formed identity for this provider, before any call. */
-  validate?(resource: ResourceIdentity): boolean
+  validate?: (resource: ResourceIdentity) => boolean
   /**
    * The owner's canonical identity key when ids can differ for one resource
    * (a record, its document projection and a file placement). Absent, the
    * identity key is used. Equality is never inferred from labels.
    */
-  canonicalize?(resource: ResourceIdentity): string | undefined
-  resolve?(ref: ResourceRef, ctx: OpCtx): Promise<ResolveResult>
-  search?(request: SearchRequest, ctx: OpCtx): Promise<SearchPage>
-  preview?(ref: ResourceRef, ctx: OpCtx): Promise<PreviewResult>
-  references?(
+  canonicalize?: (resource: ResourceIdentity) => string | undefined
+  resolve?: (ref: ResourceRef, ctx: OpCtx) => Promise<ResolveResult>
+  search?: (request: SearchRequest, ctx: OpCtx) => Promise<SearchPage>
+  preview?: (ref: ResourceRef, ctx: OpCtx) => Promise<PreviewResult>
+  references?: (
     ref: ResourceRef,
     request: ReferencesRequest,
     ctx: OpCtx,
-  ): Promise<ReferencesPage>
+  ) => Promise<ReferencesPage>
   /** Calls `onChange` when the owner reports the resource changed or gone. Returns the unsubscribe. */
-  subscribe?(ref: ResourceRef, onChange: () => void): () => void
+  subscribe?: (ref: ResourceRef, onChange: () => void) => () => void
   /** Whether it can read a pinned revision. */
   revisions?: { pinned: true }
 }

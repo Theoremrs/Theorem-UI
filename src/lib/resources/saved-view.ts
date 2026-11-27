@@ -72,8 +72,8 @@ export interface SavedViewSession {
   >
 }
 
-export type CompileResult<Q> =
-  | { ok: true; query: Q }
+export type CompileResult<TQuery> =
+  | { ok: true; query: TQuery }
   | {
       ok: false
       /** The query is not run: a narrower reading would widen the view. */

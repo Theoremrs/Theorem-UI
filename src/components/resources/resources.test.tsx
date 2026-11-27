@@ -81,7 +81,7 @@ describe('chip', () => {
     // First paint: the hint, marked as not yet checked.
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
     expect(container.textContent).toContain('Fix the kiln')
-    await waitFor(() => container.textContent?.includes('(verified)'))
+    await waitFor(() => container.textContent.includes('(verified)'))
     access = 'inaccessible'
     await act(async () => changed?.())
     await waitFor(() =>
@@ -143,7 +143,7 @@ describe('picker', () => {
       }),
     )
     const { container } = await render(<ResourcePicker onPick={() => {}} />)
-    await waitFor(() => container.textContent?.includes('Fix the kiln'))
+    await waitFor(() => container.textContent.includes('Fix the kiln'))
     expect(container.textContent).toContain('Broken could not be searched.')
     expect(container.textContent).toContain('incomplete')
   })
@@ -187,7 +187,7 @@ describe('picker', () => {
     await waitFor(
       () =>
         container.querySelector('[data-option]') &&
-        container.textContent?.includes('T k'),
+        container.textContent.includes('T k'),
     )
     expect(queries[0]!.aborted()).toBe(true)
     await act(async () =>
@@ -240,22 +240,22 @@ describe('references panel', () => {
       }),
     )
     const { container } = await render(<ReferencesPanel target={ticket('t')} />)
-    await waitFor(() => container.textContent?.includes('Load more'))
+    await waitFor(() => container.textContent.includes('Load more'))
     const click = (text: string) =>
       act(async () =>
         [...container.querySelectorAll('button')]
-          .find((b) => b.textContent?.includes(text))!
+          .find((b) => b.textContent.includes(text))!
           .click(),
       )
     await click('Load more')
     await waitFor(() =>
-      container.textContent?.includes('What was loaded is still here'),
+      container.textContent.includes('What was loaded is still here'),
     )
     expect(container.querySelectorAll('ul > li').length).toBeGreaterThan(0)
     expect(container.textContent).toContain('Mentioned')
     fail = false
     await click('Try again')
-    await waitFor(() => !container.textContent?.includes('still here'))
+    await waitFor(() => !container.textContent.includes('still here'))
     await settle()
     expect(container.textContent).toContain('2 visible sources')
   })
@@ -264,7 +264,7 @@ describe('references panel', () => {
     registerProvider(provider({}))
     const { container } = await render(<ReferencesPanel target={ticket('t')} />)
     await waitFor(() =>
-      container.textContent?.includes('not available here yet'),
+      container.textContent.includes('not available here yet'),
     )
   })
 })
@@ -298,7 +298,7 @@ describe('embed', () => {
       </EmbedRoot>,
     )
     await waitFor(
-      () => (container.textContent?.match(/Ticket body/g)?.length ?? 0) === 2,
+      () => (container.textContent.match(/Ticket body/g)?.length ?? 0) === 2,
     )
     expect(container.textContent).toContain('Live: follows the current version')
     expect(container.textContent).toContain('Pinned to revision 7')
@@ -331,7 +331,30 @@ describe('embed', () => {
     const { container } = await render(
       <Embed resourceRef={ticket('1')} mode="compact" />,
     )
-    await waitFor(() => container.textContent?.includes('Unavailable.'))
+    await waitFor(() => container.textContent.includes('Unavailable.'))
     expect(container.textContent).not.toContain('Fix the kiln')
+  })
+})
+
+describe('registerResourceLayer', () => {
+  test('registers the first-slice kinds once and removes them on request', async () => {
+    const { registerResourceLayer } = await import('./register')
+    const { listProviders } = await import('@/lib/resources/registry')
+    const remove = registerResourceLayer()
+    expect(registerResourceLayer()).toBe(remove)
+    const ids = listProviders()
+      .map((p) => p.id)
+      .sort()
+    expect(ids).toEqual([
+      'theorem.artifacts',
+      'theorem.documents',
+      'theorem.files',
+      'theorem.records',
+      'theorem.runs',
+      'theorem.threads',
+      'theorem.work',
+    ])
+    remove()
+    expect(listProviders()).toHaveLength(0)
   })
 })

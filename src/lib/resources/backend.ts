@@ -18,13 +18,13 @@ const unsupported = (operation: 'resolve' | 'search' | 'references') =>
  * and answers what they answer.
  */
 export interface BackendRoutes {
-  resolve?(ref: ResourceRef, ctx: OpCtx): Promise<ResolveResult>
-  search?(request: SearchRequest, ctx: OpCtx): Promise<SearchPage>
-  references?(
+  resolve?: (ref: ResourceRef, ctx: OpCtx) => Promise<ResolveResult>
+  search?: (request: SearchRequest, ctx: OpCtx) => Promise<SearchPage>
+  references?: (
     ref: ResourceRef,
     request: ReferencesRequest,
     ctx: OpCtx,
-  ): Promise<ReferencesPage>
+  ) => Promise<ReferencesPage>
 }
 
 let routes: BackendRoutes = {}

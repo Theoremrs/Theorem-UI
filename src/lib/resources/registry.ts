@@ -113,9 +113,7 @@ export async function resolve(
     return guarded(() => provider!.resolve!(ref, ctx), ctx.signal)
   // The backend's Resolve route, where one is served, answers for kinds no
   // provider here can.
-  return guarded(() => backend.resolve(ref, ctx), ctx.signal) as Promise<
-    ResolveResult | Unsupported
-  >
+  return guarded(() => backend.resolve(ref, ctx), ctx.signal)
 }
 
 export async function preview(
@@ -340,8 +338,7 @@ export async function open(
     return { opened: false, state: 'unsupported' }
   if (supports(provider, 'resolve')) {
     const answer = await resolve(ref, options.ctx)
-    if (answer.state !== 'ready')
-      return { opened: false, state: answer.state as NotReady }
+    if (answer.state !== 'ready') return { opened: false, state: answer.state }
   }
   const key = identityKey(ref.resource)
   let resolution: HandlerResolution | undefined

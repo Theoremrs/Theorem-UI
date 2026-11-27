@@ -24,7 +24,7 @@ export function RecordPreviewFields({ preview }: PreviewRendererProps) {
     <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 text-xs">
       {shown.map((field) => (
         <div key={field.key} className="contents">
-          <dt className="text-ink-muted">{field.label ?? field.key}</dt>
+          <dt className="text-ink-muted">{field.label}</dt>
           <dd className="min-w-0">
             <FieldDisplay row={row} field={field} />
           </dd>

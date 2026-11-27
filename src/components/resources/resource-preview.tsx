@@ -1,6 +1,6 @@
 // SOURCING: lib/resources preview and open through ./use-resource; the contribution registry's `preview` kind (resolveHandler) so a context-specific renderer can enrich a kind's preview, with the Records field renderer (components/records/fields FieldDisplay) as the shipped one for records (DATA-01); the app's Button.
 import type { ComponentType } from 'react'
-import { useState } from 'react'
+import { createElement, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { resolveHandler } from '@/lib/contributions/registry'
 import type { PreviewData } from '@/lib/resources/provider'
@@ -83,7 +83,7 @@ export function ResourcePreview({
         )}
       </div>
     )
-  const Renderer = rendererFor(resourceRef)
+  const renderer = rendererFor(resourceRef)
   const { preview } = view
   return (
     <section
@@ -94,8 +94,8 @@ export function ResourcePreview({
         <span className="text-xs text-ink-muted">{preview.typeLabel}</span>
         <h3 className="text-sm font-medium text-ink">{preview.title}</h3>
       </header>
-      {Renderer ? (
-        <Renderer resourceRef={resourceRef} preview={preview} />
+      {renderer ? (
+        createElement(renderer, { resourceRef, preview })
       ) : (
         <DefaultPreviewBody preview={preview} />
       )}

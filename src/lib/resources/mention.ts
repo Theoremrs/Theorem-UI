@@ -1,4 +1,7 @@
 // SOURCING: none for the encoding, which is plain percent-encoded fields; the directive text assistant-ui's composer writes (`:type[Label]{name=id}`, components/chat/composer-mentions) and the Markdown link form every editor already round-trips, so a mention an editor cannot render is still a link that keeps its identity. LINK-01 and LINK-05.
+import type { TheoremContextReference } from '@theoremharness/sdk'
+import { recordReference } from '@/components/crm/reference'
+import type { RecordReference } from '@/components/crm/reference'
 import { isResourceIdentity } from './types'
 import type { ResourceIdentity } from './types'
 
@@ -178,7 +181,7 @@ export const MENTION_NODE_SPEC = {
       tag: 'span[data-resource-mention]',
       getAttrs: (dom: HTMLElement) => ({
         token: dom.getAttribute('data-resource-mention') ?? '',
-        label: dom.textContent ?? '',
+        label: dom.textContent,
       }),
     },
   ],
@@ -197,4 +200,40 @@ export const mentionNodeMarkdown = (attrs: {
 }) => {
   const label = escapeLabel(attrs.label || 'Untitled')
   return `[${label}](${MENTION_SCHEME}${attrs.token})`
+}
+
+/**
+ * The context reference a turn carries for a mention, in a shape the chat
+ * request already takes. A kind the request has no wire form for (a Work
+ * item, a conversation, an extension kind) gives none: the mention stays in
+ * the text with its identity, and nothing else is sent.
+ */
+export function toContextReference(
+  resource: ResourceIdentity,
+  label: string,
+): TheoremContextReference | RecordReference | undefined {
+  switch (resource.kind) {
+    case 'file':
+    case 'artifact':
+    case 'message':
+    case 'run':
+    case 'graph-object':
+      return { location: { resource }, label }
+    case 'record':
+      return recordReference(resource.objectType, resource.objectId, label)
+    case 'document':
+      // An Index document is read as a graph object, at whatever revision it has when the turn is sent.
+      return {
+        location: {
+          resource: {
+            kind: 'graph-object',
+            objectId: resource.documentId,
+            objectType: 'document',
+          },
+        },
+        label,
+      }
+    default:
+      return undefined
+  }
 }

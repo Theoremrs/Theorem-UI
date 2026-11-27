@@ -56,7 +56,7 @@ export function useResolved(ref: ResourceRef | undefined): ResolvedView {
             result.state === 'ready' && 'meta' in result
               ? { status: 'ready', meta: result.meta }
               : {
-                  status: result.state as NotReady,
+                  status: result.state,
                   tombstone:
                     'tombstone' in result ? result.tombstone : undefined,
                 },
@@ -106,7 +106,7 @@ export function usePreview(ref: ResourceRef, enabled: boolean): PreviewView {
             result.state === 'ready' && 'preview' in result
               ? { status: 'ready', preview: result.preview }
               : {
-                  status: result.state as NotReady,
+                  status: result.state,
                   tombstone:
                     'tombstone' in result ? result.tombstone : undefined,
                 },

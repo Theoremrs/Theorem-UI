@@ -1,5 +1,6 @@
 // SOURCING: none. The public surface of the shared resource layer (REF-01..REF-04, LINK-04, DATA-02); the components are in components/resources.
 import './open'
+
 export * from './types'
 export * from './state'
 export * from './relationships'

@@ -34,12 +34,12 @@ const ref = (resource: ResourceIdentity, title: string): ResourceRef => ({
 })
 
 /** Matches the one kind of resource a provider serves; anything else is unavailable, never another resource. */
-function only<K extends ResourceIdentity['kind']>(
-  kind: K,
+function only<TKind extends ResourceIdentity['kind']>(
+  kind: TKind,
   resource: ResourceIdentity,
-): Extract<ResourceIdentity, { kind: K }> | undefined {
+): Extract<ResourceIdentity, { kind: TKind }> | undefined {
   return resource.kind === kind
-    ? (resource as Extract<ResourceIdentity, { kind: K }>)
+    ? (resource as Extract<ResourceIdentity, { kind: TKind }>)
     : undefined
 }
 
@@ -50,9 +50,9 @@ const basename = (path: string) =>
 
 export interface FilesDeps {
   /** The client for a workspace, or none when this window cannot reach it. */
-  client(workspaceId: string): WorkspaceClient | undefined
+  client: (workspaceId: string) => WorkspaceClient | undefined
   /** The workspace a search covers when it is not given one. */
-  defaultWorkspaceId(): Promise<string | undefined>
+  defaultWorkspaceId: () => Promise<string | undefined>
 }
 
 const PREVIEW_CHARS = 600
@@ -220,11 +220,11 @@ export function filesProvider(deps: FilesDeps): ResourceProvider {
 // Documents (the Index's documents)
 
 export interface DocumentsDeps {
-  items(query: {
+  items: (query: {
     q?: string
     ids?: string[]
     limit: number
-  }): Promise<{ items: IndexItem[]; total: number }>
+  }) => Promise<{ items: IndexItem[]; total: number }>
 }
 
 const documentRef = (item: IndexItem): ResourceRef => ({
@@ -309,19 +309,19 @@ export function documentsProvider(deps: DocumentsDeps): ResourceProvider {
 // Records
 
 export interface RecordsDeps {
-  types(): Promise<ObjectType[]>
-  find(
+  types: () => Promise<ObjectType[]>
+  find: (
     objectTypeId: string,
     id: string,
-  ): Promise<RecordRow & { version: number }>
-  search(
+  ) => Promise<RecordRow & { version: number }>
+  search: (
     type: ObjectType,
     query: string,
     limit: number,
-  ): Promise<Array<RecordRow & { version?: number }>>
+  ) => Promise<Array<RecordRow & { version?: number }>>
   /** Whether this sign-in may read the type. */
-  canRead(type: ObjectType): Promise<boolean>
-  title(type: ObjectType, row: RecordRow): string
+  canRead: (type: ObjectType) => Promise<boolean>
+  title: (type: ObjectType, row: RecordRow) => string
 }
 
 export function recordsProvider(deps: RecordsDeps): ResourceProvider {
@@ -339,7 +339,7 @@ export function recordsProvider(deps: RecordsDeps): ResourceProvider {
       .slice(0, 6)
       .map((f) => ({
         key: f.key,
-        label: f.label ?? f.key,
+        label: f.label,
         value: row.values[f.key],
       }))
   return {
@@ -421,9 +421,9 @@ export function recordsProvider(deps: RecordsDeps): ResourceProvider {
 // Work items and projects
 
 export interface WorkDeps {
-  item(id: string): Promise<WorkItemDetail>
-  project(id: string): Promise<WorkProjectDetail>
-  query(query: WorkQuery): Promise<WorkItemsPage>
+  item: (id: string) => Promise<WorkItemDetail>
+  project: (id: string) => Promise<WorkProjectDetail>
+  query: (query: WorkQuery) => Promise<WorkItemsPage>
 }
 
 const itemPreview = (item: WorkItem): PreviewData => ({
@@ -431,7 +431,7 @@ const itemPreview = (item: WorkItem): PreviewData => ({
   typeLabel: 'Work item',
   excerpt: item.bodyMarkdown?.slice(0, PREVIEW_CHARS),
   fields: [
-    { key: 'status', label: 'Status', value: item.status.name ?? item.status },
+    { key: 'status', label: 'Status', value: item.status.name },
     { key: 'priority', label: 'Priority', value: item.priority },
   ],
 })
@@ -523,14 +523,14 @@ export function workProvider(deps: WorkDeps): ResourceProvider {
 // Threads and messages
 
 export interface ThreadsDeps {
-  thread(threadId: string): Promise<{
+  thread: (threadId: string) => Promise<{
     title: string
     deletedAtMs?: number
     revision: number
     messages: Array<{ messageId: string; role: string; text?: string }>
   }>
   /** Threads whose title matches; `complete` is false when the listing was one page. */
-  list(query: string): Promise<{
+  list: (query: string) => Promise<{
     threads: Array<{ threadId: string; title: string }>
     complete: boolean
   }>
@@ -643,7 +643,7 @@ export function threadsProvider(deps: ThreadsDeps): ResourceProvider {
 // Runs
 
 export interface RunsDeps {
-  run(runId: string): Promise<{
+  run: (runId: string) => Promise<{
     runId: string
     threadId: string | null
     status: string
@@ -700,10 +700,10 @@ export function runsProvider(deps: RunsDeps): ResourceProvider {
 
 export interface ArtifactsDeps {
   /** Reads an artifact (at a revision, when pinned). Absent until Theorem serves a route that finds one by id. */
-  read?(
+  read?: (
     artifactId: string,
     revision?: number | string,
-  ): Promise<{
+  ) => Promise<{
     title: string
     kind?: string
     revision?: number | string
