@@ -67,6 +67,8 @@ export type AppRunReport = {
   building: boolean
   /** The saved revision did not build; an earlier one may still run. */
   failed: boolean
+  /** The frame runs the saved revision's own source. */
+  current?: boolean
 }
 
 function useDocumentReplica(app: AppDocument) {
@@ -227,6 +229,7 @@ function AppPreview({
   displayedRef,
   onStart,
   onReport,
+  elsewhere = false,
 }: {
   app: AppDocument
   snapshot: AppSnapshot
@@ -236,6 +239,8 @@ function AppPreview({
   /** Called each time a frame starts the App: its startup runs. */
   onStart?: () => void
   onReport?: (report: AppRunReport) => void
+  /** Its conversation is not the one on screen: no Ask to fix there. */
+  elsewhere?: boolean
 }) {
   const { state, error: stateError } = useDocumentReplica(app)
   const preview = useHostedPreview(snapshot, state?.ready)
@@ -260,6 +265,7 @@ function AppPreview({
       running: runningPosition || undefined,
       building: !runsCurrent && !failedBuild,
       failed: !runsCurrent && failedBuild,
+      current: runsCurrent,
     })
   }, [runningPosition, runsCurrent, failedBuild])
   const start = useRef(onStart)
@@ -366,11 +372,15 @@ function AppPreview({
         kept={Boolean(shown) && !preview.current}
         checking={types.checking}
         checkError={types.error}
-        onFix={() => {
-          const current = app.getSnapshot()
-          if (current && !current.pendingState)
-            askAbout(appRepairReference(current, problems))
-        }}
+        onFix={
+          elsewhere
+            ? undefined
+            : () => {
+                const current = app.getSnapshot()
+                if (current && !current.pendingState)
+                  askAbout(appRepairReference(current, problems))
+              }
+        }
       />
       {shown && host ? (
         <BlockFrame
@@ -545,7 +555,8 @@ function AppToolbar({
   running: boolean
   toggle: () => void
   edit: () => void
-  about: () => void
+  /** Left out when the App's conversation is not the one on screen. */
+  about?: () => void
   selected: boolean
   reload: () => void
 }) {
@@ -564,14 +575,16 @@ function AppToolbar({
       <Button size="xs" variant="ghost" onClick={edit}>
         Edit source
       </Button>
-      <Button
-        size="xs"
-        variant="ghost"
-        onClick={about}
-        disabled={snapshot.pendingState}
-      >
-        {selected ? 'Ask about selection' : 'Ask about this App'}
-      </Button>
+      {about && (
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={about}
+          disabled={snapshot.pendingState}
+        >
+          {selected ? 'Ask about selection' : 'Ask about this App'}
+        </Button>
+      )}
       <Button size="xs" variant="ghost" onClick={reload}>
         Reload
       </Button>
@@ -796,12 +809,29 @@ export function DocumentAppView({
   useEffect(() => {
     reportRevisions.current?.({
       committed: committed || undefined,
-      ...(running ? run : { building: false, failed: false }),
+      ...(running
+        ? {
+            running: run.running,
+            building: run.building,
+            failed: run.failed,
+            runsCommittedSource: run.current,
+          }
+        : { building: false, failed: false }),
       stopped: !running,
       editing: edit !== undefined,
       content: { pending, ...(saveError && { error: saveError }) },
     })
-  }, [committed, running, run, edit, pending, saveError])
+  }, [
+    committed,
+    running,
+    run.running,
+    run.building,
+    run.failed,
+    run.current,
+    edit,
+    pending,
+    saveError,
+  ])
   // What was pointed at, while it is still this revision that is on screen.
   const pointed = snapshot && selectionForSource(snapshot, selection)
   if (!snapshot)
@@ -821,10 +851,15 @@ export function DocumentAppView({
           setSelection(undefined)
         }}
         edit={() => setEdit({ html: snapshot.html, base: snapshot })}
-        about={() =>
-          void attempt(async () => {
-            askAbout(appContextReference(app.getSnapshot()!, selection))
-          })
+        // Asking adds to the composer on screen, which belongs to another
+        // conversation when this App's is elsewhere.
+        about={
+          elsewhere
+            ? undefined
+            : () =>
+                void attempt(async () => {
+                  askAbout(appContextReference(app.getSnapshot()!, selection))
+                })
         }
         selected={Boolean(selectionForSource(snapshot, selection))}
         reload={() => void attempt(() => app.load())}
@@ -871,6 +906,7 @@ export function DocumentAppView({
           displayedRef={displayedRef}
           onStart={onStart}
           onReport={setRun}
+          elsewhere={elsewhere}
         />
       ) : (
         <p className="text-sm text-ink-muted">

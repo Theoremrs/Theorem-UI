@@ -26,7 +26,7 @@ import { DocumentApp, DocumentAppView } from '@/components/blocks/document-app'
 import { appDocumentFor } from '@/lib/theorem/apps'
 import { cn } from '@/lib/utils'
 import type { Distance } from '@/lib/artifacts/contributions'
-import { useArtifactMessageId } from './artifact-model'
+import { useArtifactMessageId, useThreadArtifacts } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 import { AppPreview } from './app-revision-frame'
 import { DocumentCard } from './document-card'
@@ -215,14 +215,17 @@ const AppRuntime: FC<{ runtime: RuntimeRecord }> = ({ runtime }) => {
   const { id, documentId, conversation, pinnedPosition } = runtime
   const app = useMemo(() => appDocumentFor(documentId), [documentId])
   const onScreen = useArtifactView((s) => s.threadId)
+  // The chat on screen holds this App: only then may a runtime started
+  // before its chat had an id take that chat as its own (as the dock does).
+  const found = Boolean(useThreadArtifacts().get(runtime.artifactId)?.length)
   useEffect(() => {
-    if (conversation === undefined && onScreen)
+    if (conversation === undefined && onScreen && found)
       useArtifactRuntimes.getState().adopt(id, onScreen)
-  }, [id, conversation, onScreen])
+  }, [id, conversation, onScreen, found])
+  // A runtime with a known chat is elsewhere in any other chat, unsaved ones
+  // included; one without is elsewhere wherever the chat on screen lacks it.
   const elsewhere =
-    conversation !== undefined &&
-    onScreen !== undefined &&
-    onScreen !== conversation
+    conversation !== undefined ? onScreen !== conversation : !found
   return (
     <DocumentAppView
       app={app}

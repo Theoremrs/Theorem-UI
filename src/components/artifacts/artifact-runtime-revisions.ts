@@ -16,6 +16,12 @@ export type RuntimeRevisions = {
   committed?: string
   /** The revision the running output was started from. */
   running?: string
+  /**
+   * The running output was built from the committed revision's source. A
+   * save that changes only declared state advances `committed` without a new
+   * source, so nothing waits on a restart then.
+   */
+  runsCommittedSource?: boolean
   /** The committed revision is being prepared to run (an App's build). */
   building?: boolean
   /** The committed revision could not be prepared; the running one stays. */
@@ -99,7 +105,11 @@ export function revisionStatus(
       tone: failed ? 'negative' : 'quiet',
       restartNeeded: false,
     }
-  if (committed !== undefined && committed !== running) {
+  if (
+    committed !== undefined &&
+    committed !== running &&
+    !revisions.runsCommittedSource
+  ) {
     if (failed)
       return {
         text: `Couldn't build ${committedName}${still}`,

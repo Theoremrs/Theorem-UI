@@ -41,6 +41,16 @@ test('draft, committed and running stay distinct while a saved revision builds, 
   expect(held.text).toBe('Saved v4 · restart to run it · still running v3')
 })
 
+test('a save of declared state alone asks for no restart, because the running source is still the saved one', () => {
+  const status = revisionStatus(
+    { committed: '5', running: '4', runsCommittedSource: true },
+    undefined,
+    name,
+  )
+  expect(status.restartNeeded).toBe(false)
+  expect(status.text).toBe('Running v4')
+})
+
 test('once the draft is committed and running, the line names that revision, and a restart says what it replaced', () => {
   expect(
     revisionStatus({ committed: '4', running: '4' }, { position: '4' }, name)

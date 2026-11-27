@@ -532,10 +532,26 @@ export function ArtifactRuntimeHost() {
     () =>
       useComposerReferences.subscribe((next, previous) => {
         if (
-          useArtifactRuntimes.getState().expanded !== undefined &&
-          next.references.some((ref) => !previous.references.includes(ref))
+          useArtifactRuntimes.getState().expanded === undefined ||
+          !next.references.some((ref) => !previous.references.includes(ref))
         )
-          useArtifactRuntimes.getState().restore()
+          return
+        // The composer is focused as soon as this returns, before React
+        // commits the collapse, so the stage leaves modal mode here and the
+        // layout effect neither re-traps focus nor sends it to the opener.
+        const node = stage.current
+        if (node && modal.current) {
+          switching.current = true
+          try {
+            node.close()
+            node.setAttribute('open', '')
+          } finally {
+            switching.current = false
+          }
+          modal.current = false
+        }
+        opener.current = null
+        useArtifactRuntimes.getState().restore()
       }),
     [],
   )
