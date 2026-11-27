@@ -20,7 +20,7 @@ const WAITING_ACTIONS = new Set(['run', 'wait', 'rerun'])
 export const MACHINE_OPERATIONS = [
   {
     name: MACHINE_COMPUTE,
-    description: `Computes on the person's own machine, through theorem-compute-serve there: its CPU, GPU, memory and files, in Theorem's scientific environment, with receipts. \`call\` is one call of the compute interface, the same actions and request as compute (run, submit, wait, progress, logs, cancel, result, output, receipt, rerun, compare, jobs, environments, discover); a request's inputs may name files on that machine by path. A call waits at most ${MAX_WAIT_SECONDS} s: a job still running answers with its id, so \`submit\` a long one and \`wait\` on it. Outputs are read with \`output\`, since only this page reaches the machine.`,
+    description: `Computes on the person's own machine, through theorem-compute-serve there: its CPU, GPU, memory and files, in Theorem's scientific environment, with receipts. \`call\` is one call of the compute interface, the same actions and request as compute (run, submit, wait, progress, logs, cancel, result, output, receipt, rerun, compare, jobs, environments, discover), with the request nested as compute nests it: \`{action: "run", request: {source, outputs?, params?, ...}}\`; a request's inputs may name files on that machine by path. A call waits at most ${MAX_WAIT_SECONDS} s: a job still running answers with its id, so \`submit\` a long one and \`wait\` on it. Outputs are read with \`output\`, since only this page reaches the machine.`,
     effect: 'read',
     inputSchema: {
       type: 'object',
