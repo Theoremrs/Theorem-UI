@@ -36,12 +36,14 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
 import type { ComponentType, CSSProperties } from 'react'
 
 import { ContributionBoundary } from './contribution-boundary'
+import { moduleComponentOf } from './module-mount'
 import {
   useHostContributions,
   useNavEntries,
@@ -564,8 +566,15 @@ export function ChatShell({
   const navigation = useNavEntries()
   const panels = useHostContributions('panel')
   const shipped = <DesktopShell projectId={projectId} threadId={threadId} />
-  const Custom = custom?.Component as
-    ComponentType<ShellPresentationProps> | undefined
+  // A shell a module declares has no component code: the module runtime
+  // mounts it. Memoized so the mounted module is not remounted each render.
+  const Custom = useMemo(
+    () =>
+      (custom?.Component ??
+        (custom ? moduleComponentOf(custom) : undefined)) as
+        ComponentType<ShellPresentationProps> | undefined,
+    [custom],
+  )
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-rail text-ink">
       {custom && Custom ? (

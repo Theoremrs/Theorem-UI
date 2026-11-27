@@ -51,6 +51,7 @@ import { useShell } from './shell-state'
 import { ChromeMenuPopup, menuItem } from './chrome-menu'
 import { adaptDock } from './responsive-dock'
 import { ContributionBoundary } from './contribution-boundary'
+import { moduleComponentOf } from './module-mount'
 import './builtin-chrome'
 import { registerContributions } from '@/lib/contributions/registry'
 import { useHostContributions } from '@/lib/shell/host-registry'
@@ -424,11 +425,13 @@ function useDockComponents() {
     }
     for (const one of panels) {
       const name = one.meta?.component
-      if (typeof name !== 'string' || !one.Component) continue
+      // A module's panel has no component code: the module runtime mounts it.
+      const Component = one.Component ?? moduleComponentOf(one)
+      if (typeof name !== 'string' || !Component) continue
       table[name] =
         one.source.kind === 'builtin'
-          ? (one.Component as FunctionComponent<IDockviewPanelProps>)
-          : guardedPanel(one.id, one.Component)
+          ? (Component as FunctionComponent<IDockviewPanelProps>)
+          : guardedPanel(one.id, Component)
     }
     return table
   }, [panels])
