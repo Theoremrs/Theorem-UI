@@ -271,11 +271,12 @@ try {
     'an opt-in design check evaluates the live App DOM and names the source to repair',
     designCheck.design?.status === 'measured' &&
       designCheck.design.evidence === 'sandbox-reported-dom' &&
-      designCheck.design.report.findings.some((finding) =>
-        finding.elementId === 'id:faint' &&
-        finding.source === 'main.tsx:1:1' &&
-        finding.authority === 'standard' &&
-        finding.status === 'fail',
+      designCheck.design.schemes.join() === 'light,dark' &&
+      designCheck.design.report.issues.some((issue) =>
+        issue.at.includes('main.tsx:1:1') &&
+        issue.authority === 'standard' &&
+        issue.status === 'fail' &&
+        issue.schemes === undefined,
       ),
     designCheck.design,
   )
