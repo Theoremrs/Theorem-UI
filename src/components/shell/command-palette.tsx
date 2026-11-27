@@ -1,7 +1,8 @@
-// SOURCING: assistant-ui's command-palette element (assistant-ui/elements/command-palette) in coss ui's command dialog backdrop and viewport over a Base UI Dialog, Base UI's glass for menus (glass/menu-glass), @tanstack/react-router (navigation), lib/theorem/models (catalog and pick), lib/theorem/catalog (plugins and skills), lib/theorem/organization (threads across every project)
+// SOURCING: lib/commands (the shared command registry and its one key listener, so a row here, a chord and an agent run the same command), assistant-ui's command-palette element (assistant-ui/elements/command-palette) in coss ui's command dialog backdrop and viewport over a Base UI Dialog, Base UI's glass for menus (glass/menu-glass), @tanstack/react-router (navigation), lib/theorem/models (catalog and pick), lib/theorem/catalog (plugins and skills), lib/theorem/organization (threads across every project)
 import { Dialog } from '@base-ui/react/dialog'
-import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useRouter } from '@tanstack/react-router'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { z } from 'zod'
 import type { ComponentType, SVGProps } from 'react'
 import { create } from 'zustand'
 import {
@@ -18,8 +19,20 @@ import {
 import { useMenuGlass } from '@/components/glass/menu-glass'
 import { Icon } from '@/components/icons'
 import { SETTINGS_GROUPS } from '@/components/settings/sections'
+import { useCommandKeybindings } from '@/lib/commands/keybindings'
+import {
+  applies,
+  executeCommand,
+  registerCommands,
+  useCommandRegistry,
+} from '@/lib/commands/registry'
+import type { CommandContext } from '@/lib/commands/registry'
 import { useCatalogEntries } from '@/lib/theorem/catalog'
-import { modelCatalogIssue, useModelCatalog, usePickedModels } from '@/lib/theorem/models'
+import {
+  modelCatalogIssue,
+  useModelCatalog,
+  usePickedModels,
+} from '@/lib/theorem/models'
 import {
   attentionLabel,
   primaryProjectId,
@@ -48,23 +61,66 @@ export const useCommandPalette = create<{
   setOpen: (open: boolean) => void
 }>()((set) => ({ open: false, setOpen: (open) => set({ open }) }))
 
-/** ⌘K or Ctrl+K anywhere opens the palette. */
-function useHotkey() {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault()
-        const { open, setOpen } = useCommandPalette.getState()
-        setOpen(!open)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+/** Commands the palette runs itself rather than listing under Commands. */
+const SHELL_COMMANDS = new Set([
+  'theorem.palette.toggle',
+  'theorem.chat.new',
+  'theorem.settings.open',
+])
+
+/**
+ * The shell's own commands, registered while the palette is mounted, and the
+ * one key listener that runs any registered command's chord. ⌘K or Ctrl+K
+ * anywhere still opens the palette, now as `theorem.palette.toggle`.
+ */
+function useShellCommands() {
+  const navigate = useNavigate()
+  const router = useRouter()
+  useEffect(
+    () =>
+      registerCommands([
+        {
+          id: 'theorem.palette.toggle',
+          label: 'Command palette',
+          group: 'Go to',
+          effect: 'presentation',
+          target: 'host',
+          keys: ['mod+k', 'ctrl+k'],
+          palette: false,
+          run: () => {
+            const { open, setOpen } = useCommandPalette.getState()
+            setOpen(!open)
+          },
+        },
+        {
+          id: 'theorem.chat.new',
+          label: 'New chat',
+          group: 'Go to',
+          effect: 'navigate',
+          target: 'host',
+          run: () => navigate({ to: '/' }),
+        },
+        {
+          id: 'theorem.settings.open',
+          label: 'Open settings',
+          group: 'Go to',
+          effect: 'navigate',
+          target: 'host',
+          args: z.object({ path: z.string().startsWith('/settings') }),
+          palette: false,
+          run: ({ path }) => navigate({ to: path }),
+        },
+      ]),
+    [navigate],
+  )
+  const path = useCallback(() => router.state.location.pathname, [router])
+  useCommandKeybindings(path)
+  return path
 }
 
-function useGroups(close: () => void): Group[] {
+function useGroups(close: () => void, currentPath: () => string): Group[] {
   const navigate = useNavigate()
+  const registered = useCommandRegistry((s) => s.commands)
   const { data: catalog = [], list } = useModelCatalog()
   const defaultName = catalog.find((m) => m.ref === list?.defaultRef)?.name
   const { starred, selected, select } = usePickedModels()
@@ -72,9 +128,10 @@ function useGroups(close: () => void): Group[] {
   const { data: organization } = useOrganization()
 
   return useMemo(() => {
-    const go = (to: string) => () => {
+    const context: CommandContext = { focus: 'dialog', path: currentPath() }
+    const run = (id: string, args?: unknown) => () => {
       close()
-      void navigate({ to })
+      void executeCommand(id, args, context, 'palette')
     }
     const pick = (ref: string | undefined) => () => {
       select(ref)
@@ -127,13 +184,18 @@ function useGroups(close: () => void): Group[] {
       {
         label: 'Go to',
         items: [
-          { id: 'new-chat', label: 'New chat', Mark: Icon.NewChat, run: go('/') },
+          {
+            id: 'new-chat',
+            label: 'New chat',
+            Mark: Icon.NewChat,
+            run: run('theorem.chat.new'),
+          },
           ...SETTINGS_GROUPS.flatMap(({ sections }) =>
             sections.map(({ path, label, Mark }) => ({
               id: path,
               label: `Settings: ${label}`,
               Mark,
-              run: go(path),
+              run: run('theorem.settings.open', { path }),
             })),
           ),
         ],
@@ -168,7 +230,7 @@ function useGroups(close: () => void): Group[] {
           label: plugin.name,
           hint: plugin.description,
           Mark: Icon.Plugin,
-          run: go('/settings/plugins'),
+          run: run('theorem.settings.open', { path: '/settings/plugins' }),
         })),
       },
       {
@@ -179,17 +241,57 @@ function useGroups(close: () => void): Group[] {
           hint: skill.plugin,
           keywords: skill.description,
           Mark: Icon.Article,
-          run: go('/settings/plugins'),
+          run: run('theorem.settings.open', { path: '/settings/plugins' }),
         })),
+      },
+      {
+        // Every other registered command a row can run as it is: a module's,
+        // an extension's, or one of the host's own.
+        label: 'Commands',
+        items: [...registered.values()]
+          .filter(
+            (command) =>
+              !SHELL_COMMANDS.has(command.id) &&
+              command.palette !== false &&
+              !command.args &&
+              applies(command, context),
+          )
+          .map((command) => ({
+            id: `command:${command.id}`,
+            label: command.label,
+            hint: command.keys?.[0],
+            keywords: [
+              command.group,
+              command.description,
+              ...(command.keywords ?? []),
+            ]
+              .filter(Boolean)
+              .join(' '),
+            Mark: Icon.Plugin,
+            run: run(command.id),
+          })),
       },
     ]
     return groups.filter((group) => group.items.length)
-  }, [catalog, defaultName, starred, selected, select, plugins, skills, organization, navigate, close])
+  }, [
+    catalog,
+    defaultName,
+    starred,
+    selected,
+    select,
+    plugins,
+    skills,
+    organization,
+    registered,
+    navigate,
+    close,
+    currentPath,
+  ])
 }
 
 /** The ⌘K palette: places, models, plugins and skills, filtered as the person types. */
 export function CommandPalette() {
-  useHotkey()
+  const path = useShellCommands()
   const open = useCommandPalette((s) => s.open)
   const setOpen = useCommandPalette((s) => s.setOpen)
   return (
@@ -201,7 +303,7 @@ export function CommandPalette() {
             aria-label="Command palette"
             className="w-full max-w-xl outline-none transition-[scale,opacity] duration-(--duration-snap) ease-snap data-ending-style:scale-98 data-ending-style:opacity-0 data-starting-style:scale-98 data-starting-style:opacity-0"
           >
-            {open && <Palette close={() => setOpen(false)} />}
+            {open && <Palette close={() => setOpen(false)} path={path} />}
           </Dialog.Popup>
         </CommandDialogViewport>
       </CommandDialogPortal>
@@ -210,10 +312,10 @@ export function CommandPalette() {
 }
 
 /** The palette's contents, mounted while it is open so each opening starts empty. */
-function Palette({ close }: { close: () => void }) {
+function Palette({ close, path }: { close: () => void; path: () => string }) {
   const { list, error } = useModelCatalog()
   const issue = modelCatalogIssue(list, error)
-  const groups = useGroups(close)
+  const groups = useGroups(close, path)
   const glass = useMenuGlass('navigation')
   const { commands, runs } = useMemo(() => {
     const runs = new Map<string, () => void>()
@@ -254,7 +356,10 @@ function Palette({ close }: { close: () => void }) {
         onActiveChange={setActiveId}
         onRun={(id) => runs.get(id)?.()}
         placeholder="Search threads, models, plugins, skills and settings"
-        className={cn('max-w-none', glass.className && 'bg-transparent dark:bg-transparent')}
+        className={cn(
+          'max-w-none',
+          glass.className && 'bg-transparent dark:bg-transparent',
+        )}
       />
       {issue && (
         <p role="alert" className="px-3.5 pb-3 text-xs text-ink-muted">
