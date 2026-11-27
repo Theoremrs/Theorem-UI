@@ -246,6 +246,8 @@ describe('chords', () => {
     expect(focusOf(at('t'))).toBe('terminal')
     expect(focusOf(at('d'))).toBe('dialog')
     expect(focusOf(document.body)).toBe('none')
+    // The document is shared with every later test file.
+    document.body.innerHTML = ''
   })
 })
 
