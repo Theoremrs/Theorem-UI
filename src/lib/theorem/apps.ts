@@ -1,16 +1,99 @@
+// SOURCING: @theoremharness/sdk documents (Theorem Documents v2), loro-crdt (the canonical body), async-mutex (one save queue per App), zod through notebooks/forms (a saved notebook's form)
 // Revision coordination over the existing Documents SDK and canonical Loro body.
 import type { Theorem } from './client'
 import { Mutex } from 'async-mutex'
 import { LoroDoc } from 'loro-crdt/base64'
 import { describeError, hasStatus, mutate, theorem } from './client'
 import { fromBase64, toBase64 } from '../blocks/state'
+import { parseNotebookForm } from '../notebooks/forms'
+import type { MarimoNotebook, ObservableNotebook } from '../notebooks/forms'
 import {
   contentDigest,
   encodeNote,
   isEditableNote,
+  noteAttribute,
   noteMarkdown,
   reviseNote,
 } from './note-canonical'
+
+/**
+ * The source block's attribute naming a saved artifact's form, as the server
+ * writes it (conversation_apps.rs FORM_ATTR). A block without it is an HTML
+ * App, so every App saved before other forms reads as it did.
+ */
+const FORM_ATTR = 'artifactForm'
+
+/** An OpenUI program as it is saved: the program and the library it was written against. */
+export type OpenUIPublication = {
+  form: 'openui'
+  title: string
+  library: { id: string; version: string }
+  program: string
+}
+
+/**
+ * What a saved App revision holds, read as its form: an HTML App's page, or
+ * another form's publication exactly as write_app took it.
+ */
+export type SavedPublication =
+  | { form: 'html-app'; title: string; html: string }
+  | ObservableNotebook
+  | MarimoNotebook
+  | OpenUIPublication
+
+const isOpenUI = (value: unknown): value is OpenUIPublication => {
+  const v = value as Partial<OpenUIPublication> | null
+  return (
+    v?.form === 'openui' &&
+    typeof v.title === 'string' &&
+    typeof v.program === 'string' &&
+    typeof v.library?.id === 'string' &&
+    typeof v.library.version === 'string'
+  )
+}
+
+/**
+ * A saved source read as the form its block names. Another form's source is
+ * its publication as JSON (conversation_apps.rs canonical_source); one this
+ * build cannot read says why instead of being shown as something it is not.
+ */
+export function readPublication(
+  form: string,
+  source: string,
+  title: string,
+): { publication: SavedPublication } | { unreadable: string } {
+  if (form === 'html-app')
+    return { publication: { form: 'html-app', title, html: source } }
+  let value: unknown
+  try {
+    value = JSON.parse(source)
+  } catch (error) {
+    return {
+      unreadable: `The saved ${form} source is not a publication: ${(error as Error).message}`,
+    }
+  }
+  if (form === 'observable' || form === 'marimo') {
+    const notebook = parseNotebookForm(value)
+    return notebook?.form === form
+      ? { publication: notebook }
+      : {
+          unreadable: `The saved source is not a ${form} notebook this version of Theorem reads.`,
+        }
+  }
+  if (form === 'openui')
+    return isOpenUI(value)
+      ? { publication: value }
+      : { unreadable: 'The saved source is not an OpenUI program.' }
+  return { unreadable: `This version of Theorem does not read form ${form}.` }
+}
+
+/** The snapshot fields a source read as its form fills: one of them, and the other cleared. */
+function sourceAs(form: string, source: string, title: string) {
+  const read = readPublication(form, source, title)
+  return 'publication' in read
+    ? { publication: read.publication, unreadable: undefined }
+    : { publication: undefined, unreadable: read.unreadable }
+}
 
 export interface AppDocuments {
   get: (
@@ -27,7 +110,16 @@ export interface AppDocuments {
 export type AppSnapshot = {
   documentId: string
   title: string
+  /** The saved source text: an HTML App's page, another form's publication as JSON. */
   html: string
+  /** The form the source is in, as its block names it. */
+  form: SavedPublication['form'] | (string & {})
+  /** The source read as its form, or undefined when this build cannot read it. */
+  publication?: SavedPublication
+  /** Why `publication` is undefined. */
+  unreadable?: string
+  /** The projection search and text readers see, kept as the writer of the source set it. */
+  markdownProjection: string
   canonical: Uint8Array
   revision: Theorem.DocumentRevision
   saveError?: string
@@ -94,11 +186,16 @@ export class AppDocument {
       throw new Error('The App source does not match its saved revision')
     if (!isEditableNote(canonical))
       throw new Error('This App uses an unsupported document layout')
+    const source = noteMarkdown(canonical)!
+    const form = noteAttribute(canonical, FORM_ATTR) ?? 'html-app'
     return {
       documentId: this.documentId,
       title: snapshot.summary.title,
       canonical,
-      html: noteMarkdown(canonical)!,
+      html: source,
+      form,
+      ...sourceAs(form, source, snapshot.summary.title),
+      markdownProjection: snapshot.markdownProjection,
       revision: snapshot.summary.revision,
     }
   }
@@ -118,7 +215,10 @@ export class AppDocument {
     const body = {
       title: base.title,
       documentKind: 'theorem.app',
-      markdownProjection: html,
+      // An HTML App's page is its projection. Another form's projection is
+      // the one its writer made of the publication, and saving state keeps it.
+      markdownProjection:
+        base.form === 'html-app' ? html : base.markdownProjection,
       canonical: {
         placement: 'inline' as const,
         bytesBase64: toBase64(canonical),
@@ -141,6 +241,8 @@ export class AppDocument {
     this.publish({
       ...base,
       html,
+      ...sourceAs(base.form, html, base.title),
+      markdownProjection: body.markdownProjection,
       canonical,
       revision: receipt.document.revision,
       saveError: undefined,
@@ -163,6 +265,10 @@ export class AppDocument {
     return this.lock.runExclusive(async () => {
       try {
         const base = await this.read()
+        if (base.form !== 'html-app')
+          throw new Error(
+            `This App is saved as ${base.form}; its source is revised as that form, not as a page.`,
+          )
         if (
           String(base.revision.position) !== String(revision.position) ||
           base.revision.contentDigest !== revision.contentDigest

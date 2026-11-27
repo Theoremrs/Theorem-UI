@@ -1,18 +1,18 @@
-// SOURCING: lucide-react (the status glyphs) and the app's Tailwind tokens.
+// SOURCING: lucide-react (the status glyphs, but done is the owner's Streamline Checkmark Circle, Icon.CheckCircle) and the app's Tailwind tokens.
 // How a block says where it stands: computing, done, failed, waiting for Run.
 import {
   CircleAlert,
-  CircleCheck,
   CircleDashed,
   LoaderCircle,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Icon as Glyphs } from '@/components/icons'
 import type { CellState } from '@/lib/blocks/runtime'
 import { cn } from '@/lib/utils'
 
 const STATUS = {
   pending: { label: 'Running', Icon: LoaderCircle, spin: true },
-  ok: { label: 'Up to date', Icon: CircleCheck, spin: false },
+  ok: { label: 'Up to date', Icon: Glyphs.CheckCircle, spin: false },
   error: { label: 'Failed', Icon: CircleAlert, spin: false },
   idle: { label: 'Waiting for Run', Icon: CircleDashed, spin: false },
   stale: { label: 'Changed since it ran', Icon: CircleDashed, spin: false },

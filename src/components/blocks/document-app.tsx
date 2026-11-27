@@ -20,8 +20,9 @@ import {
 } from '@/lib/blocks/app-source'
 import type { AppProblem } from '@/lib/blocks/app-source'
 import { traceFrameError } from '@/lib/blocks/app-trace'
-import { documentAppHost, documentAppState } from '@/lib/blocks/document-app'
+import { documentAppHost, useDocumentReplica } from '@/lib/blocks/document-app'
 import * as hosted from '@/lib/blocks/hosted-app'
+import { trackRunningApp } from '@/lib/blocks/running-apps'
 import type { AppDossier } from '@/lib/blocks/bridge'
 import type {
   AppSelection,
@@ -57,28 +58,6 @@ import { BlockFrame } from './block-frame'
 import { BlockMessage } from './block-status'
 import { appDeclarations } from './html-app-handler'
 import { SourceEditor } from './source-editor'
-
-function useDocumentReplica(app: AppDocument) {
-  const [state, setState] = useState<ReturnType<typeof documentAppState>>()
-  const [error, setError] = useState<string>()
-  useEffect(() => {
-    let active = true
-    const replica = documentAppState(app)
-    void replica.ready.then(
-      () => {
-        if (active) setState(replica)
-      },
-      (failure) => {
-        if (active) setError(errorText(failure))
-      },
-    )
-    return () => {
-      active = false
-      replica.dispose()
-    }
-  }, [app])
-  return { state, error }
-}
 
 function errorText(error: unknown): string {
   return describeError(error, 'document')
@@ -336,7 +315,15 @@ function AppPreview({
           src={shown.src}
           host={host}
           title={snapshot.title}
-          onConnection={hosted.followTheme}
+          onConnection={(connection) => {
+            const unfollow = hosted.followTheme(connection)
+            // So the agent's app.control reaches this App's named controls.
+            const untrack = trackRunningApp(app.documentId, snapshot.title, connection)
+            return () => {
+              untrack()
+              unfollow()
+            }
+          }}
         />
       ) : (
         !error && !problems.length && <p role="status">Loading App…</p>
@@ -498,25 +485,31 @@ function AppToolbar({
   about,
   selected,
   reload,
+  attention,
 }: {
   snapshot: AppSnapshot
   pinnedPosition?: number | string
   running: boolean
+  /** Something here needs the person (a failed save): the toolbar stays in view. */
+  attention: boolean
   toggle: () => void
   edit: () => void
   about: () => void
   selected: boolean
   reload: () => void
 }) {
+  const changed =
+    pinnedPosition !== undefined && String(pinnedPosition) !== String(snapshot.revision.position)
   return (
     <div
+      data-slot="app-toolbar"
       data-revision={String(snapshot.revision.position)}
+      // A stopped App, one that changed since this result, or a failed save
+      // keeps its actions in view; a healthy one shows them when reached for.
+      data-attention={!running || changed || attention || undefined}
       className="flex flex-wrap items-center gap-1 text-xs text-ink-muted"
     >
-      {pinnedPosition !== undefined &&
-        String(pinnedPosition) !== String(snapshot.revision.position) && (
-          <span>Changed since this result</span>
-        )}
+      {changed && <span>Changed since this result</span>}
       <Button size="xs" variant="ghost" onClick={toggle}>
         {running ? 'Stop App' : 'Run App'}
       </Button>
@@ -749,6 +742,7 @@ export function DocumentAppView({
         }
         selected={Boolean(selectionForSource(snapshot, selection))}
         reload={() => void attempt(() => app.load())}
+        attention={Boolean(error || snapshot.saveError)}
       />
       {snapshot.pendingState && (
         <p role="status" className="text-sm text-ink-muted">

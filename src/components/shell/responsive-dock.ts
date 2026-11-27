@@ -1,18 +1,30 @@
-// SOURCING: Dockview's serialized grid, public group moves, and always-rendered
-// panels. The 35rem reading-space policy is theorem-appearance-v1.
+// SOURCING: Dockview's serialized grid, minimum-width constraints, public
+// group and panel moves, and always-rendered panels. The 35rem reading-space
+// policy is theorem-appearance-v1.
 import type { DockviewApi, DockviewGroupPanel, Position } from 'dockview-react'
 import { THREAD } from './arrangements'
 
 type Layout = ReturnType<DockviewApi['toJSON']>
 type GridNode = Layout['grid']['root']
 type GroupState = Exclude<GridNode['data'], GridNode[]>
-type Anchor = { groupId: string; position: Position }
-type FloatedGroup = {
+type Anchor = { groupId: string; position: Exclude<Position, 'center'> }
+/** A column whose panels wait as tabs in the conversation's group for room to come back. */
+type Stacked = {
+  id: string
+  panelIds: Array<string>
+  activeView: string | undefined
   width: number
   heightFraction: number
   minimumWidth: number
-  anchors: Anchor[]
+  anchors: Array<Anchor>
 }
+
+const DIRECTION = {
+  top: 'above',
+  bottom: 'below',
+  left: 'left',
+  right: 'right',
+} as const
 
 function groupIds(node: GridNode): string[] {
   return Array.isArray(node.data) ? node.data.flatMap(groupIds) : [node.data.id]
@@ -48,26 +60,42 @@ function groupsOf(node: GridNode): GroupState[] {
   return Array.isArray(node.data) ? node.data.flatMap(groupsOf) : [node.data]
 }
 
-/** Dockview serializes the live floating location. Save its underlying grid
- * while the responsive overlays are open, with the live panel/tab states.
+/**
+ * The layout as it would be with every stacked column back in place: the
+ * grid saved before the first column stacked, each group's live state, the
+ * stacked panels in their own columns again, and the groups added since.
  */
 function preferredLayout(
   current: Layout,
   preferred: Layout,
-  temporary: ReadonlySet<string>,
+  threadGroupId: string,
+  stacked: ReadonlyArray<Stacked>,
 ): Layout {
-  const currentGridGroups = groupsOf(current.grid.root)
-  const groups = new Map(currentGridGroups.map((group) => [group.id, group]))
-  const floatingGroups = current.floatingGroups?.filter((floating) => {
-    const states = floating.grid
-      ? groupsOf(floating.grid.root)
-      : floating.data
-        ? [floating.data]
-        : []
-    if (!states.some(({ id }) => temporary.has(id))) return true
-    for (const state of states) groups.set(state.id, state)
-    return false
-  })
+  const groups = new Map(
+    groupsOf(current.grid.root).map((group) => [group.id, group]),
+  )
+  const thread = groups.get(threadGroupId)
+  if (thread) {
+    const waiting = new Set(stacked.flatMap(({ panelIds }) => panelIds))
+    groups.set(thread.id, {
+      ...thread,
+      views: thread.views.filter((id) => !waiting.has(id)),
+      activeView:
+        thread.activeView && waiting.has(thread.activeView)
+          ? THREAD
+          : thread.activeView,
+    })
+    for (const { id, panelIds, activeView } of stacked) {
+      const views = panelIds.filter((view) => thread.views.includes(view))
+      if (views.length)
+        groups.set(id, {
+          id,
+          views,
+          activeView:
+            activeView && views.includes(activeView) ? activeView : views[0],
+        })
+    }
+  }
   const included = new Set<string>()
   const project = (node: GridNode, root = false): GridNode | undefined => {
     if (!Array.isArray(node.data)) {
@@ -81,8 +109,7 @@ function preferredLayout(
   }
   const root = project(preferred.grid.root, true)!
   if (!Array.isArray(root.data)) return current
-  // Keep the splits of new docked groups from the live grid. A new group
-  // inside a temporary window gets an adjacent preferred column.
+  // Keep the splits of new docked groups from the live grid.
   const appendNew = (node: GridNode): GridNode | undefined => {
     if (!Array.isArray(node.data)) {
       if (included.has(node.data.id)) return undefined
@@ -95,163 +122,141 @@ function preferredLayout(
   const additions = appendNew(current.grid.root)
   if (additions && Array.isArray(additions.data))
     root.data.push(...additions.data)
+  // A column opened while the dock was narrow stacked before it had a place.
   for (const data of groups.values())
     if (!included.has(data.id))
       root.data.push({ type: 'leaf', data, size: 300 })
-  const result = { ...current, grid: { ...preferred.grid, root } }
-  if (floatingGroups?.length) result.floatingGroups = floatingGroups
-  else delete result.floatingGroups
-  return result
+  return { ...current, grid: { ...preferred.grid, root } }
 }
 
-/** Release inspector columns before navigation releases its own column. */
+/**
+ * Keeps the conversation at least 35rem wide, and never covers it. While a
+ * column stands beside the conversation, the conversation holds that width
+ * as its minimum, so the column gives up width first, down to its own
+ * minimum. A dock too narrow even for that moves the column's panels into
+ * the conversation's group as tabs, and gives them their column back when
+ * the dock has room again. Panels move, never remount: they render always,
+ * so their state and drafts come along.
+ */
 export function adaptDock(api: DockviewApi, host: HTMLElement) {
-  const floated = new Map<DockviewGroupPanel, FloatedGroup>()
-  const preferredSizes = new WeakMap<
-    DockviewGroupPanel,
-    { width: number; heightFraction: number }
-  >()
+  const stacked: Array<Stacked> = []
+  /** Each column's width while the conversation had room to spare. */
+  const widths = new WeakMap<DockviewGroupPanel, number>()
+  /** The layout as it was the last time every column fit. */
+  let fitted: Layout | undefined
   let preferred: Layout | undefined
-  let lastDocked: Layout | undefined
-  let capturedWidth = host.clientWidth || api.width
-  let capturedViewport = window.innerWidth
   let scheduled = 0
   let settleFrame = 0
-  const restoredSizes = new Map<
-    DockviewGroupPanel,
-    { width?: number; heightFraction?: number }
-  >()
-  // Keep the conversation header exposed while an inspector overlays the body.
-  const overlayTop = () => {
-    const header = host.querySelector('[data-appearance-part="main"] header')
-    if (!header) return 48
-    const edge =
-      header.getBoundingClientRect().bottom - host.getBoundingClientRect().top
-    return edge > 0 ? edge : 48
-  }
-  const overlayHeight = () =>
-    Math.min(640, Math.max(0, api.height - overlayTop()))
   let changing = false
   const update = () => {
     scheduled = 0
     const thread = api.getPanel(THREAD)
-    if (!thread || thread.api.location.type !== 'grid' || changing) return
+    if (
+      !thread ||
+      thread.api.location.type !== 'grid' ||
+      api.hasMaximizedGroup() ||
+      changing
+    )
+      return
     changing = true
     try {
       const minimum =
         35 * parseFloat(getComputedStyle(document.documentElement).fontSize)
-      if (thread.group.minimumWidth !== 0)
-        thread.group.api.setConstraints({ minimumWidth: 0 })
-      for (const [group] of floated) {
-        if (
-          !api.groups.includes(group) ||
-          group.api.location.type !== 'floating'
+      const docked = () =>
+        api.groups.filter(
+          (group) =>
+            group !== thread.group && group.api.location.type === 'grid',
         )
-          floated.delete(group)
+      const hold = () => {
+        const wanted = docked().length ? minimum : 0
+        if (thread.group.minimumWidth !== wanted)
+          thread.group.api.setConstraints({ minimumWidth: wanted })
       }
-      if (!floated.size) preferred = undefined
-      const candidates = api.groups.filter(
-        (group) => group !== thread.group && group.api.location.type === 'grid',
-      )
-      // The shell can change its header height before the splitview reports
-      // the new width. Keep the settled geometry through that intermediate frame.
-      const layoutWidth = host.clientWidth || api.width
-      if (
-        thread.api.width >= minimum &&
-        (capturedViewport === window.innerWidth || capturedWidth !== layoutWidth)
-      ) {
-        capturedWidth = layoutWidth
-        capturedViewport = window.innerWidth
-        const snapshot = api.toJSON()
-        lastDocked = preferred
-          ? preferredLayout(
-              snapshot,
-              preferred,
-              new Set([...floated.keys()].map((group) => group.id)),
-            )
-          : snapshot
-        if (preferred) preferred = lastDocked
-        for (const group of candidates)
-          preferredSizes.set(group, {
-            width: group.api.width || Math.max(300, group.minimumWidth),
-            heightFraction: group.api.height / api.height || 0.5,
-          })
-      }
-      const sizesBeforeMoving = new Map(
-        candidates.map((group) => [
-          group,
-          {
-            width: group.api.width,
-            heightFraction: group.api.height / api.height,
-          },
-        ]),
-      )
-      // Removing a leaf collapses its split. Reversing the moves rebuilds
-      // that split around a sibling still in the grid, with no remounts.
-      for (const [group, { width, heightFraction, minimumWidth, anchors }] of [
-        ...floated,
-      ].reverse()) {
-        const gridGroups = new Map(
-          api.groups
-            .filter((candidate) => candidate.api.location.type === 'grid')
-            .map((candidate) => [candidate.id, candidate]),
+      // A panel closed, or moved away, while it waited stays where it is.
+      for (const record of [...stacked]) {
+        record.panelIds = record.panelIds.filter(
+          (id) => api.getPanel(id)?.group === thread.group,
         )
-        const anchor = anchors.find(({ groupId }) => gridGroups.has(groupId))
-        const reference = anchor
-          ? gridGroups.get(anchor.groupId)!
-          : thread.group
+        if (!record.panelIds.length) stacked.splice(stacked.indexOf(record), 1)
+      }
+      // Columns come back while the dock has room for them at their
+      // minimum, the last to stack first, so each split rebuilds around a
+      // sibling already in the grid.
+      for (const record of [...stacked].reverse()) {
+        const grid = new Map(docked().map((group) => [group.id, group]))
+        grid.set(thread.group.id, thread.group)
+        const anchor = record.anchors.find(({ groupId }) => grid.has(groupId))
+        const reference = anchor ? grid.get(anchor.groupId)! : thread.group
         const position = anchor?.position ?? 'right'
         const vertical = position === 'top' || position === 'bottom'
-        const addsWidth = !vertical
-        if (thread.api.width >= minimum + (addsWidth ? width + 4 : 0)) {
-          group.api.moveTo({ group: reference, position, skipSetActive: true })
-          group.api.setConstraints({ minimumWidth })
-          group.api.setSize(
-            vertical
-              ? { height: Math.round(heightFraction * api.height) }
-              : { width },
-          )
-          restoredSizes.set(group, vertical ? { heightFraction } : { width })
-          floated.delete(group)
-        } else {
-          group.api.setSize({
-            width: Math.min(width, api.width),
-            height: overlayHeight(),
-          })
-        }
-      }
-      for (const group of candidates) {
-        if (thread.api.width >= minimum) break
-        const snapshot = api.toJSON()
-        preferred ??= lastDocked ?? snapshot
-        const prior = preferredSizes.get(group)
-        const measured = sizesBeforeMoving.get(group)!
-        const width =
-          prior?.width ?? (measured.width || Math.max(300, group.minimumWidth))
-        const heightFraction =
-          prior?.heightFraction ?? (measured.heightFraction || 0.5)
-        const minimumWidth = group.minimumWidth
-        const anchors = anchorsOf(snapshot.grid, group.id)
-        group.api.setConstraints({ minimumWidth: 0 })
-        floated.set(group, { width, heightFraction, minimumWidth, anchors })
-        api.addFloatingGroup(group, {
-          width: Math.min(width, api.width),
-          height: overlayHeight(),
-          position: { left: 0, top: overlayTop() },
+        const column =
+          reference === thread.group ? minimum : reference.minimumWidth
+        const added = vertical
+          ? Math.max(0, record.minimumWidth - column)
+          : record.minimumWidth
+        const reading = Math.max(0, minimum - thread.group.minimumWidth)
+        if (api.minimumWidth + reading + added > api.width) continue
+        const group = api.addGroup({
+          id: record.id,
+          referenceGroup: reference,
+          direction: DIRECTION[position],
         })
+        record.panelIds.forEach((id, index) =>
+          api.getPanel(id)!.api.moveTo({ group, index, skipSetActive: true }),
+        )
+        const active = record.activeView && api.getPanel(record.activeView)
+        if (active && active.group === group)
+          group.model.openPanel(active, { skipSetGroupActive: true })
+        hold()
+        group.api.setSize({
+          width: record.width,
+          height: vertical
+            ? Math.round(record.heightFraction * api.height)
+            : undefined,
+        })
+        stacked.splice(stacked.indexOf(record), 1)
       }
+      hold()
+      if (!stacked.length && api.minimumWidth <= api.width)
+        fitted = api.toJSON()
+      // A dock too narrow for the conversation's reading width and a
+      // column's minimum takes the column into the conversation's group.
+      for (const group of docked()) {
+        if (api.minimumWidth <= api.width) break
+        const snapshot = api.toJSON()
+        preferred ??= fitted ?? snapshot
+        stacked.push({
+          id: group.id,
+          panelIds: group.panels.map((panel) => panel.id),
+          activeView: group.activePanel?.id,
+          width: widths.get(group) ?? group.api.width,
+          heightFraction: group.api.height / api.height || 0.5,
+          minimumWidth: group.minimumWidth,
+          anchors: anchorsOf(snapshot.grid, group.id),
+        })
+        // The column's tab comes to the front only if it was the one in use.
+        const front = thread.group.activePanel
+        const inUse = group.panels.some((panel) => panel === api.activePanel)
+        group.api.moveTo({
+          group: thread.group,
+          position: 'center',
+          skipSetActive: true,
+        })
+        if (front && !inUse)
+          thread.group.model.openPanel(front, { skipSetGroupActive: true })
+        hold()
+      }
+      if (!stacked.length) preferred = undefined
+      if (thread.api.width > minimum)
+        for (const group of docked()) widths.set(group, group.api.width)
       for (const group of api.groups) {
         if (group !== thread.group) {
           group.element.dataset.appearanceWidthRole = 'inspector'
           group.element.dataset.appearancePart = 'inspector'
-          group.element.dataset.overlay = String(
-            group.api.location.type !== 'grid',
-          )
         }
       }
-      host.dataset.inspectorPresentation = floated.size ? 'overlay' : 'docked'
       // Always-rendered Dockview panels use positioned overlays. Refresh their
-      // boxes after the split/floating DOM has reached its new dimensions.
+      // boxes after the split DOM has reached its new dimensions.
       cancelAnimationFrame(settleFrame)
       settleFrame = requestAnimationFrame(() => {
         changing = true
@@ -261,16 +266,6 @@ export function adaptDock(api: DockviewApi, host: HTMLElement) {
             host.clientHeight || api.height,
             true,
           )
-          for (const [group, { width, heightFraction }] of restoredSizes)
-            if (group.api.location.type === 'grid')
-              group.api.setSize({
-                width,
-                height:
-                  heightFraction === undefined
-                    ? undefined
-                    : Math.round(heightFraction * api.height),
-              })
-          restoredSizes.clear()
         } finally {
           changing = false
         }
@@ -283,7 +278,10 @@ export function adaptDock(api: DockviewApi, host: HTMLElement) {
     if (!scheduled && !changing) scheduled = requestAnimationFrame(update)
   }
   const listener = api.onDidLayoutChange(schedule)
-  const dimensions = api.getPanel(THREAD)?.api.onDidDimensionsChange(schedule)
+  // The group's, not the panel's: a panel behind another tab is not laid out.
+  const dimensions = api
+    .getPanel(THREAD)
+    ?.group.api.onDidDimensionsChange(schedule)
   const observer = new ResizeObserver(schedule)
   observer.observe(host)
   observer.observe(document.documentElement)
@@ -292,12 +290,9 @@ export function adaptDock(api: DockviewApi, host: HTMLElement) {
     layoutForSave: () => {
       if (changing) return undefined
       const current = api.toJSON()
-      return preferred && floated.size
-        ? preferredLayout(
-            current,
-            preferred,
-            new Set([...floated.keys()].map((group) => group.id)),
-          )
+      const thread = api.getPanel(THREAD)
+      return preferred && stacked.length && thread
+        ? preferredLayout(current, preferred, thread.group.id, stacked)
         : current
     },
     dispose: () => {

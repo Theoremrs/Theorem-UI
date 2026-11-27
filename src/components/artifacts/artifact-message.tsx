@@ -23,7 +23,11 @@ import { ArtifactView } from './artifact-renderers'
 import { ArtifactActions } from './artifact-actions'
 import { focusInlineArtifact, InlineArtifact } from './inline-artifact'
 import { OpenLatestContext } from './app-history'
-import { ArtifactPlacement, useArtifactView } from './artifact-view'
+import {
+  ArtifactOpener,
+  ArtifactPlacement,
+  useArtifactView,
+} from './artifact-view'
 import { OPENS_WHOLE, thingProps } from '@/lib/face/things'
 
 export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
@@ -48,6 +52,12 @@ export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
   const position = versions.findIndex((v) => v.revision === artifact.revision)
   const newest = versions.at(-1) ?? artifact
   const latest = position === versions.length - 1 && newest.partId === artifact.partId
+  const show = () => {
+    launch()
+    open(artifact.artifactId, latest ? undefined : artifact.revision)
+    // The dock is chat's; from a page the larger view is there.
+    if (inline) void openMode('chat')
+  }
   if (bare || card)
     return (
       <div
@@ -58,15 +68,11 @@ export function ArtifactMessage({ artifact }: { artifact: TheoremArtifact }) {
           label: artifact.title,
         })}
       >
-        <ArtifactView artifact={artifact} distance="preview" latest={latest} />
+        <ArtifactOpener value={show}>
+          <ArtifactView artifact={artifact} distance="preview" latest={latest} />
+        </ArtifactOpener>
       </div>
     )
-  const show = () => {
-    launch()
-    open(artifact.artifactId, latest ? undefined : artifact.revision)
-    // The dock is chat's; from a page the larger view is there.
-    if (inline) void openMode('chat')
-  }
   const previewed =
     representationOf(artifact, 'preview').rung !== 'theorem_card'
 

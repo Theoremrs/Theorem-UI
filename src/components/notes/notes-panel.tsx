@@ -30,7 +30,11 @@ import {
   FilesystemItem,
   FilesystemMarks,
 } from '@/components/ui/filesystem-item'
-import { menuItem, menuPopup } from '@/components/shell/sidebar'
+import {
+  ChromeMenuPopup,
+  menuItem,
+  useChromeMenuGlass,
+} from '@/components/shell/chrome-menu'
 import { useShell } from '@/components/shell/shell-state'
 import { useNotesLayout } from '@/lib/theorem/notes-layout'
 import { describeError } from '@/lib/theorem/client'
@@ -304,7 +308,7 @@ function SortMenu({ order }: { order: NoteOrder }) {
           sideOffset={4}
           className="z-50"
         >
-          <Menu.Popup className={`min-w-44 ${menuPopup}`}>
+          <ChromeMenuPopup className="min-w-44">
             <Menu.Group>
               <Menu.GroupLabel className="px-2 py-1 text-xs text-ink-faint">
                 Sort by
@@ -330,7 +334,7 @@ function SortMenu({ order }: { order: NoteOrder }) {
                 ))}
               </Menu.RadioGroup>
             </Menu.Group>
-          </Menu.Popup>
+          </ChromeMenuPopup>
         </Menu.Positioner>
       </Menu.Portal>
     </Menu.Root>
@@ -875,13 +879,15 @@ function SectionsMenu({
   const { layout, edit } = useNotesLayout()
   const navigate = useNavigate()
   const count = layout.sections.length
+  const { attach: attachGlass, className: glassClass } = useChromeMenuGlass()
   return (
     <ContextMenu.Portal>
       <ContextMenu.Positioner className="z-50">
         {/* Focus stays put on close, so a rename's field keeps it. */}
         <ContextMenu.Popup
           finalFocus={false}
-          className={`min-w-44 ${menuPopup}`}
+          ref={attachGlass}
+          className={cn('min-w-44', glassClass)}
         >
           {note && (
             <>

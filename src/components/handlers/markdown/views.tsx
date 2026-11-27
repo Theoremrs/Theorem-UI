@@ -1,7 +1,8 @@
 // SOURCING: @prosemirror-adapter/react (wikilinks, embeds and callouts as
 // React node views, registered through Milkdown's $view), @tanstack/react-query
 // (each link's resolved path, cached until files appear, go or move),
-// lucide-react (Obsidian draws callouts with Lucide's icons), pathe, the
+// lucide-react (Obsidian draws callouts with Lucide's icons; the done and to-do
+// ticks are the owner's Streamline checkmarks, Icon.Check and Icon.CheckCircle), pathe, the
 // handler registry's Cards for embeds, and NoteExcerpt for an embedded
 // heading's or block's part of a note (note-sections.ts).
 import { $view } from '@milkdown/kit/utils'
@@ -9,9 +10,7 @@ import { useNodeViewContext } from '@prosemirror-adapter/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bug,
-  Check,
   ChevronDown,
-  CircleCheck,
   CircleHelp,
   ClipboardList,
   Flame,
@@ -24,6 +23,7 @@ import {
   Zap,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { Icon } from '@/components/icons'
 import { basename, extname } from 'pathe'
 import { createContext, use, useEffect } from 'react'
 import { parseWikiTarget } from '#/server/desktop/workspace/markdown'
@@ -231,19 +231,19 @@ function WikiEmbedView() {
 }
 
 /** Obsidian's callout types, by the Lucide icon it draws for each. */
-const CALLOUT_ICONS: Record<string, LucideIcon> = {
+const CALLOUT_ICONS: Record<string, LucideIcon | typeof Icon.Check> = {
   note: Pencil,
   abstract: ClipboardList,
   summary: ClipboardList,
   tldr: ClipboardList,
   info: Info,
-  todo: CircleCheck,
+  todo: Icon.CheckCircle,
   tip: Flame,
   hint: Flame,
   important: Flame,
-  success: Check,
-  check: Check,
-  done: Check,
+  success: Icon.Check,
+  check: Icon.Check,
+  done: Icon.Check,
   question: CircleHelp,
   help: CircleHelp,
   faq: CircleHelp,

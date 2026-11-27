@@ -16,12 +16,27 @@ export interface AppLibrary {
   types: ReadonlyArray<string>
 }
 
+/** The Astryx components `@theorem/ui` exports or wraps, each its own module of `@astryxdesign/core`. */
+const ASTRYX_PARTS = [
+  'Badge', 'Button', 'Card', 'CheckboxInput', 'Divider', 'Field', 'HStack', 'IconButton', 'Kbd',
+  'NumberInput', 'ProgressBar', 'SegmentedControl', 'Selector', 'Slider', 'Spinner', 'Stack',
+  'Switch', 'Text', 'TextInput', 'ToggleButton', 'VStack',
+]
+
+/** Astryx in Theorem's theme, and the controls the agent can reach. */
+const ui: AppLibrary = {
+  dependencies: {
+    '@astryxdesign/core': '0.7.17',
+    '@astryxdesign/theme-neutral': '0.7.17',
+    '@stylexjs/stylex': '0.19.2',
+  },
+  types: ['react', ...ASTRYX_PARTS.map((part) => `@astryxdesign/core/${part}`)],
+}
+
 const annotate: AppLibrary = {
   dependencies: {
-    '@astryxdesign/core': '0.7.16',
-    '@astryxdesign/theme-neutral': '0.7.16',
+    ...ui.dependencies,
     '@floating-ui/core': '1.8.0',
-    '@stylexjs/stylex': '0.19.2',
     'liquid-gl': '3.0.0',
   },
   types: ['react'],
@@ -34,6 +49,7 @@ const runtime: AppLibrary = { dependencies: {}, types: [] }
 export const APP_LIBRARIES: Record<string, AppLibrary> = {
   '@theorem/annotate': annotate,
   '@theorem/runtime': runtime,
+  '@theorem/ui': ui,
   '@theorem/spatial': {
     dependencies: {
       ...annotate.dependencies,

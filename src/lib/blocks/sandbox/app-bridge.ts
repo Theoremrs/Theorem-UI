@@ -8,18 +8,22 @@
 // look as the page sends it (theme.ts).
 import { CellContext } from './cell'
 import { connectToPage } from './connect'
+import { actOnControl, listControls, registerControl } from './controls'
+import type { ControlSpec } from './controls'
 import { Databases } from './db'
+import { collectDesignObservations } from './design-collector'
 import {
   lookNow,
   markSelectedCell,
   observeHeight,
   observeSnapshots,
 } from './display'
-import { MAX_FRAME_ERRORS, call, rpcOver, serve } from './protocol'
+import { CELL_STATUS_EVENT, MAX_CELL_ERROR, MAX_CELL_SHOWS, MAX_CELL_STATUSES, MAX_FRAME_ERRORS, call, rpcOver, serve } from './protocol'
 import type {
   ArtifactObservation,
   CapabilityInvokeParams,
   CapabilityQueryParams,
+  CellStatus,
   DossierContext,
   DossierState,
   FrameError,
@@ -28,6 +32,7 @@ import type {
   PageMethods,
   SandboxMethods,
 } from './protocol'
+import { applyPresentation, onPresentation, presentationNow } from './presentation'
 import { THEME_EVENT, applyAppTheme, applyTheme } from './theme'
 
 type ModuleListener = (values: ModuleValues) => void
@@ -98,9 +103,39 @@ const context = connectToPage().then((port) => {
     }
     return null
   })
+  serve<SandboxMethods, 'presentation.changed'>(rpc, 'presentation.changed', (presentation) => {
+    applyPresentation(presentation)
+    return null
+  })
+  serve<SandboxMethods, 'controls.list'>(rpc, 'controls.list', () => listControls())
+  serve<SandboxMethods, 'controls.act'>(rpc, 'controls.act', (act) => actOnControl(act))
   // A page that never stops changing never settles into a snapshot, so the
   // page can ask for one.
   serve<SandboxMethods, 'frame.look'>(rpc, 'frame.look', () => lookNow())
+  // The live document supplies layout and computed styles. A serialized
+  // snapshot cannot reconstruct its font loading, line boxes or scroll sizes.
+  // Measured at once, after the run: fonts still loading are reported as
+  // such, and a timer here would be throttled past the host's deadline
+  // whenever the person's tab is in the background.
+  // A transition started by a theme change is ended first, so its colours are
+  // the ones the App settles on rather than the ones it is leaving.
+  serve<SandboxMethods, 'frame.design'>(
+    rpc,
+    'frame.design',
+    ({ captureId, scheme, canvas }) => {
+      for (const animation of document.getAnimations())
+        if (animation instanceof CSSTransition) animation.finish()
+      return collectDesignObservations({
+        captureId,
+        evidenceKind: 'rendered-artifact',
+        maxElements: 300,
+        maxNodes: 5000,
+        maxTextLength: 160,
+        colorScheme: scheme,
+        canvas,
+      })
+    },
+  )
   observeHeight((height, fills) => {
     void call<PageMethods, 'frame.resize'>(rpc, 'frame.resize', { height, fills })
   })
@@ -218,6 +253,23 @@ window.addEventListener('error', (event) => {
 })
 window.addEventListener('unhandledrejection', (event) => {
   report(thrown(event.reason))
+})
+
+// How a notebook's cells first settle (notebook.ts), so the page can say
+// when the first outputs are on screen and which cells failed.
+let statuses = 0
+window.addEventListener(CELL_STATUS_EVENT, (event) => {
+  if (statuses++ >= MAX_CELL_STATUSES) return
+  const { cell, stage, error, shows } = (event as CustomEvent<CellStatus>).detail
+  const status: CellStatus = {
+    cell: cell.slice(0, 200),
+    stage,
+    ...(error !== undefined && { error: error.slice(0, MAX_CELL_ERROR) }),
+    ...(shows !== undefined && { shows: shows.slice(0, MAX_CELL_SHOWS) }),
+  }
+  void context
+    .then(({ cells }) => call<PageMethods, 'frame.status'>(cells.rpc, 'frame.status', status))
+    .catch(() => {})
 })
 
 const context_ = async () => (await context).cells
@@ -343,6 +395,29 @@ const theorem = {
   },
   /** Resolves once the page has connected this app. */
   ready: context.then(() => undefined),
+  /**
+   * The controls this App names for the agent. Register a control with the
+   * functions its visible element already calls; the agent reads and changes
+   * it through them (the client operation `app.control`), and the reply says
+   * the value read back. `@theorem/ui`'s controls do this when given a
+   * `control` name.
+   */
+  controls: {
+    /** Names a control for the agent until the returned function is called. */
+    register: (spec: ControlSpec): (() => void) => registerControl(spec),
+    /** Every registered control, with its value now. */
+    list: listControls,
+  },
+  /**
+   * Where the page shows this App (`inline` in a reply, the side `panel`, or
+   * `expanded`) and the CSS pixels it may fill. Also on the root as
+   * `data-theorem-presentation` and `--theorem-available-width/height`.
+   */
+  presentation: {
+    now: presentationNow,
+    /** Calls `listener` with the presentation now, if any, and after each change. */
+    onChange: onPresentation,
+  },
   files: {
     text: files('text'),
     json: files('json'),

@@ -1,5 +1,6 @@
 import { Outlet } from '@tanstack/react-router'
 import { ArtifactLibraryPublication } from '@/components/artifacts/openui/publication'
+import { CapabilityRecordsPublication } from '@/lib/artifacts/capabilities/publication'
 import { PreferencesSync } from '@/lib/theorem/models'
 import { TheoremRuntimeProvider } from '@/lib/theorem/runtime'
 import { ChatShell } from './chat-shell'
@@ -29,6 +30,7 @@ export default function SignedInChat({
       <CommandPalette />
       <PreferencesSync />
       <ArtifactLibraryPublication />
+      <CapabilityRecordsPublication />
       <Outlet />
     </TheoremRuntimeProvider>
   )

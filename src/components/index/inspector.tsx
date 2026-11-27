@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { MarkdownDocument } from '@/components/artifacts/artifact-renderers'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { Icon } from '@/components/icons'
-import { menuItem, menuPopup } from '@/components/shell/sidebar'
+import { ChromeMenuPopup, menuItem } from '@/components/shell/chrome-menu'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { describeError } from '@/lib/theorem/client'
@@ -148,8 +148,8 @@ export function Filing({
                   sideOffset={4}
                   className="z-50"
                 >
-                  <Menu.Popup
-                    className={`max-h-72 min-w-48 overflow-y-auto ${menuPopup}`}
+                  <ChromeMenuPopup
+                    className="max-h-72 min-w-48 overflow-y-auto"
                   >
                     {collections.data
                       ?.filter(
@@ -186,7 +186,7 @@ export function Filing({
                           <span className="truncate">{collection.name}</span>
                         </Menu.Item>
                       ))}
-                  </Menu.Popup>
+                  </ChromeMenuPopup>
                 </Menu.Positioner>
               </Menu.Portal>
             </Menu.Root>

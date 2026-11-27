@@ -133,6 +133,8 @@ import readAloudLine from './readAloud-line.svg'
 import readAloudAccent from './readAloud-accent.svg'
 import readAloudPaper from './readAloud-paper.svg'
 import skillLine from './skill-line.svg'
+import layoutLine from './layout-line.svg'
+import layoutAccent from './layout-accent.svg'
 
 /** Each control mark's masks: the SVG's shape is the layer. */
 export const CONTROL_LAYERS = {
@@ -179,6 +181,7 @@ export const CONTROL_LAYERS = {
   browser: { line: browserLine, accent: browserAccent, tint: browserTint, paper: browserPaper },
   readAloud: { line: readAloudLine, accent: readAloudAccent, paper: readAloudPaper },
   skill: { line: skillLine },
+  layout: { line: layoutLine, accent: layoutAccent },
 } as const
 
 export type ControlIcon = keyof typeof CONTROL_LAYERS

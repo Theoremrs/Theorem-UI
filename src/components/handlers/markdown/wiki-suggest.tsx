@@ -23,7 +23,7 @@ import { useStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
 import type { StoreApi } from 'zustand/vanilla'
 import { parseNote } from '#/server/desktop/workspace/markdown'
-import { menuItem, menuPopup } from '@/components/shell/sidebar'
+import { menuItem, useChromeMenuGlass } from '@/components/shell/chrome-menu'
 import type { FileViewProps } from '@/lib/handlers/types'
 import { useWorkspaceTree } from '@/lib/workspace/workspaces'
 import { linkTarget, rankFiles } from './link-target'
@@ -267,6 +267,7 @@ export function WikiSuggest({
   }, [items, store])
 
   const list = useRef<HTMLDivElement>(null)
+  const { attach: attachGlass, className: glassClass } = useChromeMenuGlass()
   useEffect(() => {
     list.current
       ?.querySelector('[aria-selected="true"]')
@@ -289,11 +290,14 @@ export function WikiSuggest({
 
   return createPortal(
     <div
-      ref={list}
+      ref={(node) => {
+        list.current = node
+        attachGlass(node)
+      }}
       role="listbox"
       aria-label={query.embed ? 'Embed a file' : 'Link to a file'}
       data-slot="wiki-suggest"
-      className={`fixed z-50 max-h-72 w-80 overflow-y-auto ${menuPopup}`}
+      className={`fixed z-50 max-h-72 w-80 overflow-y-auto ${glassClass}`}
       style={placement(query.view, query.range.from)}
       // The editor keeps the focus.
       onMouseDown={(event) => event.preventDefault()}

@@ -138,6 +138,31 @@ export interface FrameError {
 /** The most uncaught errors one load of a frame reports. */
 export const MAX_FRAME_ERRORS = 20
 
+/** How one notebook cell first settled: its value shown, or its failure shown. */
+export interface CellStatus {
+  cell: string
+  stage: 'ready' | 'failed'
+  /** Why a failed cell failed, as its inspector shows it. */
+  error?: string
+  /**
+   * What a ready cell shows: its value as the inspector shows it collapsed,
+   * each name it defines with its value, or an element's labelled parts.
+   */
+  shows?: string
+}
+
+/** The longest failure a cell status carries. */
+export const MAX_CELL_ERROR = 2000
+
+/** The longest description of what a cell shows. */
+export const MAX_CELL_SHOWS = 300
+
+/** The event a notebook's runtime dispatches in its frame as each cell first settles. */
+export const CELL_STATUS_EVENT = 'theorem:cell-status'
+
+/** The most cell statuses one load of a frame reports. */
+export const MAX_CELL_STATUSES = 200
+
 /** Methods the page serves; the sandbox calls them, and the page checks each call. */
 export interface PageMethods {
   'files.read': {
@@ -173,6 +198,8 @@ export interface PageMethods {
   'frame.selection': { params: AppSelection; result: null }
   /** The frame's code threw and nothing caught it. */
   'frame.error': { params: FrameError; result: null }
+  /** A notebook cell first showed its value or its failure. */
+  'frame.status': { params: CellStatus; result: null }
   /** `fills`: the page is laid out by its viewport and has no height of its own. */
   'frame.resize': { params: { height: number; fills?: boolean }; result: null }
   /** A static copy of the frame, for where a live frame would cost too much. */
@@ -339,6 +366,41 @@ export const MAX_SNAPSHOT = 512 * 1024
 /** The largest outline of a page a frame may send, in characters. */
 export const MAX_OUTLINE = 128 * 1024
 
+/** Where a frame is shown: in a reply, in the side panel, or expanded over the page. */
+export type PresentationMode = 'inline' | 'panel' | 'expanded'
+
+/** A frame's presentation: where it is shown and the CSS pixels it has to fill. */
+export interface Presentation {
+  mode: PresentationMode
+  width: number
+  /** The height it may fill without the page scrolling past it. */
+  height: number
+}
+
+/** What a control is, as the agent reads it. */
+export type ControlKind = 'number' | 'boolean' | 'choice' | 'text' | 'action'
+
+/** A control an App named for the agent, and its value now. */
+export interface ControlState {
+  name: string
+  label: string
+  kind: ControlKind
+  value?: unknown
+  min?: number
+  max?: number
+  step?: number
+  /** A choice's values. */
+  options?: Array<string>
+  disabled?: boolean
+}
+
+/** What the agent asks of a control: a new value, or a press. */
+export interface ControlAct {
+  name: string
+  action: 'set' | 'invoke'
+  value?: unknown
+}
+
 /** Methods the sandbox serves; the page calls them. */
 export interface SandboxMethods {
   'cell.run': {
@@ -363,6 +425,15 @@ export interface SandboxMethods {
    * (`scheme` tells them apart), for the host stylesheet under the App's own.
    */
   'theme.changed': { params: ThemeState | AppTheme; result: null }
+  /** Where the frame is shown and the room it has, now and when either changes. */
+  'presentation.changed': { params: Presentation; result: null }
+  /** The controls the App named for the agent, each with its value now. */
+  'controls.list': { params: Record<string, never>; result: Array<ControlState> }
+  /**
+   * Sets a named control or presses it, through the same function the visible
+   * control calls, then reads it back once the App has drawn the change.
+   */
+  'controls.act': { params: ControlAct; result: ControlState }
   /**
    * The frame as it is now, without waiting for it to settle: what a snapshot
    * holds. Null when the copy is too large to send.
@@ -370,6 +441,15 @@ export interface SandboxMethods {
   'frame.look': {
     params: Record<string, never>
     result: { html: string; outline: string; page?: PageAttributes } | null
+  }
+  /**
+   * Live DOM measurements, validated by the host before evaluation: in the
+   * scheme the frame was last handed, with `canvas` the colour the page
+   * paints behind it.
+   */
+  'frame.design': {
+    params: { captureId: string; scheme?: 'light' | 'dark'; canvas?: string }
+    result: unknown
   }
 }
 

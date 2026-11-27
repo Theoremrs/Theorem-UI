@@ -84,7 +84,6 @@ import {
 } from 'lucide-react'
 import PenroseTriangle from '@/assets/icons/rail/noun-penrose-triangle-881122.svg?react'
 import Projects from '@/assets/icons/rail/noun-projects-8375031.svg?react'
-import Check from '@/assets/icons/records/noun-checkmark-8086058.svg?react'
 import Coding from '@/assets/icons/records/noun-coding-8259870.svg?react'
 import Menu from '@/assets/icons/records/noun-menu-8086045.svg?react'
 import ProjectRow from '@/assets/icons/tree/noun-data-8394841.svg?react'
@@ -99,7 +98,6 @@ import HierarchyFive from '@/assets/icons/streamline/streamline-hierarchy-5.png'
 import PaginateMail from '@/assets/icons/streamline/streamline-paginate-filter-mail.png'
 import WorkflowClosed from '@/assets/icons/streamline/streamline-workflow-request-closed.png'
 import AiScienceSpark from '@/assets/icons/streamline/streamline-ai-science-spark.png'
-import BrowserPageLayout from '@/assets/icons/streamline/streamline-browser-page-layout.png'
 import CodeWrite from '@/assets/icons/streamline/streamline-code-write-1.png'
 import CommonFileTextEdit from '@/assets/icons/streamline/streamline-common-file-text-edit.png'
 import HierarchyOrganize from '@/assets/icons/streamline/streamline-hierarchy-5-organize.png'
@@ -113,6 +111,8 @@ import CrossRegion from '@/assets/icons/streamline/streamline-cross-region-data-
 import DownloadBox from '@/assets/icons/streamline/streamline-download-box.png'
 import ShipmentUpload from '@/assets/icons/streamline/streamline-shipment-upload.png'
 import SearchSquare from '@/assets/icons/streamline/streamline-search-square.png'
+import Checkmark from '@/assets/icons/streamline/streamline-glyphs-checkmark.png'
+import CheckmarkCircle from '@/assets/icons/streamline/streamline-glyphs-checkmark-circle.png'
 import SquareWireframe from '@/assets/icons/streamline/streamline-square-wireframe-3d.png'
 import ShareBox from '@/assets/icons/streamline/streamline-share-1.png'
 import XMark from '@/assets/icons/streamline/streamline-x.png'
@@ -284,11 +284,15 @@ const Download = masked(DownloadBox)
 const TreeFile = solid(TreeFileMark)
 const Diagram = masked(CodeWrite)
 const Search = masked(SearchSquare)
+const Check = masked(Checkmark)
+/** Done, as a status beside a label: the tick in its ring. */
+const CheckCircle = masked(CheckmarkCircle)
 const Share = masked(ShareBox)
 const Web = masked(CrossRegion)
 const Exit = masked(XMark)
 
-const Panels = masked(BrowserPageLayout)
+/** The layout menu's mark: Streamline's Composition Layout 3, painted (owner, 2026-11-24). */
+const Panels = painted(CONTROL_LAYERS.layout, 180, true)
 
 const flap =
   'icon-mask box-flap absolute inset-0 duration-(--duration-exit) ease-exit group-hover/open:duration-(--duration-lift) group-hover/open:ease-lift group-focus-visible/open:duration-(--duration-lift) group-focus-visible/open:ease-lift'
@@ -357,7 +361,7 @@ const Outline = masked(HierarchyTwo)
 const Reject = masked(WorkflowClosed)
 const Route = masked(AiRouting)
 const Article = masked(OfficeFileText)
-const Layout = masked(BrowserPageLayout)
+const Layout = Panels
 const Canvas = masked(CodeWrite)
 const Draft = masked(CommonFileTextEdit)
 const Fork = masked(WorkflowBranch)
@@ -518,6 +522,7 @@ export const Icon = {
   SessionPair,
   SessionEmpty,
   Check,
+  CheckCircle,
   ChevronDown,
   ChevronLeft,
   ChevronRight,

@@ -1,7 +1,8 @@
 "use client";
 
-import type { ComponentProps } from "react";
-import { CheckIcon, CopyIcon, FileTextIcon, XIcon } from "lucide-react";
+import type { ComponentProps, ReactNode } from "react";
+// Theorem: the app's own icon set in place of lucide's.
+import { Icon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { field, ghostButton, mono, paper } from "./surfaces";
 
@@ -78,76 +79,95 @@ export function CanvasSplitDocument({
 export function CanvasSplitHeader({
   title,
   version,
+  versions,
   saved,
+  icon,
   onCopy,
   onClose,
   className,
+  children,
   ...props
-}: Omit<ComponentProps<"div">, "children" | "title"> & {
+}: Omit<ComponentProps<"div">, "title"> & {
   title: string;
   version: number;
+  // Theorem: how many versions the document has; more than one reads "v2 of 3".
+  versions?: number;
   saved: boolean;
+  // Theorem: the document's own glyph, in place of the file icon.
+  icon?: ReactNode;
   onCopy?: () => void;
   onClose?: () => void;
+  // Theorem: the document's own actions, between its state and Close.
+  children?: ReactNode;
 }) {
   return (
     <div
       data-slot="canvas-split-header"
       className={cn(
-        "border-foreground/[0.07] flex items-center gap-2 border-b px-3.5 py-2.5",
+        "border-foreground/[0.07] flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-3.5 py-2.5",
         className,
       )}
       {...props}
     >
-      <FileTextIcon className="text-muted-foreground size-3.5 shrink-0" />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">
-        {title}
-      </span>
-      <span className={cn(mono, "text-muted-foreground shrink-0")}>
-        v{version}
-      </span>
-      <span
-        className={cn(
-          mono,
-          "shrink-0 transition-colors duration-300",
-          saved
-            ? "text-emerald-600 dark:text-emerald-400"
-            : "text-muted-foreground",
-        )}
-      >
-        {saved ? (
-          <span className="flex items-center gap-1">
-            <CheckIcon className="size-3" />
+      {icon ?? (
+        <Icon.Article className="text-muted-foreground size-3.5 shrink-0" />
+      )}
+      {/* Theorem: the title is the document's heading, and keeps room to be
+          read; a column too narrow for it and the controls moves the controls
+          under it, together. */}
+      <h2 className="min-w-32 flex-1 truncate text-sm font-medium">{title}</h2>
+      <div className="ms-auto flex shrink-0 items-center gap-2">
+        <span
+          className={cn(mono, "text-muted-foreground shrink-0 tabular-nums")}
+        >
+          v{version}
+          {versions !== undefined && versions > 1 && ` of ${versions}`}
+        </span>
+        <span
+          className={cn(
+            mono,
+            "shrink-0 transition-colors duration-300",
             saved
-          </span>
-        ) : (
-          "editing"
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-muted-foreground",
+          )}
+        >
+          {saved ? (
+            <span className="flex items-center gap-1">
+              <Icon.Check className="size-3" />
+              saved
+            </span>
+          ) : (
+            "editing"
+          )}
+        </span>
+        {children}
+        {/* Theorem: a copy that comes with the document's actions, which report
+          a failed copy in place, stands for this one; without onCopy there is
+          no second, disabled Copy. */}
+        {onCopy && (
+          <button
+            type="button"
+            aria-label={`Copy ${title}`}
+            onClick={onCopy}
+            className={cn(ghostButton, "size-7 shrink-0")}
+          >
+            <Icon.Copy className="size-3.5" />
+          </button>
         )}
-      </span>
-      <button
-        type="button"
-        aria-label={`Copy ${title}`}
-        onClick={onCopy}
-        disabled={!onCopy}
-        className={cn(
-          ghostButton,
-          "size-7 shrink-0 disabled:pointer-events-none disabled:opacity-30",
-        )}
-      >
-        <CopyIcon className="size-3.5" />
-      </button>
-      <button
-        type="button"
-        aria-label="Close the canvas"
-        onClick={onClose}
-        disabled={!onClose}
-        className={cn(
-          ghostButton,
-          "size-7 shrink-0 disabled:pointer-events-none disabled:opacity-30",
-        )}
-      >
-        <XIcon className="size-3.5" />
-      </button>
+        <button
+          type="button"
+          aria-label="Close the canvas"
+          onClick={onClose}
+          disabled={!onClose}
+          className={cn(
+            ghostButton,
+            "size-7 shrink-0 disabled:pointer-events-none disabled:opacity-30",
+          )}
+        >
+          <Icon.X className="size-3.5" />
+        </button>
+      </div>
     </div>
   );
 }
