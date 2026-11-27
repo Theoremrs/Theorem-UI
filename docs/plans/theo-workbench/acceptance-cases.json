@@ -2445,9 +2445,9 @@
       "procedure": "Change a live App parameter; move inline → docked → expanded → restored; inspect source; close/reopen.",
       "required_observations": "Count startup executions and verify retained state and runtime identity.",
       "status": "not_run",
-      "blocker": "Runtime attachment is owned by the message subtree (ArtifactReferrer); ownership map 2.7.",
+      "blocker": "Needs a real browser: the happy-dom run cannot load the App's frame, so in-frame state and frame continuity across the non-modal to modal stage switch, Dockview hidden panels and scrolling clip are not yet observed. Ownership map 2.7.",
       "evidence": [],
-      "progress": "Gate 3: not built. The runtime host (AR-08 to AR-12) is deferred; a kept panel of a live App refers to its answer and goes to that chat, so the App still starts once."
+      "progress": "Runtime host built (branch claude/unified-agent-runtime-host): src/components/artifacts/artifact-runtime.ts owns each live runtime, artifact-runtime-host.tsx renders it once into an element it never moves and lays that element over the slot of the view that holds it. artifact-runtime-ac14.test.tsx runs a real App (esbuild build, fixture document) inline, docked (Move here), expanded from the answer, restored with Escape, the panel closed and reopened: one iframe created, startups 1, the same runtime id, element and parent, and the open source editor kept. Not run in a browser."
     },
     {
       "id": "UAE-AC-15",
@@ -2481,8 +2481,9 @@
       "procedure": "Stream temporarily invalid source into an executable artifact.",
       "required_observations": "Retain the last valid result and accurate running revision; update only through the supported runtime operation.",
       "status": "not_run",
-      "blocker": "Depends on the Gate 3 runtime host independent of the answer/panel boundary.",
-      "evidence": []
+      "blocker": "Needs a real browser for a TypeScript App whose next revision fails to build while the earlier frame keeps running; the runtime host it depended on is built (ownership map 2.7).",
+      "evidence": [],
+      "progress": "Runtime host branch: the runtime reports committed, running, building and failed revisions separately (artifact-runtime-revisions.ts) and each view states them locally, naming the running revision as itself (unit tests). artifact-runtime-ac14.test.tsx streams a next revision whose part names no document yet: the newest answer keeps the running App (no new frame) and reads Writing v2 · still running v1. Content, running state and view preferences have separate receipts (What’s saved)."
     },
     {
       "id": "UAE-AC-17",

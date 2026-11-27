@@ -4,7 +4,13 @@
 // is the registry's answer (artifact-registry: contributions + resolve); a
 // representation with no mounted renderer gets the Theorem card, which says
 // what the artifact is and shows its fallbackText.
-import { createElement, isValidElement, useContext, useMemo } from 'react'
+import {
+  createElement,
+  isValidElement,
+  useContext,
+  useEffect,
+  useMemo,
+} from 'react'
 import type { FC, ReactElement, ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
@@ -16,7 +22,8 @@ import {
 import { MermaidDiagram } from '@/components/assistant-ui/elements/mermaid-diagram'
 import { CodeFile } from '@/components/assistant-ui/elements/code-file'
 import { fenceTitle } from '@/components/assistant-ui/elements/code-lines'
-import { DocumentApp } from '@/components/blocks/document-app'
+import { DocumentApp, DocumentAppView } from '@/components/blocks/document-app'
+import { appDocumentFor } from '@/lib/theorem/apps'
 import { cn } from '@/lib/utils'
 import type { Distance } from '@/lib/artifacts/contributions'
 import { useArtifactMessageId } from './artifact-model'
@@ -41,7 +48,14 @@ import {
   representationOf,
 } from './artifact-registry'
 import type { RendererProps } from './artifact-registry'
-import { ArtifactElsewhere } from './artifact-view'
+import { ArtifactElsewhere, useArtifactView } from './artifact-view'
+import { useArtifactRuntimes } from './artifact-runtime'
+import type { RuntimeRecord } from './artifact-runtime'
+import {
+  HostedArtifact,
+  mountRuntimes,
+  useRuntimeHostPresent,
+} from './artifact-runtime-host'
 
 /** A fenced block inside a document: the child of <pre> is <code class="language-x">. */
 function fencedCode(
@@ -149,11 +163,39 @@ const CodeExcerpt: FC<RendererProps> = ({ artifact }) => (
   </div>
 )
 
-/** The App's workspace body: the live App for its newest revision, the pinned source for an older one. */
-const AppArtifact: FC<RendererProps> = ({ artifact, latest }) =>
-  !latest ? (
-    <AppRevision artifact={artifact} />
-  ) : artifact.documentId ? (
+/**
+ * The App's workspace body: the live App for its newest revision, the pinned
+ * source for an older one. With the runtime host mounted, the newest
+ * revision's view attaches to the App's one runtime (AR-08) wherever it is
+ * drawn; a newest part still being written, which names no document yet,
+ * keeps showing the runtime of the revision before it (AR-10). Without the
+ * host, the App runs here as it always has.
+ */
+const AppArtifact: FC<RendererProps> = ({ artifact, latest }) => {
+  const hosted = useRuntimeHostPresent()
+  const elsewhere = useContext(ArtifactElsewhere)
+  const running = useArtifactRuntimes(
+    (s) =>
+      Object.values(s.runtimes).find(
+        (one) => one.primary && one.artifactId === artifact.artifactId,
+      )?.documentId,
+  )
+  if (!latest) return <AppRevision artifact={artifact} />
+  const documentId = artifact.documentId || (hosted ? running : undefined)
+  if (hosted && documentId)
+    return (
+      <HostedArtifact
+        artifact={artifact}
+        documentId={documentId}
+        renderer="theorem-app"
+        conversation={elsewhere}
+      />
+    )
+  return <InPlaceApp artifact={artifact} />
+}
+
+const InPlaceApp: FC<{ artifact: TheoremArtifact }> = ({ artifact }) =>
+  artifact.documentId ? (
     <DocumentApp
       key={artifact.documentId}
       documentId={artifact.documentId}
@@ -163,6 +205,39 @@ const AppArtifact: FC<RendererProps> = ({ artifact, latest }) =>
   ) : (
     <p role="alert">This App couldn't be opened.</p>
   )
+
+/**
+ * An App's runtime as the host runs it: one DocumentAppView for as long as
+ * the runtime lives, whichever view shows it. It tells the host each startup
+ * and what runs, and it asks nothing of a conversation other than its own.
+ */
+const AppRuntime: FC<{ runtime: RuntimeRecord }> = ({ runtime }) => {
+  const { id, documentId, conversation, pinnedPosition } = runtime
+  const app = useMemo(() => appDocumentFor(documentId), [documentId])
+  const onScreen = useArtifactView((s) => s.threadId)
+  useEffect(() => {
+    if (conversation === undefined && onScreen)
+      useArtifactRuntimes.getState().adopt(id, onScreen)
+  }, [id, conversation, onScreen])
+  const elsewhere =
+    conversation !== undefined &&
+    onScreen !== undefined &&
+    onScreen !== conversation
+  return (
+    <DocumentAppView
+      app={app}
+      pinnedPosition={pinnedPosition}
+      initiallyRunning
+      elsewhere={elsewhere}
+      onStart={() => useArtifactRuntimes.getState().started(id)}
+      onRevisions={(revisions) =>
+        useArtifactRuntimes.getState().report(id, revisions)
+      }
+    />
+  )
+}
+
+mountRuntimes({ 'theorem-app': { Runtime: AppRuntime } })
 
 const AppPreviewArtifact: FC<RendererProps> = ({ artifact }) => (
   <AppPreview artifact={artifact} />

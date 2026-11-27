@@ -8,9 +8,15 @@ import { cn } from '@/lib/utils'
 import { kindLabel, useThreadArtifacts } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 import { ArtifactActions } from './artifact-actions'
-import { fillsPanel, isLive } from './artifact-registry'
+import { fillsPanel, isLive, representationOf } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
 import { ArtifactReferrer } from './artifact-referrer'
+import {
+  isHostedRenderer,
+  RuntimeSurfaceContext,
+  RuntimeVersionsContext,
+  useRuntimeHostPresent,
+} from './artifact-runtime-host'
 import {
   ArtifactElsewhere,
   shownRevision,
@@ -61,6 +67,7 @@ export function ArtifactPanel({
   className?: string
 }) {
   const artifacts = useThreadArtifacts()
+  const hostPresent = useRuntimeHostPresent()
   const view = useArtifactView((s) => viewOf(s.views, artifactId))
   const revision = shownRevision(view)
   const select = useArtifactView((s) => s.select)
@@ -87,10 +94,16 @@ export function ArtifactPanel({
   const artifact = versions[index] ?? newest
   if (!artifact || !newest) return null
   const latest = artifact === newest
-  const fills = fillsPanel(artifact, 'interactive')
-  // A live interactive artifact runs in the answer that wrote it; the panel
-  // refers to that one runtime instead of mounting a second (PR #128 P1).
+  // A live interactive artifact has one runtime. With the runtime host
+  // mounted, this panel is one more view of it and attaches (AR-08, AR-09);
+  // without it, the runtime is the answer's, and the panel refers to that one
+  // instead of mounting a second (PR #128 P1).
   const liveNewest = isLive(newest, 'interactive')
+  const hostedNewest =
+    liveNewest &&
+    hostPresent &&
+    isHostedRenderer(representationOf(newest, 'interactive').renderer)
+  const fills = fillsPanel(artifact, 'interactive') || (latest && hostedNewest)
   const goTo = (next: number) =>
     select(
       artifactId,
@@ -146,9 +159,22 @@ export function ArtifactPanel({
               by its answer, so this slot only refers there. */}
             <div
               hidden={!latest}
-              className={cn(fills && latest && 'min-h-0 flex-1')}
+              className={cn(
+                fills && latest && 'min-h-0 flex-1',
+                hostedNewest && 'flex flex-col',
+              )}
             >
-              {liveNewest ? (
+              {hostedNewest ? (
+                <RuntimeSurfaceContext value="docked">
+                  <RuntimeVersionsContext value={versions}>
+                    <ArtifactView
+                      artifact={newest}
+                      distance="interactive"
+                      latest
+                    />
+                  </RuntimeVersionsContext>
+                </RuntimeSurfaceContext>
+              ) : liveNewest ? (
                 <ArtifactReferrer artifact={newest} threadId={threadId} />
               ) : (
                 <ArtifactView artifact={newest} distance="interactive" latest />

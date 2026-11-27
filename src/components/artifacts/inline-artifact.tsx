@@ -31,6 +31,7 @@ export function InlineArtifact({
   artifactId,
   partId,
   current,
+  expand,
 }: {
   title: string
   actions?: ReactNode
@@ -38,6 +39,12 @@ export function InlineArtifact({
   artifactId?: string
   partId?: string
   current?: boolean
+  /**
+   * Expansion owned elsewhere: a hosted runtime expands into the runtime
+   * host's own view (artifact-runtime-host), so this dialog stays in the
+   * answer and its toggle asks the host.
+   */
+  expand?: { expanded: boolean; toggle: () => void }
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const toggle = useRef<HTMLButtonElement>(null)
@@ -122,13 +129,19 @@ export function InlineArtifact({
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-expanded={full}
+          aria-expanded={expand ? expand.expanded : full}
           {...OPENS_WHOLE}
-          onClick={() => place(!full)}
+          onClick={() => (expand ? expand.toggle() : place(!full))}
           className="text-ink-muted hover:text-ink pointer-coarse:size-11"
         >
-          {full ? <Icon.Close aria-hidden /> : <Icon.Expand aria-hidden />}
-          <span className="sr-only">{full ? 'Collapse' : 'Expand'}</span>
+          {(expand ? expand.expanded : full) ? (
+            <Icon.Close aria-hidden />
+          ) : (
+            <Icon.Expand aria-hidden />
+          )}
+          <span className="sr-only">
+            {(expand ? expand.expanded : full) ? 'Collapse' : 'Expand'}
+          </span>
         </Button>
       </div>
       <div className={cn('min-h-0 w-full', full && 'flex-1 overflow-auto')}>

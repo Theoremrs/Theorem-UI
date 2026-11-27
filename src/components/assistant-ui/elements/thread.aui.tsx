@@ -326,6 +326,8 @@ const ThreadRoot: FC<{
 
           <ThreadPrimitive.ViewportFooter
             ref={footerRef}
+            // Covers the messages scrolling under it, a hosted App's included.
+            data-runtime-occluder=""
             className={cn(
               'appearance-composer-track aui-thread-viewport-footer flex flex-col overflow-visible pb-4 md:pb-6',
               !isEmpty && 'sticky bottom-0 mt-auto',
