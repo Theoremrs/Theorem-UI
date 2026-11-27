@@ -251,6 +251,7 @@ export type TimelineEventType =
   | 'reference'
   | 'milestone'
   | 'project'
+  | 'agent_assigned'
 
 export type TimelineEvent = {
   id: string
@@ -261,6 +262,42 @@ export type TimelineEvent = {
   bodyMarkdown?: string
   /** From and to values for a change. */
   data?: Record<string, unknown>
+}
+
+/** An agent an assignment can start (GET /api/work/v1/agents). */
+export type WorkAgent = {
+  id: string
+  label: string
+  available: boolean
+  unavailableReason?: string
+}
+
+/**
+ * POST /api/work/v1/items/:id/agent-assignments (AGENT-02). Each is one
+ * operation under its Idempotency-Key: sent again it starts nothing new.
+ */
+export type AssignAgentInput = {
+  agentId: string
+  instructions?: string
+  /** Stop the agent already working on the item first; never implied. */
+  replaceRunning?: boolean
+}
+
+export type AgentAssignment = {
+  assignmentId: string
+  itemId: string
+  agentId: string
+  assignedBy: WorkActor
+  assignedAt: string
+  runId?: string
+  threadId?: string
+}
+
+export type AgentAssignmentResult = {
+  assignment: AgentAssignment
+  item: WorkItem
+  /** The run `replaceRunning` stopped. */
+  stoppedRunId?: string
 }
 
 export type SyncState = {

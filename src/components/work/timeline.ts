@@ -63,6 +63,10 @@ export function describeEvent(event: TimelineEvent): string {
       const result = field(event, 'conclusion') || field(event, 'state')
       return [name || 'a check', result].filter(Boolean).join(' ')
     }
+    case 'agent_assigned': {
+      const agent = field(event, 'agentLabel') || field(event, 'agentId')
+      return agent ? `assigned ${agent}` : 'assigned an agent'
+    }
     case 'reference': {
       const title = field(event, 'title') || field(event, 'key')
       return title ? `referenced this from ${title}` : 'referenced this'

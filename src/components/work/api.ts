@@ -2,6 +2,8 @@
 import { mutate } from '@/lib/theorem/client'
 import { theoremJson } from '@/lib/theorem/passthrough'
 import type {
+  AgentAssignmentResult,
+  AssignAgentInput,
   InboxAction,
   InboxBulkAction,
   InboxEntry,
@@ -10,6 +12,7 @@ import type {
   NewWorkItem,
   SyncState,
   TimelineEvent,
+  WorkAgent,
   WorkFacets,
   WorkItem,
   WorkItemDetail,
@@ -48,6 +51,24 @@ const write = <T>(
       body,
       headers: { ...headers, ...(revision ? { 'If-Match': revision } : {}) },
     }),
+  )
+
+// Agents
+
+export const listAgents = () =>
+  theoremJson<{ agents: WorkAgent[] }>(`${WORK}/agents`).then((r) => r.agents)
+
+/** One assignment; `revision` is the item's, sent as If-Match. */
+export const assignAgent = (
+  itemId: string,
+  input: AssignAgentInput,
+  revision: string,
+) =>
+  write<AgentAssignmentResult>(
+    'POST',
+    `${WORK}/items/${id(itemId)}/agent-assignments`,
+    input,
+    revision,
   )
 
 // Settings

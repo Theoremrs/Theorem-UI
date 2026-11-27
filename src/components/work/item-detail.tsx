@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { describeError, hasStatus } from '@/lib/theorem/client'
+import { AgentRow } from './agent-row'
 import { DatePicker } from './date-picker'
 import { PRIORITY_LABEL } from './grouping'
 import {
@@ -122,6 +123,7 @@ function Properties({
   onOpen?: (itemId: string) => void
 }) {
   const pr = item.pullRequest
+  const source = useWorkSource()
   return (
     <dl className="flex flex-col gap-0.5">
       <Row label="Status">
@@ -217,16 +219,22 @@ function Properties({
           dim(item.source.provider === 'local' ? 'Local item' : item.key)
         )}
       </Row>
-      {item.threadId && (
-        <Row label="Conversation">
-          <ThreadLink
-            threadId={item.threadId}
-            className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-sm text-link hover:bg-hover"
-          >
-            <Icon.Conversation className="size-3.5 shrink-0" />
-            <span className="truncate">Open</span>
-          </ThreadLink>
+      {item.runId || source.assignAgent ? (
+        <Row label="Agent">
+          <AgentRow item={item} />
         </Row>
+      ) : (
+        item.threadId && (
+          <Row label="Conversation">
+            <ThreadLink
+              threadId={item.threadId}
+              className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-sm text-link hover:bg-hover"
+            >
+              <Icon.Conversation className="size-3.5 shrink-0" />
+              <span className="truncate">Open</span>
+            </ThreadLink>
+          </Row>
+        )
       )}
       {item.origin && (
         // Where it was made from, asked of its owner now: a source since

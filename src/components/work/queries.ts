@@ -21,6 +21,7 @@ import {
   writeItem,
 } from './cache'
 import type {
+  AssignAgentInput,
   InboxAction,
   InboxBulkAction,
   InboxEntry,
@@ -243,6 +244,38 @@ export function useAddComment(itemId: string) {
             : detail,
       )
       void client.invalidateQueries({ queryKey: keys.items, refetchType: 'none' })
+    },
+  })
+}
+
+export function useWorkAgents() {
+  const source = useWorkSource()
+  const keys = useWorkKeys()
+  return useQuery({
+    queryKey: [...keys.root, 'agents'],
+    queryFn: () => source.listAgents!(),
+    enabled: !!source.listAgents,
+    staleTime: 60_000,
+  })
+}
+
+/**
+ * Assigns an agent. Only the person's action calls this: no mount, replay
+ * or render starts a run (AGENT-02), and a mutation is never retried here.
+ */
+export function useAssignAgent(itemId: string) {
+  const source = useWorkSource()
+  const keys = useWorkKeys()
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ input, revision }: { input: AssignAgentInput; revision: string }) =>
+      source.assignAgent!(itemId, input, revision),
+    onSuccess: ({ item }) => {
+      client.setQueryData<WorkItemDetail>(keys.item(itemId), (detail) =>
+        detail ? { ...detail, item } : detail,
+      )
+      void client.invalidateQueries({ queryKey: keys.item(itemId) })
+      void client.invalidateQueries({ queryKey: keys.items })
     },
   })
 }
