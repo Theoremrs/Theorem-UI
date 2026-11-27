@@ -16,10 +16,12 @@ import {
   lazy,
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react'
+import type { FunctionComponent } from 'react'
 import { ArtifactPanel } from '@/components/artifacts/artifact-panel'
 import { useThreadArtifacts } from '@/components/artifacts/artifact-model'
 import { useArtifactView } from '@/components/artifacts/artifact-view'
@@ -41,22 +43,33 @@ import {
 import { useNote } from '@/lib/theorem/notes'
 import { useFileDock } from '@/lib/theorem/project-files'
 import { useWorkspaceFileView } from '@/lib/workspace/open'
-import {
-  THREAD,
-  followFront,
-  holdsPanelsMenu,
-} from './arrangements'
+import { THREAD, followFront, holdsPanelsMenu } from './arrangements'
 import { FilePanel } from './file-panel'
-import {
-  hasOwnView,
-  ModeView,
-  modeLabel,
-  useShellMode,
-} from './modes'
+import { hasOwnView, ModeView, modeLabel, useShellMode } from './modes'
 import { openBeside } from './open-beside'
 import { useShell } from './shell-state'
 import { ChromeMenuPopup, menuItem } from './chrome-menu'
 import { adaptDock } from './responsive-dock'
+import { ContributionBoundary } from './contribution-boundary'
+import './builtin-chrome'
+import { registerContributions } from '@/lib/contributions/registry'
+import { useHostContributions } from '@/lib/shell/host-registry'
+import {
+  loadLayout,
+  saveLayout as saveEnvelope,
+} from '@/lib/shell/layout-store'
+import type { LayoutDevice } from '@/lib/shell/layout-envelope'
+import {
+  liveOf,
+  missingAfterRestore,
+  stackPanels,
+  useNarrowViewport,
+} from '@/lib/shell/narrow-layout'
+import {
+  movePanel,
+  registerPanelCommands,
+  usePanelOffer,
+} from '@/lib/shell/panel-commands'
 
 import { IdeFrame } from '@/components/ide/ide-frame'
 import { flyGhost, popIn } from '@/lib/motion'
@@ -140,11 +153,7 @@ function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
       data-appearance-width-role="main"
       className="flex h-full min-w-0 flex-col"
     >
-      {inChat && (
-        <ThreadHeader
-          actions={actions}
-        />
-      )}
+      {inChat && <ThreadHeader actions={actions} />}
       <div className="relative min-h-0 flex-1">
         <ModeView docked actions={mode === 'notes' ? actions : undefined} />
       </div>
@@ -310,22 +319,119 @@ const inspector = (Panel: React.ComponentType) =>
 /** The id the outputs side panel had; only old saved layouts still name it. */
 const RETIRED_OUTPUTS_PANEL = 'outputs'
 
-const components = {
-  thread: ThreadPanel,
-  outline: inspector(OutlinePanel),
-  links: inspector(LinksPanel),
-  graph: inspector(GraphPanel),
+/**
+ * The panels the shell ships, registered as `panel` contributions: the dock
+ * builds its component table from the registry, so an installed module's panel
+ * opens through the same path (EXT-08). `singleDriver` surfaces keep one
+ * active driver (HOST-01).
+ */
+const SHIPPED_PANELS: ReadonlyArray<{
+  component: string
+  label: string
+  Component: React.ComponentType<any>
+  singleDriver?: boolean
+}> = [
+  {
+    component: 'thread',
+    label: 'Conversation',
+    Component: ThreadPanel,
+    singleDriver: true,
+  },
+  {
+    component: 'outline',
+    label: 'Outline',
+    Component: inspector(OutlinePanel),
+  },
+  { component: 'links', label: 'Links', Component: inspector(LinksPanel) },
+  { component: 'graph', label: 'Graph', Component: inspector(GraphPanel) },
+  { component: 'artifact', label: 'Artifact', Component: ArtifactDockPanel },
+  { component: 'note', label: 'Note', Component: NoteDockPanel },
+  {
+    component: WORKSPACE_FILE_COMPONENT,
+    label: 'File',
+    Component: WorkspaceFileDockPanel,
+  },
+  { component: 'file', label: 'File', Component: FileDockPanel },
+  {
+    component: 'delegation',
+    label: 'Delegation',
+    Component: DelegationDockPanel,
+  },
+  { component: 'review', label: 'Compare', Component: ReviewDockPanel },
+]
+
+/** `workspaceFile` becomes `workspace-file`: contribution ids are lowercase and dashed. */
+export const panelContributionId = (component: string) =>
+  `theorem.panel.${component.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`
+
+registerContributions(
+  SHIPPED_PANELS.map(({ component, label, Component, singleDriver }) => ({
+    kind: 'panel' as const,
+    id: panelContributionId(component),
+    label,
+    Component,
+    meta: { component, ...(singleDriver && { singleDriver: true }) },
+  })),
+)
+
+/**
+ * Components only old saved layouts still name. They restore and are then
+ * removed (restoreLayout), so they are not contributions.
+ */
+const RETIRED_COMPONENTS: Record<
+  string,
+  FunctionComponent<IDockviewPanelProps>
+> = {
   // Layouts saved while the IDE was a dock panel name it; restoreLayout drops it.
   ide: () => <IdeFrame />,
-  artifact: ArtifactDockPanel,
-  note: NoteDockPanel,
-  [WORKSPACE_FILE_COMPONENT]: WorkspaceFileDockPanel,
-  file: FileDockPanel,
-  delegation: DelegationDockPanel,
-  review: ReviewDockPanel,
   // The outputs were a side panel until 2026-11-14; a layout saved then still
   // names it, so it restores and is removed (restoreLayout).
   [RETIRED_OUTPUTS_PANEL]: () => null,
+}
+
+/**
+ * An installed panel's component, wrapped so a render failure is recorded and
+ * leaves a placeholder: the resource and its parameters stay in the layout.
+ */
+function guardedPanel(
+  id: string,
+  Component: React.ComponentType<any>,
+): FunctionComponent<IDockviewPanelProps> {
+  return function GuardedPanel(props) {
+    return (
+      <ContributionBoundary
+        area="panel"
+        contributionId={id}
+        fallback={
+          <div role="status" className="p-4 text-sm text-ink-muted">
+            This panel could not be shown. Its settings and the resource it
+            opened are kept; recovery lists what failed.
+          </div>
+        }
+      >
+        <Component {...props} />
+      </ContributionBoundary>
+    )
+  }
+}
+
+/** The dock's component table, from the panel contributions in force. */
+function useDockComponents() {
+  const panels = useHostContributions('panel')
+  return useMemo(() => {
+    const table: Record<string, FunctionComponent<IDockviewPanelProps>> = {
+      ...RETIRED_COMPONENTS,
+    }
+    for (const one of panels) {
+      const name = one.meta?.component
+      if (typeof name !== 'string' || !one.Component) continue
+      table[name] =
+        one.source.kind === 'builtin'
+          ? (one.Component as FunctionComponent<IDockviewPanelProps>)
+          : guardedPanel(one.id, one.Component)
+    }
+    return table
+  }, [panels])
 }
 
 const tabComponents = {
@@ -593,6 +699,47 @@ function openNote(api: DockviewApi, documentId: string) {
   openBeside(api, options, THREAD, 0.4)
 }
 /**
+ * Shown when an open request lands on a single-driver surface that is already
+ * placed: it offers to focus the one that exists or move it here, rather than
+ * starting a second runtime (HOST-01). Focus already happened; nothing starts.
+ */
+function PanelOfferBar({ dock }: { dock: DockviewApi | undefined }) {
+  const offer = usePanelOffer((state) => state.offer)
+  const dismiss = usePanelOffer((state) => state.dismiss)
+  if (!offer || !dock) return null
+  const from =
+    offer.from && offer.from !== offer.panelId ? offer.from : undefined
+  return (
+    <div
+      role="group"
+      aria-label={`${offer.label} is already open`}
+      className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-separator bg-sheet px-3 py-2 text-sm shadow-sheet"
+    >
+      <span>{offer.label} is already open, so it was brought forward.</span>
+      {from && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            movePanel(dock, {
+              id: offer.panelId,
+              to: 'tab',
+              reference: from,
+            })
+            dismiss()
+          }}
+        >
+          Move it here
+        </Button>
+      )}
+      <Button size="sm" variant="ghost" onClick={dismiss}>
+        Dismiss
+      </Button>
+    </div>
+  )
+}
+
+/**
  * Desktop dock: the conversation and each open artifact, note and file as dock panels. Panels render always, so moving or hiding one
  * keeps its React state, scroll position and focus target. The layout is saved
  * per project; artifact panels belong to the conversation they came from.
@@ -606,6 +753,11 @@ export function DockShell({
   threadId: string | undefined
 }) {
   const [dock, setDock] = useState<DockviewApi>()
+  const components = useDockComponents()
+  // A narrow viewport stacks the panels and saves to its own slot, so the
+  // desktop arrangement is never overwritten from a phone (HOST-03).
+  const narrow = useNarrowViewport()
+  const device = useRef<LayoutDevice>(narrow ? 'narrow' : 'desktop')
   const host = useRef<HTMLDivElement>(null)
   const adaptation = useRef<ReturnType<typeof adaptDock> | null>(null)
   useEffect(() => {
@@ -619,6 +771,18 @@ export function DockShell({
   }, [dock])
   /** Conversation the layout's artifact panels belong to. */
   const layoutThread = useRef<string | undefined>(undefined)
+  /** Saves the live layout in the versioned envelope, for this device only. */
+  const persistLayout = useEffectEvent(() => {
+    if (!dock) return
+    const layout = adaptation.current
+      ? adaptation.current.layoutForSave()
+      : dock.toJSON()
+    if (layout)
+      saveEnvelope(projectId, device.current, {
+        vendor: layout as never,
+        threadId: layoutThread.current,
+      })
+  })
   // A full-screen workbench covers this dock: a review asked for there (its
   // Artifacts panel, its conversation's review card) brings the sheet back
   // beside it so the review can be seen and used.
@@ -630,9 +794,19 @@ export function DockShell({
   })
 
   const onReady = ({ api }: DockviewReadyEvent) => {
-    const saved = useShell.getState().layouts[projectId]
-    if (saved && restoreLayout(api, saved.dock))
-      layoutThread.current = saved.threadId
+    const loaded = loadLayout(
+      projectId,
+      device.current,
+      useShell.getState().layouts[projectId],
+    )
+    if (
+      loaded.status === 'ok' &&
+      restoreLayout(
+        api,
+        loaded.vendor as unknown as Parameters<typeof api.fromJSON>[0],
+      )
+    )
+      layoutThread.current = loaded.threadId
     else buildDefaultLayout(api)
     setDock(api)
   }
@@ -640,16 +814,7 @@ export function DockShell({
   // Connects the artifact store to this dock and saves every layout change.
   useEffect(() => {
     if (!dock) return
-    const save = () => {
-      const layout = adaptation.current
-        ? adaptation.current.layoutForSave()
-        : dock.toJSON()
-      if (layout)
-        useShell.getState().saveLayout(projectId, {
-          threadId: layoutThread.current,
-          dock: layout,
-        })
-    }
+    const save = () => persistLayout()
     const active = dock.activePanel && artifactIdOf(dock.activePanel.id)
     if (active) useArtifactView.getState().focused(active)
     useArtifactView.setState({
@@ -730,18 +895,66 @@ export function DockShell({
           dock.removePanel(panel)
       useArtifactView.getState().reset()
     }
-    const layout = adaptation.current
-      ? adaptation.current.layoutForSave()
-      : dock.toJSON()
-    if (layout)
-      useShell.getState().saveLayout(projectId, {
-        threadId,
-        dock: layout,
-      })
+    persistLayout()
   }, [dock, threadId, projectId])
 
+  // Panel commands: every panel action has a path that is not a drag.
+  useEffect(() => {
+    if (!dock) return
+    return registerPanelCommands(() => dock)
+  }, [dock])
+
+  // Crossing the narrow breakpoint switches slots. Going narrow stacks the
+  // panels as tabs; coming back restores the desktop arrangement and keeps
+  // any panel opened meanwhile.
+  const wasNarrow = useRef(narrow)
+  useEffect(() => {
+    if (!dock || wasNarrow.current === narrow) return
+    wasNarrow.current = narrow
+    if (narrow) {
+      device.current = 'narrow'
+      stackPanels(dock, THREAD)
+      persistLayout()
+      return
+    }
+    const live = dock.panels.map(liveOf)
+    device.current = 'desktop'
+    const loaded = loadLayout(
+      projectId,
+      'desktop',
+      useShell.getState().layouts[projectId],
+    )
+    if (
+      loaded.status !== 'ok' ||
+      !restoreLayout(
+        dock,
+        loaded.vendor as unknown as Parameters<typeof dock.fromJSON>[0],
+      )
+    )
+      return
+    const kept = new Set(dock.panels.map((panel) => panel.id))
+    for (const panel of missingAfterRestore(live, kept))
+      dock.addPanel({
+        id: panel.id,
+        component: panel.component,
+        title: panel.title,
+        params: panel.params,
+        position: { referencePanel: THREAD },
+      })
+  }, [dock, narrow, projectId])
+  // Opening in a narrow dock lands as a tab in the one pane.
+  useEffect(() => {
+    if (!dock || !narrow) return
+    const added = dock.onDidAddPanel(() => stackPanels(dock, THREAD))
+    return () => added.dispose()
+  }, [dock, narrow])
+
   return (
-    <div ref={host} data-appearance-part="dock" className="h-full min-w-0">
+    <div
+      ref={host}
+      data-appearance-part="dock"
+      className="relative h-full min-w-0"
+    >
       <DockviewReact
         className="h-full w-full"
         theme={theme}
@@ -757,12 +970,18 @@ export function DockShell({
             action: () =>
               api.addFloatingGroup(panel, { width: 480, height: 560 }),
           }
+          // The same action the Move panel command runs, for a pointer user too.
+          const next = {
+            label: 'Move to next group',
+            action: () => movePanel(api, { id: panel.id }),
+          }
           return panel.id === THREAD
-            ? ['maximize', float]
-            : ['maximize', float, 'separator', 'close']
+            ? ['maximize', float, next]
+            : ['maximize', float, next, 'separator', 'close']
         }}
         onReady={onReady}
       />
+      <PanelOfferBar dock={dock} />
     </div>
   )
 }

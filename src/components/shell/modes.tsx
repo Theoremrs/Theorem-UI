@@ -1,5 +1,6 @@
 // SOURCING: @tanstack/react-router (each mode is a route), assistant-ui Thread element, the Spaces canvas (React Flow), the IDE frame (browser-only Theia), the Vault's file list on a phone (FoldersSection), the program canvas (React Flow), Index mode (its page, pages/mode-page.tsx), Pages (Puck over the vault's page files; a mode's page opens there to be arranged), Notes (Theorem documents in the Milkdown note editor), a project's home in chat mode (components/projects/project-home), and records (components/crm: saved people, organizations and what is owed) inside Index mode
-import { RailMark } from './rail-marks'
+import { MODES } from './builtin-nav'
+import './builtin-chrome'
 import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { Thread } from '@/components/assistant-ui/elements/thread.aui'
 import { Suspense, lazy, useCallback } from 'react'
@@ -51,19 +52,7 @@ const NotesView = lazy(() =>
   })),
 )
 
-/** The rail's destinations, in order. */
-export const MODES = [
-  { mode: 'chat', label: 'Home', Mark: RailMark.Home },
-  { mode: 'index', label: 'Index', Mark: RailMark.Index },
-  { mode: 'notes', label: 'Notes', Mark: RailMark.Notes },
-  { mode: 'pages', label: 'Pages', Mark: RailMark.Pages },
-  // The Vault works on Home and the opened folders; the rail offers it while
-  // there are any.
-  { mode: 'vault', label: 'Vault', Mark: RailMark.Vault, folders: true },
-  { mode: 'spaces', label: 'Spaces', Mark: RailMark.Spaces },
-  { mode: 'canvas', label: 'Canvas', Mark: RailMark.Canvas },
-  { mode: 'ide', label: 'IDE', Mark: RailMark.Ide },
-] as const
+export { MODES } from './builtin-nav'
 
 /** The modes that show their own view and list in place of the conversation and its threads. */
 export const hasOwnView = (mode: ShellMode) =>
