@@ -75,6 +75,11 @@ export const CONTROLS = [
     name: 'fileText',
     source: 'control/source/streamline-common-file-text.png',
   },
+  // An attached file the composer has no picture of yet.
+  {
+    name: 'officeFileText',
+    source: 'control/source/streamline-office-file-text.png',
+  },
   { name: 'fileCode', source: 'control/source/streamline-file-code.png' },
   {
     name: 'fileCheck',
@@ -133,12 +138,20 @@ export const CONTROLS = [
   // Owner's 2026-11-16 set for the composer's + menu: Plugins, Web search.
   { name: 'plugins', source: 'control/source/streamline-toys-lego.png' },
   { name: 'browser', source: 'control/source/streamline-app-window.png' },
+  // Owner's 2026-11-21 speaker for the / menu's Read aloud: a page with a
+  // speaker, so it sits in the file family beside Code mode's coded page.
+  { name: 'readAloud', source: 'control/source/streamline-audio-file-volume.png' },
   // The + menu's Skills, from the same atom-and-spark art as Icon.Skill; it is
   // drawn as line art, so its enclosed regions are filled as the others are.
   {
     name: 'skill',
     source: 'streamline-ai-science-spark.png',
     autofill: true,
+  },
+  // The layout menu's mark (owner, 2026-11-24).
+  {
+    name: 'layout',
+    source: 'control/source/streamline-composition-layout-3.png',
   },
 ]
 

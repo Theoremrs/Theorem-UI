@@ -24,7 +24,7 @@ import { ProjectGlyph } from './glyphs'
 import { ThreadMenuItems } from './thread-menu'
 
 const headerButton =
-  'flex min-h-(--appearance-control-min) min-w-(--appearance-control-min) shrink-0 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover'
+  'flex size-7 shrink-0 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover'
 
 /** Where the thread sits and what can be done to it; the dock's one layout menu sits at its end. */
 export function ThreadHeader({ actions }: { actions?: ReactNode }) {
@@ -54,16 +54,14 @@ export function ThreadHeader({ actions }: { actions?: ReactNode }) {
   return (
     // No rule under it: the breadcrumb sits in the conversation's own space,
     // and pinning lives in the "More" menu with everything else done to it.
-    <header className="appearance-thread-header flex shrink-0 items-center gap-1 px-3 text-sm">
+    // Tucked into the corner: a compact line of the project and the title,
+    // no glyph, the More button straight after it.
+    <header className="appearance-thread-header flex shrink-0 items-center gap-0.5 ps-2.5 pe-2 tracking-[-0.005em]">
       <Breadcrumb aria-label="Thread location" className="min-w-0">
-        <BreadcrumbList className="flex-nowrap gap-1.5 text-ink-muted sm:gap-1.5">
+        <BreadcrumbList className="flex-nowrap gap-1 text-[0.8125rem] leading-4 text-ink-muted sm:gap-1">
           {!homeProject && project && !project.isInbox && (
             <>
-              <BreadcrumbItem
-                title={project.state?.text}
-                className="max-w-48 shrink-0"
-              >
-                <ProjectGlyph aria-hidden className="size-3.5 shrink-0" />
+              <BreadcrumbItem className="max-w-40 shrink-0">
                 <span className="truncate">{project.title}</span>
               </BreadcrumbItem>
               <BreadcrumbSeparator className="text-ink-faint">

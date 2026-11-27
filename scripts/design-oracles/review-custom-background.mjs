@@ -61,9 +61,36 @@ try {
     })
   })
   for (const dark of [false, true, false]) {
-    await page.evaluate(
-      (dark) => document.documentElement.classList.toggle('dark', dark),
-      dark,
+    await page.evaluate(async (dark) => {
+      document.documentElement.classList.toggle('dark', dark)
+      // Reduced motion still allows a short transition. Measure the new
+      // foreground and background after the browser has painted the mode.
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      )
+    }, dark)
+    // The app reacts to the mode change as well, and on a slow runner the
+    // prose can still hold the previous mode's ink two frames in. Wait until
+    // it paints the ink the root's tokens resolve to now; a page whose text
+    // never follows them times out here and fails.
+    await page.waitForFunction(
+      () => {
+        const prose = document.querySelector(
+          '[data-surface-role="assistant-reading"] [data-appearance-part="prose-track"]',
+        )
+        if (!prose) return false
+        // The reading plane's ink is the root's --ink (appearance.css
+        // .appearance-reading-plane), so resolve that outside the plane.
+        const probe = document.createElement('span')
+        probe.style.color = 'var(--ink)'
+        document.body.append(probe)
+        const settled =
+          getComputedStyle(probe).color === getComputedStyle(prose).color
+        probe.remove()
+        return settled
+      },
+      null,
+      { timeout: 5_000 },
     )
     const paint = await page
       .locator('[data-surface-role="assistant-reading"]')
@@ -107,7 +134,7 @@ try {
       for (const ink of ['ink', 'secondary', 'link', 'faintTop', 'faintBottom'])
         assert(
           wcagContrast(paint[ink], paint[background]) >= 4.5,
-          `${ink} on ${background}: ${paint[background]}`,
+          `${ink} ${paint[ink]} on ${background} ${paint[background]} (${dark ? 'dark' : 'light'})`,
         )
     checks.push({ mode: dark ? 'dark' : 'light', passed: true, paint })
     await page.screenshot({

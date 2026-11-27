@@ -1,5 +1,11 @@
-// SOURCING: @theoremharness/sdk ConversationStore contract (headless.ts): load by identity, atomic replace on save, never a token
-import type { ConversationIdentity, ConversationJournal, ConversationStore } from '@theoremharness/sdk'
+// SOURCING: @theoremharness/sdk ConversationStore contract (headless.ts): load by identity, atomic replace on save, never a token; its parseJson / stringifyJson keep wire integers beyond the safe range as bigint
+import {
+  parseJson,
+  stringifyJson,
+  type ConversationIdentity,
+  type ConversationJournal,
+  type ConversationStore,
+} from '@theoremharness/sdk'
 
 /** The subset of expo-sqlite the store uses, so tests can supply their own. */
 export type JournalDatabase = {
@@ -21,10 +27,11 @@ export function createJournalStore(database: JournalDatabase): ConversationStore
         'SELECT body FROM conversation_journal WHERE key = ?',
         [journalKey(identity)],
       )
-      return row ? (JSON.parse(row.body) as ConversationJournal) : undefined
+      return row ? parseJson<ConversationJournal>(row.body) : undefined
     },
     async save(journal) {
-      const body = JSON.stringify(journal)
+      // Run events can carry integers the SDK decoded as bigint, which JSON.stringify refuses.
+      const body = stringifyJson(journal)
       if (CREDENTIAL_KEYS.test(body))
         throw new Error('Refusing to persist a conversation journal that carries credentials')
       // One statement replaces the row atomically; the promise resolves after commit.

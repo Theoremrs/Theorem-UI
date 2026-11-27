@@ -6,6 +6,12 @@
 import { z } from 'zod'
 import { documentAppDatabases, openInMemory } from './app-db'
 import * as checker from './app-checker'
+import { schemesDesignFeedback, unavailableDesign } from './app-design'
+import type {
+  AppDesignFeedback,
+  DesignScheme,
+  SchemeMeasurement,
+} from './app-design'
 import { PICTURE_WIDTH, pictureOf } from './app-picture'
 import type { AppPicture } from './app-picture'
 import { AppBuildError, appSourcesOf } from './app-source'
@@ -22,15 +28,39 @@ import {
   call,
 } from './sandbox/protocol'
 import type {
+  CellStatus,
   FrameError,
   PageAttributes,
   SandboxMethods,
 } from './sandbox/protocol'
+import { readAppTheme } from './sandbox/theme'
+import type { AppTheme } from './sandbox/theme'
 
-/** What a check of an App found. Everything in it is JSON. */
+/** How a notebook's cells stood when its run ended, by id. */
+export interface CellOutcomes {
+  /** Cells that showed a value. */
+  ready: Array<string>
+  /** Cells that failed; their errors are in the problems. */
+  failed: Array<string>
+  /**
+   * Cells that had not settled when the run ended: not failed and not shown,
+   * only not seen yet. A longer run may see them settle.
+   */
+  pending: Array<string>
+}
+
+/**
+ * What a check of an App found. Everything in it is JSON. Each fact is its
+ * own: a page that built may not have started, and one that started may not
+ * have shown everything by the time the run ended.
+ */
 export interface AppInspection {
   /** Whether the App's page could be made: false when its source does not build. */
   built: boolean
+  /** Whether the page started: it ran and connected to Theorem. False when it was not run. */
+  started: boolean
+  /** For a notebook, how each of its cells stood when the run ended. */
+  cells?: CellOutcomes
   /** The App's source files, when it is built from source. */
   files: Array<string>
   /** Build, type and runtime problems, in that order. */
@@ -51,17 +81,31 @@ export interface AppInspection {
    */
   rendered?: { text: string; elements: number; outline?: string }
   /**
-   * What the App looked like, when a picture was asked for: its snapshot drawn
-   * in the page, with what it drew on a canvas. Its own fonts are not in it.
+   * An approximate reconstruction, when a picture was asked for: its snapshot
+   * drawn in the page, with what it drew on a canvas. Its own fonts are not in
+   * it. This is not a browser screenshot or evidence for a pixel comparison.
    */
   picture?: AppPicture
+  /** Optional measurements of the live sandbox DOM, with explicit coverage. */
+  design?: AppDesignFeedback
 }
 
 export interface InspectOptions {
-  /** How long to run the App and listen for what it throws. Zero does not run it. */
+  /**
+   * How long to run the App and listen for what it throws. Zero does not run
+   * it. A notebook's run ends sooner when every cell has settled.
+   */
   runMs?: number
+  /**
+   * The ids of the cells a notebook page runs. The run lasts until each has
+   * shown a value or failed, up to `runMs` (MAX_RUN_MS unless given), and the
+   * inspection says how each stood.
+   */
+  cells?: ReadonlyArray<string>
   /** Also draw what the App showed, for a reader that can see. */
   picture?: boolean
+  /** Also collect and evaluate the running App's rendered design measurements. */
+  design?: boolean
 }
 
 /** How long an App runs unless told otherwise, and the longest it may. */
@@ -73,6 +117,11 @@ const CONNECT_MS = 10_000
 const FRAME_HEIGHT = 768
 /** How long the App's page has to say what it shows at the end of its run. */
 const LOOK_MS = 2_000
+/**
+ * How long it has to answer a design measurement. Longer than a look: it
+ * walks the live document, on the same thread as a chat that is streaming.
+ */
+const DESIGN_MS = 5_000
 /** What a frame answers when asked what it shows. It is the App's word, so it is checked. */
 const attributes = z.record(z.string().max(80), z.string())
 const looked = z.object({
@@ -102,6 +151,55 @@ const declarationsOf = (html: string) =>
   )
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+/** How long a copy of the page's stylesheets has to load, to read a scheme it is not showing. */
+const STYLES_MS = 3_000
+
+/** The scheme the page shows now. */
+const pageScheme = (): DesignScheme =>
+  document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+
+/**
+ * The page's look in a scheme: read from the page when it shows it, else
+ * from the page's own stylesheets in a hidden document whose root carries
+ * the page's root attributes in that scheme. The page itself is never
+ * switched, so the person sees nothing change.
+ */
+async function appThemeIn(scheme: DesignScheme): Promise<AppTheme | undefined> {
+  if (scheme === pageScheme()) return readAppTheme()
+  const frame = document.createElement('iframe')
+  frame.setAttribute('aria-hidden', 'true')
+  frame.tabIndex = -1
+  frame.style.cssText =
+    'position:fixed;left:0;top:0;width:0;height:0;border:0;visibility:hidden;pointer-events:none'
+  document.body.append(frame)
+  try {
+    const copy = frame.contentDocument
+    if (!copy) return undefined
+    const root = copy.documentElement
+    for (const { name, value } of document.documentElement.attributes)
+      root.setAttribute(name, value)
+    root.classList.toggle('dark', scheme === 'dark')
+    root.style.setProperty('color-scheme', scheme)
+    const loads: Array<Promise<unknown>> = []
+    for (const node of document.querySelectorAll(
+      'style, link[rel~="stylesheet"]',
+    )) {
+      const clone = copy.importNode(node, true) as HTMLElement
+      // The copy is the hidden document's element, so it is told by its name.
+      if (clone.localName === 'link')
+        loads.push(
+          new Promise((resolve) => {
+            clone.onload = clone.onerror = resolve
+          }),
+        )
+      copy.head.append(clone)
+    }
+    await Promise.race([Promise.all(loads), wait(STYLES_MS)])
+    return readAppTheme(root)
+  } finally {
+    frame.remove()
+  }
+}
 
 /** Elements that start a new line when a page is read as text. */
 const LINE = new Set(
@@ -157,17 +255,34 @@ async function run(
   page: string,
   runMs: number,
   pictured: boolean,
+  cells: ReadonlyArray<string> | undefined,
+  designed: boolean,
 ): Promise<{
   problems: Array<AppProblem>
+  started: boolean
+  cells?: CellOutcomes
   ranMs: number
   rendered?: AppInspection['rendered']
   picture?: AppPicture
+  design?: AppDesignFeedback
 }> {
   const problems: Array<AppProblem> = []
+  // How each cell first settled, and the moment every one has.
+  const settled = new Map<string, CellStatus['stage']>()
+  let allSettled = () => {}
+  const everySettled = new Promise<void>((resolve) => (allSettled = resolve))
+  const onStatus = ({ cell, stage }: CellStatus) => {
+    if (!cells?.includes(cell) || settled.has(cell)) return
+    settled.set(cell, stage)
+    if (settled.size === cells.length) allSettled()
+  }
   let snapshot: string | undefined
   // What the App's root and body carried when it was last looked at.
   let carried: PageAttributes | undefined
   let outline: string | undefined
+  let design: AppDesignFeedback | undefined = designed
+    ? unavailableDesign('The App did not connect for design measurement.')
+    : undefined
   let height = FRAME_HEIGHT
   const build = hosted.hostedBuild(page)
   const state = pinnedAppState(null)
@@ -184,7 +299,10 @@ async function run(
   frame.setAttribute('aria-hidden', 'true')
   frame.tabIndex = -1
   // Laid out at a real size, so the App measures what it would on screen.
-  frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${PICTURE_WIDTH}px;height:${FRAME_HEIGHT}px;visibility:hidden;pointer-events:none;border:0`
+  // In the viewport and transparent rather than off screen or hidden: the
+  // browser gives a frame it counts as unseen no animation frames, and an
+  // App drawn in requestAnimationFrame would never draw.
+  frame.style.cssText = `position:fixed;left:0;top:0;width:${PICTURE_WIDTH}px;height:${FRAME_HEIGHT}px;opacity:0;z-index:-1;pointer-events:none;border:0`
   const connection = new FrameConnection(frame, {
     ...pinnedAppHost(
       html,
@@ -203,12 +321,14 @@ async function run(
     onResize: (tall: number) => {
       height = Math.max(tall, FRAME_HEIGHT)
     },
+    onStatus,
   })
   frame.src = url
   document.body.append(frame)
   const started = performance.now()
+  let connected = false
   try {
-    const connected = await Promise.race([
+    connected = await Promise.race([
       connection.connected.then(
         () => true,
         () => false,
@@ -221,7 +341,9 @@ async function run(
         message: 'The App did not start: its page never connected to Theorem.',
       })
     else {
-      await wait(runMs)
+      await (cells?.length
+        ? Promise.race([everySettled, wait(runMs)])
+        : wait(runMs))
       // What the App shows at the end of its run. An App that keeps changing
       // (a clock, an animation) never settles into a snapshot of its own, and
       // one that changed late would leave an older one.
@@ -237,6 +359,69 @@ async function run(
         outline = last.data.outline
         carried = last.data.page
       }
+      if (designed) {
+        // Measured in the scheme the page shows, then in the other one: an
+        // App is seen in both, and one that reads well in one may not in the
+        // other. Each measurement is against the page's background in it.
+        const first = pageScheme()
+        const measurements: Array<SchemeMeasurement> = []
+        for (const scheme of [
+          first,
+          first === 'dark' ? 'light' : 'dark',
+        ] as const) {
+          const theme = await appThemeIn(scheme)
+          if (!theme) {
+            measurements.push({
+              scheme,
+              reason: `The page's ${scheme} theme could not be read.`,
+            })
+            continue
+          }
+          frame.style.setProperty('color-scheme', scheme)
+          const captureId = crypto.randomUUID()
+          const observed = await Promise.race([
+            connection.connected
+              .then(async (rpc) => {
+                await call<SandboxMethods, 'theme.changed'>(
+                  rpc,
+                  'theme.changed',
+                  theme,
+                )
+                return call<SandboxMethods, 'frame.design'>(
+                  rpc,
+                  'frame.design',
+                  {
+                    captureId,
+                    scheme,
+                    ...(theme.tokens.background
+                      ? { canvas: theme.tokens.background }
+                      : {}),
+                  },
+                )
+              })
+              .then(
+                (value) => ({ value }),
+                (error: unknown) => ({
+                  failed:
+                    error instanceof Error ? error.message : String(error),
+                }),
+              ),
+            wait(DESIGN_MS).then(() => ({ late: true })),
+          ])
+          measurements.push(
+            'value' in observed
+              ? { scheme, captureId, value: observed.value }
+              : {
+                  scheme,
+                  reason:
+                    'late' in observed
+                      ? `The App did not answer the ${scheme} design measurement within ${DESIGN_MS / 1000} s.`
+                      : `The App's ${scheme} design measurement failed: ${observed.failed}`,
+                },
+          )
+        }
+        design = schemesDesignFeedback(measurements)
+      }
     }
   } finally {
     connection.dispose()
@@ -245,8 +430,18 @@ async function run(
     frame.remove()
     URL.revokeObjectURL(url)
   }
+  const where = (stage?: CellStatus['stage']) =>
+    (cells ?? []).filter((cell) => settled.get(cell) === stage)
   return {
     problems,
+    started: connected,
+    ...(cells && {
+      cells: {
+        ready: where('ready'),
+        failed: where('failed'),
+        pending: where(undefined),
+      },
+    }),
     ranMs: Math.round(performance.now() - started),
     rendered:
       snapshot === undefined ? undefined : renderedOf(snapshot, outline),
@@ -254,6 +449,7 @@ async function run(
       pictured && snapshot !== undefined
         ? await pictureOf(snapshot, height, carried)
         : undefined,
+    ...(design ? { design } : {}),
   }
 }
 
@@ -268,17 +464,28 @@ export async function inspectApp(
   options: InspectOptions = {},
 ): Promise<AppInspection> {
   const runMs = Math.min(
-    Math.max(options.runMs ?? DEFAULT_RUN_MS, 0),
+    Math.max(
+      options.runMs ?? (options.cells ? MAX_RUN_MS : DEFAULT_RUN_MS),
+      0,
+    ),
     MAX_RUN_MS,
   )
   const found: Array<AppProblem> = []
   const inspection: AppInspection = {
     built: false,
+    started: false,
     files: [],
     problems: [],
     omitted: 0,
     typesChecked: false,
     ranMs: 0,
+    ...(options.design === true
+      ? {
+          design: unavailableDesign(
+            'The App was not run; design measurements require a successful build and runMs greater than zero.',
+          ),
+        }
+      : {}),
   }
   const finish = (): AppInspection => {
     const unique = found.filter(
@@ -307,7 +514,9 @@ export async function inspectApp(
         declarations.errors.map((message) => ({ kind: 'build', message })),
       )
     // A check runs the App as it runs on the page, network and all.
-    page = await hosted.hostedAppDocument(html)
+    page = await hosted.hostedAppDocument(html, undefined, {
+      keepDrawnFrames: options.picture === true,
+    })
   } catch (error) {
     if (!(error instanceof AppBuildError)) throw error
     found.push(...error.problems)
@@ -328,11 +537,21 @@ export async function inspectApp(
   }
 
   if (runMs > 0) {
-    const ran = await run(html, page, runMs, options.picture === true)
+    const ran = await run(
+      html,
+      page,
+      runMs,
+      options.picture === true,
+      options.cells,
+      options.design === true,
+    )
     found.push(...ran.problems)
+    inspection.started = ran.started
+    if (ran.cells) inspection.cells = ran.cells
     inspection.ranMs = ran.ranMs
     inspection.rendered = ran.rendered
     if (ran.picture) inspection.picture = ran.picture
+    if (ran.design) inspection.design = ran.design
   }
   return finish()
 }

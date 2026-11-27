@@ -19,6 +19,7 @@ const note: Note = {
   savedMarkdown: 'Saved.',
   revision: { position: 17, contentDigest: 'digest' },
   canonical: undefined,
+  documentKind: 'authored',
   editable: true,
   origin: {
     kind: 'user_authored',

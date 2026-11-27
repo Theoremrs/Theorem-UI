@@ -5,7 +5,9 @@
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { refusalMessage } from '@/lib/capabilities/api'
+import { isReloadConflict, refusalMessage } from '@/lib/capabilities/api'
+import { codes } from '@/lib/capabilities/contract'
+import type { InvocationReceipt } from '@/lib/capabilities/contract'
 
 /** One line of what happened to a write, and what the person can do next. */
 export type Status = {
@@ -18,7 +20,53 @@ export type Status = {
    * back. `form` names the form the call came from, so the answer closes that
    * one and no other.
    */
-  receipt?: { instanceId: string; recordId: string; form?: number }
+  receipt?: {
+    instanceId: string
+    recordId: string
+    form?: number
+    count?: number
+  }
+}
+
+/** A refused call or read, as the line the person reads: a stale read offers Reload. */
+export const refusedStatus = (error: unknown, subject: string): Status => ({
+  kind: 'failed',
+  message: refusalMessage(error, subject),
+  reload: isReloadConflict(error),
+})
+
+/**
+ * What a receipt means, as the one line the person reads. `count` is how many
+ * records one call ran over, when it ran over a selection.
+ */
+export function receiptStatus(
+  receipt: InvocationReceipt,
+  count?: number,
+): Status {
+  if (receipt.status === 'dispatched')
+    return {
+      kind: 'pending',
+      message: `${receipt.actionKey} is journaled and has not finished, so whether it took effect is not yet known.`,
+      receipt: { instanceId: receipt.instanceId, recordId: receipt.recordId },
+    }
+  const { outcome } = receipt
+  if (outcome.outcome === 'completed') {
+    const at = outcome.affected
+      .map((affected) => `r${affected.revision}`)
+      .join(', ')
+    const over = count === undefined ? '' : ` on ${count} records`
+    return {
+      kind: 'saved',
+      message: `${receipt.actionKey} saved${over}${at ? ` · ${at}` : ''}.`,
+    }
+  }
+  // A call over several records fails whole: its message names the first
+  // record that refused, and no record was written.
+  return {
+    kind: 'failed',
+    message: `${count === undefined ? '' : 'No record was changed. '}${outcome.code}: ${outcome.message}`,
+    reload: outcome.code === codes.REVISION_CONFLICT,
+  }
 }
 
 export function StatusLine({

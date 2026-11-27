@@ -1,4 +1,5 @@
-// SOURCING: useCopyToClipboard and ui/button; what Copy and Download hand over comes from the registry's sourceOf
+// SOURCING: useCopyToClipboard and ui/button; what Copy and Download hand over comes from the registry's sourceOf;
+// Save as page is save-as-page.tsx (an App only)
 import { useState } from 'react'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
@@ -8,6 +9,7 @@ import { describeError } from '@/lib/theorem/client'
 import { fileNameFor } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 import { sourceOf } from './artifact-registry'
+import { SaveAsPage } from './save-as-page'
 
 /**
  * Download a revision's source: the App as saved now for its newest
@@ -79,6 +81,7 @@ export function ArtifactActions({
           }
         />
       )}
+      <SaveAsPage artifact={artifact} latest={latest} />
       <Button
         variant="ghost"
         size="icon"

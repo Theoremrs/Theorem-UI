@@ -520,8 +520,21 @@ carries its source files as scripts a browser does not run.
   `app.check` on every send, so the turn has a tool that builds an App, checks
   its types and runs it off screen, and returns its problems and the text it
   showed (`app-operations.ts`, `app-inspect.ts`). It takes a draft's HTML or a
-  published App's document id. The run reaches no network, keeps its state in
-  the frame and gets an empty in-memory database, so a check changes nothing.
+  published App's document id. The run retains the App's declared network
+  access, keeps its state in the frame and gets an empty in-memory database.
+  With `design: true`, it also measures the live sandbox DOM at 1024 × 768
+  before removing the frame and returns `design`: either `status: measured`
+  with a Design Feedback report, or `status: unavailable` with a reason. The
+  report separates standards from design targets and diagnostics, localizes
+  findings by element/source, and reports unknowns and omitted findings. This
+  uses the same portable collector and evaluator as `packages/design-feedback`.
+  It is opt-in; `runMs: 0` cannot measure a rendered design. At most 300
+  elements are measured and 40 findings are returned, with coverage stated explicitly.
+  Measurements are sandbox-reported DOM evidence, not independent pixel proof.
+  `picture: true` remains an approximate snapshot reconstruction that omits the
+  App's fonts; use the Design Feedback browser capture CLI for screenshot diffs.
+  An agent reached through the existing client-operation bridge can request
+  this option while checking an artifact; it does not require a new operation.
   `docs/plans/agent-app-feedback.md` has the rest.
 
 `bun run e2e:app-ts` runs this in headless Chromium without a Theorem server,

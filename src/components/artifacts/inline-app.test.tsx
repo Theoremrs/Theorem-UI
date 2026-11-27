@@ -7,6 +7,13 @@ import {
   useExternalStoreRuntime,
 } from '@assistant-ui/react'
 import type { ThreadMessageLike } from '@assistant-ui/react'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import { useShell } from '@/components/shell/shell-state'
 import { TheoremPartRenderers } from '@/components/chat/theorem-parts'
 import * as hosted from '@/lib/blocks/hosted-app'
 import { BLOCK_SANDBOX } from '@/lib/blocks/executor'
@@ -28,10 +35,15 @@ function Harness({
   kind = 'app',
   documentId = 'inline-app-test',
   running = false,
+  content = '# Document',
+  payload,
 }: {
   kind?: string
   documentId?: string
   running?: boolean
+  content?: string
+  /** The part's whole payload, in place of the App-shaped one. */
+  payload?: Record<string, unknown>
 }) {
   const messages: ThreadMessageLike[] = [
     {
@@ -51,11 +63,11 @@ function Harness({
             rendererId: `theorem-${kind}`,
             lifecycle: 'ready',
             patchSequence: 1,
-            payload: {
+            payload: payload ?? {
               title: 'Browser shortlist',
               documentId,
               revision: { position: 1 },
-              content: '# Document',
+              content,
             },
           },
         },
@@ -76,9 +88,24 @@ function Harness({
   )
 }
 
+/** The reply inside a router, as the app draws it: a document's card asks the route which project's Gallery it opens in. */
+async function renderRouted(props: Parameters<typeof Harness>[0]) {
+  const router = createRouter({
+    routeTree: createRootRoute({ component: () => <Harness {...props} /> }),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  await router.load()
+  return render(<RouterProvider router={router} />)
+}
+
 afterEach(async () => {
   await cleanup()
   useArtifactView.getState().reset()
+  useShell.setState({
+    projectId: undefined,
+    sideDrawer: undefined,
+    galleryArtifact: undefined,
+  })
 })
 
 test('a live App runs once inside its answer and never opens a workspace of its own', async () => {
@@ -116,14 +143,28 @@ test('a live App runs once inside its answer and never opens a workspace of its 
   }
 }, 20_000)
 
-test('a document card keeps opening the document panel', async () => {
-  const { container } = await render(<Harness kind="document" />)
+test('in a project, a document card opens the Gallery on its document', async () => {
+  useShell.setState({ projectId: 'project-1' })
+  const { container } = await renderRouted({ kind: 'document' })
+  await click(
+    await waitFor(() =>
+      container.querySelector('[aria-label="Open Browser shortlist"]'),
+    ),
+  )
+  expect(useShell.getState().sideDrawer).toBe('outputs')
+  expect(useShell.getState().galleryArtifact).toBe('inline-result')
+  expect(useArtifactView.getState().openId).toBeUndefined()
+})
+
+test('outside any project, a document card opens the document panel', async () => {
+  const { container } = await renderRouted({ kind: 'document' })
   await click(
     await waitFor(() =>
       container.querySelector('[aria-label="Open Browser shortlist"]'),
     ),
   )
   expect(useArtifactView.getState().openId).toBe('inline-result')
+  expect(useShell.getState().sideDrawer).toBeUndefined()
   expect(container.querySelector('iframe')).toBeNull()
 })
 
@@ -140,7 +181,7 @@ for (const kind of ['app', 'document']) {
       ),
     )
     try {
-      const { container } = await render(<Harness kind={kind} running />)
+      const { container } = await renderRouted({ kind, running: true })
       // A live artifact belongs to the working answer itself; a card stands
       // for everything else. Follow the Agent opens the card's panel, never
       // a live session.
@@ -152,6 +193,11 @@ for (const kind of ['app', 'document']) {
       expect(useArtifactView.getState().openId).toBe(
         kind === 'app' ? undefined : 'inline-result',
       )
+      // While the turn writes it, the card says how far it has got.
+      if (kind === 'document')
+        expect(
+          container.querySelector('[data-slot="artifact-card"]')?.textContent,
+        ).toBe('Browser shortlistWriting·1 words')
       expect(container.querySelector('iframe')).toBeNull()
     } finally {
       fetch.mockRestore()
@@ -226,11 +272,58 @@ test('replacing the App in the answer with another saved App replaces the live r
   }
 }, 20_000)
 
-test('a document shows its excerpt inline and offers no live session', async () => {
-  const { container } = await render(<Harness kind="document" />)
-  await waitFor(() => container.querySelector('h1'))
-  expect(container.querySelector('h1')?.textContent).toBe('Document')
+test('a document is a card in the reply: its title and kind, no excerpt and no live session', async () => {
+  const { container } = await renderRouted({ kind: 'document' })
+  const card = await waitFor(() =>
+    container.querySelector('[data-slot="artifact-card"]'),
+  )
+  expect(card.textContent).toBe('Browser shortlistDocument')
+  expect(container.querySelector('h1')).toBeNull()
+  expect(
+    container.querySelector('[data-slot="theorem-artifact-card"]'),
+  ).toBeNull()
   expect(buttonNamed(container, 'Interact')).toBeUndefined()
+})
+
+test('a graph is drawn bare in the reply: its nodes, with no card, title or ground', async () => {
+  const content = JSON.stringify({
+    nodes: [
+      { id: 'harbor' },
+      { id: 'headland', dependsOn: ['harbor'] },
+      { id: 'lighthouse', dependsOn: ['headland'] },
+    ],
+  })
+  const { container } = await render(<Harness kind="graph" content={content} />)
+  const graph = await waitFor(() =>
+    container.querySelector('[data-slot="flow-graph"]'),
+  )
+  expect(graph.textContent).toBe('harborheadlandlighthouse')
+  expect(graph.className).toContain('border-0')
+  expect(graph.className).toContain('bg-transparent')
+  expect(container.textContent).not.toContain('Browser shortlist')
+  expect(
+    container.querySelector('[data-slot="theorem-artifact-card"]'),
+  ).toBeNull()
+})
+
+test('a notebook is drawn bare in the reply, and its own line opens it beside the conversation', async () => {
+  const { container } = await render(
+    <Harness
+      kind="observable"
+      payload={{ form: 'observable', title: 'Tide tables', cells: [] }}
+    />,
+  )
+  const notebook = await waitFor(() =>
+    container.querySelector('[data-slot="notebook"]'),
+  )
+  expect(
+    container.querySelector('[data-slot="theorem-artifact-card"]'),
+  ).toBeNull()
+  expect(
+    container.querySelector('[aria-label="Open Tide tables"]'),
+  ).toBeNull()
+  await click(notebook.querySelector('[aria-label="Open in larger view"]')!)
+  expect(useArtifactView.getState().openId).toBe('inline-result')
 })
 
 test('a kind this build has no renderer for shows the Theorem card, not a guess', async () => {

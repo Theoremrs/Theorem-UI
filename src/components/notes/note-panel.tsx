@@ -1,13 +1,17 @@
-// SOURCING: NoteEditor (Milkdown Crepe), ui/button, @tanstack/react-query via useNote and the Space cache
+// SOURCING: NoteEditor (Milkdown Crepe), ui/button, @tanstack/react-query via useNote and the Space cache; a saved artifact through the artifact registry's ArtifactView over saved-artifact's document head, laid out as artifact-panel lays one out
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { fillsPanel } from '@/components/artifacts/artifact-registry'
+import { ArtifactView } from '@/components/artifacts/artifact-renderers'
+import { useDocumentArtifact } from '@/components/artifacts/saved-artifact'
 import { useComposer, quoteRange } from '@/components/canvas/composer-state'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import type { CanvasSource } from '@/lib/theorem/canvas-agent'
 import type { Theorem } from '@/lib/theorem/client'
 import {
+  APP_KIND,
   noteKey,
   reloadNote,
   useNote,
@@ -152,6 +156,54 @@ function Banner({
   return null
 }
 
+/**
+ * A saved artifact opened as a note: its document's head, drawn as its form
+ * and worked as it is in a conversation, never as Markdown.
+ */
+function SavedArtifactBody({
+  documentId,
+  page,
+}: {
+  documentId: string
+  page: boolean
+}) {
+  const { artifact, error } = useDocumentArtifact(documentId)
+  if (!artifact)
+    return (
+      <p
+        role="status"
+        className={cn('p-6 text-sm text-ink-muted', page && 'pt-16')}
+      >
+        {error ?? 'Opening…'}
+      </p>
+    )
+  const fills = fillsPanel(artifact, 'interactive')
+  return (
+    <div
+      className={cn(
+        'min-h-0 flex-1',
+        fills ? 'flex flex-col' : 'overflow-y-auto',
+        page && 'pt-12',
+      )}
+    >
+      {error && (
+        <p role="status" className="px-4 pt-2 text-xs text-ink-muted">
+          {error}
+        </p>
+      )}
+      <div
+        className={cn(
+          fills
+            ? 'flex min-h-0 flex-1 flex-col'
+            : 'mx-auto w-full max-w-(--appearance-expanded-measure) px-6 py-6',
+        )}
+      >
+        <ArtifactView artifact={artifact} distance="interactive" latest />
+      </div>
+    </div>
+  )
+}
+
 /** A note at full size, for the dock panel and the phone overlay. */
 export function NotePanel({
   documentId,
@@ -231,6 +283,8 @@ export function NotePanel({
         <p className={cn('p-6 text-sm text-ink-muted', page && 'pt-16')}>
           This note is unavailable.
         </p>
+      ) : note.data.documentKind === APP_KIND ? (
+        <SavedArtifactBody documentId={documentId} page={page} />
       ) : (
         <>
           {!page && <Banner note={note.data} readOnlyNotice={readOnlyNotice} />}

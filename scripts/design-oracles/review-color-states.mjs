@@ -191,6 +191,10 @@ async function buttonStates(page, button, prefix, icon, includeFocus) {
     // Start from keyboard navigation before pointer interaction. Some engines
     // retain pointer focus on the pressed button instead of cycling back.
     for (let attempt = 0; attempt < 70; attempt++) {
+      // Tab indents inside the draft's CodeMirror block. Escape makes the
+      // next Tab leave the block, using the same keyboard path as a reader.
+      if (await page.locator('.cm-content:focus').count())
+        await page.keyboard.press('Escape')
       await page.keyboard.press('Tab')
       if (
         await button.evaluate(
@@ -338,7 +342,8 @@ for (const engine of engines.filter(
           await readState(option, {
             name: 'model-option/highlighted',
             state: 'highlighted',
-            descendant: '.truncate',
+            // The model's name wraps rather than truncates (model-picker.tsx).
+            descendant: '.break-words',
           }),
         )
         await page.keyboard.press('Escape')

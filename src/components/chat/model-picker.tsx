@@ -1,6 +1,5 @@
 import { appearancePair } from '@/lib/appearance-policy'
-// SOURCING: coss ui Combobox over Base UI Combobox (input inside the popup, as coss's "With Input Inside Popup" example), ui/tooltip over Base UI Tooltip for the full name on hover and focus, ./model-mark (Lobe Icons' provider marks), ./effort-picker in the popup's footer, @tanstack/react-router Link (to settings), lib/theorem/models (catalog, stars, pick)
-import { Link } from '@tanstack/react-router'
+// SOURCING: coss ui Combobox over Base UI Combobox (input inside the popup, as coss's "With Input Inside Popup" example, drawn as coss's CommandInput draws a search on a menu), ./model-mark (Lobe Icons' provider marks), ./effort-picker in the popup's footer, lib/theorem/models (catalog, stars, pick)
 import { useEffect, useMemo } from 'react'
 import {
   Combobox,
@@ -14,17 +13,11 @@ import {
   ComboboxTrigger,
   ComboboxCollection,
 } from '@/components/coss/combobox'
+import { menuSearch } from '@/components/assistant-ui/elements/surfaces'
 import { useMenuGlass } from '@/components/glass/menu-glass'
-import { COMPOSER_TOOLTIP_DELAY } from '@/components/chat/composer-tools'
 import { EffortPicker } from '@/components/chat/effort-picker'
 import { ModelMark } from '@/components/chat/model-mark'
 import { Icon } from '@/components/icons'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import {
   formatContext,
   modelStub,
@@ -83,15 +76,17 @@ function PickerOption({
   defaultName?: string
 }) {
   return (
-    <ComboboxItem value={model} className="py-1.5">
+    <ComboboxItem value={model}>
       <div className="flex items-center gap-2">
         <ModelMark vendor={model.vendor} className="text-ink-muted" />
-        <span className="min-w-0 flex-1 truncate">{model.name}</span>
-        {!model.ref && defaultName && (
-          <span className="min-w-0 truncate text-xs text-ink-muted">
-            {defaultName}
-          </span>
-        )}
+        {/* The model the default stands for goes under its name, so the
+            name keeps the row's width and neither breaks inside a word. */}
+        <span className="flex min-w-0 flex-1 flex-col break-words">
+          {model.name}
+          {!model.ref && defaultName && (
+            <span className="text-xs text-ink-muted">{defaultName}</span>
+          )}
+        </span>
         {model.contextLength && (
           <span className="shrink-0 text-xs text-ink-muted tabular-nums">
             {formatContext(model.contextLength)}
@@ -144,38 +139,28 @@ export function ModelPicker() {
       itemToStringValue={(model) => `${model.name} ${model.ref}`}
       isItemEqualToValue={(a, b) => a.ref === b.ref}
     >
-      {/* The maker's mark alone: the full name is the tooltip and the
-          button's name, so hover, focus and a screen reader all get it. */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger
-            delay={COMPOSER_TOOLTIP_DELAY}
-            render={
-              <ComboboxTrigger
-                aria-label={`Model: ${label}`}
-                data-model-picker-trigger=""
-                {...appearancePair('secondary', 'composer')}
-                className="flex size-8 shrink-0 items-center justify-center rounded-md text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
-              />
-            }
-          >
-            <ModelMark vendor={vendor} />
-            <span className="sr-only">{label}</span>
-          </TooltipTrigger>
-          <TooltipContent side="top">{label}</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      {/* The maker's mark alone; the full name is the button's name. */}
+      <ComboboxTrigger
+        aria-label={`Model: ${label}`}
+        data-model-picker-trigger=""
+        {...appearancePair('secondary', 'composer')}
+        className="flex size-8 shrink-0 items-center justify-center rounded-md text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
+      >
+        <ModelMark vendor={vendor} />
+        <span className="sr-only">{label}</span>
+      </ComboboxTrigger>
       <ComboboxPopup
-        side="top"
+        side="bottom"
         align="end"
         surfaceRef={glass.attach}
-        className={cn('w-80 appearance-model-popup', glass.className)}
+        className={cn('w-56 appearance-model-popup', glass.className)}
       >
-        <div className="border-b border-separator p-1.5">
+        <div className="border-b border-separator p-1">
           <ComboboxInput
             size="sm"
             showTrigger={false}
             placeholder="Find a model"
+            className={menuSearch}
             data-appearance-recipe="ui.label"
             {...appearancePair('secondary', 'popover')}
             startAddon={<Icon.Search className="size-3.5" />}
@@ -195,7 +180,7 @@ export function ModelPicker() {
               <ComboboxGroupLabel
                 data-appearance-recipe="metadata"
                 {...appearancePair('secondary', 'popover')}
-                className="px-2 pt-1.5 pb-1 text-xs text-ink-muted"
+                className="px-2 pt-1 pb-0.5 text-xs text-ink-muted"
               >
                 {group.label}
               </ComboboxGroupLabel>
@@ -211,15 +196,9 @@ export function ModelPicker() {
             </ComboboxGroup>
           )}
         </ComboboxList>
-        <div className="flex items-center justify-between gap-1 border-t border-separator p-1">
+        {/* Only a model that takes an effort level has a footer. */}
+        <div className="flex items-center border-t border-separator p-1 empty:hidden">
           <EffortPicker />
-          <Link
-            to="/settings/ai"
-            className="ms-auto flex h-8 items-center gap-2 rounded-md px-2 text-sm text-ink-muted outline-none hover:bg-hover hover:text-ink focus-visible:bg-hover"
-          >
-            <Icon.Star className="size-3.5" />
-            Star more models
-          </Link>
         </div>
       </ComboboxPopup>
     </Combobox>

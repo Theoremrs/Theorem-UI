@@ -16,6 +16,8 @@ import {
 import type { Answers, Completion, Outcome } from '../environment/result'
 import { reason as readableReason } from '../environment/workspace-recovery'
 import type { Checkpoint, Checkpoints } from './checkpoint'
+import { layoutDiagnostic } from './status'
+import type { LayoutOperation, LayoutStatus } from './status'
 
 /** The record's schema as the backend checks it (theorem_workbench.rs `WORKBENCH_SCHEMA`). */
 export const WORKBENCH_SCHEMA = 'theoremweb.workspace/1'
@@ -68,8 +70,9 @@ export interface Layout {
 export function createLayout(options: {
   environment: Environment<LayoutClient>
   checkpoints: Checkpoints
+  onStatus?: (status: LayoutStatus) => void
 }): Layout {
-  const { environment: env, checkpoints } = options
+  const { environment: env, checkpoints, onStatus } = options
   const { workspaceId } = env
 
   const answers = (requestId: string | undefined): Answers => ({
@@ -98,21 +101,49 @@ export function createLayout(options: {
     }
   }
 
+  function confirmed(mine: Answers, record: LayoutRecord) {
+    onStatus?.({ kind: 'account', revision: record.revision })
+    return accepted(mine, record)
+  }
+
+  function rejected(
+    operation: LayoutOperation,
+    mine: Answers,
+    result: Outcome<never>,
+    error?: unknown,
+  ) {
+    const uncertain = result.outcome === 'uncertain'
+    const conflict = result.outcome === 'refused' && result.code === 'conflict'
+    onStatus?.({
+      kind: 'failed',
+      operation,
+      recovery:
+        operation === 'restore'
+          ? 'restore'
+          : uncertain || conflict
+            ? 'check'
+            : 'save',
+      diagnostic: layoutDiagnostic(workspaceId, mine.requestId, error),
+    })
+    return { ...mine, ...result }
+  }
+
   return {
     async load(request) {
       const mine = answers(request?.requestId)
+      onStatus?.({ kind: 'pending', operation: 'restore' })
       await env.settled()
       try {
         const record = recordOf(await env.client.workbench.get({ workspaceId }))
         await keepDeviceCopy(record)
-        return accepted(mine, record)
+        return confirmed(mine, record)
       } catch (error) {
         // No save yet is not a failure: the next save is made against revision 0.
         if (
           statusOf(error) === 404 &&
           codeOf(error) === 'workbench_not_found'
         ) {
-          return accepted(mine, {
+          return confirmed(mine, {
             revision: 0,
             document: undefined,
             source: 'account',
@@ -121,39 +152,52 @@ export function createLayout(options: {
         const lost = failure(mine, error, false)
         // Only a record that could not be reached falls back. A refusal (signed out, forbidden) shows nothing.
         if (lost.outcome !== 'failed' && lost.outcome !== 'uncertain') {
-          return lost
+          return rejected('restore', mine, lost, error)
         }
         const device = await checkpoints.read(workspaceId)
         if (device.outcome === 'accepted' && device.value) {
+          onStatus?.({
+            kind: 'device',
+            diagnostic: layoutDiagnostic(workspaceId, mine.requestId, error),
+          })
           return accepted(mine, {
             revision: device.value.baseRevision,
             document: device.value.document,
             source: 'device',
           })
         }
-        return lost
+        return rejected('restore', mine, lost, error)
       }
     },
 
     async save(document, { baseRevision, requestId }) {
       const mine = answers(requestId)
+      onStatus?.({ kind: 'pending', operation: 'save' })
       if (!Number.isSafeInteger(baseRevision) || baseRevision < 0) {
-        return refused(
+        return rejected(
+          'save',
           mine,
-          'invalid_revision',
-          'A save needs the revision it was edited from',
+          refused(
+            mine,
+            'invalid_revision',
+            'A save needs the revision it was edited from',
+          ),
         )
       }
       await env.settled()
       const headers = env.headers(mine.requestId)
       if (!headers['X-CSRF-Token']) {
         const availability = env.availability
-        return refused(
+        return rejected(
+          'save',
           mine,
-          'environment_unavailable',
-          availability.status === 'unavailable'
-            ? availability.reason
-            : 'There is no signed-in session to save with',
+          refused(
+            mine,
+            'environment_unavailable',
+            availability.status === 'unavailable'
+              ? availability.reason
+              : 'There is no signed-in session to save with',
+          ),
         )
       }
       try {
@@ -175,12 +219,17 @@ export function createLayout(options: {
         )
         const record = recordOf(saved)
         await keepDeviceCopy(record)
-        return accepted(mine, record)
+        return confirmed(mine, record)
       } catch (error) {
-        if (statusOf(error) === 409) {
-          return refused(mine, 'conflict', readableReason(error))
+        if ([409, 412].includes(statusOf(error) ?? 0)) {
+          return rejected(
+            'save',
+            mine,
+            refused(mine, 'conflict', readableReason(error)),
+            error,
+          )
         }
-        return failure(mine, error, true)
+        return rejected('save', mine, failure(mine, error, true), error)
       }
     },
 

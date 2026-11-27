@@ -13,6 +13,7 @@ const note = (overrides: Partial<Note> = {}): Note => ({
   savedMarkdown: 'Saved paragraph.',
   revision: { position: 17, contentDigest: 'digest' },
   canonical: undefined,
+  documentKind: 'authored',
   editable: true,
   origin: {
     kind: 'user_authored',

@@ -2,29 +2,19 @@
 import { useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Stack } from 'expo-router'
-import type { ConversationPhase } from '@theoremharness/sdk'
 import { describeError, statusOf } from '@/lib/theorem'
 import { Button } from '@/ui/button'
-import { ShareButton } from '@/ui/header'
+import { ShareButton, ShareToolbar } from '@/ui/header'
 import { useTheme } from '@/ui/theme'
 import { Unavailable } from '@/ui/unavailable'
+import { useDeliveries } from '../intake/queue'
 import { rememberLastThread } from '../invocation/handler'
 import { useTaskPresence } from '../presence/use-task-presence'
+import { AttachButton } from './attach'
 import { ConversationSurface, EmptyConversation, type SurfaceNote } from './conversation-surface'
-import { conversations, useConversation } from './runtime'
+import { connectionNotice } from './recovery'
+import { useConversation } from './runtime'
 import { threadTitle } from './threads'
-
-/** Phases worth a line in the composer; running and ready speak through Stop and Send. */
-const phases: Partial<Record<ConversationPhase, Omit<SurfaceNote, 'action'>>> = {
-  detached: { tone: 'muted', text: 'Not connected to Theorem.' },
-  connecting: { tone: 'muted', text: 'Connecting to Theorem…' },
-  'requires-action': { tone: 'attention', text: 'Theorem is waiting on you. Answer the request above.' },
-  reconnecting: { tone: 'attention', text: 'Reconnecting. The run continues on Theorem.' },
-  'authentication-required': { tone: 'error', text: 'Sign in again to continue.' },
-  failed: { tone: 'error', text: 'The connection to Theorem failed.' },
-  cancelled: { tone: 'muted', text: 'Run stopped.' },
-  interrupted: { tone: 'error', text: 'The run was interrupted.' },
-}
 
 /**
  * One Theorem conversation. `titled` sets the navigation title from the
@@ -42,8 +32,19 @@ export function ConversationPane({
   onLeave: () => void
 }) {
   const { palette } = useTheme()
-  const { runtime, state, sendError } = useConversation(threadId)
+  const { runtime, state, sendError, stopError, queued, paused, removeQueued, editQueued, recover, recoveryError } =
+    useConversation(threadId)
   useTaskPresence(threadId, state)
+  // The newest delivery the person made to this conversation: Theo says what became of it.
+  const delivery = useDeliveries()
+    .filter((entry) => entry.receiver.threadId === threadId)
+    .sort((a, b) => b.updatedAtMs - a.updatedAtMs)[0]
+  // When the person last spoke, so presence can order a later turn against a
+  // failed delivery. Only their own messages count: the run already going keeps
+  // producing assistant messages after an upload fails, and those clear nothing.
+  const lastUserTurnMs =
+    state.snapshot?.messages.reduce((latest, m) => (m.role === 'user' ? Math.max(latest, m.createdAtMs) : latest), 0) ||
+    undefined
   // "Continue the conversation" from a Shortcut or the Action button opens this one.
   useEffect(() => rememberLastThread(threadId), [threadId])
   const title = state.snapshot ? threadTitle(state.snapshot.thread) : 'Conversation'
@@ -68,29 +69,47 @@ export function ConversationPane({
     )
 
   const notes: SurfaceNote[] = []
-  const phase = phases[state.phase]
-  if (phase)
+  const notice = connectionNotice(state, describeError)
+  if (notice) {
+    const { action } = notice
     notes.push({
-      ...phase,
-      text: state.phase === 'failed' ? `${phase.text} ${describeError(state.error)}` : phase.text,
-      action:
-        state.phase === 'failed' ? { label: 'Reconnect', onPress: () => conversations().reconnect(threadId) } : undefined,
+      tone: notice.tone,
+      text: notice.text,
+      details: [notice.details, recoveryError ? describeError(recoveryError) : undefined].filter(Boolean).join('\n') || undefined,
+      action: action ? { label: action.label, onPress: () => void recover(action.recovery) } : undefined,
     })
-  if (sendError) notes.push({ tone: 'error', text: describeError(sendError) })
+  }
+  if (sendError) notes.push({ tone: 'error', text: "That message wasn't sent. Your words are back in the box.", details: describeError(sendError) })
+  // A Stop the device could not keep: the pause holds for this session, and only
+  // a restart before the retry could send what the person stopped.
+  if (stopError) notes.push({ tone: 'error', text: describeError(stopError), details: 'Sending again re-arms the queue and saves the pause.' })
 
   return (
     <>
       {titled ? (
-        <Stack.Screen options={{ title, headerRight: () => <ShareButton threadId={threadId} /> }} />
+        <>
+          <Stack.Screen options={{ title }} />
+          <ShareToolbar threadId={threadId} />
+        </>
       ) : null}
       <ConversationSurface
         runtime={runtime}
-        recipient={{ name: 'Theorem', detail: state.snapshot?.project.title }}
-        placeholder="Reply to Theorem"
+        recipient={{ name: 'Theo', detail: state.snapshot?.project.title }}
+        placeholder="Reply to Theo"
         notes={notes}
+        theo={{
+          conversation: { phase: state.phase, projection: state.projection, runId: state.journal?.runId, lastUserTurnMs },
+          delivery,
+        }}
+        queue={{ items: queued, paused, onRemove: removeQueued, onEdit: editQueued }}
         empty={<EmptyConversation title="Theorem" detail="Ask anything about this project." />}
         stopLabel="Stop the run"
-        controls={titled ? undefined : <ShareButton threadId={threadId} />}
+        controls={
+          <>
+            <AttachButton threadId={threadId} />
+            {titled ? null : <ShareButton threadId={threadId} />}
+          </>
+        }
       />
     </>
   )

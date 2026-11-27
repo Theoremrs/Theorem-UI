@@ -46,9 +46,15 @@ import type {
 } from '@/lib/capabilities/contract'
 import { capabilityContextReference } from '@/lib/capabilities/reference'
 import type { ModuleViewProps } from '@/lib/modules/registry'
-import { usePageId } from '../pages/page-route'
+import { usePagePath } from '../pages/page-route'
 import { ActionCall } from './action-form'
-import { DescribeState, Loading, PermissionState, StatusLine } from './states'
+import {
+  DescribeState,
+  Loading,
+  PermissionState,
+  StatusLine,
+  refusedStatus,
+} from './states'
 import type { Status } from './states'
 import {
   useCapabilityDescribe,
@@ -68,7 +74,13 @@ const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
 const inlineEditable = (field: ResolvedField) =>
   isEditable(fieldSpecOf(field)) && field.fieldType.kind !== 'relation'
 
-/** A relation value, picked from the collection that target is part of. */
+/**
+ * A relation value, picked from the collection that target is part of. It is
+ * never cleared: an absent input leaves a field as it is and the executor
+ * refuses a null one, so no call can empty a field. A set value offers only
+ * other targets; an empty one shows that state as a placeholder that cannot be
+ * chosen, and nothing commits until a target is.
+ */
 function RelationPick({
   instanceId,
   definition,
@@ -115,9 +127,15 @@ function RelationPick({
         aria-label={`Choose ${field.label}`}
         className={fieldControl}
         value={current}
-        onChange={(event) => onCommit(event.target.value || null)}
+        onChange={(event) => {
+          if (event.target.value) onCommit(event.target.value)
+        }}
       >
-        <option value="">(none)</option>
+        {!current && (
+          <option value="" disabled>
+            Not set · choose one
+          </option>
+        )}
         {rows.map((row) => (
           <option key={row.id} value={row.id}>
             {rowTitle(targetFields, row)}
@@ -170,8 +188,13 @@ function CapabilityRecordBody({
   collectionKey: string | undefined
 }) {
   const { output, emit } = view
-  const pageId = usePageId()
+  const pageId = usePagePath()
+  // The page component that shows this: a composite's own id, when inside one.
+  const selectedComponentId = view.path.split('/')[0]
   const instanceId = text(view.settings.instanceId)
+  // The view a connected table shows, when one is bound in: the envelope then
+  // names it, so the agent knows where the record was picked from.
+  const viewKey = text(view.inputs.viewKey) || undefined
   const definition = described.definition
   const grant = described.callerGrant
   const [resume, setResume] = useState<RecordScanResume>()
@@ -245,6 +268,8 @@ function CapabilityRecordBody({
             instanceId,
             collectionKey: key,
             pageId,
+            viewKey,
+            selectedComponentId,
             purpose: definition.purpose,
             label: `${definition.name} · ${rowTitle(fields, row)}`,
             selected: [{ id: row.id, revision: row.revision }],
@@ -254,7 +279,17 @@ function CapabilityRecordBody({
             truncated: false,
           })
         : undefined,
-    [row, shown, instanceId, key, pageId, definition, fields],
+    [
+      row,
+      shown,
+      instanceId,
+      key,
+      pageId,
+      viewKey,
+      selectedComponentId,
+      definition,
+      fields,
+    ],
   )
 
   // What this module shows is also what the page can wire onward: its Selected
@@ -381,11 +416,7 @@ function CapabilityRecordBody({
       })
       if (report(receipt, at)) closeForm(at.form)
     } catch (error) {
-      setStatus({
-        kind: 'failed',
-        message: refusalMessage(error, action.label),
-        reload: isReloadConflict(error),
-      })
+      setStatus(refusedStatus(error, action.label))
     } finally {
       running.current = false
       setBusy(false)
@@ -592,6 +623,8 @@ function CapabilityRecordBody({
                       // A cleared draft value is null and stays cleared on reopening.
                       value={shown.values[field.key]}
                       row={shown}
+                      // The contract cannot clear a field.
+                      clearable={false}
                       onCommit={(value) => write(field.key, value)}
                       onDiscard={() => setEditing(undefined)}
                     />
@@ -734,8 +767,9 @@ function CapabilityRecordBody({
 
 /**
  * The module: it shows the record its Item input names, else the one its
- * Record setting does. The instance comes from this module's own setting, so a
- * selection wired from another page cannot reach across instances.
+ * Record setting does. The instance comes from this module's own setting or
+ * its Instance input, never from the record item, so a selection wired from
+ * another page cannot reach across instances.
  */
 export function CapabilityRecordModule(view: ModuleViewProps) {
   const { output } = view

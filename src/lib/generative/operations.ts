@@ -7,17 +7,27 @@
 // @assistant-ui/generative-ui's buildPresentParameters over the styled
 // vocabulary for the model-facing schema, compacted to the server's 8 KB
 // cap; @tanstack/react-query's MutationObserver retries a receipt that
-// failed to post. The tree the model composes is rendered by the installed
-// generative-ui element, so the reply carries an interface, not just prose.
+// failed to post. The tree the model composes, or the A2UI surfaces it
+// writes (a2ui.ts), is rendered by the installed generative-ui element, so
+// the reply carries an interface, not just prose. A receipt for a call with
+// views waits for their cells to settle (view-instances.ts) and says what
+// the person sees; `ui.view` reads or saves a view presented with an `id`.
 import type { ThreadMessage } from '@assistant-ui/react'
 import { buildPresentParameters } from '@assistant-ui/generative-ui/react'
 import { MutationObserver, QueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { styledGenerativeUILibrary } from '@/components/assistant-ui/elements/generative-ui'
 import { hasStatus, mutate, theorem } from '@/lib/theorem/client'
+import { presentation } from './a2ui'
+import type { PresentedTree } from './a2ui'
+import { currentReceipt, useViewInstances, whenSettled } from './view-instances'
+import { viewRevision } from './view-reference'
 
 /** The operation that paints a composed interface into the reply. */
 export const PRESENT = 'ui.present'
+
+/** The operation that reads or saves a view the reply presented. */
+export const VIEW = 'ui.view'
 
 /**
  * The model-facing schema, compacted to the server's 8 KB cap: the full
@@ -38,6 +48,23 @@ function presentSchema(): Record<string, unknown> {
         if (key === 'description' || key === 'title' || key === 'default') continue
         out[key] = strip(entry)
       }
+      // An enum already names its values and an object's keys are always
+      // strings: neither says anything the rest of the schema does not.
+      if (Array.isArray(out.enum)) delete out.type
+      if (JSON.stringify(out.propertyNames) === '{"type":"string"}')
+        delete out.propertyNames
+      // A prop several components declare repeats their schemas in one
+      // anyOf; the same branch twice accepts nothing more.
+      if (Array.isArray(out.anyOf)) {
+        const branches = [
+          ...new Map(out.anyOf.map((branch) => [JSON.stringify(branch), branch])).values(),
+        ]
+        const only = Object.keys(out).length === 1
+        if (only && branches.some((branch) => JSON.stringify(branch) === '{}'))
+          return {}
+        if (only && branches.length === 1) return branches[0]
+        out.anyOf = branches
+      }
       return out
     }
     return value
@@ -47,9 +74,9 @@ function presentSchema(): Record<string, unknown> {
     .map((name) => {
       const description =
         styledGenerativeUILibrary[name]?.description ?? ''
-      return `${name}: ${(description.split('.')[0] ?? '').slice(0, 40)}`
+      return `${name}: ${(description.split('.')[0] ?? '').slice(0, 26)}`
     })
-    .join('; ')
+    .join(';')
   const properties = strip(full.properties) as Record<string, unknown>
   properties._type = { type: 'string', enum: typeProp.enum, description: hints }
   properties.children = {
@@ -59,9 +86,14 @@ function presentSchema(): Record<string, unknown> {
       { type: 'object' },
     ],
   }
+  properties.a2ui = {
+    type: 'array',
+    items: { type: 'object' },
+    description:
+      'Each {"version":"v0.9", createSurface|updateComponents|updateDataModel}; components [{"id","component":"Type",...props}]',
+  }
   return {
     type: 'object',
-    required: ['_type'],
     properties,
     additionalProperties: true,
   }
@@ -78,9 +110,25 @@ export const GENERATIVE_OPERATIONS = [
   {
     name: PRESENT,
     description:
-      'Paints a small interface into your reply from a component vocabulary: headings, text, facts, cards, rows and columns, tables, lists, steps, timelines, charts, badges, alerts, tabs, forms, inputs, buttons, images, diagrams and markdown. Pass a tree whose root has `_type` naming a component and that component\'s properties; `children` nests more components or a string. Use it when a layout says more than prose: a comparison as a table, a plan as steps, a result as a fact card. Keep it to what the answer needs; the person reads it inline. Nothing outside the reply is changed.',
+      'Paints an interface into your reply. Pass a tree whose root `_type` names a component (headings, text, facts, cards, rows, columns, tables, lists, steps, timelines, charts, alerts, tabs, forms, inputs, buttons, images, diagrams, markdown, views) with its properties; `children` nests components or a string. Or pass `a2ui`: A2UI messages in any catalog; unknown components are drawn from their properties. Use it when a layout says more than prose. For an answer to explore, use `View`: `cells` are Observable cells with d3, Plot, Inputs, `data`, `invalidation` and any `npm:` or URL import; one cell defines each name, others change it via `mutable`. What the reader selects in `views` becomes context for their next question: `views.linked(rows, {x, y, id})`, `views.graph({nodes, links})`, `views.tree(root)`, `views.timeline(events, {start, end})`, `const k = view(views.param(Inputs.range([0, 1]), "k"))`. Add a `caption` when it helps; credit data and adapted notebooks in `source`; release WebGL in `invalidation`.',
     effect: 'presentation',
     inputSchema: PRESENT_SCHEMA,
+  },
+  {
+    name: VIEW,
+    description:
+      'Reads or saves a View you presented with an `id` in this conversation. `inspect` answers what it shows now: its stage, which cells displayed or failed, what each shows and the errors, and what the reader selected and set. `save` keeps it as an App the reader has, opening with what they set, and answers its document id.',
+    // A save adds an App the person can delete; nothing else changes.
+    effect: 'presentation',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The `id` the View was presented with.' },
+        action: { type: 'string', enum: ['inspect', 'save'] },
+      },
+      required: ['id', 'action'],
+      additionalProperties: false,
+    },
   },
 ] as const
 
@@ -88,10 +136,12 @@ export const generativeTurnOptions = () => ({
   clientOperations: [...GENERATIVE_OPERATIONS],
 })
 
-/** One present request a run made, read off a message. */
+/** One present or view request a run made, read off a message. */
 export interface PresentRequest {
   readonly runId: string
   readonly requestRef: string
+  /** `ui.present` when absent. */
+  readonly operation?: typeof PRESENT | typeof VIEW
   readonly args: Record<string, unknown>
   readonly expectedRevision: number
 }
@@ -102,8 +152,9 @@ const record = (value: unknown): Record<string, unknown> =>
     : {}
 
 /**
- * The present requests pending in the conversation's live turn. A reopened
- * conversation has no running turn, so nothing in history is painted again.
+ * The present and view requests pending in the conversation's live turn. A
+ * reopened conversation has no running turn, so nothing in history is
+ * painted again.
  */
 export function presentRequestsOf(
   messages: readonly ThreadMessage[],
@@ -117,17 +168,18 @@ export function presentRequestsOf(
     if (part.type !== 'data' || part.name !== 'theorem-client_operation')
       return []
     const data = record(part.data)
-    const { requestRef, expectedRevision } = data
+    const { requestRef, expectedRevision, operation } = data
     if (
       (data.state ?? 'pending') !== 'pending' ||
       typeof requestRef !== 'string' ||
-      data.operation !== PRESENT
+      (operation !== PRESENT && operation !== VIEW)
     )
       return []
     return [
       {
         runId,
         requestRef,
+        operation,
         args: record(data.args),
         expectedRevision:
           typeof expectedRevision === 'number' ? expectedRevision : 0,
@@ -136,15 +188,8 @@ export function presentRequestsOf(
   })
 }
 
-/**
- * Whether a tree's root names a component the vocabulary can draw. The
- * renderer itself tolerates partial and unknown nodes while streaming; this
- * only refuses a root that could never render, so the run is told plainly.
- */
-function paintable(args: Record<string, unknown>): boolean {
-  const type = args._type
-  return typeof type === 'string' && type in styledGenerativeUILibrary
-}
+/** Whether the vocabulary draws a component itself. */
+export const inVocabulary = (type: string) => Object.hasOwn(styledGenerativeUILibrary, type)
 
 export interface PresentReceipt {
   readonly outcome: 'applied' | 'rejected' | 'failed'
@@ -165,6 +210,165 @@ function postReceipt(request: PresentRequest, receipt: PresentReceipt) {
   )
 }
 
+/** One `View` a tree paints: its cells and data, and the agent's name for it. */
+interface PaintedView {
+  readonly cells: ReadonlyArray<string>
+  readonly data: unknown
+  readonly id?: string
+}
+
+/** Each `View` a tree paints, in the order it paints them. */
+function viewsOf(tree: unknown): Array<PaintedView> {
+  const views: Array<PaintedView> = []
+  const walk = (value: unknown, depth: number) => {
+    if (depth > 64) return
+    if (Array.isArray(value)) return value.forEach((entry) => walk(entry, depth + 1))
+    const node = record(value)
+    if (node._type === 'View' && Array.isArray(node.cells))
+      views.push({
+        cells: node.cells.filter((cell): cell is string => typeof cell === 'string'),
+        data: node.data,
+        ...(typeof node.id === 'string' && node.id.trim() && { id: node.id.trim() }),
+      })
+    walk(node.children, depth + 1)
+  }
+  walk(tree, 0)
+  return views
+}
+
+/** How long a receipt waits for a view's first outputs: under the server's shortest receipt wait. */
+const VIEW_SETTLE_MS = 15_000
+
+/**
+ * What each view a call paints showed once its cells settled, or as it stood
+ * when the wait ran out. A view no page started on is only `accepted`.
+ */
+function viewsShown(args: Record<string, unknown>, settleMs: number) {
+  return Promise.all(
+    viewsOf(args).map(async ({ cells, data, id }) => {
+      const revision = viewRevision(cells, data)
+      const key = id ?? revision
+      const shown = await whenSettled(key, revision, settleMs)
+      return shown ? currentReceipt(key, shown) : { id: key, revision, stage: 'accepted' as const }
+    }),
+  )
+}
+
+/**
+ * What will fail in the views a call paints, read from their cells before
+ * they run (notebooks/cells.ts, loaded only when a call has a view), so the
+ * agent hears it in the receipt and can present the view again, fixed.
+ */
+async function viewProblems(args: Record<string, unknown>): Promise<Array<string>> {
+  const views = viewsOf(args)
+  if (!views.length) return []
+  const { cellProblems } = await import('@/lib/notebooks/cells')
+  return views.flatMap(({ cells }, index) => {
+    const problems = cellProblems(cells)
+    if (!problems.length) return []
+    const which = views.length > 1 ? ` ${index + 1}` : ''
+    return [`View${which} will not run as written. ${problems.join(' ')}`]
+  })
+}
+
+/** The most property problems a receipt names, as one tree can repeat a mistake in every row. */
+const MAX_PROPERTY_PROBLEMS = 10
+
+/**
+ * What the components of the agent's own tree were given that they do not
+ * read, or lack that they need, by each definition's schema. Such a node
+ * paints without it (a Text given `text` shows nothing), so the receipt says
+ * which property to set. Each distinct mistake is named once. A2UI surfaces
+ * are left to the reducer's and converter's warnings.
+ */
+function propertyProblems(trees: ReadonlyArray<PresentedTree>): Array<string> {
+  const problems = new Set<string>()
+  const walk = (value: unknown, depth: number) => {
+    if (depth > 64 || problems.size >= MAX_PROPERTY_PROBLEMS) return
+    if (Array.isArray(value)) return value.forEach((entry) => walk(entry, depth + 1))
+    if (typeof value !== 'object' || value === null) return
+    const { _type: type, _action, _key, children, ...props } = value as Record<string, unknown>
+    walk(children, depth + 1)
+    if (typeof type !== 'string' || !inVocabulary(type)) return
+    const schema = styledGenerativeUILibrary[type]!.properties
+    const shape = (schema as { shape?: Record<string, unknown> }).shape
+    const unread = shape ? Object.keys(props).filter((key) => !Object.hasOwn(shape, key)) : []
+    const parsed = schema.safeParse(props)
+    const issues = parsed.success
+      ? []
+      : parsed.error.issues.map(({ path, message }) =>
+          path.length === 1 && props[String(path[0])] === undefined
+            ? `needs "${String(path[0])}"`
+            : `"${path.join('.')}" ${message}`,
+        )
+    if (unread.length) issues.push(`does not read ${unread.map((key) => `"${key}"`).join(', ')}`)
+    if (issues.length) problems.add(`${type} ${issues.join('; ')}.`)
+  }
+  for (const { key, tree } of trees) if (key === 'tree') walk(tree, 0)
+  return [...problems]
+}
+
+/**
+ * Anything the agent wrote is painted; what it is told back only helps it
+ * fix its own output. Only a call with nothing to paint is refused, with the
+ * reducer's warnings when it sent A2UI.
+ */
+async function presentReceipt(request: PresentRequest, settleMs: number): Promise<PresentReceipt> {
+  const { trees, painted, warnings } = presentation(request.args, inVocabulary)
+  warnings.push(...propertyProblems(trees), ...(await viewProblems(request.args)))
+  if (!painted.length)
+    return {
+      outcome: 'rejected',
+      reason: [
+        'Pass a tree whose root `_type` names a component, or `a2ui` messages that create a surface with a root component.',
+        ...warnings,
+      ].join(' '),
+      revision: request.expectedRevision,
+    }
+  const views = await viewsShown(request.args, settleMs)
+  return {
+    outcome: 'applied',
+    result: {
+      painted: painted.length === 1 ? painted[0] : painted,
+      ...(warnings.length && { warnings }),
+      ...(views.length && { views }),
+    },
+    revision: request.expectedRevision,
+  }
+}
+
+/** What a presented view shows now, or the App it was saved as. */
+async function viewReceiptOf(request: PresentRequest): Promise<PresentReceipt> {
+  const revision = request.expectedRevision
+  const id = typeof request.args.id === 'string' ? request.args.id.trim() : ''
+  const { byKey, savers } = useViewInstances.getState()
+  const view = byKey[id]
+  if (!view) {
+    const named = Object.keys(byKey).filter((key) => savers[key])
+    return {
+      outcome: 'rejected',
+      reason: `No view with the id "${id}" is on the page. ${named.length ? `Views here: ${named.slice(0, 20).join(', ')}.` : 'Present it with that `id` first.'}`,
+      revision,
+    }
+  }
+  if (request.args.action === 'inspect')
+    return { outcome: 'applied', result: await currentReceipt(id, view), revision }
+  if (request.args.action !== 'save')
+    return { outcome: 'rejected', reason: '`action` is `inspect` or `save`.', revision }
+  const save = savers[id]
+  if (!save) return { outcome: 'rejected', reason: `The view "${id}" is not mounted, so it cannot be saved.`, revision }
+  try {
+    const { documentId } = await save()
+    return { outcome: 'applied', result: { id, revision: view.revision, saved: { documentId } }, revision }
+  } catch (error) {
+    return {
+      outcome: 'failed',
+      reason: `The view was not saved: ${error instanceof Error ? error.message : String(error)}`,
+      revision,
+    }
+  }
+}
+
 const RECEIPT_RETRIES = 6
 const receiptDelay = (failures: number) => Math.min(500 * 2 ** failures, 8_000)
 const receipts = new QueryClient()
@@ -173,8 +377,9 @@ const served = new Set<string>()
 
 /**
  * Answers each present request once: the tree is drawn by the part renderer
- * from the same args, so the receipt only says whether it could be painted.
- * A receipt that fails to post is sent again; the tree is not drawn twice.
+ * from the same args, so the receipt says whether it could be painted and,
+ * for each view, what its cells showed. A receipt that fails to post is sent
+ * again; the tree is not drawn twice.
  */
 export function servePresentRequests(
   requests: ReadonlyArray<PresentRequest>,
@@ -183,6 +388,7 @@ export function servePresentRequests(
     receipt: PresentReceipt,
   ) => Promise<unknown> = postReceipt,
   retryDelay: (failures: number) => number = receiptDelay,
+  settleMs: number = VIEW_SETTLE_MS,
 ): Promise<void> {
   const answered: Array<Promise<void>> = []
   for (const request of requests) {
@@ -190,18 +396,8 @@ export function servePresentRequests(
     served.add(request.requestRef)
     answered.push(
       (async () => {
-        const receipt: PresentReceipt = paintable(request.args)
-          ? {
-              outcome: 'applied',
-              result: { painted: request.args._type },
-              revision: request.expectedRevision,
-            }
-          : {
-              outcome: 'rejected',
-              reason:
-                'The tree needs a root `_type` naming a component in the vocabulary.',
-              revision: request.expectedRevision,
-            }
+        const receipt =
+          request.operation === VIEW ? await viewReceiptOf(request) : await presentReceipt(request, settleMs)
         await new MutationObserver(receipts, {
           mutationFn: (value: PresentReceipt) => post(request, value),
           retry: (failures, error) =>

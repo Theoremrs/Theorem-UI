@@ -1,8 +1,6 @@
 // SOURCING: assistant-ui data part renderer for Theorem's `record_change_proposal` part (see ./proposal for the decoding and the words); the inspector's document opener (./open-document), else a Link to the document in the Index, for a source and a saved message draft; @tanstack/react-query for the proposal's current state and the decision; ui/button for Approve and Dismiss; the manifest part's RecordLink to each record's page in the Index; @tanstack/react-router Link to the conversation; lucide-react marks
 import type { DataMessagePartComponent } from '@assistant-ui/react'
-import type { ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import {
   ArrowRight,
   CircleAlert,
@@ -14,9 +12,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { describeError } from '@/lib/theorem/client'
 import { useDataModel } from '@/components/records/queries'
-import { workItemId } from '@/components/work/route'
 import { RecordLink } from './context-manifest-part'
-import { useOpenDocumentHandler } from './open-document'
+import { DocumentLink, WorkItemLink } from './made-links'
 import { staleRecordEverywhere } from './queries'
 import { decideProposal, problemCode, readProposal } from './proposal-api'
 import {
@@ -29,32 +26,6 @@ import type { RecordProposal } from './proposal'
 
 const SOURCE_LINK =
   'underline decoration-ink-faint underline-offset-2 hover:text-ink'
-
-/** A saved document, opened where the surrounding inspector opens documents, else in the Index. */
-function DocumentLink({
-  documentId,
-  className,
-  children,
-}: {
-  documentId: string
-  className: string
-  children: ReactNode
-}) {
-  const openDocument = useOpenDocumentHandler()
-  return openDocument ? (
-    <button
-      type="button"
-      className={className}
-      onClick={() => openDocument(documentId)}
-    >
-      {children}
-    </button>
-  ) : (
-    <Link to="/index" search={{ item: documentId }} className={className}>
-      {children}
-    </Link>
-  )
-}
 
 /** The change the assistant proposes, and the two ways to answer it. */
 export function RecordChangeProposalView({
@@ -316,13 +287,12 @@ export function RecordChangeProposalView({
             {made && (
               <>
                 {' '}
-                <Link
-                  to="/index"
-                  search={{ item: workItemId(made.workItemId) }}
+                <WorkItemLink
+                  itemId={made.workItemId}
                   className="font-medium underline decoration-ink-faint underline-offset-2"
                 >
                   Open {made.key || 'the task'}
-                </Link>
+                </WorkItemLink>
               </>
             )}
             {savedDraft && (

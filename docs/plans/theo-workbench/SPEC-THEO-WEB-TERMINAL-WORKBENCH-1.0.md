@@ -10,7 +10,7 @@
 
 ## 0. Reading order and authority
 
-This specification replaces the existing web Theo/IDE presentation with a modular Ratatui application rendered through Ratzilla. It is **not a native Platinum project**. Host-side work required to make the web client function is in scope; building a desktop client is not.
+This specification delivers the web Theo/IDE workbench as a modular Ratatui application rendered through Ratzilla, shown as a revealable major surface of the web application with its own inner layout. It is **not a native Platinum project**. Host-side work required to make the web client function is in scope; building a desktop client is not.
 
 Read this specification with [technical requirements](technical-requirements.md), [Herdr integration and lifecycle](herdr-integration.md), and [acceptance cases](acceptance-cases.json). [Source evidence](SOURCES.md) distinguishes user decisions, inspected code, upstream documentation, and unverified integration assumptions. [Handoff instructions](START-HERE.md) describe the first implementation gate.
 
@@ -20,7 +20,7 @@ The supplied [Codex tool-picker screenshot](visual-reference/codex-tool-picker.p
 
 The user's settled choices take precedence over earlier exploratory suggestions. The list below records those choices; the specific Herdr layout extraction is this specification's supporting architectural selection:
 
-- Replace the **web** Theo page's interior with a terminal-native workbench; retain Theorem's outer application navigation.
+- Deliver a terminal-native workbench as a major surface the web application reveals beside, under or over the conversation sheet; retain Theorem's outer application navigation and its Dockview composition (amended, see below).
 - Retire Theia for this work, after migrating its real capability consumers; no permanent second IDE.
 - Port ELY's Markdown experience to Ratatui. Use ELY's simpler Changes/Git interaction model as the initial presentation, supplemented by existing Theorem operations.
 - Use useful OpenIDEA implementations selectively beneath Theorem's SDK; do not import another full application/authority.
@@ -33,6 +33,8 @@ The user's settled choices take precedence over earlier exploratory suggestions.
 - Yazi is not a dependency of this workbench. This spec does not authorize deleting unrelated Yazi integrations or user data.
 
 The technical-requirement IDs are the canonical acceptance obligations. Narrative examples explain them; they do not create a second implementation or substitute for tests.
+
+**Placement amendment (2026-11-26).** [SPEC-UNIFIED-AGENT-EXPERIENCE-1.0](SPEC-UNIFIED-AGENT-EXPERIENCE-1.0.md) Section 5.1 changes where the workbench sits; it does not change what the workbench is or any requirement below. Dockview owns general application composition: the sheet, the conversation and the panels it places beside them. The Rust workbench is one major surface that Dockview's shell reveals, and the Rust `workbench-dock` owns every pane inside that surface. Each rectangle has one layout owner (UX-01). This replaces the earlier statements in Sections 0, 2 and 4.1 that the workbench replaces the chat interior, including its Dockview composition. The checkout already drew it this way when the amendment was recorded (`src/components/workbench/placement.ts`, `src/components/shell/chat-shell.tsx`; see [the Gate 0 ownership map](gate-0/unified-agent-ownership-map.md) section 1). Entering from agent activity opens the selected-agent composition of the companion's Section 3 by default; Files, Changes, editors, conversation and the tool picker remain registered workbench presentations and deliberate layouts. Theia retirement and its parity obligations (Section 15, R43, R44) are unchanged: this does not restore a permanent second IDE.
 
 ## 1. Product outcome
 
@@ -50,7 +52,7 @@ A browser pane, an editor session, a conversation, a task/run, and a Herdr proce
 
 Deliver the web workbench, composable panel registry and dock, tool picker, file browser, source editor and ELY-derived Markdown modes, Changes panel, agent composer/transcript, terminal viewing/control over the existing host, Herdr profile/adoption/reconnect behavior, artifact cabinet integration, local draft continuity, semantic inspection, theme/accessibility behavior, and Theia retirement.
 
-The existing TanStack application still owns routing, login, application navigation, and browser integration. Ratzilla renders the workbench interior. A thin JavaScript/TypeScript adapter connects browser APIs and the existing Theorem SDK to the Rust workbench. Do not rebuild the surrounding website or authentication in Rust.
+The existing TanStack application still owns routing, login, application navigation, and browser integration, and Dockview owns the composition of the application's major surfaces (amended, Section 0). Ratzilla renders the workbench surface and its inner panes. A thin JavaScript/TypeScript adapter connects browser APIs and the existing Theorem SDK to the Rust workbench. Do not rebuild the surrounding website or authentication in Rust.
 
 ### Not in this release
 
@@ -58,7 +60,7 @@ Native GPUI/Platinum views, a new desktop app, a native dock, a new model harnes
 
 Preserve future reuse through renderer-independent messages and models where natural. Do not turn future portability into a prerequisite to delivering the web client.
 
-The complete web workbench is the outcome. It is not an extra drawer permanently mounted beside Theia, a static mockup, or an agent transcript with nonfunctional IDE controls.
+The complete web workbench is the outcome. It is not an extra drawer permanently mounted beside Theia, a static mockup, or an agent transcript with nonfunctional IDE controls. Being revealable as a drawer, side panel or full surface of the application (Section 0, amendment) is how it is placed, not a reduction of that outcome.
 
 ## 3. Roles of the reused systems
 
@@ -80,7 +82,7 @@ These are different layers, not several competing IDEs. Herdr's execution role d
 
 ### 4.1 One interior workbench
 
-Retain the outer Theorem application rail and route/navigation contract. Within the current web Theo route, replace the conversation-oriented inner sidebar with the workspace Files panel. Keep a visible way to change workspace/project and open an existing conversation; those destinations must not disappear with the sidebar replacement.
+Retain the outer Theorem application rail and route/navigation contract. *Amended 2026-11-26 ([SPEC-UNIFIED-AGENT-EXPERIENCE-1.0](SPEC-UNIFIED-AGENT-EXPERIENCE-1.0.md) Section 5.1): the workbench no longer replaces the conversation sheet or its sidebar. It is revealed beside it (side, docked or drawer), under it (bottom) or over it (full), and the regions below describe the workbench's own inner layout in whichever placement it has.* Within the workbench, the workspace Files panel takes the place the conversation-oriented sidebar has in the sheet. Keep a visible way to change workspace/project and open an existing conversation; those destinations must not disappear with the sidebar replacement.
 
 Initial layout:
 
@@ -93,7 +95,7 @@ Initial layout:
 
 A workspace with no execution environment can still show permitted local documents/conversation state. Shell/build controls explain why execution is unavailable. Never imply that a browser's local database is the remote checkout.
 
-The initial 2:1 main/tool split is a **preset**, not an immutable geometry rule. The entire interior is the workbench. No large white page remains around an embedded terminal card.
+The initial 2:1 main/tool split is a **preset**, not an immutable geometry rule. The workbench surface is filled by the workbench in each placement. No large white page remains around an embedded terminal card.
 
 ### 4.2 Width allocation
 

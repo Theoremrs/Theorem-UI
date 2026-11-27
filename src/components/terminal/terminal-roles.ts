@@ -1,7 +1,7 @@
 // SOURCING: culori (OKLab/OKLCH conversion, gamut clamping, WCAG contrast,
 // hex output); terminal-theme.ts's terminalTheme, the one projection of the
-// workspace into terminal colours; @tanstack/highlight's githubDarkTheme for
-// the code colours the terminal draws; terminal/src/preview/palette.rs's
+// workspace into terminal colours; terminal-editor.ts's editors for the code
+// colours the terminal draws; terminal/src/preview/palette.rs's
 // REFERENCE, the illustration palette P⁰ every pixel preview is indexed in.
 //
 // The complete terminal role contract (SPEC-THEOREM-ARTIFACT-CABINET-1.0 §7,
@@ -16,11 +16,12 @@
 //
 // No role privileges a hue: headings are the bright text in bold, the prompt
 // and focus take the accent, and amber is the warning family only.
-import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
 import { clampChroma, converter, formatHex, wcagContrast } from 'culori'
 import type { Oklab, Oklch } from 'culori'
 import { LINK, SLATE, SUCCESS, terminalTheme } from './terminal-theme'
 import type { TerminalTheme, Workspace } from './terminal-theme'
+import { GITHUB_DARK } from './terminal-editor'
+import type { SyntaxRole, TerminalEditor } from './terminal-editor'
 
 const oklch = converter('oklch')
 const oklab = converter('oklab')
@@ -44,19 +45,6 @@ export const ILLUSTRATION_REFERENCE = [
   '#8e6b01', '#bec97e', '#879a39', '#536907', '#87d3c3', '#3aa99f', '#1c6c66', '#92bfdb',
   '#4385be', '#1a4f8c', '#c4b9e0', '#8b7ec8', '#4f3685', '#f4a4c2', '#ce5d97', '#87285e',
 ] as const // prettier-ignore
-
-/** The syntax roles, one per class TanStack Highlight's github-dark emits. */
-const SYNTAX_SOURCE = {
-  keyword: githubDarkTheme.tokens.keyword,
-  string: githubDarkTheme.tokens.string,
-  number: githubDarkTheme.tokens.number,
-  function: githubDarkTheme.tokens.function,
-  variable: githubDarkTheme.tokens.variable,
-  type: githubDarkTheme.tokens.type,
-  tag: githubDarkTheme.tokens.tag,
-  comment: githubDarkTheme.tokens.comment,
-} as const
-export type SyntaxRole = keyof typeof SYNTAX_SOURCE
 
 export type TerminalRoles = {
   version: number
@@ -226,7 +214,11 @@ export function failingPairs(roles: TerminalRoles) {
 }
 
 /** The roles from terminalTheme's colours, repairing what does not read. */
-function resolve(theme: TerminalTheme, dark: boolean): TerminalRoles {
+function resolve(
+  theme: TerminalTheme,
+  dark: boolean,
+  editor: TerminalEditor,
+): TerminalRoles {
   const diagnostics: string[] = []
   const surfaces = [theme.bg, theme.raised]
   const role = (name: string, colour: string, on = surfaces) => {
@@ -246,7 +238,7 @@ function resolve(theme: TerminalTheme, dark: boolean): TerminalRoles {
     theme.addedWords,
   ]
   const syntax = Object.fromEntries(
-    Object.entries(SYNTAX_SOURCE).map(([name, colour]) => [
+    Object.entries(editor.syntax).map(([name, colour]) => [
       name,
       role(
         `syntax.${name}`,
@@ -304,18 +296,21 @@ function resolve(theme: TerminalTheme, dark: boolean): TerminalRoles {
 }
 
 /** The known valid dark profile: pi's slate, whose roles all read. */
-export const FALLBACK_ROLES = resolve(SLATE, true)
+export const FALLBACK_ROLES = resolve(SLATE, true, GITHUB_DARK)
 
 /**
  * The workspace's complete terminal role contract. A workspace whose roles
  * cannot all be made to read, or whose tokens are not colours, takes the
  * same-mode known valid profile instead, and says so in its diagnostics.
  */
-export function terminalRoles(workspace: Workspace): TerminalRoles {
+export function terminalRoles(
+  workspace: Workspace,
+  editor: TerminalEditor = GITHUB_DARK,
+): TerminalRoles {
   let roles: TerminalRoles
   try {
     const dark = at(workspace['sheet-from']).l < 0.5
-    roles = resolve(terminalTheme(workspace), dark)
+    roles = resolve(terminalTheme(workspace, editor), dark, editor)
   } catch (error) {
     return {
       ...FALLBACK_ROLES,

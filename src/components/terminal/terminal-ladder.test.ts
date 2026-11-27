@@ -2,7 +2,7 @@
 // ascend by a step you can tell apart, and the role palette under it (wasmPalette) is unchanged by it.
 import { describe, expect, test } from 'bun:test'
 import { converter, wcagContrast } from 'culori'
-import { modeTokens, modes } from '../../../scripts/palettes'
+import { modeEditor, modeTokens, modes } from '../../../scripts/palettes'
 import { workspaceOf } from './terminal-theme'
 import { terminalRoles, wasmPalette } from './terminal-roles'
 import { ladderPalette, terminalLadder } from './terminal-ladder'
@@ -12,7 +12,10 @@ const SIX = modes.slice(0, 6)
 
 describe('the ladder', () => {
   for (const mode of SIX) {
-    const roles = terminalRoles(workspaceOf((t) => modeTokens(mode)[t]!))
+    const roles = terminalRoles(
+      workspaceOf((t) => modeTokens(mode)[t]!),
+      modeEditor(mode),
+    )
     const ladder = terminalLadder(roles)
     const { surfaces: s, text, registers } = ladder
 
@@ -34,17 +37,12 @@ describe('the ladder', () => {
       expect(wcagContrast(registers.failure, s.diffDeletion)).toBeGreaterThanOrEqual(4.5)
     })
 
-    test(`${mode.selector}: a waiting and a failed tool call sit on grounds of their own, and read there`, () => {
-      const grounds = [s.canvas, s.panel, s.raised, s.selected, s.diffAddition, s.diffDeletion, s.approvalRow, s.failureRow]
+    test(`${mode.selector}: the diff rows are the only tinted grounds, and a tool call's state is its text's colour`, () => {
+      const grounds = [s.canvas, s.panel, s.raised, s.selected, s.diffAddition, s.diffDeletion]
       expect(new Set(grounds).size).toBe(grounds.length)
-      expect(wcagContrast(text.primary, s.approvalRow)).toBeGreaterThanOrEqual(4.5)
-      expect(wcagContrast(registers.approval, s.approvalRow)).toBeGreaterThanOrEqual(4.5)
-      expect(wcagContrast(text.primary, s.failureRow)).toBeGreaterThanOrEqual(4.5)
-      expect(wcagContrast(registers.failure, s.failureRow)).toBeGreaterThanOrEqual(4.5)
-      const laddered = ladderPalette(roles)
-      expect(laddered.pendingRow).toBe(s.approvalRow)
-      expect(laddered.failedRow).toBe(s.failureRow)
-      expect(laddered.runningRow).toBe(s.raised)
+      const laddered = ladderPalette(roles) as Record<string, unknown>
+      for (const key of ['completedRow', 'runningRow', 'pendingRow', 'failedRow']) expect(key in laddered).toBe(false)
+      for (const c of [registers.approval, registers.failure]) expect(wcagContrast(c, s.canvas)).toBeGreaterThanOrEqual(4.5)
     })
 
     test(`${mode.selector}: secondary and disabled are two colours`, () => {
@@ -63,7 +61,7 @@ describe('the ladder', () => {
   test('the role palette alone carries none of the keys the ladder adds', () => {
     const roles = terminalRoles(workspaceOf((t) => modeTokens(SIX[0]!)[t]!))
     const before = wasmPalette(roles) as Record<string, unknown>
-    for (const key of ['canvas', 'selectedRow', 'completedRow', 'runningRow', 'pendingRow', 'failedRow', 'completedInk', 'info', 'textDisabled', 'diffAddedMark', 'diffRemovedMark'])
+    for (const key of ['canvas', 'selectedRow', 'completedInk', 'info', 'textDisabled', 'diffAddedMark', 'diffRemovedMark'])
       expect(key in before).toBe(false)
   })
 })

@@ -129,7 +129,7 @@ export function mountLife2d(
     ctx.setTransform(scale, 0, 0, scale, 0, 0)
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.font = '12px "JetBrains Mono", monospace'
+    ctx.font = '12px "Paper Mono", monospace'
     const cols = Math.max(1, Math.floor(w / CELL_W))
     const rows = Math.max(1, Math.floor(h / CELL_H))
     if (field.cols === cols && field.rows === rows) return

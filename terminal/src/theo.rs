@@ -2158,8 +2158,8 @@ impl TheoPanel {
         }
     }
 
-    /// The waiting approval, pinned over the composer on the ground of a call that waits on
-    /// the person.
+    /// The waiting approval, pinned over the composer: an approval-coloured edge and
+    /// heading on the conversation's own canvas, with no band behind it (owner, 2026-11-22).
     fn draw_approval(&self, buf: &mut Buffer, area: Rect) {
         self.approval_cells.set(Default::default());
         let Some(approval) = &self.owner.approval else {
@@ -2169,8 +2169,6 @@ impl TheoPanel {
             return;
         }
         let p = palette();
-        let ground = Style::new().bg(p.pending_row());
-        buf.set_style(area, ground);
         for y in area.y..area.bottom() {
             buf.set_stringn(area.x, y, "\u{258E}", 1, Style::new().fg(p.approval));
         }
@@ -3684,6 +3682,24 @@ impl Panel for TheoPanel {
         // The approval is asked over the box, so the status row does not ask it again.
         session.approval_elsewhere = approval_rows > 0;
         session.draw_body(buf, body);
+        let empty_state = if !self.bound() {
+            Some("Connecting to the conversation…")
+        } else if self.unreadable {
+            Some("Conversation unavailable. Reopen the thread to retry.")
+        } else if self.owner.loading {
+            Some("Loading conversation…")
+        } else if self.owner.messages.is_empty() {
+            Some("Start a message or open a thread from Threads.")
+        } else {
+            None
+        };
+        if let Some(text) = empty_state.filter(|_| body.height > 0) {
+            let note = body.inner(ratatui::layout::Margin::new(1, 0));
+            ratatui::widgets::Paragraph::new(text)
+                .style(Style::new().fg(p.muted))
+                .wrap(ratatui::widgets::Wrap { trim: true })
+                .render(note, buf);
+        }
         self.draw_delegations(buf, list, &delegations, cx.focused);
         // The face takes the first cells of the status row when the page has
         // one; the row's own text starts after them, in the row it already was.

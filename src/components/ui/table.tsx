@@ -1,7 +1,15 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+/**
+ * `prose` is a table inside a document (a Markdown reply): it takes the
+ * type of the text around it instead of the data table's compact size.
+ */
+function Table({
+  className,
+  variant = 'data',
+  ...props
+}: React.ComponentProps<'table'> & { variant?: 'data' | 'prose' }) {
   return (
     <div
       data-slot="table-container"
@@ -9,7 +17,12 @@ function Table({ className, ...props }: React.ComponentProps<'table'>) {
     >
       <table
         data-slot="table"
-        className={cn('w-full caption-bottom text-sm', className)}
+        data-variant={variant}
+        className={cn(
+          'w-full caption-bottom',
+          variant === 'data' && 'text-sm',
+          className,
+        )}
         {...props}
       />
     </div>

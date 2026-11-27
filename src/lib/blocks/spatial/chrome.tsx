@@ -1,7 +1,8 @@
 // SOURCING: @theorem/annotate places every label and note over the scene
-// (Floating UI's math, one positioning owner); Astryx (`@astryxdesign/core`)
-// draws every control: Breadcrumbs, Button, ToggleButton, Switch, Slider,
-// NumberInput, SegmentedControl, Selector, Text. What is ours is which tier a
+// (Floating UI's math, one positioning owner); Astryx draws every control,
+// the kit's (`@theorem/ui`) where it has one: Button, ToggleButton, Switch,
+// Slider, NumberInput, SegmentedControl, Selector; Breadcrumbs and Text from
+// `@astryxdesign/core`. What is ours is which tier a
 // part shows: its name and the values that matter at rest, a short
 // explanation on hover or focus, its controls when it is clicked, and a pin
 // that keeps them out.
@@ -9,14 +10,18 @@
 // An App can pass its own chrome to `mount` (`chrome: MyChrome`) and compose
 // these pieces or write new ones: a ChromeProps is everything the view knows.
 import { Breadcrumbs, BreadcrumbItem } from '@astryxdesign/core/Breadcrumbs'
-import { Button } from '@astryxdesign/core/Button'
-import { NumberInput } from '@astryxdesign/core/NumberInput'
-import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
-import { Selector } from '@astryxdesign/core/Selector'
-import { Slider } from '@astryxdesign/core/Slider'
-import { Switch } from '@astryxdesign/core/Switch'
 import { Text } from '@astryxdesign/core/Text'
-import { ToggleButton, ToggleButtonGroup } from '@astryxdesign/core/ToggleButton'
+import {
+  Button,
+  NumberInput,
+  SegmentedControl,
+  SegmentedControlItem,
+  Selector,
+  Slider,
+  Switch,
+  ToggleButton,
+  ToggleButtonGroup,
+} from '@theorem/ui'
 import { Annotation, AnnotationLayer, Glass, GlassScope, KeepClear, Label, Note, Theme } from '@theorem/annotate'
 import type { Anchors, GlassOptions } from '@theorem/annotate'
 import { useState } from 'react'
@@ -192,7 +197,7 @@ export function Control({ path, name, value, spec, set }: {
         isLabelHidden
         size="sm"
         value={truthy(value)}
-        onChange={(checked) => set(path, name, typeof value === 'boolean' ? checked : checked ? 1 : 0)}
+        onChange={(checked: boolean) => set(path, name, typeof value === 'boolean' ? checked : checked ? 1 : 0)}
       />
     )
   if (spec?.kind === 'bits') {
@@ -205,7 +210,7 @@ export function Control({ path, name, value, spec, set }: {
         label={label}
         size="sm"
         value={on}
-        onChange={(next) => set(path, name, next.reduce((sum, bit) => sum + 2 ** Number(bit), 0))}
+        onChange={(next: Array<string>) => set(path, name, next.reduce((sum: number, bit: string) => sum + 2 ** Number(bit), 0))}
       >
         {bits.map((bit) => (
           <ToggleButton key={bit} value={String(bit)} className="ts-bit" label={`bit ${bit} of ${name}`}>
@@ -392,8 +397,8 @@ export function PlaybackStrip({ snapshot, actions }: Pick<ChromeProps, 'snapshot
     <div className="ts-bar" role="toolbar" aria-label="Playback">
       <Glass />
       {snapshot.ticking && <Button label="Step" size="sm" variant="secondary" onClick={actions.step} />}
-      {snapshot.ticking && <ToggleButton label="Run" size="sm" isPressed={snapshot.running} onPressedChange={(on) => actions.run(on)} />}
-      <ToggleButton label="Slow" size="sm" isPressed={snapshot.slow} onPressedChange={(on) => actions.slow(on)} />
+      {snapshot.ticking && <ToggleButton label="Run" size="sm" isPressed={snapshot.running} onPressedChange={(on: boolean) => actions.run(on)} />}
+      <ToggleButton label="Slow" size="sm" isPressed={snapshot.slow} onPressedChange={(on: boolean) => actions.slow(on)} />
       {replay.active && (
         <Button label={replay.paused ? 'Continue' : 'Pause'} size="sm" variant="ghost" onClick={() => actions.pause(!replay.paused)} />
       )}

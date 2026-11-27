@@ -17,6 +17,7 @@ on:
       - 'src/components/assistant-ui/**'
       - 'src/components/notes/**'
       - 'src/components/terminal/**'
+      - 'src/components/workbench/**'
       - 'src/components/pages/conversation-module*'
       - 'src/lib/theorem/**'
       - 'src/lib/generative/**'
@@ -96,6 +97,18 @@ jobs:
       - name: Check composer, response evidence, and delivery behavior
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: bun run test:composer
+      - name: Check sidebar and workspace interactions
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          bun test
+          src/components/shell/rail.test.tsx
+          src/components/shell/modes.test.ts
+          src/components/shell/shell-state.test.ts
+          src/components/workbench/workbench-dock.test.tsx
+          src/components/workbench/layout-status.test.tsx
+          src/components/workbench/placement.test.ts
+          src/lib/workbench/layout/layout.test.ts
+          src/lib/workbench/layout/restore.test.ts
       - name: Install the browser for composer interactions
         id: browser
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}

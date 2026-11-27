@@ -30,7 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { isReloadConflict, refusalMessage } from '@/lib/capabilities/api'
+import { refusalMessage } from '@/lib/capabilities/api'
 import {
   canInvoke,
   columnsFor,
@@ -46,10 +46,12 @@ import {
   updateActions,
   viewFor,
 } from '@/lib/capabilities/model'
-import { codes } from '@/lib/capabilities/contract'
+import { INVOKE_TARGETS_MAX } from '@/lib/capabilities/contract'
 import type {
   ActionSpec,
+  CapabilityDefinition,
   CapabilityRecordRow,
+  CollectionSchema,
   DescribeResult,
   Grant,
   InvocationReceipt,
@@ -59,10 +61,20 @@ import type {
 import { capabilityContextReference } from '@/lib/capabilities/reference'
 import type { ModuleViewProps } from '@/lib/modules/registry'
 import { useModuleAction } from '../pages/page-runtime'
-import { usePageId } from '../pages/page-route'
+import { useOwnSettings } from '../pages/page-settings'
+import { usePagePath } from '../pages/page-route'
 import { ActionCall } from './action-form'
 import { AuthoringDialog } from './authoring'
-import { DescribeState, Loading, PermissionState, StatusLine } from './states'
+import { NewFromTemplate } from './templates'
+import { RulesDialog, offersRules } from './rules'
+import {
+  DescribeState,
+  Loading,
+  PermissionState,
+  StatusLine,
+  receiptStatus,
+  refusedStatus,
+} from './states'
 import type { Status } from './states'
 import {
   EchoedCursorError,
@@ -70,6 +82,7 @@ import {
   useCapabilityDescribe,
   useCapabilityDiscover,
   useCapabilityInvoke,
+  useCapabilityInvokeTargets,
   useCapabilityReceipt,
   useCapabilityRows,
 } from './queries'
@@ -79,6 +92,61 @@ const instanceIdOf = (value: unknown) =>
 
 /** What a row's call did, so the person sees the revision it moved to. */
 type Moved = Record<string, number>
+
+/** The busy mark while one call runs over the selection rather than one row. */
+const BULK = '*selection'
+
+/**
+ * The bar a selection of two or more records brings up: each update action the
+ * grant reaches, run once over every selected record. The call is all or
+ * nothing, so the bar says so before anything is pressed.
+ */
+function BulkBar({
+  count,
+  actions,
+  busy,
+  onRun,
+  onClear,
+}: {
+  count: number
+  actions: ActionSpec[]
+  busy: boolean
+  onRun: (action: ActionSpec) => void
+  onClear: () => void
+}) {
+  const over = count > INVOKE_TARGETS_MAX
+  return (
+    <div
+      role="toolbar"
+      aria-label="Selected records"
+      className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-separator bg-raised px-3 py-1.5"
+    >
+      <span className="text-xs text-ink-muted">
+        {count} selected · all or nothing
+      </span>
+      {actions.map((action) => (
+        <Button
+          key={action.key}
+          size="xs"
+          variant="outline"
+          disabled={busy || over}
+          aria-label={`${action.label} the ${count} selected`}
+          onClick={() => onRun(action)}
+        >
+          {action.label}
+        </Button>
+      ))}
+      {over && (
+        <span className="text-xs text-ink-faint">
+          One call changes at most {INVOKE_TARGETS_MAX} records.
+        </span>
+      )}
+      <Button size="xs" variant="ghost" onClick={onClear}>
+        Clear selection
+      </Button>
+    </div>
+  )
+}
 
 function RowMark({
   revision,
@@ -106,6 +174,8 @@ function ViewBar({
   onAuthor,
   asking,
   onAsk,
+  rules,
+  onRules,
 }: {
   views: ViewSpec[]
   current: ViewSpec
@@ -114,6 +184,8 @@ function ViewBar({
   onAuthor: () => void
   asking: boolean
   onAsk: () => void
+  rules: boolean
+  onRules: () => void
 }) {
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-separator px-3 py-1.5">
@@ -149,7 +221,13 @@ function ViewBar({
       {authoring && (
         <Button size="xs" variant="ghost" onClick={onAuthor}>
           <Icon.Settings className="size-3.5" />
-          Fields
+          Customize
+        </Button>
+      )}
+      {rules && (
+        <Button size="xs" variant="ghost" onClick={onRules}>
+          <Icon.Route className="size-3.5" />
+          Rules
         </Button>
       )}
     </div>
@@ -362,6 +440,376 @@ function RowList({
 }
 
 /**
+ * The calls a view offers: its quick-add, its row actions, and those of them
+ * that run over a selection. A custom module's fallback names the actions it
+ * offers; a placed table offers them all. A module-backed action runs on one
+ * record at a time: the server refuses it over several targets, which commit
+ * as one shared patch.
+ */
+function offeredActions(
+  definition: CapabilityDefinition,
+  collectionKey: string,
+  only: unknown,
+  grant: Grant,
+) {
+  const offered = (action: ActionSpec) =>
+    !Array.isArray(only) || only.includes(action.key)
+  const declaredQuick = quickAction(definition, collectionKey, grant)
+  const actions = updateActions(definition, collectionKey).filter(offered)
+  return {
+    quick: declaredQuick && offered(declaredQuick) ? declaredQuick : undefined,
+    actions,
+    bulkActions: actions.filter(
+      (action) => canInvoke(grant, action.key) && !action.implementation,
+    ),
+  }
+}
+
+/** The revisions a completed call moved its records to; nothing for any other receipt. */
+const movedBy = (receipt: InvocationReceipt): Moved =>
+  receipt.status === 'finished' && receipt.outcome.outcome === 'completed'
+    ? Object.fromEntries(
+        receipt.outcome.affected.map((one) => [one.id, one.revision]),
+      )
+    : {}
+
+/**
+ * The view this module shows. A picked view is written into the page, so it
+ * opens there next time. Where the setting cannot be written (no page, a
+ * composite, a bound View input) the pick holds for as long as the module is
+ * shown.
+ */
+function usePickedView(
+  view: ModuleViewProps,
+  definition: CapabilityDefinition,
+  start: ViewSpec,
+) {
+  const [pickedKey, setPickedKey] = useState<string>()
+  const own = useOwnSettings(view)
+  const pick = (next: ViewSpec) =>
+    own && !('viewKey' in view.inputs)
+      ? own({ viewKey: next.key })
+      : setPickedKey(next.key)
+  const spec =
+    (pickedKey
+      ? definition.views.find((one) => one.key === pickedKey)
+      : undefined) ?? start
+  return { spec, pick }
+}
+
+/** The view's quick-add: its action's button, or the action's form while adding. */
+function QuickAdd({
+  instanceId,
+  action,
+  adding,
+  grant,
+  schemas,
+  busy,
+  onAdding,
+  onSubmit,
+}: {
+  instanceId: string
+  action: ActionSpec
+  adding: boolean
+  grant: Grant
+  schemas: CollectionSchema[]
+  busy: boolean
+  onAdding: (adding: boolean) => void
+  onSubmit: (values: Record<string, unknown>) => void
+}) {
+  return (
+    <div className="flex shrink-0 flex-col gap-2 border-b border-separator px-3 py-2">
+      {adding ? (
+        <ActionCall
+          instanceId={instanceId}
+          action={action}
+          schemas={schemas}
+          submitLabel={action.label}
+          busy={busy}
+          onSubmit={onSubmit}
+          onCancel={() => onAdding(false)}
+        />
+      ) : (
+        <Button
+          size="xs"
+          variant="outline"
+          className="self-start"
+          disabled={busy || !canInvoke(grant, action.key)}
+          title={
+            canInvoke(grant, action.key)
+              ? undefined
+              : 'Your grant does not reach this action'
+          }
+          onClick={() => onAdding(true)}
+        >
+          <Icon.Add className="size-3.5" />
+          {action.label}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+/** Why a view has no rows: its filter matched none, or the collection holds none it shows. */
+function EmptyView({
+  filtered,
+  spec,
+  schema,
+}: {
+  filtered: boolean
+  spec: ViewSpec
+  schema: CollectionSchema | undefined
+}) {
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyTitle>
+          {filtered ? 'Nothing matches' : 'Nothing here yet'}
+        </EmptyTitle>
+        <EmptyDescription>
+          {filtered
+            ? `No record fits this view: ${describeFilter(spec.filter)}.`
+            : `${schema?.label ?? 'This collection'} has no records the view shows.`}
+        </EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  )
+}
+
+type RowsQuery = ReturnType<typeof useCapabilityRows>
+
+/**
+ * The rows a view answers, or what stands in their place: placeholders while
+ * the read runs, the refusal with a way to read again, or why there are none.
+ * A view's layout decides whether the rows are a table or a list.
+ */
+function ViewRows({
+  query,
+  filtered,
+  spec,
+  schema,
+  rowProps,
+  onReload,
+}: {
+  query: RowsQuery
+  filtered: boolean
+  spec: ViewSpec
+  schema: CollectionSchema | undefined
+  rowProps: RowProps
+  onReload: () => void
+}) {
+  if (query.isPending) return <Loading rows={5} />
+  if (query.isError && !query.data)
+    return (
+      <div role="alert" className="flex flex-col items-start gap-2 p-4 text-sm">
+        <span className="text-error-ink">
+          {refusalMessage(query.error, 'This view')}
+        </span>
+        <Button size="sm" variant="outline" onClick={onReload}>
+          Try again
+        </Button>
+      </div>
+    )
+  if (!rowProps.rows.length)
+    return <EmptyView filtered={filtered} spec={spec} schema={schema} />
+  return spec.layout === 'table' ? (
+    <RowTable {...rowProps} />
+  ) : (
+    <RowList {...rowProps} />
+  )
+}
+
+/** The way to a view's next page, and a note when the page cut the answer short. */
+function MoreRows({
+  query,
+  shown,
+  total,
+  truncated,
+}: {
+  query: RowsQuery
+  shown: number
+  total: number
+  truncated: boolean
+}) {
+  return (
+    <>
+      {query.isFetchNextPageError && (
+        <p role="alert" className="p-2 text-xs text-error-ink">
+          {query.error instanceof EchoedCursorError
+            ? query.error.message
+            : refusalMessage(query.error, 'The next page')}
+        </p>
+      )}
+      {query.hasNextPage &&
+        !(
+          query.isFetchNextPageError && query.error instanceof EchoedCursorError
+        ) && (
+          <div className="flex justify-center p-2">
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={query.isFetchingNextPage}
+              onClick={() => void query.fetchNextPage()}
+            >
+              {query.isFetchingNextPage
+                ? 'Loading…'
+                : `Load more (${total} in all)`}
+            </Button>
+          </div>
+        )}
+      {truncated && (
+        <p className="p-2 text-xs text-ink-faint">
+          The page cut the answer short: {shown} of {total} rows are shown.
+        </p>
+      )}
+    </>
+  )
+}
+
+/** A row action's form, in a dialog that names the record and the revision it was read at. */
+function CallDialog({
+  instanceId,
+  call,
+  columns,
+  schemas,
+  busy,
+  onSubmit,
+  onClose,
+}: {
+  instanceId: string
+  call: { action: ActionSpec; row: CapabilityRecordRow }
+  columns: ResolvedField[]
+  schemas: CollectionSchema[]
+  busy: boolean
+  onSubmit: (values: Record<string, unknown>) => void
+  onClose: () => void
+}) {
+  return (
+    <Dialog open onOpenChange={(shown) => !shown && onClose()}>
+      <DialogContent showCloseButton={false} className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{call.action.label}</DialogTitle>
+          <DialogDescription>
+            {rowTitle(columns, call.row)} · at revision {call.row.revision}
+          </DialogDescription>
+        </DialogHeader>
+        <ActionCall
+          instanceId={instanceId}
+          action={call.action}
+          row={call.row}
+          schemas={schemas}
+          submitLabel={call.action.label}
+          busy={busy}
+          onSubmit={onSubmit}
+          onCancel={onClose}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** A bar action's form over the selection: the same values go to every selected record. */
+function BulkDialog({
+  instanceId,
+  action,
+  count,
+  schemas,
+  busy,
+  onSubmit,
+  onClose,
+}: {
+  instanceId: string
+  action: ActionSpec
+  count: number
+  schemas: CollectionSchema[]
+  busy: boolean
+  onSubmit: (values: Record<string, unknown>) => void
+  onClose: () => void
+}) {
+  return (
+    <Dialog open onOpenChange={(shown) => !shown && onClose()}>
+      <DialogContent showCloseButton={false} className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>
+            {action.label} · {count} records
+          </DialogTitle>
+          <DialogDescription>
+            The same values go to every selected record, each at the revision
+            shown; a field left blank is left as it is on every record. If any
+            record refuses, none is changed.
+          </DialogDescription>
+        </DialogHeader>
+        <ActionCall
+          instanceId={instanceId}
+          action={action}
+          schemas={schemas}
+          submitLabel={`${action.label} ${count} records`}
+          busy={busy}
+          onSubmit={onSubmit}
+          onCancel={onClose}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * What a selection brings up: the bar over two or more records, and the form
+ * of a bar action that asks for inputs. The form stays open while the
+ * selection under it changes, and closes when its call is saved or cancelled.
+ */
+function SelectionCalls({
+  instanceId,
+  selected,
+  actions,
+  schemas,
+  busy,
+  onRun,
+  onClear,
+}: {
+  instanceId: string
+  selected: CapabilityRecordRow[]
+  actions: ActionSpec[]
+  schemas: CollectionSchema[]
+  busy: boolean
+  onRun: (
+    action: ActionSpec,
+    values: Record<string, unknown>,
+    done: () => void,
+  ) => void
+  onClear: () => void
+}) {
+  const [bulking, setBulking] = useState<ActionSpec>()
+  const close = () => setBulking(undefined)
+  return (
+    <>
+      {selected.length > 1 && actions.length > 0 && (
+        <BulkBar
+          count={selected.length}
+          actions={actions}
+          busy={busy}
+          onRun={(action) =>
+            action.input.length ? setBulking(action) : onRun(action, {}, close)
+          }
+          onClear={onClear}
+        />
+      )}
+      {bulking && (
+        <BulkDialog
+          instanceId={instanceId}
+          action={bulking}
+          count={selected.length}
+          schemas={schemas}
+          busy={busy}
+          onSubmit={(values) => onRun(bulking, values, close)}
+          onClose={close}
+        />
+      )}
+    </>
+  )
+}
+
+/**
  * One view's rows, its quick-add, its selection and its actions. Everything
  * here is read through the instance's own contract: the view's rows, the
  * definition's actions, this caller's grant. No call here reaches a model.
@@ -369,25 +817,23 @@ function RowList({
 function CapabilityTableBody({
   view,
   described,
-  describedAt,
   start,
+  onOpenInstance,
 }: {
   view: ModuleViewProps
   described: DescribeResult
-  /** When the describe answer was last read, so an authoring base can be paired with it. */
-  describedAt: number
   start: ViewSpec
+  /** Switch this module to another instance; absent where its setting cannot be written. */
+  onOpenInstance?: (instanceId: string) => void
 }) {
   const { output, emit } = view
-  const pageId = usePageId()
+  const pageId = usePagePath()
+  // The page component that shows this: a composite's own id, when inside one.
+  const selectedComponentId = view.path.split('/')[0]
   const instanceId = instanceIdOf(view.settings.instanceId)
   const definition = described.definition
   const grant = described.callerGrant
-  const [pickedKey, setPickedKey] = useState<string>()
-  const spec =
-    (pickedKey
-      ? definition.views.find((one) => one.key === pickedKey)
-      : undefined) ?? start
+  const { spec, pick } = usePickedView(view, definition, start)
   const views = useMemo(
     () => siblingViews(definition, spec),
     [definition, spec],
@@ -395,25 +841,9 @@ function CapabilityTableBody({
   const schema = schemaFor(described.collectionSchemas, spec.collectionKey)
   const columns = useMemo(() => columnsFor(spec, schema), [spec, schema])
   const rowsQuery = useCapabilityRows(instanceId, spec.key)
-  const { rows, total, filtered, truncated, definitionId } = flattenRows(
-    rowsQuery.data,
-  )
+  const { rows, total, filtered, truncated } = flattenRows(rowsQuery.data)
   const invoking = useCapabilityInvoke()
-  // The authoring dialog edits describe's definition, but describe names no
-  // definition id: the rows do. Their id as it stood when describe last
-  // answered is the version that definition can be no older than, so a patch
-  // names it. Rows that moved on later leave it older, and the server refuses
-  // the patch as stale and the dialog reads both again, rather than a newer id
-  // carrying conditions read from an older definition.
-  const [authoringBase, setAuthoringBase] = useState({
-    at: describedAt,
-    definitionId,
-  })
-  if (
-    authoringBase.at !== describedAt ||
-    (!authoringBase.definitionId && definitionId)
-  )
-    setAuthoringBase({ at: describedAt, definitionId })
+  const invokingTargets = useCapabilityInvokeTargets()
 
   const [selection, setSelection] = useState<Record<string, true>>({})
   const [lastMarked, setLastMarked] = useState<string>()
@@ -429,6 +859,7 @@ function CapabilityTableBody({
     form: number
   }>()
   const [authoring, setAuthoring] = useState(false)
+  const [ruling, setRuling] = useState(false)
   const [busy, setBusy] = useState<string>()
   // Whether a call is running, held apart from the row it runs on: a create
   // has no row, and its form must not send a second invocation meanwhile. The
@@ -448,28 +879,37 @@ function CapabilityTableBody({
     () => rows.filter((row) => selection[row.id]),
     [rows, selection],
   )
-  const quick = quickAction(definition, spec.collectionKey, grant)
-  const actions = updateActions(definition, spec.collectionKey)
+  const { quick, actions, bulkActions } = offeredActions(
+    definition,
+    spec.collectionKey,
+    view.settings.actions,
+    grant,
+  )
 
-  /** The envelope the composer carries: what is on screen, and no record bodies. */
-  const context = useMemo(
+  /**
+   * The envelope the composer carries: what is on screen, and no record bodies.
+   * With nothing selected it names the view alone, which is what "use in this
+   * conversation" hands on; a selection is what the module outputs and emits.
+   */
+  const shown = useMemo(
     () =>
-      selected.length
-        ? capabilityContextReference({
-            instanceId,
-            collectionKey: spec.collectionKey,
-            pageId,
-            viewKey: spec.key,
-            purpose: definition.purpose,
-            label: `${definition.name} · ${spec.label} · ${selected.length} selected`,
-            selected: selected.map((row) => ({
-              id: row.id,
-              revision: row.revision,
-            })),
-            filtered,
-            truncated,
-          })
-        : undefined,
+      capabilityContextReference({
+        instanceId,
+        collectionKey: spec.collectionKey,
+        pageId,
+        selectedComponentId,
+        viewKey: spec.key,
+        purpose: definition.purpose,
+        label: selected.length
+          ? `${definition.name} · ${spec.label} · ${selected.length} selected`
+          : `${definition.name} · ${spec.label}`,
+        selected: selected.map((row) => ({
+          id: row.id,
+          revision: row.revision,
+        })),
+        filtered,
+        truncated,
+      }),
     [
       selected,
       instanceId,
@@ -477,10 +917,12 @@ function CapabilityTableBody({
       definition.name,
       definition.purpose,
       pageId,
+      selectedComponentId,
       filtered,
       truncated,
     ],
   )
+  const context = selected.length ? shown : undefined
 
   useEffect(() => output('context', context), [output, context])
   useEffect(() => {
@@ -539,43 +981,16 @@ function CapabilityTableBody({
     setLastMarked(undefined)
   })
 
-  /** What a receipt means, as the one line the person reads. */
-  const report = (receipt: InvocationReceipt, form?: number): boolean => {
-    if (receipt.status === 'dispatched') {
-      setStatus({
-        kind: 'pending',
-        message: `${receipt.actionKey} is journaled and has not finished, so whether it took effect is not yet known.`,
-        receipt: {
-          instanceId: receipt.instanceId,
-          recordId: receipt.recordId,
-          form,
-        },
-      })
-      return false
-    }
-    const { outcome } = receipt
-    if (outcome.outcome === 'completed') {
-      setMoved((held) => {
-        const next = { ...held }
-        for (const affected of outcome.affected)
-          next[affected.id] = affected.revision
-        return next
-      })
-      const at = outcome.affected
-        .map((affected) => `r${affected.revision}`)
-        .join(', ')
-      setStatus({
-        kind: 'saved',
-        message: `${receipt.actionKey} saved${at ? ` · ${at}` : ''}.`,
-      })
-      return true
-    }
-    setStatus({
-      kind: 'failed',
-      message: `${outcome.code}: ${outcome.message}`,
-      reload: outcome.code === codes.REVISION_CONFLICT,
-    })
-    return false
+  /** Report the receipt and leave the owning form attached while it is pending. */
+  const report = (
+    receipt: InvocationReceipt,
+    { form, count }: { form?: number; count?: number } = {},
+  ): boolean => {
+    const next = receiptStatus(receipt, count)
+    if (next.receipt) next.receipt = { ...next.receipt, form, count }
+    setMoved((held) => ({ ...held, ...movedBy(receipt) }))
+    setStatus(next)
+    return next.kind === 'saved'
   }
 
   /** Close the form a finished call came from, if it is still the one open. */
@@ -604,13 +1019,41 @@ function CapabilityTableBody({
           ? { recordId: call.row.id, expectedRevision: call.row.revision }
           : {}),
       })
-      if (report(receipt, form)) closeForm(form)
+      if (report(receipt, { form })) closeForm(form)
     } catch (error) {
-      setStatus({
-        kind: 'failed',
-        message: refusalMessage(error, call.action.label),
-        reload: isReloadConflict(error),
+      setStatus(refusedStatus(error, call.action.label))
+    } finally {
+      running.current = false
+      setPending(false)
+      setBusy(undefined)
+    }
+  }
+
+  /** One update action over every selected record, at the revisions on screen. */
+  const runSelected = async (
+    action: ActionSpec,
+    values: Record<string, unknown>,
+    done: () => void,
+  ) => {
+    if (running.current) return
+    running.current = true
+    setPending(true)
+    const rows = selected
+    setBusy(BULK)
+    setStatus({
+      kind: 'pending',
+      message: `${action.label} on ${rows.length} records…`,
+    })
+    try {
+      const receipt = await invokingTargets.mutateAsync({
+        instanceId,
+        actionKey: action.key,
+        inputs: values,
+        rows,
       })
+      if (report(receipt, { count: rows.length })) done()
+    } catch (error) {
+      setStatus(refusedStatus(error, action.label))
     } finally {
       running.current = false
       setPending(false)
@@ -635,16 +1078,10 @@ function CapabilityTableBody({
     try {
       const receipt = await receipts.mutateAsync(at)
       if (!current()) return
-      if (report(receipt, at.form)) closeForm(at.form)
+      if (report(receipt, at)) closeForm(at.form)
     } catch (error) {
       if (!current()) return
-      setStatus({
-        kind: 'failed',
-        message: refusalMessage(error, 'The receipt'),
-        reload: isReloadConflict(error),
-        // Still the same call: its receipt can be read again.
-        receipt: at,
-      })
+      setStatus(refusedStatus(error, 'The receipt'))
     }
   }
 
@@ -699,17 +1136,31 @@ function CapabilityTableBody({
       <ViewBar
         views={views}
         current={spec}
-        onPick={(next) => setPickedKey(next.key)}
+        onPick={pick}
         authoring={grant.author}
         onAuthor={() => setAuthoring(true)}
         asking={!!context}
         onAsk={() => context && askAbout(context)}
+        rules={offersRules(described)}
+        onRules={() => setRuling(true)}
       />
       <StatusLine
         status={status}
         onClear={() => setStatus(undefined)}
         onReload={reload}
         onCheck={() => void check()}
+      />
+      <SelectionCalls
+        instanceId={instanceId}
+        selected={selected}
+        actions={bulkActions}
+        schemas={described.collectionSchemas}
+        busy={pending}
+        onRun={(action, values, done) => void runSelected(action, values, done)}
+        onClear={() => {
+          setSelection({})
+          setLastMarked(undefined)
+        }}
       />
       {spec.layout === 'board' && (
         <p className="px-3 pt-1.5 text-xs text-ink-faint">
@@ -718,142 +1169,80 @@ function CapabilityTableBody({
         </p>
       )}
       {quick && (
-        <div className="flex shrink-0 flex-col gap-2 border-b border-separator px-3 py-2">
-          {adding !== undefined ? (
-            <ActionCall
-              instanceId={instanceId}
-              action={quick}
-              schemas={described.collectionSchemas}
-              submitLabel={quick.label}
-              busy={pending}
-              onSubmit={(values) => void run({ action: quick }, values, adding)}
-              onCancel={() => setAdding(undefined)}
-            />
-          ) : (
-            <Button
-              size="xs"
-              variant="outline"
-              className="self-start"
-              disabled={!canInvoke(grant, quick.key)}
-              title={
-                canInvoke(grant, quick.key)
-                  ? undefined
-                  : 'Your grant does not reach this action'
-              }
-              onClick={() => setAdding(++forms.current)}
-            >
-              <Icon.Add className="size-3.5" />
-              {quick.label}
-            </Button>
-          )}
-        </div>
+        <QuickAdd
+          instanceId={instanceId}
+          action={quick}
+          adding={adding !== undefined}
+          grant={grant}
+          schemas={described.collectionSchemas}
+          busy={pending}
+          onAdding={(open) => setAdding(open ? ++forms.current : undefined)}
+          onSubmit={(values) => void run({ action: quick }, values, adding)}
+        />
       )}
       <div className="min-h-0 flex-1 overflow-auto">
-        {rowsQuery.isPending ? (
-          <Loading rows={5} />
-        ) : rowsQuery.isError && !rowsQuery.data ? (
-          <div
-            role="alert"
-            className="flex flex-col items-start gap-2 p-4 text-sm"
-          >
-            <span className="text-error-ink">
-              {refusalMessage(rowsQuery.error, 'This view')}
-            </span>
-            <Button size="sm" variant="outline" onClick={reload}>
-              Try again
-            </Button>
-          </div>
-        ) : !rows.length ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>
-                {filtered ? 'Nothing matches' : 'Nothing here yet'}
-              </EmptyTitle>
-              <EmptyDescription>
-                {filtered
-                  ? `No record fits this view: ${describeFilter(spec.filter)}.`
-                  : `${schema?.label ?? 'This collection'} has no records the view shows.`}
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : spec.layout === 'table' ? (
-          <RowTable {...rowProps} />
-        ) : (
-          <RowList {...rowProps} />
-        )}
-        {rowsQuery.isFetchNextPageError && (
-          <p role="alert" className="p-2 text-xs text-error-ink">
-            {rowsQuery.error instanceof EchoedCursorError
-              ? rowsQuery.error.message
-              : refusalMessage(rowsQuery.error, 'The next page')}
-          </p>
-        )}
-        {/* A server that echoed its cursor cannot move on from it; any other
-            failed page can be asked for again. */}
-        {rowsQuery.hasNextPage &&
-          !(
-            rowsQuery.isFetchNextPageError &&
-            rowsQuery.error instanceof EchoedCursorError
-          ) && (
-            <div className="flex justify-center p-2">
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={rowsQuery.isFetchingNextPage}
-                onClick={() => void rowsQuery.fetchNextPage()}
-              >
-                {rowsQuery.isFetchingNextPage
-                  ? 'Loading…'
-                  : `Load more (${total} in all)`}
-              </Button>
-            </div>
-          )}
-        {truncated && (
-          <p className="p-2 text-xs text-ink-faint">
-            The page cut the answer short: {rows.length} of {total} rows are
-            shown.
-          </p>
-        )}
+        <ViewRows
+          query={rowsQuery}
+          filtered={filtered}
+          spec={spec}
+          schema={schema}
+          rowProps={rowProps}
+          onReload={reload}
+        />
+        <MoreRows
+          query={rowsQuery}
+          shown={rows.length}
+          total={total}
+          truncated={truncated}
+        />
       </div>
       {calling && (
-        <Dialog open onOpenChange={(shown) => !shown && setCalling(undefined)}>
-          <DialogContent showCloseButton={false} className="max-w-sm">
-            <DialogHeader>
-              <DialogTitle>{calling.action.label}</DialogTitle>
-              <DialogDescription>
-                {rowTitle(columns, calling.row)} · at revision{' '}
-                {calling.row.revision}
-              </DialogDescription>
-            </DialogHeader>
-            <ActionCall
-              instanceId={instanceId}
-              action={calling.action}
-              row={calling.row}
-              schemas={described.collectionSchemas}
-              submitLabel={calling.action.label}
-              busy={pending}
-              onSubmit={(values) => void run(calling, values, calling.form)}
-              onCancel={() => setCalling(undefined)}
-            />
-          </DialogContent>
-        </Dialog>
+        <CallDialog
+          instanceId={instanceId}
+          call={calling}
+          columns={columns}
+          schemas={described.collectionSchemas}
+          busy={pending}
+          onSubmit={(values) => void run(calling, values, calling.form)}
+          onClose={() => setCalling(undefined)}
+        />
       )}
       {authoring && (
         <AuthoringDialog
           instanceId={instanceId}
-          definition={definition}
-          schemas={described.collectionSchemas}
+          described={described}
           viewKey={spec.key}
-          expectedDefinitionId={authoringBase.definitionId}
           onClose={() => setAuthoring(false)}
+          onAsk={() => {
+            setAuthoring(false)
+            askAbout(shown)
+          }}
+          onOpenInstance={onOpenInstance}
+        />
+      )}
+      {ruling && (
+        <RulesDialog
+          instanceId={instanceId}
+          described={described}
+          expectedDefinitionId={described.definitionId}
+          onClose={() => setRuling(false)}
         />
       )}
     </div>
   )
 }
 
-/** A module that names no instance: what this caller may see, so the setting is fillable. */
-function NoInstance({ arranging }: { arranging: boolean }) {
+/**
+ * A module that names no instance: what this caller may see, so the setting is
+ * fillable, and a new instance from one of the caller's templates.
+ */
+function NoInstance({
+  arranging,
+  onOpenInstance,
+}: {
+  arranging: boolean
+  onOpenInstance?: (instanceId: string) => void
+}) {
   const found = useCapabilityDiscover()
   return (
     <div className="flex flex-col gap-2 p-3 text-sm">
@@ -876,8 +1265,21 @@ function NoInstance({ arranging }: { arranging: boolean }) {
           {entry.name}
         </p>
       ))}
+      <NewFromTemplate onOpen={onOpenInstance} />
     </div>
   )
+}
+
+/**
+ * How this module switches to another instance, by writing its own Instance
+ * setting, or undefined where it cannot. A new instance opens at its first
+ * view; a bound Instance input is not ours to change.
+ */
+function useOpenInstance(view: ModuleViewProps) {
+  const own = useOwnSettings(view)
+  return own && !('instanceId' in view.inputs)
+    ? (next: string) => own({ instanceId: next, viewKey: '' })
+    : undefined
 }
 
 /**
@@ -887,7 +1289,11 @@ function NoInstance({ arranging }: { arranging: boolean }) {
 export function CapabilityTableModule(view: ModuleViewProps) {
   const instanceId = instanceIdOf(view.settings.instanceId)
   const described = useCapabilityDescribe(instanceId || undefined)
-  if (!instanceId) return <NoInstance arranging={view.arranging} />
+  const openInstance = useOpenInstance(view)
+  if (!instanceId)
+    return (
+      <NoInstance arranging={view.arranging} onOpenInstance={openInstance} />
+    )
   if (described.isPending) return <Loading />
   // Beyond pending, a result either refused or answered: the caller's grant, the
   // definition and the resolved schemas come together or not at all.
@@ -917,8 +1323,8 @@ export function CapabilityTableModule(view: ModuleViewProps) {
       key={`${instanceId}:${start.key}`}
       view={view}
       described={described.data}
-      describedAt={described.dataUpdatedAt}
       start={start}
+      onOpenInstance={openInstance}
     />
   )
 }

@@ -1,15 +1,15 @@
-// SOURCING: coss ui toast (vendored as-is from https://coss.com/ui/r/toast.json; registry imports point at this folder)
+// SOURCING: coss ui toast (vendored as-is from https://coss.com/ui/r/toast.json; registry imports point at this folder); success is the owner's Streamline Checkmark Circle (Icon.CheckCircle, 2026-11-24)
 "use client";
 
 import { Toast } from "@base-ui/react/toast";
 import {
   CircleAlertIcon,
-  CircleCheckIcon,
   InfoIcon,
   LoaderCircleIcon,
   TriangleAlertIcon,
 } from "lucide-react";
 import type React from "react";
+import { Icon as Glyphs } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -17,7 +17,7 @@ const TOAST_ICONS = {
   error: CircleAlertIcon,
   info: InfoIcon,
   loading: LoaderCircleIcon,
-  success: CircleCheckIcon,
+  success: Glyphs.CheckCircle,
   warning: TriangleAlertIcon,
 } as const;
 
@@ -100,7 +100,7 @@ function Toasts({
             <Toast.Root
               key={toast.id}
               className={cn(
-                "absolute z-[calc(9999-var(--toast-index))] h-(--toast-calc-height) w-full select-none rounded-lg border bg-[color-mix(in_srgb,var(--popover),var(--color-black)_calc(1%*max(0,var(--toast-index,0))))] not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 [transition:transform_.5s_cubic-bezier(.22,1,.36,1),opacity_.5s,height_.15s,background-color_.5s] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] data-expanded:bg-popover dark:bg-[color-mix(in_srgb,var(--popover),var(--color-black)_calc(6%*max(0,var(--toast-index,0))))] dark:data-expanded:bg-popover dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+                "absolute z-[calc(9999-var(--toast-index))] h-(--toast-calc-height) w-full select-none rounded-lg border bg-[color-mix(in_srgb,var(--popover),var(--color-black)_calc(1%*max(0,var(--toast-index,0))))] not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 [transition:transform_.5s_cubic-bezier(.22,1,.36,1),opacity_.5s,height_.15s,background-color_.5s] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] data-expanded:bg-popover dark:bg-[color-mix(in_srgb,var(--popover),var(--color-black)_calc(6%*max(0,var(--toast-index,0))))] dark:data-expanded:bg-popover",
                 // Base positioning using data-position
                 "data-[position*=right]:right-0 data-[position*=right]:left-auto",
                 "data-[position*=left]:right-auto data-[position*=left]:left-0",
@@ -223,7 +223,7 @@ function AnchoredToasts({
             >
               <Toast.Root
                 className={cn(
-                  "relative text-balance border bg-popover not-dark:bg-clip-padding text-popover-foreground text-xs transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:opacity-0 data-starting-style:opacity-0 motion-safe:data-ending-style:scale-98 motion-safe:data-starting-style:scale-98 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+                  "relative text-balance border bg-popover not-dark:bg-clip-padding text-popover-foreground text-xs transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:opacity-0 data-starting-style:opacity-0 motion-safe:data-ending-style:scale-98 motion-safe:data-starting-style:scale-98",
                   tooltipStyle
                     ? "rounded-md shadow-md/5 before:rounded-[calc(var(--radius-md)-1px)]"
                     : "rounded-lg shadow-lg/5 before:rounded-[calc(var(--radius-lg)-1px)]",

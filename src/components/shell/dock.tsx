@@ -1,4 +1,5 @@
-// SOURCING: dockview-react (docking layout: tabs, splits, floating and edge groups, maximize, serialization, always-rendered panels), the shell's ModeView (assistant-ui Thread in chat mode), FilePanel, NotePanel (Milkdown Crepe), WorkspaceFilePanel, the inspector's panels (the graph via React.lazy, so cosmos.gl loads only when it opens), the arrangements, the IDE frame (browser-only Theia), Base UI Menu (the one layout menu: Follow the agent and the Gallery, arrangements, the inspector, the terminal drawers), zustand stores for artifact view, note view, workspace file view, the inspected file, saved layouts and the drawers
+// SOURCING: dockview-react (docking layout: tabs, splits, floating and edge groups, maximize, serialization, always-rendered panels), the shell's ModeView (assistant-ui Thread in chat mode), FilePanel, NotePanel (Milkdown Crepe), WorkspaceFilePanel, the inspector's panels (the graph via React.lazy, so cosmos.gl loads only when it opens), the arrangements, the IDE frame (browser-only Theia), Base UI Menu on the theme's glass (the one layout menu: where the terminal opens), zustand stores for artifact view, note view, workspace file view, the inspected file, saved layouts and the drawers
+import { useThreadDisplayTitle } from '@/lib/theorem/thread-title'
 import { useAuiState } from '@assistant-ui/react'
 import { Menu } from '@base-ui/react/menu'
 import { DockviewDefaultTab, DockviewReact } from 'dockview-react'
@@ -22,14 +23,11 @@ import {
 import { ArtifactPanel } from '@/components/artifacts/artifact-panel'
 import { useThreadArtifacts } from '@/components/artifacts/artifact-model'
 import { useArtifactView } from '@/components/artifacts/artifact-view'
-import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { Icon } from '@/components/icons'
 import {
   LinksPanel,
   OutlinePanel,
 } from '@/components/inspector/inspector-panels'
-import { INSPECTOR_TOOLS } from '@/components/inspector/inspector-state'
-import type { InspectorTool } from '@/components/inspector/inspector-state'
 import { NotePanel } from '@/components/notes/note-panel'
 import { ThreadHeader } from '@/components/organize/thread-header'
 import { useProjectHomeTitle } from '@/components/projects/project-home'
@@ -44,29 +42,22 @@ import { useNote } from '@/lib/theorem/notes'
 import { useFileDock } from '@/lib/theorem/project-files'
 import { useWorkspaceFileView } from '@/lib/workspace/open'
 import {
-  ARRANGEMENTS,
   THREAD,
-  addInspector,
-  arrange,
   followFront,
   holdsPanelsMenu,
 } from './arrangements'
-import type { Arrangement } from './arrangements'
 import { FilePanel } from './file-panel'
 import {
   hasOwnView,
   ModeView,
   modeLabel,
-  navigatorMode,
   useShellMode,
 } from './modes'
-import type { ShellMode } from './modes'
 import { openBeside } from './open-beside'
 import { useShell } from './shell-state'
-import { menuItem, menuPopup } from './sidebar'
+import { ChromeMenuPopup, menuItem } from './chrome-menu'
 import { adaptDock } from './responsive-dock'
 
-import { useFollow } from '@/components/ide/follow'
 import { IdeFrame } from '@/components/ide/ide-frame'
 import { flyGhost, popIn } from '@/lib/motion'
 import { sheetShown } from '@/components/workbench/placement'
@@ -119,7 +110,7 @@ function subscribe(event: (listener: () => void) => { dispose: () => void }) {
 
 /** The main panel: the conversation, or the mode's view in the Index, Pages, Spaces and the canvas. Theia covers the dock in IDE mode. */
 function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
-  const threadTitle = useAuiState((s) => s.threadListItem.title)
+  const threadTitle = useThreadDisplayTitle()
   const title = useProjectHomeTitle() ?? threadTitle
   const mode = useShellMode()
   useEffect(
@@ -129,11 +120,11 @@ function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
   )
   // Chat's breadcrumb stands in for the tab while the conversation is
   // alone in its group, and Notes' panes draw their own pills; a tab dropped
-  // beside it brings the tab bar back.
+  // beside it, or stacked behind it in a narrow dock, brings the tab bar back.
   const inChat = mode === 'chat'
   const ownTop = inChat || mode === 'notes'
   const alone = useSyncExternalStore(
-    subscribe(api.group.api.onDidActivePanelChange),
+    subscribe(containerApi.onDidLayoutChange),
     () => api.group.panels.length === 1,
   )
   useEffect(() => {
@@ -344,61 +335,7 @@ const tabComponents = {
   ),
 }
 
-/** Follow the Agent across the dock: files in the IDE, artifacts in their panels. */
-/** Opens and closes the artifact cabinet for the project that is open. */
-/** A checkbox row in the panels menu. */
-function MenuCheck({
-  checked,
-  onCheckedChange,
-  children,
-}: {
-  checked: boolean
-  onCheckedChange: (checked: boolean) => void
-  children: React.ReactNode
-}) {
-  return (
-    <Menu.CheckboxItem
-      className={menuItem}
-      checked={checked}
-      onCheckedChange={onCheckedChange}
-    >
-      <span className="flex size-4 items-center justify-center">
-        <Menu.CheckboxItemIndicator>
-          <Icon.Check className="size-3.5" />
-        </Menu.CheckboxItemIndicator>
-      </span>
-      {children}
-    </Menu.CheckboxItem>
-  )
-}
-
-/** Lays the dock out as `arrangement` and opens, closes or fills the navigator. */
-export function arrangeWorkspace(
-  api: DockviewApi,
-  arrangement: Arrangement,
-  mode: ShellMode,
-) {
-  const { navigator } = arrange(api, arrangement)
-  const shell = useShell.getState()
-  shell.setPanelOpen(navigatorMode(mode), navigator !== 'closed')
-  if (navigator === 'files') shell.setFilesShown(true)
-}
-
-/** Which inspector panels the dock holds, kept current with its layout. */
-function useShownInspector(api: DockviewApi) {
-  const shown = useSyncExternalStore(subscribe(api.onDidLayoutChange), () =>
-    (Object.keys(INSPECTOR_TOOLS) as Array<InspectorTool>)
-      .filter((id) => api.getPanel(id))
-      .join(' '),
-  )
-  return new Set(shown.split(' '))
-}
-
-/**
- * The conversation's one layout menu: Follow the agent and the Gallery, the
- * arrangements, the inspector beside the files, and the terminal drawers.
- * New chat lives in the sidebar.
- */
+/** The dock's one layout menu: where the terminal opens. New chat lives in the sidebar. */
 function GroupActions({
   group,
   containerApi,
@@ -407,26 +344,19 @@ function GroupActions({
     subscribe(containerApi.onDidMaximizedGroupChange),
     () => holdsPanelsMenu(group),
   )
-  return holds ? <PanelsMenu api={containerApi} /> : null
+  return holds ? <PanelsMenu /> : null
 }
 
-function PanelsMenu({ api }: { api: DockviewApi }) {
-  const mode = useShellMode()
-  const shown = useShownInspector(api)
-  const toggle = (tool: InspectorTool) => {
-    const panel = api.getPanel(tool)
-    if (panel) api.removePanel(panel)
-    else addInspector(api, tool)
-  }
-  const following = useFollow((s) => s.following)
-  const gallery = useShell((s) => s.sideDrawer === 'outputs')
+function PanelsMenu() {
   return (
     <div className="flex h-full items-center pe-1">
       <Menu.Root>
         <Menu.Trigger
           render={
-            <TooltipIconButton
-              tooltip="Layout and panels"
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Layout"
               className="min-h-(--appearance-control-min) min-w-(--appearance-control-min) p-1.5"
             />
           }
@@ -435,65 +365,7 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
         </Menu.Trigger>
         <Menu.Portal>
           <Menu.Positioner align="end" sideOffset={6} className="z-50">
-            <Menu.Popup className={`min-w-52 ${menuPopup}`}>
-              <Menu.Group>
-                <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
-                  Workspace
-                </Menu.GroupLabel>
-                <MenuCheck
-                  checked={following}
-                  onCheckedChange={(on) =>
-                    on
-                      ? useFollow.getState().resume()
-                      : useFollow.getState().pause()
-                  }
-                >
-                  Follow the agent
-                </MenuCheck>
-                <MenuCheck
-                  checked={gallery}
-                  onCheckedChange={(on) =>
-                    useShell.getState().setSideDrawer(on ? 'outputs' : undefined)
-                  }
-                >
-                  Gallery
-                </MenuCheck>
-              </Menu.Group>
-              <Menu.Separator className="my-1 h-px bg-separator" />
-              <Menu.Group>
-                <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
-                  Arrange
-                </Menu.GroupLabel>
-                {(Object.keys(ARRANGEMENTS) as Array<Arrangement>).map(
-                  (arrangement) => (
-                    <Menu.Item
-                      key={arrangement}
-                      className={menuItem}
-                      onClick={() => arrangeWorkspace(api, arrangement, mode)}
-                    >
-                      {ARRANGEMENTS[arrangement]}
-                    </Menu.Item>
-                  ),
-                )}
-              </Menu.Group>
-              <Menu.Separator className="my-1 h-px bg-separator" />
-              <Menu.Group>
-                <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
-                  Inspector
-                </Menu.GroupLabel>
-                {(Object.keys(INSPECTOR_TOOLS) as Array<InspectorTool>).map(
-                  (tool) => (
-                    <MenuCheck
-                      key={tool}
-                      checked={shown.has(tool)}
-                      onCheckedChange={() => toggle(tool)}
-                    >
-                      {INSPECTOR_TOOLS[tool]}
-                    </MenuCheck>
-                  ),
-                )}
-              </Menu.Group>
-              <Menu.Separator className="my-1 h-px bg-separator" />
+            <ChromeMenuPopup className="min-w-52">
               <Menu.Item
                 className={menuItem}
                 onClick={() => useShell.getState().setWorkbench('side')}
@@ -518,7 +390,7 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
                 <Icon.Terminal className="size-4 text-ink-muted" />
                 {`${WORKBENCH_LABEL} full screen`}
               </Menu.Item>
-            </Menu.Popup>
+            </ChromeMenuPopup>
           </Menu.Positioner>
         </Menu.Portal>
       </Menu.Root>

@@ -16,6 +16,7 @@ import {
   columnsFor,
   describeFilter,
   fieldSpecOf,
+  fieldsByKey,
   filterRows,
   inputsFor,
   listText,
@@ -24,6 +25,7 @@ import {
   parseCapabilityRecordItem,
   parseValue,
   quickAction,
+  referencedCollections,
   registerFieldType,
   registerRowOf,
   rowTitle,
@@ -33,6 +35,8 @@ import {
   siblingViews,
   typedValue,
   updateActions,
+  valueText,
+  valueless,
   viewFor,
 } from './model'
 import { matchAll } from './contract'
@@ -349,7 +353,7 @@ describe('values', () => {
     })
   })
 
-  test('a blank optional field is null, a blank required one is refused by the form', () => {
+  test('a blank optional field is left out of the inputs, a blank required one is refused by the form', () => {
     expect(parseValue({ kind: 'text' }, '  ')).toEqual({
       ok: true,
       value: null,
@@ -364,10 +368,10 @@ describe('values', () => {
       ok: false,
       errors: { title: 'needed' },
     })
-    expect(actionValues(action, { title: 'Plan', due_at: '' })).toEqual({
-      ok: true,
-      values: { title: 'Plan', due_at: null },
-    })
+    // Absent applies no effect; the executor refuses a null input outright.
+    const parsed = actionValues(action, { title: 'Plan', due_at: '' })
+    expect(parsed).toEqual({ ok: true, values: { title: 'Plan' } })
+    expect(parsed.ok && Object.hasOwn(parsed.values, 'due_at')).toBe(false)
   })
 
   test('a timestamp is normalised to RFC 3339 and a bad one refused', () => {
@@ -539,6 +543,7 @@ describe('filter editing', () => {
     expect(listValues('')).toEqual([])
     const values = ['plain', 'Acme, Inc.', 'say "hi"']
     expect(listValues(listText(values))).toEqual(values)
+    expect(listValues(listText(['', ' spaced ']))).toEqual(['', ' spaced '])
   })
 
   test('a stored comparison the text cannot hold is written back as it was', () => {
@@ -666,5 +671,55 @@ describe('authoring', () => {
         required: false,
       },
     })
+  })
+})
+
+describe('the edges a value or a column turns on', () => {
+  test('a described field keeps its description in the register', () => {
+    const title = fieldFor('title')!
+    expect(fieldSpecOf({ ...title, description: 'What the task is' })).toEqual(
+      expect.objectContaining({ description: 'What the task is' }),
+    )
+    expect('description' in fieldSpecOf(title)).toBe(false)
+  })
+
+  test('a collection whose fields are not resolved has no columns', () => {
+    expect(columnsFor(viewFor(trackerDefinition, 'all')!, undefined)).toEqual(
+      [],
+    )
+    expect(fieldsByKey(undefined).size).toBe(0)
+  })
+
+  test('nothing is held as empty text, and true and a reference parse as themselves', () => {
+    expect(valueText(null)).toBe('')
+    expect(valueText(undefined)).toBe('')
+    expect(parseValue({ kind: 'boolean' }, 'true')).toEqual({
+      ok: true,
+      value: true,
+    })
+    expect(
+      parseValue({ kind: 'reference', collectionKey: 'people' }, ' rec-1 '),
+    ).toEqual({ ok: true, value: 'rec-1' })
+    const done = { ...fieldFor('title')!, fieldType: { kind: 'boolean' } }
+    expect(typedValue(done as ResolvedField, 'true')).toBe(true)
+    expect(typedValue(done as ResolvedField, 'false')).toBe(false)
+    expect(typedValue(done as ResolvedField, 'maybe')).toBe('maybe')
+  })
+
+  test('a form loads only the collections its reference inputs name', () => {
+    const assign = trackerDefinition.actions.find(
+      (action) => action.key === 'assign',
+    )!
+    const add = trackerDefinition.actions.find(
+      (action) => action.key === 'add',
+    )!
+    expect(referencedCollections(assign)).toEqual(['people'])
+    expect(referencedCollections(add)).toEqual([])
+  })
+
+  test('only an emptiness check needs no value', () => {
+    expect(valueless('is_empty')).toBe(true)
+    expect(valueless('is_not_empty')).toBe(true)
+    expect(valueless('eq')).toBe(false)
   })
 })

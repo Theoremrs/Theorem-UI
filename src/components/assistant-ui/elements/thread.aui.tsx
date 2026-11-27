@@ -28,6 +28,10 @@ import { ComposerEditor } from '@/components/chat/composer-editor'
 import { Composer, composerSurface } from '@/components/chat/composer'
 import type { ComposerLayout, ComposerSlots } from '@/components/chat/composer'
 import { ReadAloud } from '@/components/chat/read-aloud'
+import {
+  ResponseDetailsDialog,
+  ResponseDetailsItem,
+} from '@/components/chat/response-style-details'
 import { FaceSlot } from '@/components/face/face-mark'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
@@ -36,6 +40,8 @@ import { useLiquidGlass } from '@/components/glass/liquid-glass/use-liquid-glass
 import { useComposerSurface } from '@/lib/surfaces'
 import { useSurfaceMaterial } from '@/lib/appearance'
 import { appearancePair } from '@/lib/appearance-policy'
+import { ConversationMapAui } from './conversation-map.aui'
+import { useMessageView } from './view-actions'
 import { cn } from '@/lib/utils'
 import { useComposedRefs } from '@/lib/composition'
 import {
@@ -76,6 +82,7 @@ import { useStartThreadFrom } from '@/lib/theorem/thread-tree'
 import { hasTheoremError } from '@/lib/theorem/message-history'
 
 import { ComposerToolTrigger } from '@/components/chat/composer-tools'
+import { RecentArtifacts } from '@/components/chat/recent-artifacts'
 import { UserMarkdown } from '@/components/chat/user-markdown'
 import { ChatCollapsibleMessage } from '@/components/coss/chat/chat-collapsible-message'
 import {
@@ -286,6 +293,9 @@ const ThreadRoot: FC<{
         data-kit-clip
         className="appearance-thread-viewport relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto"
       >
+        {/* A direct child of the viewport, so the rail sits in the gutter
+            beside the centred track; hidden where there is no gutter. */}
+        {!isEmpty && <ConversationMapAui className="@max-4xl:hidden" />}
         <div
           data-appearance-part="conversation-track"
           className={cn(
@@ -338,6 +348,7 @@ const ThreadRoot: FC<{
               slots={composerSlots}
             />
           </ThreadPrimitive.ViewportFooter>
+          {isEmpty && <RecentArtifacts />}
         </div>
       </ThreadPrimitive.Viewport>
       {/* Selecting reply text offers to quote it into the composer. */}
@@ -829,6 +840,7 @@ const AssistantMessage: FC = () => {
           <BranchPicker />
           <MessageActions />
         </div>
+        <ResponseDetailsDialog />
       </div>
     </MessagePrimitive.Root>
   )
@@ -861,6 +873,30 @@ const ForkFromMessage: FC = () => {
     </ActionBarMorePrimitive.Item>
   )
 }
+/**
+ * Saving and expanding a view drawn in this reply. Views carry no chrome of
+ * their own, so these sit in the reply's menu, shown only when it has one.
+ */
+const ViewItems: FC = () => {
+  const messageId = useAuiState((s) => s.message.id)
+  const view = useMessageView(messageId)
+  if (!view) return null
+  const item =
+    'aui-action-bar-more-item hover:bg-hover focus:bg-hover flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm outline-none select-none'
+  return (
+    <>
+      <ActionBarMorePrimitive.Item className={item} onSelect={view.expand}>
+        <Icon.Expand className="size-4" />
+        Expand view
+      </ActionBarMorePrimitive.Item>
+      <ActionBarMorePrimitive.Item className={item} onSelect={view.save}>
+        <Icon.Artifact className="size-4" />
+        Save view as App
+      </ActionBarMorePrimitive.Item>
+    </>
+  )
+}
+
 const AssistantActionBar: FC = () => {
   return (
     <ActionBarPrimitive.Root
@@ -905,6 +941,8 @@ const AssistantActionBar: FC = () => {
           className="aui-action-bar-more-content bg-popover text-popover-foreground shadow-popover data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-xl border p-1.5"
         >
           <ForkFromMessage />
+          <ViewItems />
+          <ResponseDetailsItem />
           <ActionBarPrimitive.ExportMarkdown
             render={
               <ActionBarMorePrimitive.Item className="aui-action-bar-more-item hover:bg-hover focus:bg-hover flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm outline-none select-none" />

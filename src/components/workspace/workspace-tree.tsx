@@ -24,7 +24,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { create } from 'zustand'
 import { Icon } from '@/components/icons'
-import { menuItem, menuPopup } from '@/components/shell/sidebar'
+import { menuItem, useChromeMenuGlass } from '@/components/shell/chrome-menu'
 import {
   FilesystemItem,
   FilesystemMarks,
@@ -184,6 +184,7 @@ export const makeEntry = (
 
 /** One workspace's files, kept current as they change on disk. */
 export function WorkspaceTree({ client }: { client: WorkspaceClient }) {
+  const { attach: attachGlass, className: glassClass } = useChromeMenuGlass()
   const { data: entries, isPending, isError } = useWorkspaceTree(client)
   const { nodes, ids } = useMemo(() => buildNodes(entries ?? []), [entries])
   const workspaceId = client.workspace.id
@@ -477,7 +478,8 @@ export function WorkspaceTree({ client }: { client: WorkspaceClient }) {
             {/* Focus stays put on close, so a rename's field keeps it. */}
             <ContextMenu.Popup
               finalFocus={false}
-              className={`min-w-44 ${menuPopup}`}
+              ref={attachGlass}
+              className={cn('min-w-44', glassClass)}
             >
               <ContextMenu.Item
                 className={menuItem}

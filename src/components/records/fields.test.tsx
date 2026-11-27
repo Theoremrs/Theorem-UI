@@ -142,3 +142,204 @@ test('Escape in a text editor restores the value; Enter saves it', async () => {
   await act(async () => key(second, 'Enter'))
   expect(onCommit.mock.calls).toEqual([['Noor Haddad', 'down']])
 })
+
+// ── Clearing: on by default, off where a store cannot clear a field ─────────
+
+const due: FieldSpec = {
+  key: 'due',
+  label: 'Due',
+  field_type: { kind: 'date' },
+  required: false,
+  system: false,
+}
+
+const stage: FieldSpec = {
+  key: 'stage',
+  label: 'Stage',
+  field_type: { kind: 'enum', variants: ['open', 'won'] },
+  required: false,
+  system: false,
+}
+
+const setText = (input: HTMLInputElement, text: string) => {
+  Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    'value',
+  )!.set!.call(input, text)
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+const enter = (input: HTMLInputElement) =>
+  input.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+  )
+
+const clearButton = (root: ParentNode) =>
+  [...root.querySelectorAll('button')].find(
+    (one) => one.textContent.trim() === 'Clear',
+  )
+
+test('where clearing is valid, an emptied text, a date and a select each save as cleared', async () => {
+  const onCommit = mock((_value: unknown, _move?: string) => {})
+  const text = await render(
+    <FieldEditor
+      field={name}
+      value="Noor"
+      onCommit={onCommit}
+      onDiscard={() => {}}
+    />,
+  )
+  const input = text.container.querySelector('input')!
+  await act(async () => setText(input, '  '))
+  await act(async () => enter(input))
+  expect(onCommit.mock.calls).toEqual([[null, 'down']])
+  await cleanup()
+
+  const date = await render(
+    <FieldEditor
+      field={due}
+      value="2026-11-22"
+      onCommit={onCommit}
+      onDiscard={() => {}}
+    />,
+  )
+  await act(async () => clearButton(date.container)!.click())
+  expect(onCommit.mock.calls.at(-1)?.[0]).toBeNull()
+  await cleanup()
+
+  const select = await render(
+    <FieldEditor
+      field={stage}
+      value="open"
+      onCommit={onCommit}
+      onDiscard={() => {}}
+    />,
+  )
+  await act(async () => clearButton(select.container)!.click())
+  expect(onCommit.mock.calls.at(-1)?.[0]).toBeNull()
+  expect(onCommit.mock.calls).toHaveLength(3)
+})
+
+test('clearable={false} offers no clear control and never commits null', async () => {
+  const onCommit = mock((_value: unknown, _move?: string) => {})
+  const onDiscard = mock(() => {})
+
+  // An emptied text is refused in place, and says why.
+  const text = await render(
+    <FieldEditor
+      field={name}
+      value="Noor"
+      clearable={false}
+      onCommit={onCommit}
+      onDiscard={onDiscard}
+    />,
+  )
+  const input = text.container.querySelector('input')!
+  await act(async () => setText(input, ''))
+  await act(async () => enter(input))
+  expect(input.getAttribute('aria-invalid')).toBe('true')
+  expect(input.placeholder).toBe('Cannot be emptied')
+  // A value typed after that saves as usual.
+  await act(async () => setText(input, 'Noor H'))
+  await act(async () => enter(input))
+  expect(onCommit.mock.calls).toEqual([['Noor H', 'down']])
+  await cleanup()
+
+  // Nothing was there and nothing was typed: it leaves without saving.
+  const blank = await render(
+    <FieldEditor
+      field={name}
+      value={undefined}
+      clearable={false}
+      onCommit={onCommit}
+      onDiscard={onDiscard}
+    />,
+  )
+  await act(async () => enter(blank.container.querySelector('input')!))
+  expect(onDiscard.mock.calls).toHaveLength(1)
+  await cleanup()
+
+  // A date has no Clear, and an emptied one is refused.
+  const date = await render(
+    <FieldEditor
+      field={due}
+      value="2026-11-22"
+      clearable={false}
+      onCommit={onCommit}
+      onDiscard={onDiscard}
+    />,
+  )
+  expect(clearButton(date.container)).toBeUndefined()
+  const day = date.container.querySelector('input')!
+  await act(async () => setText(day, ''))
+  await act(async () => enter(day))
+  expect(day.getAttribute('aria-invalid')).toBe('true')
+  expect(date.container.textContent).toContain('Cannot be emptied')
+  await cleanup()
+
+  // A select has no Clear either.
+  const select = await render(
+    <FieldEditor
+      field={stage}
+      value="open"
+      clearable={false}
+      onCommit={onCommit}
+      onDiscard={onDiscard}
+    />,
+  )
+  await waitFor(() =>
+    select.container.querySelector('[role="option"]') ? true : undefined,
+  )
+  expect(clearButton(select.container)).toBeUndefined()
+
+  expect(onCommit.mock.calls.map(([value]) => value)).not.toContain(null)
+  expect(onCommit.mock.calls).toHaveLength(1)
+})
+
+test('a date that cannot be emptied takes its refusal back once a day is typed, and leaves an empty one unsaved', async () => {
+  const onCommit = mock((_value: unknown, _move?: string) => {})
+  const onDiscard = mock(() => {})
+  const alert = (root: ParentNode) =>
+    root.querySelector('[role="alert"]')?.textContent ?? null
+
+  const date = await render(
+    <FieldEditor
+      field={due}
+      value="2026-11-22"
+      clearable={false}
+      onCommit={onCommit}
+      onDiscard={onDiscard}
+    />,
+  )
+  const day = date.container.querySelector('input')!
+  expect(day.getAttribute('aria-invalid')).toBeNull()
+  expect(alert(date.container)).toBeNull()
+  await act(async () => setText(day, ''))
+  await act(async () => enter(day))
+  expect(day.getAttribute('aria-invalid')).toBe('true')
+  expect(alert(date.container)).toBe('Cannot be emptied')
+  expect(onDiscard).not.toHaveBeenCalled()
+
+  // Typing a day takes the refusal back before anything is saved.
+  await act(async () => setText(day, '2026-12-01'))
+  expect(day.getAttribute('aria-invalid')).toBeNull()
+  expect(alert(date.container)).toBeNull()
+  await act(async () => enter(day))
+  expect(onCommit.mock.calls).toEqual([['2026-12-01', 'down']])
+  await cleanup()
+
+  // Nothing was there and nothing was typed: it leaves without saving.
+  const blank = await render(
+    <FieldEditor
+      field={due}
+      value={undefined}
+      clearable={false}
+      onCommit={onCommit}
+      onDiscard={onDiscard}
+    />,
+  )
+  await act(async () => enter(blank.container.querySelector('input')!))
+  expect(onDiscard.mock.calls).toHaveLength(1)
+  expect(alert(blank.container)).toBeNull()
+  expect(onCommit.mock.calls).toHaveLength(1)
+})

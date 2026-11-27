@@ -1,6 +1,5 @@
 // SOURCING: coss ui (Base UI checkbox, menu, badge) and ui/button, lib/theorem/reviews for the durable review, review-target for sending it, the thread's own Composer where the conversation is not beside the pane, lib/motion's springs. Hand-rolled layout because nothing upstream models a review of options; its behaviour (several picks, None as an answer, arrow keys through options and shots, a reference that cannot be picked, no silent cropping) is translated from mikecann/threadbear@78b77e1 docs/options-review-design and app ReviewWindow (MIT, Mike Cann). Looking at an option and choosing it are separate here, and the reply is written in the conversation's composer.
 import { useAui } from '@assistant-ui/react'
-import { Check } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { Composer } from '@/components/chat/composer'
@@ -142,7 +141,7 @@ function PickBox({
       className="flex size-4.5 shrink-0 items-center justify-center rounded-[5px] border border-ink-muted outline-none transition-colors duration-(--duration-snap) ease-snap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus data-checked:border-redwood data-checked:bg-redwood data-disabled:opacity-60"
     >
       <CheckboxPrimitive.Indicator className="text-on-redwood">
-        <Check aria-hidden className="size-3" strokeWidth={3.5} />
+        <Icon.Check aria-hidden className="size-3" />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   )

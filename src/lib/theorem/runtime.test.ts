@@ -13,10 +13,11 @@ import {
 import { defaultDirectiveFormatter, useAui, useAuiState } from '@assistant-ui/react'
 import { toastManager } from '@/components/coss/toast'
 import { TheoremError } from '@theoremharness/sdk'
-import type { ChatModelRunOptions } from '@assistant-ui/react'
+import type { ChatModelRunOptions, ChatModelRunResult } from '@assistant-ui/react'
 import { act, createElement, useEffect, useState } from 'react'
 import { cleanup, render, waitFor } from '../../../test/workspace'
 import { usePlanning, useWebSearch } from '@/components/chat/composer-tools'
+import { usePendingStyle } from './response-styles'
 import {
   mutateThread,
   pendingSendKey,
@@ -29,6 +30,7 @@ import {
   createHistoryAdapter,
   createThreadListAdapter,
   runTurn,
+  tailRun,
   draftedPlan,
 } from './runtime'
 
@@ -42,6 +44,8 @@ type Send = {
   skills?: { ids: string[] }
   model?: { provider: string; model: string }
   executionMode?: string
+  responseStyle?: string
+  uploadIds?: string[]
   responseDetail?: string
   effort?: string
   maxOutputTokens?: number
@@ -67,7 +71,7 @@ let runEvents: string[] = []
 function titleSnapshot(threadId: string) {
   const saved = titleThreads.get(threadId)!
   return {
-    thread: { threadId, title: saved.title, revision: saved.revision, status: 'regular', selectedBranchId: 'branch-1' },
+    thread: { threadId, projectId: 'project', title: saved.title, revision: saved.revision, status: 'regular', selectedBranchId: 'branch-1', lastMessageAtMs: saved.text ? 1000 : undefined },
     messages: saved.text ? [{ messageId: 'first-user', role: 'user', parts: [{ partId: 'text-1', type: 'text', payload: { text: saved.text } }] }] : [],
   }
 }
@@ -92,6 +96,55 @@ const closedRun = [
 ]
   .map((event) => `data: ${JSON.stringify(event)}\n\n`)
   .join('')
+
+/** Native journal metadata shares the SSE stream without becoming message content. */
+function runWithRequestCapture(runId: string) {
+  return [
+    {
+      seq: 1,
+      kind: 'message',
+      sourceEventType: 'CHAT.MESSAGE.PART',
+      payload: { part: { partId: 'p1', type: 'text', text: 'Before the capture' } },
+    },
+    {
+      seq: 2,
+      kind: 'run',
+      sourceEventType: 'CHAT.MODEL.REQUEST',
+      payload: {
+        schema: 'theorem.chat.model-request-capture/v1',
+        request: {
+          requestId: 'capture-metadata-only',
+          provider: 'deepseek',
+          model: 'deepseek-chat',
+          capturedAtMs: 1_000,
+          bodyBytes: 100,
+          capturedBytes: 100,
+          bodyHash: 'capture-metadata-hash',
+          completeness: 'complete',
+          capturePoint: 'before_send',
+          exclusions: [],
+          messageCount: 2,
+          toolCount: 1,
+        },
+      },
+    },
+    {
+      seq: 3,
+      kind: 'message',
+      sourceEventType: 'CHAT.MESSAGE.PART',
+      payload: { part: { partId: 'p1', type: 'text', text: 'After the capture' } },
+    },
+    { seq: 4, kind: 'run', sourceEventType: 'RUN.CLOSED', payload: {} },
+  ]
+    .map((event) => `event: run.event\nid: ${event.seq}\ndata: ${JSON.stringify({
+      schema: 'theorem-chat/1',
+      runId,
+      ...event,
+      stateHashAfter: `state-${event.seq}`,
+      idempotencyKey: `event-${event.seq}`,
+    })}\n\n`)
+    .join('')
+}
 
 /** A run that answers by drafting a plan: a finished `draft_plan` call. */
 const draftingRun = [
@@ -137,6 +190,8 @@ async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
       headers: { 'content-type': 'text/event-stream' },
     })
   }
+  if (path.endsWith('/projects/project/uploads') && request.method === 'POST')
+    return Response.json({ record: { uploadId: 'upload-1' } }, { status: 201 })
   if (path.endsWith('/messages') && request.method === 'POST') {
     titleEvents.push(`send:${request.headers.get('If-Match')}`)
     const { text, capabilityScope, webResearch, planning, toolSelection, skills, model, executionMode, ...limits } =
@@ -152,7 +207,7 @@ async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
       ...(model ? { model } : {}),
       ...(executionMode ? { executionMode } : {}),
       ...Object.fromEntries(
-        ['responseDetail', 'effort', 'maxOutputTokens', 'runBudget'].flatMap((field) =>
+        ['responseStyle', 'uploadIds', 'responseDetail', 'effort', 'maxOutputTokens', 'runBudget'].flatMap((field) =>
           field in limits ? [[field, (limits as Record<string, unknown>)[field]]] : [],
         ),
       ),
@@ -169,6 +224,7 @@ async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
       )
     )
   }
+  if (path.endsWith('/projects')) return Response.json({ items: [] })
   if (path.endsWith('/threads')) return Response.json({ items: [...titleThreads.keys()].map((id) => titleSnapshot(id).thread) })
   const threadId = path.split('/').pop()!
   if (inaccessibleTitles.has(threadId)) return Response.json({ code: 'forbidden' }, { status: 403 })
@@ -194,6 +250,7 @@ async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
   return Response.json({
     thread: {
       threadId: path.split('/').pop(),
+      projectId: 'project',
       status: 'regular',
       selectedBranchId: 'branch-1',
       revision: 1,
@@ -232,6 +289,7 @@ beforeEach(() => {
   useWebSearch.setState({ on: false })
   usePlanning.setState({ byThread: {} })
   useToolSelections.setState({ byThread: {} })
+  usePendingStyle.setState({ drafts: {}, held: {} })
 })
 afterEach(cleanup)
 
@@ -310,6 +368,33 @@ test('a reload whose saved send has no verdict keeps it and gives nothing back',
   expect(pendingSendKey(threadId)).toBeDefined()
 })
 
+for (const entry of ['normal send', 'reload/resume'] as const) {
+  test(`${entry} continues through model-request metadata without rendering it`, async () => {
+    const threadId = `capture-events-${crypto.randomUUID()}`
+    const runId = entry === 'normal send' ? 'run-1' : 'run-live'
+    runEvents.push(runWithRequestCapture(runId))
+    if (entry === 'reload/resume') liveRunId = runId
+
+    const stream = entry === 'normal send'
+      ? runTurn(threadId, options('Hello'))
+      : (await loaded(threadId)).resume
+    const steps: ChatModelRunResult[] = []
+    for await (const step of stream) steps.push(step)
+
+    expect(steps.some((step) => step.content?.some(
+      (part) => part.type === 'text' && part.text === 'Before the capture',
+    ))).toBe(true)
+    expect(steps.at(-1)).toMatchObject({
+      content: [{ type: 'text', text: 'After the capture' }],
+      status: { type: 'complete', reason: 'stop' },
+    })
+    expect(JSON.stringify(steps)).not.toContain('capture-metadata-only')
+    expect(JSON.stringify(steps)).not.toContain('capture-metadata-hash')
+    expect(JSON.stringify(steps)).not.toContain('CHAT.MODEL.REQUEST')
+    expect(sends).toHaveLength(entry === 'normal send' ? 1 : 0)
+  })
+}
+
 test('a reload reattaches to the run left live', async () => {
   const threadId = `thread-${crypto.randomUUID()}`
   liveRunId = 'run-live'
@@ -320,6 +405,65 @@ test('a reload reattaches to the run left live', async () => {
   const steps: unknown[] = []
   for await (const step of resume) steps.push(step)
   expect(JSON.stringify(steps)).toContain('Answered')
+})
+
+test('tailRun names the durable assistant message only once the run persists it', async () => {
+  // The live path: parts stream under an assistant-ui local id; the
+  // CHAT.MESSAGE.PERSISTED event adds the server's saved message id. An
+  // open before that would aim at a synthetic id, so the durable name is
+  // absent until the event arrives — and matches what history carries.
+  runEvents = [
+    [
+      {
+        seq: 1,
+        sourceEventType: 'CHAT.MESSAGE.PART',
+        payload: {
+          part: {
+            type: 'citation',
+            partId: 'cite-live-1',
+            sourceId: 'chatsource:retained:source:first',
+            sourceKind: 'web_read',
+            provenance: {
+              url: 'https://example.com/shared',
+              excerpt: 'Passage from the first fetch.',
+            },
+          },
+        },
+      },
+      {
+        seq: 2,
+        sourceEventType: 'CHAT.MESSAGE.PERSISTED',
+        payload: { messageId: 'chatmsg_live-1', role: 'assistant', textHash: 'h' },
+      },
+      { seq: 3, sourceEventType: 'RUN.CLOSED', payload: {} },
+    ]
+      .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+      .join(''),
+  ]
+  const steps: ChatModelRunResult[] = []
+  for await (const step of tailRun(
+    'run-live-cite',
+    new AbortController().signal,
+  ))
+    steps.push(step)
+  // Streaming steps before the persist carry no durable message name.
+  expect(steps[0]?.metadata?.custom).not.toHaveProperty('theoremMessageId')
+  // The persist event yields a metadata step with the server's id, and the
+  // closing steps keep naming it.
+  const named = steps.filter((step) =>
+    Object.hasOwn(step.metadata?.custom ?? {}, 'theoremMessageId'),
+  )
+  expect(named.length).toBeGreaterThan(0)
+  for (const step of named)
+    expect(step.metadata?.custom?.theoremMessageId).toBe('chatmsg_live-1')
+  // The citation part survived; its stored part id rides the projection
+  // only once the SDK release carries Theorem's part-ID preservation
+  // (unpublished today — the vendored alpha hydrates without it, so the
+  // UI open control stays absent until that release lands, never guessing
+  // a part).
+  const last = steps.at(-1)!
+  expect(last.status?.type).toBe('complete')
+  expect(last.content?.some((part) => part.type === 'data')).toBe(true)
 })
 
 test('a send after a refused replay goes out as the new turn', async () => {
@@ -518,6 +662,7 @@ async function chatWithPlanChip(threadId: string | undefined) {
     container.querySelector<HTMLElement>('[data-open]')?.dataset.open
   await waitFor(() => chip())
   return {
+    localId: () => aui!.threadListItem.getState().id,
     pressed: () => chip().getAttribute('aria-pressed') === 'true',
     async press() {
       await act(async () => chip().click())
@@ -528,19 +673,22 @@ async function chatWithPlanChip(threadId: string | undefined) {
         await aui!.threadListItem.initialize()
       })
     },
+    async attach(file: File) {
+      await act(async () => aui!.composer.addAttachment(file))
+    },
     async switchChat(to: string | undefined) {
       const from = open()
       await act(async () => switchTo(to))
       await waitFor(() => (to ? open() === to : open() !== from))
     },
     /** Sends `text`, waits for its run to end, and gives back what went out. */
-    async send(text: string) {
+    async send(text: string, attempts = 1) {
       const before = sends.length
       await act(async () => {
         aui!.composer.setText(text)
         aui!.composer.send()
       })
-      await waitFor(() => sends.length === before + 1)
+      await waitFor(() => sends.length === before + attempts)
       await waitFor(() => !aui!.thread.getState().isRunning)
       return sends.at(-1)!
     },
@@ -621,6 +769,80 @@ test('Plan pressed in a new conversation stays on when an attachment upload give
   }
 })
 
+test.each([
+  ['text', false, false, false],
+  ['an attachment', true, false, false],
+  ['a lost reply', false, true, false],
+  ['a refused send', false, false, true],
+] as const)('a new conversation keeps its style through %s', async (_, attachment, lost, refused) => {
+  const created = `thread-${crypto.randomUUID()}`
+  type Created = Awaited<
+    ReturnType<ReturnType<typeof theorem>['chat']['threads']['create']>
+  >
+  const createThread = spyOn(
+    theorem().chat.threads,
+    'create',
+  ).mockResolvedValue({ record: { threadId: created } } as Created)
+  try {
+    const chat = await chatWithPlanChip(undefined)
+    const style = 'theorem.style.concise'
+    usePendingStyle.getState().chooseDraft(chat.localId(), style)
+    if (attachment) await chat.attach(new File(['notes'], 'notes.txt', { type: 'text/plain' }))
+    if (lost) lostReplies = 1
+    if (refused) answers = [revisionConflict()]
+
+    const first = await chat.send('Explain B-trees', lost ? 2 : 1)
+    expect(first.responseStyle).toBe(style)
+    expect(first.uploadIds).toEqual(attachment ? ['upload-1'] : undefined)
+    expect(usePendingStyle.getState().drafts).toEqual({})
+    if (lost) {
+      expect(sends.map(({ key, responseStyle }) => ({ key, responseStyle }))).toEqual([
+        { key: first.key, responseStyle: style },
+        { key: first.key, responseStyle: style },
+      ])
+    }
+    if (refused) {
+      expect(usePendingStyle.getState().held[created]).toBe(style)
+      const retry = await chat.send('Explain B-trees')
+      expect(retry.responseStyle).toBe(style)
+      expect(retry.key).not.toBe(first.key)
+    }
+    expect(usePendingStyle.getState().held).toEqual({})
+
+    usePendingStyle.getState().chooseDraft('other-draft', 'theorem.style.formal')
+    expect((await chat.send('And skip lists?')).responseStyle).toBeUndefined()
+    expect(usePendingStyle.getState().drafts).toEqual({
+      'other-draft': 'theorem.style.formal',
+    })
+  } finally {
+    createThread.mockRestore()
+  }
+})
+
+test('finishing thread creation does not take a different draft’s style', async () => {
+  type Created = Awaited<
+    ReturnType<ReturnType<typeof theorem>['chat']['threads']['create']>
+  >
+  let finish = (_: Created) => {}
+  const waiting = new Promise<Created>((resolve) => { finish = resolve })
+  const createThread = spyOn(theorem().chat.threads, 'create').mockReturnValueOnce(waiting as ReturnType<ReturnType<typeof theorem>['chat']['threads']['create']>)
+  try {
+    const picks = usePendingStyle.getState()
+    picks.chooseDraft('draft-a', 'theorem.style.concise')
+    const creating = createThreadListAdapter(() => 'project').initialize('draft-a')
+    await waitFor(() => createThread.mock.calls.length === 1)
+    picks.chooseDraft('draft-b', 'theorem.style.formal')
+    finish({ record: { threadId: 'created-a' } } as Created)
+    await creating
+    expect(usePendingStyle.getState()).toMatchObject({
+      drafts: { 'draft-b': 'theorem.style.formal' },
+      held: { 'created-a': 'theorem.style.concise' },
+    })
+  } finally {
+    createThread.mockRestore()
+  }
+})
+
 test('inside one conversation Plan stays on across a clarifying question, then turns off once a plan is drafted', async () => {
   const chat = await chatWithPlanChip(`thread-${crypto.randomUUID()}`)
   await chat.press()
@@ -658,13 +880,14 @@ test('existing New Chat rows get meaningful projected titles without revision wr
   const adapter = createThreadListAdapter(() => 'project')
   const page = await adapter.list()
   expect(page.threads.map((thread) => thread.title)).toEqual([
-    'Compare SQLite and PostgreSQL',
+    'New Chat',
     'My database notes',
     'New Chat',
   ])
   expect((await adapter.fetch('title-old')).title).toBe(
     'Compare SQLite and PostgreSQL',
   )
+  expect((await adapter.list()).threads[0]?.title).toBe('Compare SQLite and PostgreSQL')
   expect(titleEvents).toEqual([])
   expect(titleReads).not.toContain('title-custom')
 })
@@ -706,7 +929,7 @@ test('a concurrent custom rename wins over automatic naming', async () => {
   expect(titleEvents).toEqual(['title:1', 'send:2'])
 })
 
-test('old title recovery bounds concurrent history reads', async () => {
+test('metadata returns before the bounded background title reads finish', async () => {
   for (let index = 0; index < 9; index += 1) {
     titleThreads.set(`title-bound-${index}`, {
       title: 'New Chat',
@@ -723,7 +946,11 @@ test('old title recovery bounds concurrent history reads', async () => {
     await new Promise<void>((resolve) => releases.push(resolve))
     active -= 1
   }
-  const pending = createThreadListAdapter(() => 'project').list()
+  const adapter = createThreadListAdapter(() => 'project')
+  const firstPage = await adapter.list()
+  expect(firstPage.threads).toHaveLength(9)
+  expect(firstPage.threads.every((thread) => thread.title === 'New Chat')).toBe(true)
+  expect(titleReads).toEqual([])
   await waitFor(() => titleReads.length === 4)
   expect(active).toBe(4)
   releases.splice(0).forEach((release) => release())
@@ -731,7 +958,11 @@ test('old title recovery bounds concurrent history reads', async () => {
   releases.splice(0).forEach((release) => release())
   await waitFor(() => titleReads.length === 9)
   releases.splice(0).forEach((release) => release())
-  expect((await pending).threads).toHaveLength(9)
+  await waitFor(() => active === 0)
+  const reloaded = await adapter.list()
+  expect(reloaded.threads.map((thread) => thread.title)).toEqual(
+    Array.from({ length: 9 }, (_, index) => `Question ${index}`),
+  )
   expect(peak).toBe(4)
   expect(titleEvents).toEqual([])
 })

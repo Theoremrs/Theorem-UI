@@ -2,7 +2,7 @@
 import type { Theorem } from '@/lib/theorem/client'
 import { embedFence } from '@/lib/theorem/embeds'
 import type { EmbedRef } from '@/lib/theorem/embeds'
-import { encodeNote } from '@/lib/theorem/note-canonical'
+import { contentDigest, encodeNote } from '@/lib/theorem/note-canonical'
 import { blockFor, noteHolding } from '@/lib/theorem/note-kinds'
 import { titleOf } from '@/lib/theorem/notes'
 import { uploadContentPath } from '@/lib/theorem/uploads'
@@ -127,16 +127,23 @@ export const documentFixtures: Readonly<Record<string, string>> = {
 const base64 = (bytes: Uint8Array) =>
   btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''))
 
-export function documentSnapshot(documentId: string, markdown: string, now: number) {
+export async function documentSnapshot(
+  documentId: string,
+  markdown: string,
+  now: number,
+  { documentKind = 'authored', title = titleOf(markdown) } = {},
+) {
   const canonical = encodeNote(markdown)
-  const revision = { position: 1, contentDigest: 'story' }
+  // The digest a reader checks the bytes against, as the server records it.
+  const digest = await contentDigest(canonical)
+  const revision = { position: 1, contentDigest: digest }
   return {
     schema: 'theorem-document/2',
     summary: {
       schema: 'theorem-document/2',
       documentId,
-      documentKind: 'authored',
-      title: titleOf(markdown),
+      documentKind,
+      title,
       readOnly: false,
       revision,
       createdPosition: 1,
@@ -150,7 +157,7 @@ export function documentSnapshot(documentId: string, markdown: string, now: numb
       placement: 'inline',
       bytesBase64: base64(canonical),
       size: canonical.length,
-      digest: 'story',
+      digest,
     },
     markdownProjection: markdown,
   }

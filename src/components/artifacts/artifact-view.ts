@@ -1,5 +1,18 @@
 // SOURCING: zustand (view state for artifact panels; artifact content stays in thread messages, panel placement in the dockview layout)
+import { createContext } from 'react'
 import { create } from 'zustand'
+
+/**
+ * Where a conversation's artifacts open: in the dock's panels beside it, or
+ * in the message itself when the conversation has no dock beside it.
+ */
+export const ArtifactPlacement = createContext<'panel' | 'inline'>('panel')
+
+/**
+ * Opens the larger view of an artifact drawn bare in its reply, which has no
+ * card to carry Open; unset where the artifact is already the larger view.
+ */
+export const ArtifactOpener = createContext<(() => void) | undefined>(undefined)
 
 /** The desktop dock, which hosts each open artifact as its own panel. */
 export type ArtifactDock = {

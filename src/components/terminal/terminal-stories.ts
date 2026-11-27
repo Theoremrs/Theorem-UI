@@ -209,7 +209,7 @@ export const TERMINAL_STORIES: TerminalStory[] = [
     id: 'terminal-code',
     title: 'Highlighted code and diffs',
     claim:
-      "Fenced code in an answer draws in Stone dark's code colours (GitHub Dark). A diff keeps each line's syntax, tints its removed and added rows, and brightens the words a changed line swapped.",
+      "Fenced code in an answer draws in the palette's dark code colours (GitHub Dark, Vitesse Dark in Vitesse). A diff keeps each line's syntax, tints its removed and added rows, and brightens the words a changed line swapped.",
     running: false,
     messages: [
       message('u1', 'user', [text('Show me the fix')]),
@@ -242,6 +242,40 @@ export const TERMINAL_STORIES: TerminalStory[] = [
             '```ts',
             'export const header = (line: string): string[] => fields(line, { strict: true })',
             '```',
+          ].join('\n'),
+        ),
+      ]),
+    ],
+    outbox: [],
+  },
+  {
+    id: 'terminal-reading',
+    title: 'Headings, inline code and tool rows in an answer',
+    claim:
+      "Every heading level is bold in the heading colour, since all share one cell size. Inline code is sage on no band. Wrapped prose keeps the answer's inset, and a list item's wrapped rows hang under its words. Prose and tool rows sit one blank row apart, consecutive tool rows stay together, and a file a tool row opens reads in sage, underlined.",
+    running: false,
+    messages: [
+      message('u1', 'user', [text('Why does the parser drop the last field?')]),
+      message('a1', 'assistant', [
+        text(
+          [
+            '## The cause',
+            '',
+            'The header parser in `src/parser.rs` calls `trim_end_matches`, which strips every trailing comma rather than one, so a line that ends in an empty field loses that field before the split ever sees it.',
+            '',
+            '### Where it reads',
+          ].join('\n'),
+        ),
+        tool('c1', 'read_file', { path: 'src/parser.rs' }, PARSER),
+        tool('c2', 'edit_file', { path: 'src/parser.rs' }, EDIT),
+        text(
+          [
+            '#### What changed',
+            '',
+            'It now uses `strip_suffix`, so exactly one comma goes and the empty last field stays.',
+            '',
+            '- The test covers a line that ends in an empty field and a line that ends in a word, so a header with a trailing comma keeps every one of its fields.',
+            '- `split` still trims each field.',
           ].join('\n'),
         ),
       ]),

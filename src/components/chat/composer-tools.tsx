@@ -21,10 +21,6 @@ import { Icon } from '@/components/icons'
 import { useShell } from '@/components/shell/shell-state'
 import { searchTools, useToolCatalog } from '@/lib/theorem/tools'
 import type { NativeTool, ToolCatalogState } from '@/lib/theorem/tools'
-import { cn } from '@/lib/utils'
-
-/** The composer's buttons are passed on the way to typing, so their tooltips wait for a resting pointer. */
-export const COMPOSER_TOOLTIP_DELAY = 700
 
 type WebSearchState = { on: boolean; toggle: () => void }
 
@@ -153,12 +149,15 @@ const tagOf = (item: TriggerItem) =>
     ? TAGS[item.metadata.effect]
     : undefined
 
-const EMPTY: Readonly<Record<ToolCatalogState['status'], string>> = {
-  loading: 'Loading tools…',
-  ready: 'No matching tools',
+/** Why the list holds no tools, when Theorem could not list them. */
+const CATALOG_NOTE: Partial<Record<ToolCatalogState['status'], string>> = {
   'not-served': 'This Theorem does not list its tools yet.',
   failed: 'Tools could not be loaded.',
 }
+
+const NO_TOOLS = 'No matching tools'
+
+const NO_COMMANDS = 'No matching commands'
 
 /** Local commands open settings; native tool picks retain their directive in the message. */
 const OUTPUT_COMMANDS: TriggerItem[] = [
@@ -184,8 +183,9 @@ const COMMAND_ICONS = {
   NewChat: Icon.NewChat,
   WebSearch: Icon.WebSearch,
   Plan: Icon.Plan,
-  Code: Icon.Code,
-  ReadAloud: Icon.ReadAloud,
+  // The painted Streamline coded page, as the + menu draws Code mode.
+  Code: Icon.CodeMode,
+  ReadAloud: Icon.ReadAloudControl,
   Plugins: Icon.Plugins,
 } as const
 
@@ -349,15 +349,15 @@ export function ComposerToolTrigger() {
             else setOutputDialog(item.id)
           },
         }}
-        heading={<>
-          <div>Theorem tools and commands</div>
-          {status !== 'ready' && <p>{EMPTY[status]}</p>}
-        </>}
+        // When Theorem cannot list its tools the note says why, so the
+        // list's own line answers only for the commands. While they load
+        // the commands show alone.
+        note={CATALOG_NOTE[status]}
         itemTag={tagOf}
-        emptyItemsLabel={EMPTY[status]}
-        loadingLabel={EMPTY.loading}
+        emptyItemsLabel={status === 'ready' ? NO_TOOLS : NO_COMMANDS}
+        loadingLabel={NO_COMMANDS}
         surfaceRef={glass.attach}
-        className={cn('w-md', glass.className)}
+        className={glass.className}
       />
       {outputDialog && (
         <OutputSettingsDialog

@@ -131,8 +131,11 @@ async function tokenRequest(server: AuthorizationServer, body: URLSearchParams) 
   return payload
 }
 
-/** Opens the system sign-in sheet; resolves once tokens are stored or throws why not. */
-export async function signIn(): Promise<void> {
+/** Opens the system sign-in sheet; resolves once tokens are stored or throws why not.
+ * `beforeReplace`, when given, receives the freshly exchanged tokens while the *current*
+ * session is still installed, and runs to completion before they replace it; throwing
+ * from it (or it failing) leaves the old session in place and the sign-in unfinished. */
+export async function signIn(beforeReplace?: (tokens: Tokens) => Promise<void>): Promise<void> {
   const server = await authorizationServer()
   const verifier = base64url(Crypto.getRandomBytes(32))
   const state = base64url(Crypto.getRandomBytes(16))
@@ -149,7 +152,12 @@ export async function signIn(): Promise<void> {
     config.oauthRedirectUri,
     { preferUniversalLinks: true },
   )
-  if (result.type !== 'success') throw new SignInError('cancelled', 'Sign-in was closed before it finished.')
+  if (result.type !== 'success') {
+    // The native session reports why it ended (for example an unverified
+    // callback association) as `error`, which the result type leaves out.
+    const reason = (result as { error?: string | null }).error
+    throw new SignInError('cancelled', reason ? `Sign-in ended: ${reason}` : 'Sign-in was closed before it finished.')
+  }
   const code = readCallback(result.url, {
     redirectUri: config.oauthRedirectUri,
     state,
@@ -168,6 +176,7 @@ export async function signIn(): Promise<void> {
     ),
     Date.now(),
   )
+  if (beforeReplace) await beforeReplace(tokens)
   await replace({ ...tokens, authority: config.authority, kind: 'oauth' })
   set({ status: 'signed-in', kind: 'oauth' })
 }

@@ -1,4 +1,4 @@
-// SOURCING: assistant-ui's ThreadMessage parts as the runtime holds them, data parts named per @theoremharness/sdk/assistant-ui (`theorem-user_input`), and the chat's readApproval; code is terminal-code's (@tanstack/highlight); the snapshot shape is the terminal crate's Snapshot (terminal/src/lib.rs)
+// SOURCING: assistant-ui's ThreadMessage parts as the runtime holds them, data parts named per @theoremharness/sdk/assistant-ui (`theorem-user_input`, a present call's `theorem-client_operation`, whose views view-reference reads), and the chat's readApproval; code is terminal-code's (Shiki, through lib/code-classes); the snapshot shape is the terminal crate's Snapshot (terminal/src/lib.rs)
 //
 // The terminal's transcript as plain data: what the WASM terminal draws from
 // a session's thread and what the session sent while a run worked. Pure, so
@@ -14,6 +14,7 @@ import {
 import type { CodePart, Open, Output, ProsePart, Token } from './terminal-code'
 import { approvalOutcome, readApproval } from '@/components/chat/theorem-parts'
 import { describeError } from '@/lib/theorem/client'
+import { presentedViewSources } from '@/lib/generative/view-reference'
 
 export type Approval = {
   runId: string
@@ -104,6 +105,16 @@ function programLines(part: object, source: string, language?: string) {
   return lines
 }
 
+/** A reply view's code (presentedViewSources), highlighted once per part object. */
+const views = new WeakMap<object, Token[][][]>()
+function viewPrograms(part: { data: unknown }) {
+  let found = views.get(part)
+  if (!found) {
+    found = presentedViewSources(part.data).map((source) => highlightLines(source, 'javascript'))
+    views.set(part, found)
+  }
+  return found
+}
 
 /** A tool call's one-line summary: its first string argument, else the raw args. */
 function toolSummary(args: Record<string, unknown>, argsText: string) {
@@ -180,6 +191,13 @@ export function snapshotOf(
               program.streaming === true && message === last && running,
           },
         ]
+      }
+      if (part.type === 'data' && part.name === 'theorem-client_operation') {
+        return viewPrograms(part).map((lines) => ({
+          type: 'program',
+          lines,
+          streaming: false,
+        }))
       }
       if (part.type === 'data' && part.name === 'theorem-host_call') {
         const call = record(part.data)

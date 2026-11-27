@@ -89,12 +89,15 @@ test('a page with a fractional height gets the whole pixel above it', () => {
   expect(measured(186, 186, 186.375)).toEqual([187])
 })
 
-test('content overflowing the page box still counts', () => {
-  expect(measured(400, 186, 186)).toEqual([400])
+test('content overflowing a page box shorter than its frame still counts', () => {
+  expect(measured(400, 186, 120)).toEqual([400])
 })
 
-/** A page laid out by its viewport: `extra` taller than whatever frame it is in. */
-function viewportPage(frame: number, extra: number) {
+/**
+ * A page laid out by its viewport: its box `margin` taller than whatever frame
+ * it is in, and its content `extra` taller.
+ */
+function viewportPage(frame: number, extra: number, margin = 0) {
   Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: frame })
   Object.defineProperty(root, 'scrollHeight', {
     configurable: true,
@@ -102,8 +105,13 @@ function viewportPage(frame: number, extra: number) {
   })
   Object.defineProperty(root, 'getBoundingClientRect', {
     configurable: true,
-    value: () => ({ height: window.innerHeight }) as DOMRect,
+    value: () => ({ height: window.innerHeight + margin }) as DOMRect,
   })
+}
+
+const resizeTo = (height: number) => {
+  window.innerHeight = height
+  window.dispatchEvent(new Event('resize'))
 }
 
 const frames = (count: number) =>
@@ -113,20 +121,47 @@ const frames = (count: number) =>
   })
 
 test('a page laid out by its viewport, which outgrows every frame sized to it, says it fills its frame and stops growing', () => {
+  // 62vh and 38vh under a 45px caption, in a body with 8px margins.
+  viewportPage(150, 61, 16)
+  const reports: Array<[number, boolean | undefined]> = []
+  observeHeight((height, fills) => reports.push([height, fills]))
+  resizeTo(211)
+  resizeTo(272)
+  resizeTo(600)
+  resizeTo(661)
+  expect(reports.filter(([, fills]) => fills)).toEqual([[272, true]])
+  expect(reports.at(-1)).toEqual([272, true])
+})
+
+test('a page laid out by its viewport and already taller than the frame it loaded in says it fills its frame, and keeps the frame it is given', () => {
+  // A 100vh grid whose side column needs 297px: in a frame sized to that,
+  // the chart that takes the rest of the grid has no height at all.
+  Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 150 })
+  Object.defineProperty(root, 'scrollHeight', {
+    configurable: true,
+    get: () => Math.max(297, window.innerHeight),
+  })
+  Object.defineProperty(root, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({ height: window.innerHeight }) as DOMRect,
+  })
+  const reports: Array<[number, boolean | undefined]> = []
+  observeHeight((height, fills) => reports.push([height, fills]))
+  expect(reports).toEqual([[297, true]])
+  // The host gives it a height that follows the window; the grid fills it.
+  resizeTo(504)
+  resizeTo(720)
+  expect(reports).toEqual([[297, true]])
+})
+
+test('a page laid out by its viewport that outgrows the frame it is given to fill keeps that frame', () => {
   // 62vh and 38vh under a 45px caption.
   viewportPage(150, 45)
   const reports: Array<[number, boolean | undefined]> = []
   observeHeight((height, fills) => reports.push([height, fills]))
-  const resizeTo = (height: number) => {
-    window.innerHeight = height
-    window.dispatchEvent(new Event('resize'))
-  }
-  resizeTo(195)
-  resizeTo(240)
+  resizeTo(504)
   resizeTo(600)
-  resizeTo(645)
-  expect(reports.filter(([, fills]) => fills)).toEqual([[240, true]])
-  expect(reports.at(-1)).toEqual([240, true])
+  expect(reports).toEqual([[195, true]])
 })
 
 test('a page exactly as tall as the frame it loaded in says it fills its frame', async () => {
@@ -214,6 +249,32 @@ test('decoration hidden from assistive technology is left out of a copy before a
     const copy = document.createElement('div')
     copy.innerHTML = snapshotHtml()
     expect([...copy.querySelectorAll('img')].map((image) => (image.getAttribute('src') ?? '').length > 0)).toEqual([true, false])
+  } finally {
+    document.body.replaceChildren()
+  }
+})
+
+test('a copy leaves out what the page does not display, and keeps its styles and its SVG whole', () => {
+  document.body.innerHTML = `
+    <style>.fallback { display: none }</style>
+    <main>
+      <canvas id="scene"></canvas>
+      <p class="fallback">WebGL2 unavailable</p>
+      <p hidden>Loading</p>
+      <p style="display: none">Debug</p>
+      <p>Feed 0.037</p>
+      <svg><defs><linearGradient id="sky"><stop offset="0"></stop></linearGradient></defs><rect fill="url(#sky)"></rect></svg>
+    </main>`
+  try {
+    const copy = document.createElement('div')
+    copy.innerHTML = snapshotHtml()
+    expect(copy.textContent).not.toContain('WebGL2 unavailable')
+    expect(copy.textContent).not.toContain('Loading')
+    expect(copy.textContent).not.toContain('Debug')
+    expect(copy.textContent).toContain('Feed 0.037')
+    expect(copy.querySelector('main > img')).not.toBeNull()
+    expect(copy.querySelector('body style, div > style')?.textContent).toContain('.fallback')
+    expect(copy.querySelector('svg linearGradient#sky stop')).not.toBeNull()
   } finally {
     document.body.replaceChildren()
   }

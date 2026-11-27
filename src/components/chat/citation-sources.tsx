@@ -17,9 +17,15 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { askAbout } from '@/components/chat/composer-references'
 import {
   citationContextReference,
+  citationEvidenceKind,
   collectCitationSources,
 } from '@/lib/theorem/citations'
 import type { CitationSource } from '@/lib/theorem/citations'
+import {
+  openRetainedPassage,
+  retainedPassageFailureMessage,
+} from '@/lib/theorem/retained-passage'
+import type { RetainedPassageResult } from '@/lib/theorem/retained-passage'
 import {
   linkMetadataQueryKey,
   useLinkMetadata,
@@ -73,22 +79,96 @@ const SourceSlot: FC<{ source: CitationSource }> = ({ source }) => {
         description={metadata.data.description ?? source.passages[0]?.excerpt}
         siteName={metadata.data.siteName}
       />
+      <EvidenceLine source={source} />
       <SourceActions source={source} />
     </div>
   )
 }
 
-/** Each passage keeps its own inspector and copy feedback as more arrive. */
+/** Opens the exact retained bytes behind one passage, on the reader's
+ * click only. The call names durable ids — the saved assistant message and
+ * this passage's stored citation part — and reaches Theorem's typed chat
+ * route through the SDK client; it never constructs an object-store URL and
+ * never prefetches. Rendering a Sources card issues no request: this is the
+ * one place the app asks the server what a historical handle can still do,
+ * so "missing"/"gone" answers come from authority, not from the citation
+ * metadata on screen. */
+const OpenPassage: FC<{
+  source: CitationSource
+  passageNumber: number
+  threadId: string
+  messageId: string
+  partId: string
+}> = ({ source, passageNumber, threadId, messageId, partId }) => {
+  const [state, setState] = useState<
+    | { phase: 'idle' | 'opening' }
+    | { phase: 'result'; result: RetainedPassageResult }
+  >({ phase: 'idle' })
+  const label =
+    source.passages.length > 1 ? `passage ${passageNumber + 1} of ` : ''
+  const range =
+    state.phase === 'result' && state.result.ok
+      ? `[${state.result.passage.span.startByte}, ${state.result.passage.span.endByte})`
+      : ''
+  return (
+    <div data-slot="open-passage" className="flex flex-wrap items-center gap-1">
+      <button
+        type="button"
+        className={sourceControl}
+        disabled={state.phase === 'opening'}
+        aria-label={`Open the retained ${label}passage of ${source.label}`}
+        onClick={() => {
+          if (state.phase === 'opening') return
+          setState({ phase: 'opening' })
+          // Click-only: no effect, no query, no prefetch on this path.
+          void openRetainedPassage({ threadId, messageId, partId }).then(
+            (result) => setState({ phase: 'result', result }),
+          )
+        }}
+      >
+        <Icon.Open aria-hidden className="size-3" />
+        {state.phase === 'opening' ? 'Opening…' : 'Open retained passage'}
+      </button>
+      {state.phase === 'result' &&
+        (state.result.ok ? (
+          <span
+            data-slot="opened-passage"
+            data-appearance-recipe="metadata"
+            className="wrap-break-word text-ink-muted"
+          >
+            Opened {range} from {state.result.passage.source.version}:{' '}
+            {state.result.passage.excerpt}
+          </span>
+        ) : (
+          <span
+            role="alert"
+            data-slot="open-passage-failure"
+            data-appearance-recipe="metadata"
+            className="wrap-break-word text-error-ink"
+          >
+            {retainedPassageFailureMessage(state.result.failure)}
+          </span>
+        ))}
+    </div>
+  )
+}
+
+/** Each passage keeps its own inspector and copy feedback as more arrive. A
+ * retained capture's passage also names the exact UTF-8 byte range within
+ * its version, so the reader sees which slice of the kept text the quote is. */
 const SourcePassage: FC<{
   source: CitationSource
   excerpt: string
   index: number
-}> = ({ source, excerpt, index }) => {
+  threadId: string | undefined
+  messageId: string | undefined
+}> = ({ source, excerpt, index, threadId, messageId }) => {
   const { isCopied, copyToClipboard } = useCopyToClipboard()
   const passageName =
     source.passages.length > 1
       ? `supporting passage ${index + 1} of ${source.passages.length}`
       : 'supporting passage'
+  const { span, partId } = source.passages[index] ?? {}
   return (
     <div
       data-slot="source-passage"
@@ -130,23 +210,114 @@ const SourcePassage: FC<{
         )}
         {isCopied ? 'Copied' : 'Copy passage'}
       </button>
+      {span && (
+        <span
+          data-slot="passage-span"
+          data-appearance-recipe="metadata"
+          className="text-ink-muted"
+        >
+          [{span.startByte}, {span.endByte})
+        </span>
+      )}
+      {threadId && messageId && span && partId && (
+        <OpenPassage
+          key={JSON.stringify([threadId, messageId, partId])}
+          source={source}
+          passageNumber={index}
+          threadId={threadId}
+          messageId={messageId}
+          partId={partId}
+        />
+      )}
     </div>
+  )
+}
+
+/** What the wire itself proves about where this evidence came from. Only
+ * retained captures name a version; the handle is a reference, not a claim
+ * that it can still be opened — bounded opening belongs to the server's
+ * `source_read`, which rechecks authority when called. */
+const EvidenceLine: FC<{ source: CitationSource }> = ({ source }) => {
+  const kind = citationEvidenceKind(source)
+  if (kind === 'discovery')
+    return (
+      <span
+        data-slot="evidence-kind"
+        data-appearance-recipe="metadata"
+        className="text-ink-muted"
+      >
+        Search snippet
+      </span>
+    )
+  if (kind === 'retained' && source.capture)
+    return (
+      <span
+        data-slot="evidence-kind"
+        data-appearance-recipe="metadata"
+        className="wrap-break-word text-ink-muted"
+      >
+        Retained capture · {source.capture.version}
+        {source.capture.coverage.status === 'acquisition_capped'
+          ? ` · capped at ${source.capture.coverage.limit_bytes} B, tail not fetched`
+          : source.capture.coverage.status === 'unknown'
+            ? ' · completeness unknown to this version'
+            : ''}
+      </span>
+    )
+  // Absence of a capture reference proves nothing about retention: this
+  // build, a pre-capture history, or a malformed reference all look alike
+  // from the wire. Say what is seen, not what is inferred.
+  return (
+    <span
+      data-slot="evidence-kind"
+      data-appearance-recipe="metadata"
+      className="text-ink-muted"
+    >
+      No capture reference
+    </span>
   )
 }
 
 const SourceActions: FC<{ source: CitationSource }> = ({ source }) => {
   const threadId = useAuiState((s) => s.threadListItem.remoteId)
   const messageId = useAuiState((s) => s.message.id)
+  // Which message the open route may name, decided from what the
+  // projection proves: a persisted live reply carries the server's ID in
+  // metadata; a reply loaded from history IS its durable ID; a reply still
+  // assembling in this session (theoremCursor without theoremMessageId)
+  // has no savable name at all. The synthetic `run:<id>` the native
+  // projection uses also names no saved message.
+  const durableMessageId = useAuiState((s) => {
+    const custom = s.message.metadata.custom as
+      { theoremCursor?: number; theoremMessageId?: string } | undefined
+    // Steps streamed in this session are not yet saved history.
+    const id =
+      custom?.theoremMessageId ??
+      (custom?.theoremCursor === undefined ? s.message.id : undefined)
+    return id?.startsWith('run:') ? undefined : id
+  })
+  // The run that produced this reply, while it streams or as the SDK's
+  // hydration named it; Add to context carries it, so reopened evidence
+  // keeps its run provenance. The durable message's own runId is the same.
+  const runId = useAuiState(
+    (s) =>
+      (s.message.metadata.custom as { theoremRunId?: string } | undefined)
+        ?.theoremRunId,
+  )
   const [contextError, setContextError] = useState<string | null>(null)
   if (source.passages.length === 0 && !threadId) return null
   return (
     <div data-slot="source-actions" className="flex flex-col items-start gap-1">
       {source.passages.map(({ excerpt }, index) => (
         <SourcePassage
-          key={excerpt}
+          // One quote can appear at two offsets (or with and without one):
+          // the row's identity is its place in the list, not its text.
+          key={`${index}:${excerpt}`}
           source={source}
           excerpt={excerpt}
           index={index}
+          threadId={threadId}
+          messageId={durableMessageId}
         />
       ))}
       {threadId && (
@@ -155,7 +326,17 @@ const SourceActions: FC<{ source: CitationSource }> = ({ source }) => {
           className={sourceControl}
           onClick={() => {
             try {
-              askAbout(citationContextReference(source, threadId, messageId))
+              askAbout(
+                citationContextReference(
+                  source,
+                  threadId,
+                  // The saved message, not the local id of a reply still
+                  // streaming: the reference is read back from durable
+                  // history on a later turn.
+                  durableMessageId ?? messageId,
+                  runId,
+                ),
+              )
               setContextError(null)
             } catch (error) {
               setContextError(
@@ -338,6 +519,7 @@ const SourceEntry: FC<{ source: CitationSource }> = ({ source }) => {
           {host}
         </span>
       )}
+      <EvidenceLine source={source} />
       {source.url && (
         <a
           href={source.url}

@@ -44,6 +44,9 @@ import searchTint from './search-tint.svg'
 import fileTextLine from './fileText-line.svg'
 import fileTextTint from './fileText-tint.svg'
 import fileTextPaper from './fileText-paper.svg'
+import officeFileTextLine from './officeFileText-line.svg'
+import officeFileTextTint from './officeFileText-tint.svg'
+import officeFileTextPaper from './officeFileText-paper.svg'
 import fileCodeLine from './fileCode-line.svg'
 import fileCodeTint from './fileCode-tint.svg'
 import fileCodePaper from './fileCode-paper.svg'
@@ -126,7 +129,12 @@ import browserLine from './browser-line.svg'
 import browserAccent from './browser-accent.svg'
 import browserTint from './browser-tint.svg'
 import browserPaper from './browser-paper.svg'
+import readAloudLine from './readAloud-line.svg'
+import readAloudAccent from './readAloud-accent.svg'
+import readAloudPaper from './readAloud-paper.svg'
 import skillLine from './skill-line.svg'
+import layoutLine from './layout-line.svg'
+import layoutAccent from './layout-accent.svg'
 
 /** Each control mark's masks: the SVG's shape is the layer. */
 export const CONTROL_LAYERS = {
@@ -143,6 +151,7 @@ export const CONTROL_LAYERS = {
   approval: { line: approvalLine, accent: approvalAccent, tint: approvalTint, paper: approvalPaper },
   search: { line: searchLine, accent: searchAccent, tint: searchTint },
   fileText: { line: fileTextLine, tint: fileTextTint, paper: fileTextPaper },
+  officeFileText: { line: officeFileTextLine, tint: officeFileTextTint, paper: officeFileTextPaper },
   fileCode: { line: fileCodeLine, tint: fileCodeTint, paper: fileCodePaper },
   fileCheck: { line: fileCheckLine, accent: fileCheckAccent, tint: fileCheckTint, paper: fileCheckPaper },
   fileModule: { line: fileModuleLine, tint: fileModuleTint, paper: fileModulePaper },
@@ -170,7 +179,9 @@ export const CONTROL_LAYERS = {
   approved: { line: approvedLine, accent: approvedAccent, tint: approvedTint },
   plugins: { line: pluginsLine, accent: pluginsAccent, tint: pluginsTint, paper: pluginsPaper },
   browser: { line: browserLine, accent: browserAccent, tint: browserTint, paper: browserPaper },
+  readAloud: { line: readAloudLine, accent: readAloudAccent, paper: readAloudPaper },
   skill: { line: skillLine },
+  layout: { line: layoutLine, accent: layoutAccent },
 } as const
 
 export type ControlIcon = keyof typeof CONTROL_LAYERS

@@ -5,20 +5,33 @@
 // Theorem's capabilities_api pins (docs/plans/user-authored-capabilities/README.md).
 import { mutate } from '@/lib/theorem/client'
 import { theoremJson } from '@/lib/theorem/passthrough'
-import { codes, matchAll } from './contract'
+import { INVOKE_TARGETS_MAX, codes, matchAll, ruleCodes } from './contract'
 import type {
   AuthorResult,
   CapabilityDefinition,
   CapabilityRecordRow,
+  CapabilityTemplate,
   CreateInstanceRequest,
+  DefinitionHistory,
+  DefinitionHistoryQuery,
   DescribeResult,
   DiscoverResult,
   DefinitionPatch,
+  InstantiateTemplateRequest,
   InvocationReceipt,
   InvokeRequest,
   QueryRequest,
   QueryResult,
   RepinRequest,
+  CapabilityModule,
+  RegisterModuleRequest,
+  RegisterModuleResult,
+  RuleRun,
+  RuleRunList,
+  RuleRunListQuery,
+  RunRuleRequest,
+  SaveTemplateRequest,
+  TemplateList,
 } from './contract'
 
 export const CAPABILITIES = '/api/capabilities/v1'
@@ -266,16 +279,96 @@ export async function readRecordAnywhere(
     : undefined
 }
 
+// ── Slice 2: definition history, templates, multi-target invocation ─────────
+
+/**
+ * The instance's definition history, newest first: every pin it has held, why,
+ * and by whom. `cursor` and `limit` ride in the query string.
+ */
+export const history = (
+  instanceId: string,
+  { cursor, limit }: DefinitionHistoryQuery = {},
+) => {
+  const params = new URLSearchParams()
+  if (cursor) params.set('cursor', cursor)
+  if (limit !== undefined) params.set('limit', String(limit))
+  const search = params.size ? `?${params}` : ''
+  return read<DefinitionHistory>(
+    `${CAPABILITIES}/instances/${id(instanceId)}/history${search}`,
+  )
+}
+
+/**
+ * Save the instance's pinned definition as a library template. The server copies
+ * the definition and its declared types only: records, grants, enabled schedules
+ * and credentials are never part of a template.
+ */
+export const saveTemplate = (request: SaveTemplateRequest) =>
+  write<CapabilityTemplate>(`${CAPABILITIES}/library/templates`, request)
+
+/** The templates this caller may read. */
+export const listTemplates = () =>
+  read<TemplateList>(`${CAPABILITIES}/library/templates`)
+
+/** One template, by id. */
+export const readTemplate = (templateId: string) =>
+  read<CapabilityTemplate>(
+    `${CAPABILITIES}/library/templates/${id(templateId)}`,
+  )
+
+/** Bind a fresh instance from a template, under the id the caller chose. */
+export const instantiateTemplate = (
+  templateId: string,
+  request: InstantiateTemplateRequest,
+) =>
+  write<AuthorResult>(
+    `${CAPABILITIES}/library/templates/${id(templateId)}/instantiate`,
+    request,
+  )
+
+/**
+ * Run one update action over several records at once, all or nothing: every row
+ * is named at the revision on screen, so a record that moved refuses the whole
+ * call rather than part of it. The bounds are the contract's, checked here so a
+ * call that cannot be accepted is never sent.
+ */
+export function invokeTargets({
+  rows,
+  ...input
+}: Omit<InvokeInput, 'recordId' | 'expectedRevision' | 'targets'> & {
+  rows: ReadonlyArray<Pick<CapabilityRecordRow, 'id' | 'revision'>>
+}): Promise<InvocationReceipt> {
+  if (rows.length === 0)
+    return Promise.reject(new Error('Choose at least one record.'))
+  if (rows.length > INVOKE_TARGETS_MAX)
+    return Promise.reject(
+      new Error(`One call may change at most ${INVOKE_TARGETS_MAX} records.`),
+    )
+  return invoke({
+    ...input,
+    targets: rows.map((row) => ({
+      recordId: row.id,
+      expectedRevision: row.revision,
+    })),
+  })
+}
+
 // ── Refusals ────────────────────────────────────────────────────────────────
 
-/** The problem code a refusal carries, when it carries one at all. */
-export function refusalCode(error: unknown): string | undefined {
+/** A refusal's problem body, when it carries one: the error's `body`, if that is an object. */
+function problemBody(error: unknown): Record<string, unknown> | undefined {
   const body =
     error !== null && typeof error === 'object' && 'body' in error
       ? (error as { body?: unknown }).body
       : undefined
-  if (body === null || typeof body !== 'object') return undefined
-  const code = (body as Record<string, unknown>).code
+  return body !== null && typeof body === 'object'
+    ? (body as Record<string, unknown>)
+    : undefined
+}
+
+/** The problem code a refusal carries, when it carries one at all. */
+export function refusalCode(error: unknown): string | undefined {
+  const code = problemBody(error)?.code
   return typeof code === 'string' ? code : undefined
 }
 
@@ -336,21 +429,111 @@ export function refusalMessage(error: unknown, action: string): string {
     case codes.EFFECT_UNKNOWN:
       return `Whether the last attempt took effect is unknown. Read the record before trying again.`
     case codes.SCHEMA_CHANGE_UNSUPPORTED:
-      return `That change to the schema is not supported: fields are added optional only in this slice.`
+      return `That change to the schema is not supported: new fields are optional, variants are only added, and no field is removed or changes type.`
     case codes.DEFINITION_INVALID:
-      return `The definition was refused as invalid.`
+      return invalidDefinitionLine(error)
     case codes.INSTANCE_EXISTS:
       return `An instance with that id is already bound.`
+    case codes.TEMPLATE_NOT_FOUND:
+      return `That template is not there: it was never saved, or it is not yours to read.`
   }
-  const detail =
-    error !== null && typeof error === 'object' && 'body' in error
-      ? (error as { body?: unknown }).body
-      : undefined
-  const message =
-    detail && typeof detail === 'object'
-      ? ((detail as Record<string, unknown>).detail ??
-        (detail as Record<string, unknown>).title)
-      : undefined
-  if (typeof message === 'string' && message.trim()) return message.trim()
-  return `${action} could not be completed.`
+  return serverLine(error, action)
+}
+
+/**
+ * An invalid definition is the author's own, and the server's detail names
+ * what in it was refused (a filter, a lifecycle, a display list), so it is
+ * said; with no detail, only that it was refused.
+ */
+function invalidDefinitionLine(error: unknown): string {
+  const detail = problemBody(error)?.detail
+  const said =
+    typeof detail === 'string' ? detail.trim().replace(/\.$/, '') : ''
+  return said
+    ? `The definition was refused as invalid: ${said}.`
+    : `The definition was refused as invalid.`
+}
+
+/**
+ * What the server said, for a code with no line of its own: the problem's
+ * detail, else its title; when neither is text, that the action failed.
+ */
+function serverLine(error: unknown, action: string): string {
+  const body = problemBody(error)
+  const said = body?.detail ?? body?.title
+  return typeof said === 'string' && said.trim()
+    ? said.trim()
+    : `${action} could not be completed.`
+}
+
+// ── slice 2: rules, runs, modules ───────────────────────────────────────────
+
+/** One page of an instance's rule runs, newest first, optionally for one rule. */
+export function listRuns(
+  instanceId: string,
+  { ruleKey, cursor, limit }: RuleRunListQuery = {},
+): Promise<RuleRunList> {
+  const search = new URLSearchParams()
+  if (ruleKey) search.set('ruleKey', ruleKey)
+  if (cursor) search.set('cursor', cursor)
+  if (limit !== undefined) search.set('limit', String(limit))
+  const suffix = search.size ? `?${search}` : ''
+  return read(`${CAPABILITIES}/instances/${id(instanceId)}/runs${suffix}`)
+}
+
+/** One run, with its attempts. */
+export const readRun = (instanceId: string, runId: string): Promise<RuleRun> =>
+  read(`${CAPABILITIES}/instances/${id(instanceId)}/runs/${id(runId)}`)
+
+/**
+ * Queue a schedule rule now. The key rides as the `Idempotency-Key` header and
+ * the body stays empty, so the route adopts the header as the manual run's key:
+ * one click, after a lost session too, is one run.
+ */
+export function runRuleNow(
+  instanceId: string,
+  ruleKey: string,
+  { invocationKey = newInvocationKey() }: { invocationKey?: string } = {},
+): Promise<RuleRun> {
+  const body: RunRuleRequest = {}
+  return write<RuleRun>(
+    `${CAPABILITIES}/instances/${id(instanceId)}/rules/${id(ruleKey)}/run`,
+    body,
+    { 'Idempotency-Key': invocationKey },
+  )
+}
+
+/** Retry a failed or dead run whose last attempt finished failed. */
+export const retryRun = (instanceId: string, runId: string) =>
+  write<RuleRun>(
+    `${CAPABILITIES}/instances/${id(instanceId)}/runs/${id(runId)}/retry`,
+    {},
+  )
+
+/** Put a WASM module in the library; the answer names it by content (`capmod:`). */
+export const registerModule = (request: RegisterModuleRequest) =>
+  write<RegisterModuleResult>(`${CAPABILITIES}/library/modules`, request)
+
+export const readModule = (moduleId: string): Promise<CapabilityModule> =>
+  read(`${CAPABILITIES}/library/modules/${id(moduleId)}`)
+
+/** `refusalMessage`, knowing the slice-2 codes too. */
+export function ruleRefusalMessage(error: unknown, action: string): string {
+  switch (refusalCode(error)) {
+    case ruleCodes.MODULE_NOT_FOUND:
+      return 'That module is not in the library.'
+    case ruleCodes.MODULE_FAILED:
+      return 'The module behind this action failed. Nothing was written.'
+    case ruleCodes.RULE_UNKNOWN:
+      return 'This rule is no longer part of the definition.'
+    case ruleCodes.RULE_LOOP:
+      return 'Skipped: this rule is already part of the chain that started it, or the chain is too deep.'
+    case ruleCodes.BACKGROUND_DENIED:
+      return 'Your grant does not let rules run in the background as you.'
+    case ruleCodes.RUN_NOT_FOUND:
+      return 'That run is not here.'
+    case ruleCodes.RUN_NOT_RETRYABLE:
+      return 'Only a run whose last attempt failed can be retried.'
+  }
+  return refusalMessage(error, action)
 }

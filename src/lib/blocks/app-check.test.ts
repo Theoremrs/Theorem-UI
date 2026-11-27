@@ -97,6 +97,24 @@ export {}`,
     ])
   }, 120_000)
 
+  test('a page module reaches a capability through typed bridge calls', async () => {
+    const result = await check({
+      'main.ts': `const open = await theorem.capability.query({ instanceId: 'tracker/main', viewKey: 'open' })
+if (open.ok) console.log(open.value)
+else console.log(open.error.code)
+await theorem.capability.invoke({ instanceId: 'tracker/main', actionKey: 'complete', recordId: 'rec-1', inputs: {} })
+await theorem.capability.invoke({ instanceId: 'tracker/main' })
+await theorem.capability.describe(3)
+export {}`,
+    })
+    expect(
+      result.problems.map((problem) => [problem.line, problem.code]),
+    ).toEqual([
+      [5, 'TS2739'],
+      [6, 'TS2345'],
+    ])
+  }, 120_000)
+
   test('a wrong prop to a component is a problem', async () => {
     const result = await check({
       'main.tsx': `function Label({ text }: { text: string }) { return <span>{text}</span> }

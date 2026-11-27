@@ -1,4 +1,4 @@
-// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), @tanstack/react-router CatchBoundary per part, coss ui Collapsible (base-ui) for the activity line's details, shadcn Trace (ReUI, Base UI build) for the reply's tool calls folded into one summary row, and the installed ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, the terminal's openOf/pathOf and Follow's useRevealFile for the file a tool card opens in the IDE, scene-part.tsx for the theorem-scene part, the CRM's context-manifest-part.tsx for the theorem-context_manifest part (the saved records a reply was given) and record-change-proposal-part.tsx for proposed record changes and their outcomes
+// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), terminal/command-terminal (the agent terminal's Ratzilla view) for a call that runs a command, in the reply where it ran, @tanstack/react-router CatchBoundary per part, coss ui Collapsible (base-ui) for the activity line's details, shadcn Trace (ReUI, Base UI build) for the reply's tool calls folded into one summary row, and the installed ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, the terminal's openOf/pathOf and Follow's useRevealFile for the file a tool card opens in the IDE, scene-part.tsx for the theorem-scene part, the CRM's context-manifest-part.tsx for the theorem-context_manifest part (the saved records a reply was given) and record-change-proposal-part.tsx for proposed record changes and their outcomes
 //
 // Theorem message parts that are not text or tool calls arrive as data parts
 // named `theorem-<type>` (see @theoremharness/sdk/assistant-ui). This file
@@ -9,7 +9,10 @@
 import { useAui, useAuiState, useAssistantDataUI } from '@assistant-ui/react'
 import { renderGenerativeUI } from '@assistant-ui/generative-ui/react'
 import { styledGenerativeUILibrary } from '@/components/assistant-ui/elements/generative-ui'
-import { PRESENT } from '@/lib/generative/operations'
+import { a2uiActionMessage, openUrlOf, presentation } from '@/lib/generative/a2ui'
+import type { GenerativeUIAction } from '@assistant-ui/generative-ui/react'
+import { inVocabulary, PRESENT } from '@/lib/generative/operations'
+import { reviseViews } from '@/lib/generative/view-instances'
 import { CatchBoundary } from '@tanstack/react-router'
 import type {
   AssistantState,
@@ -20,7 +23,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { FC, ReactNode } from 'react'
 import { ApprovalCard } from '@/components/assistant-ui/elements/approval-card'
 import type { ApprovalState } from '@/components/assistant-ui/elements/approval-card'
-import { GlassCodeBlock } from '@/components/assistant-ui/elements/glass-code-block'
+import { CodeFile } from '@/components/assistant-ui/elements/code-file'
 import {
   Collapsible,
   CollapsiblePanel,
@@ -48,22 +51,21 @@ import {
   RecordChangeProposalPart,
 } from '@/components/crm/record-change-proposal-part'
 import { ProgramPart } from '@/components/chat/program-part'
+import { ModelRequests } from '@/components/chat/model-requests'
 import { CompletionFooter } from '@/components/chat/run-footer'
 import { UserMarkdown } from '@/components/chat/user-markdown'
-import { NoteImage } from '@/components/notes/kinds/embed-block'
 import { ReviewAnswerCard } from '@/components/review/review-card'
 import { PlanToolCall } from '@/components/chat/plan-graph'
 import { useRevealFile } from '@/components/ide/follow'
 import { openOf, pathOf } from '@/components/terminal/terminal-code'
-import type { Open } from '@/components/terminal/terminal-code'
-import { askAbout } from '@/components/chat/composer-references'
 import {
-  readScene,
-  repairRequest,
-  SCENE_PART,
-} from '@/components/chat/scene-model'
-import { SceneCard } from '@/components/chat/scene-part'
-import { useSceneTheme } from '@/components/chat/scene-theme'
+  CommandTerminal,
+  readCommand,
+  readHostCommand,
+} from '@/components/terminal/command-terminal'
+import type { Open } from '@/components/terminal/terminal-code'
+import { readScene, SCENE_PART } from '@/components/chat/scene-model'
+import { SceneInReply } from '@/components/chat/scene-part'
 import { Icon } from '@/components/icons'
 import {
   Trace,
@@ -87,7 +89,7 @@ import type {
   ApprovalOutcome,
   TheoremApproval,
 } from '@/lib/theorem/approval'
-import { uploadContentPath } from '@/lib/theorem/uploads'
+import { StoredAttachment } from '@/components/chat/stored-attachment'
 import { DRAFT_PLAN } from '@/lib/theorem/plans'
 import { cn, humanize } from '@/lib/utils'
 import { appearancePair } from '@/lib/appearance-policy'
@@ -261,7 +263,7 @@ function callCategory(name: string): string {
 
 type DataPartLike = { type: string; name?: string; data?: unknown }
 
-/** The reply's host calls, less the artifact calls: their card is the reply's. */
+/** The reply's host calls, less the artifact calls and the commands: their card and their terminal are the reply's. */
 function hostCalls(
   content: readonly DataPartLike[],
   running: boolean,
@@ -270,7 +272,7 @@ function hostCalls(
     if (part.type !== 'data' || part.name !== 'theorem-host_call') return []
     const call = object(part.data)
     const name = str(call.name) ?? 'host call'
-    if (ARTIFACT_TOOLS.has(name)) return []
+    if (ARTIFACT_TOOLS.has(name) || readHostCommand(call)) return []
     return [{ name, state: hostCallState(str(call.state), running) }]
   })
 }
@@ -298,7 +300,7 @@ export function toolCallEntries(
     const check = appCheckSummary(part.data, running)
     if (!check) return []
     // Why the check fell short, then what it found.
-    const output = [check.reason, appCheckProblems(part.data)]
+    const output = [appCheckEvidence(part.data), check.reason, appCheckProblems(part.data)]
       .filter(Boolean)
       .join('\n')
     return [
@@ -315,8 +317,9 @@ export function toolCallEntries(
 
 /**
  * A host function called by the native agent's program. An artifact call is
- * drawn here, by the artifact card that carries its result; every other call
- * is a row of the tool-calls section under the activity line.
+ * drawn here, by the artifact card that carries its result, and a command in
+ * its terminal, printing as it runs; every other call is a row of the
+ * tool-calls section under the activity line.
  */
 const HostCallPart: DataMessagePartComponent = ({ data }) => {
   const call = object(data)
@@ -328,8 +331,10 @@ const HostCallPart: DataMessagePartComponent = ({ data }) => {
       (part) => part.type === 'data' && part.name === ARTIFACT_PART,
     ),
   )
-  if (!ARTIFACT_TOOLS.has(name)) return null
   const state = hostCallState(str(call.state), running)
+  const command = readHostCommand(call)
+  if (command) return <CommandTerminal {...command} state={state} />
+  if (!ARTIFACT_TOOLS.has(name)) return null
   if (state === 'running') return <ArtifactPendingCard toolName={name} />
   if (state === 'failed' && !produced)
     return <ArtifactToolFailed toolName={name} />
@@ -337,10 +342,8 @@ const HostCallPart: DataMessagePartComponent = ({ data }) => {
 }
 
 /**
- * What the row for an `app.check` request says, or null for any other
- * operation. `wrong` is anything short of a check that was made and found
- * nothing: a type check that could not be made found nothing either, and says
- * so with its `reason`.
+ * A declaration read and an inspection share app.check's transport, but they
+ * carry different evidence. Missing inspection fields never mean a clean run.
  */
 export function appCheckSummary(
   data: unknown,
@@ -348,28 +351,88 @@ export function appCheckSummary(
 ): { words: string; pending: boolean; wrong: boolean; reason?: string } | null {
   const call = object(data)
   if (str(call.operation) !== 'app.check') return null
-  const state = str(call.state) ?? 'pending'
   const receipt = object(call.receipt)
   const result = object(receipt.result)
+  const pending = (str(call.state) ?? 'pending') === 'pending' && running
+  const applied = call.state === 'answered' && receipt.outcome === 'applied'
+  const library = str(result.library) ?? str(object(call.args).library)
+  if (library) {
+    return {
+      words: pending
+        ? `Reading ${library} declarations`
+        : applied && str(result.library) && typeof result.text === 'string'
+          ? `Read ${library} declarations`
+          : `Could not read ${library} declarations`,
+      pending,
+      wrong: !pending && !(applied && str(result.library) && typeof result.text === 'string'),
+      reason: str(receipt.reason),
+    }
+  }
+  const answer = (words: string, wrong: boolean, reason?: string) => ({
+    words, pending, wrong, reason,
+  })
+  if (pending) return answer('Checking the App', false)
+  if (!applied) return answer('The App was not checked', true, str(receipt.reason))
+  if (typeof result.built !== 'boolean')
+    return answer('The App check returned no inspection result', true)
+  if (!result.built) return answer('The App does not build', true)
   const problems = Array.isArray(result.problems) ? result.problems.length : 0
-  const found =
-    problems + (typeof result.omitted === 'number' ? result.omitted : 0)
-  const pending = state === 'pending' && running
-  const checked = state === 'answered' && str(receipt.outcome) === 'applied'
-  const reason = checked ? str(result.typeCheckError) : undefined
-  const wrong = !pending && (!checked || found > 0 || reason !== undefined)
-  const words = pending
-    ? 'Checking the App'
-    : !checked
-      ? 'The App was not checked'
-      : result.built === false
-        ? 'The App does not build'
-        : found > 0
-          ? `Checked the App: ${found === 1 ? '1 problem' : `${found} problems`}`
-          : reason !== undefined
-            ? 'Checked the App: its types could not be checked'
-            : 'Checked the App: no problems'
-  return { words, pending, wrong, reason }
+  const found = problems + (typeof result.omitted === 'number' ? result.omitted : 0)
+  if (found > 0)
+    return answer(`Checked the App: ${found === 1 ? '1 problem' : `${found} problems`}`, true)
+  const reason = str(result.typeCheckError)
+  if (reason !== undefined)
+    return answer('Checked the App: its types could not be checked', true, reason)
+  if (result.started === false)
+    return answer('Built the App; it was not run', false)
+  if (result.started !== true)
+    return answer('Built the App; its run was not reported', false)
+  const cells = object(result.cells)
+  const failed = Array.isArray(cells.failed) ? cells.failed.length : 0
+  if (failed)
+    return answer(`Built and ran the App: ${failed} ${failed === 1 ? 'cell' : 'cells'} failed`, true)
+  const remaining = Array.isArray(cells.pending) ? cells.pending.length : 0
+  if (remaining)
+    return answer(`Built and ran the App: ${remaining} ${remaining === 1 ? 'cell' : 'cells'} still pending`, false)
+  return answer(
+    Array.isArray(result.problems)
+      ? 'Built and ran the App: no reported problems'
+      : 'Built and ran the App; diagnostics were not reported',
+    false,
+  )
+}
+
+/** Facts from the receipt, without promoting a build or a capture into verification. */
+export function appCheckEvidence(data: unknown): string | undefined {
+  const call = object(data)
+  const receipt = object(call.receipt)
+  const result = object(receipt.result)
+  if (receipt.outcome !== 'applied') return undefined
+  const library = str(result.library)
+  if (library)
+    return [
+      str(result.file) && `File: ${str(result.file)}`,
+      str(result.digest) && `API digest: ${str(result.digest)}`,
+    ].filter(Boolean).join('\n') || undefined
+  if (typeof result.built !== 'boolean') return undefined
+  const facts = [
+    `Build: ${result.built ? 'completed' : 'failed'}`,
+    `Types: ${result.typesChecked === true ? 'checked' : result.typesChecked === false ? 'not checked' : 'not reported'}`,
+    `Run: ${result.started === true ? 'started' : result.started === false ? 'not run' : 'not reported'}`,
+  ]
+  if (typeof result.ranMs === 'number') facts.push(`Observed for: ${result.ranMs} ms`)
+  const cells = object(result.cells)
+  for (const [key, label] of [['ready', 'Ready cells'], ['failed', 'Failed cells'], ['pending', 'Pending cells']] as const) {
+    const ids = cells[key]
+    if (Array.isArray(ids)) facts.push(`${label}: ${ids.filter((id) => typeof id === 'string').join(', ') || 'none'}`)
+  }
+  if (str(result.revision)) facts.push(`Saved revision: ${str(result.revision)}`)
+  if (result.picture) facts.push('Picture: reconstructed check-frame capture')
+  const rendered = object(result.rendered)
+  if (typeof rendered.elements === 'number') facts.push(`Elements reported: ${rendered.elements}`)
+  if (typeof rendered.text === 'string') facts.push(`Rendered text:\n${rendered.text || '(empty)'}`)
+  if (typeof rendered.outline === 'string') facts.push(`Element outline:\n${rendered.outline || '(empty)'}`)
+  return facts.join('\n')
 }
 
 /** The problems an App check listed, one to a line, each after where it is when the check says. */
@@ -391,19 +454,46 @@ export function appCheckProblems(data: unknown): string | undefined {
  * Something the agent asked this page to do. Nothing draws here: a check of
  * an App is a row of the tool-calls section, and the fox on the stage shows
  * what Kit's operations did. A `ui.present` call is the exception: the tree
- * it carries is the reply's interface, drawn from the styled vocabulary.
+ * or A2UI surfaces it carries are the reply's interface, drawn from the
+ * styled vocabulary, with any component it does not name drawn from its
+ * properties. A View the reply presents again under the same `id` is drawn
+ * once, where it first appeared, as its latest definition (reviseViews).
  */
 const ClientOperationPart: DataMessagePartComponent = ({ data }) => {
   const call = object(data)
-  const args = object(call.args)
-  const running = useAuiState((s) => s.message.status?.type === 'running')
-  if (str(call.operation) !== PRESENT) return null
-  const state = str(call.state) ?? 'pending'
-  // While the call streams, the tree is partial; the renderer tolerates that.
-  const status = state === 'pending' && running ? 'streaming' : 'done'
+  const aui = useAui()
+  const parts = useAuiState((s) => s.message.parts)
+  const args = useMemo(() => {
+    const presented = parts.flatMap((part) =>
+      part.type === 'data' &&
+      part.name === 'theorem-client_operation' &&
+      str(object(part.data).operation) === PRESENT
+        ? [object(part.data)]
+        : [],
+    )
+    const index = presented.findIndex((other) => other === call || other.requestRef === call.requestRef)
+    return index < 0 ? object(call.args) : (reviseViews(presented.map((other) => object(other.args)))[index] ?? {})
+  }, [parts, call])
+  const trees = useMemo(() => presentation(args, inVocabulary).trees, [args])
+  if (str(call.operation) !== PRESENT || !trees.length) return null
+  // An A2UI surface's actions go to the agent that wrote it; `openUrl` opens
+  // a web address.
+  const dispatch = (action: GenerativeUIAction) => {
+    const url = openUrlOf(action)
+    if (url) return void window.open(url, '_blank', 'noopener,noreferrer')
+    const message = a2uiActionMessage(action)
+    if (message && !aui.thread.getState().isRunning) aui.thread.append(message)
+  }
   return (
-    <div data-slot="theorem-present" className="aui-p-present my-2">
-      {renderGenerativeUI(args, styledGenerativeUILibrary, { status })}
+    <div data-slot="theorem-present" className="aui-p-present my-2 flex flex-col gap-3">
+      {trees.map(({ key, tree }) => (
+        <Fragment key={key}>
+          {/* The part arrives once Theorem has admitted the call, so its tree is
+              whole while the call waits on its receipt, and a View must mount
+              to answer it. */}
+          {renderGenerativeUI(tree, styledGenerativeUILibrary, { status: 'done', dispatch })}
+        </Fragment>
+      ))}
     </div>
   )
 }
@@ -420,11 +510,13 @@ function approvalSubtitle({ toolName, risk }: TheoremApproval) {
   return elevated ? `${humanize(toolName)} · ${risk} risk` : humanize(toolName)
 }
 
-/** Pending Theorem approvals, artifacts and plans render standalone so they are never folded into a tool group. */
+/** Pending Theorem approvals, artifacts, plans and commands render standalone so they are never folded into a tool group. */
 export function isStandaloneToolCall(part: {
   type: string
   toolName?: string
   artifact?: unknown
+  args?: unknown
+  result?: unknown
 }) {
   if (part.type !== 'tool-call') return false
   if (
@@ -432,6 +524,7 @@ export function isStandaloneToolCall(part: {
     (ARTIFACT_TOOLS.has(part.toolName) || part.toolName === DRAFT_PLAN)
   )
     return true
+  if (readCommand(part.args, part.result)) return true
   const approval = readApproval(part)
   return approval !== undefined && approvalOutcome(approval) === 'awaiting'
 }
@@ -548,28 +641,52 @@ function OpenInIde({ open }: { open: Open }) {
   )
 }
 
-/** ToolFallback slot: artifact tools, plans, Theorem approvals, then the generic tool card. */
+/** A tool call's state in the chat's words, as the tool card reads it. */
+const CALL_STATES = {
+  running: 'running',
+  waiting: 'awaiting',
+  cancelled: 'interrupted',
+  failed: 'failed',
+  done: 'done',
+} as const satisfies Record<
+  NonNullable<ReturnType<typeof toolState>>,
+  CallState
+>
+
+export const toolCallState = (
+  status: Parameters<typeof toolState>[0],
+  isError?: boolean,
+): CallState => CALL_STATES[toolState(status, isError) ?? 'running']
+
+/** ToolFallback slot: artifact tools, plans, Theorem approvals, commands, then the generic tool card. */
 export const TheoremToolCall: ToolCallMessagePartComponent = (props) => {
   if (ARTIFACT_TOOLS.has(props.toolName)) return <ArtifactToolCall {...props} />
   if (props.toolName === DRAFT_PLAN) return <PlanToolCall {...props} />
   const approval = readApproval(props)
   if (approval && props.result === undefined)
     return <TheoremApprovalCard approval={approval} argsText={props.argsText} />
+  const command = readCommand(props.args, props.result)
+  if (command)
+    return (
+      <CommandTerminal
+        {...command}
+        state={toolCallState(props.status, props.isError)}
+      />
+    )
   const open = openOf(pathOf(props.args), props.args, props.result)
   return <ToolFallback {...props} aside={open && <OpenInIde open={open} />} />
 }
 
 /* ---------------------------------------------------------------- activity */
 
-/** What a call returned, as the reply's own code block: its glass, copy and palette. */
+/** What a call returned, as the reply's own code block: its header, copy and palette. */
 const ToolOutput: FC<{ text: string }> = ({ text }) => (
-  <GlassCodeBlock
+  <CodeFile
     code={text}
-    language="text"
     title="output"
     lineNumbers={false}
-    frameClassName="my-0"
-    className="aui-code-wrap [&_pre]:max-h-60 [&_pre]:overflow-y-auto [&_pre]:break-words [&_pre]:whitespace-pre-wrap"
+    className="my-0"
+    viewportClassName="max-h-60 overflow-y-auto"
   />
 )
 
@@ -641,6 +758,10 @@ export const Activity: FC<{
   work?: ReactNode
 }> = ({ speaker, work }) => {
   const running = useAuiState((s) => s.message.status?.type === 'running')
+  const runId = useAuiState((s) => {
+    const id = (s.message.metadata.custom as { theoremRunId?: unknown } | undefined)?.theoremRunId
+    return typeof id === 'string' ? id : undefined
+  })
   // Select the store's own content array; deriving inside the selector would
   // hand back a fresh array on every read and loop the subscription.
   const content = useAuiState((s) => s.message.content)
@@ -704,7 +825,7 @@ export const Activity: FC<{
   )
 
   const steps = labels.length > 1
-  const openable = steps || Boolean(work)
+  const openable = steps || Boolean(work) || Boolean(runId)
   const notes: ReactNode[] = []
   if (running) {
     const doing = (
@@ -731,7 +852,7 @@ export const Activity: FC<{
         doing
       ),
     )
-  } else if (labels.length > 0 || work) {
+  } else if (labels.length > 0 || work || runId) {
     const result =
       outcome ??
       (DONE_STATUSES.has(status ?? 'complete') ? 'Done' : 'Did not finish')
@@ -817,6 +938,7 @@ export const Activity: FC<{
                 </ol>
               )}
               {work}
+              {open && runId && <ModelRequests runId={runId} />}
             </div>
           </div>
         </CollapsiblePanel>
@@ -943,12 +1065,12 @@ const ATTACHMENT_STATES: Partial<Record<string, string>> = {
 const AttachmentPart: DataMessagePartComponent = ({ data }) => {
   const part = object(data)
   const uploadId = str(part.uploadId)
-  if (uploadId && str(part.mediaType)?.startsWith('image/'))
+  if (uploadId && !ATTACHMENT_STATES[str(part.state) ?? 'ready'])
     return (
-      <NoteImage
-        src={uploadContentPath(uploadId)}
-        alt={str(part.name) ?? 'Attachment'}
-        className="me-1.5 mt-2 inline-block max-h-40 rounded-md border border-separator"
+      <StoredAttachment
+        uploadId={uploadId}
+        name={str(part.name) ?? 'Attachment'}
+        mediaType={str(part.mediaType)}
       />
     )
   return (
@@ -1000,40 +1122,11 @@ const UserInputPart: DataMessagePartComponent = ({ data }) => {
 
 /* --------------------------------------------------------------------- scenes */
 
-/**
- * A reply's interactive scene (scene-part.tsx), drawn above its text. Fix
- * sends the failure to the agent as the next turn; a pick becomes a
- * reference to this reply, with what was picked as its excerpt.
- */
+/** A reply's interactive scene (scene-part.tsx), drawn above its text. */
 const ScenePart: DataMessagePartComponent = ({ data }) => {
-  const aui = useAui()
-  const theme = useSceneTheme()
-  const threadId = useAuiState((s) => s.threadListItem.remoteId)
-  const messageId = useAuiState((s) => s.message.id)
   const scene = readScene(data)
   if (!scene) return <PartNotice name={SCENE_PART} />
-  return (
-    <SceneCard
-      scene={scene}
-      theme={theme}
-      onRepair={(error) => aui.thread.append(repairRequest(scene.title, error))}
-      onAsk={
-        threadId
-          ? (entity) =>
-              askAbout({
-                label: `${scene.title ?? 'Scene'}: ${entity.label ?? entity.id}`,
-                excerpt: JSON.stringify({
-                  scene: { sceneId: scene.sceneId, title: scene.title },
-                  entity,
-                }),
-                location: {
-                  resource: { kind: 'message', threadId, messageId },
-                },
-              })
-          : undefined
-      }
-    />
-  )
+  return <SceneInReply scene={scene} />
 }
 
 /** Inspector-only or figure-only parts: retained inert, never drawn in the transcript. */
@@ -1116,6 +1209,9 @@ const RENDERERS = (
     // A TypeScript program the agent wrote is shown as one, closed, with its
     // source inside. What it did shows up as its calls and their artifacts.
     ['theorem-program', ProgramPart],
+    // Response style, frameworks, and suggestions are available in the
+    // reply's More menu rather than the transcript.
+    ['theorem-response_style', Inert],
   ])
 
 function DataRenderer({

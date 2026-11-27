@@ -29,7 +29,7 @@ import {
   AlertDialogTitle,
 } from '@/components/coss/alert-dialog'
 import { Icon } from '@/components/icons'
-import { menuItem, menuPopup } from '@/components/shell/sidebar'
+import { menuItem, useChromeMenuGlass } from '@/components/shell/chrome-menu'
 import { Button } from '@/components/ui/button'
 import {
   FilesystemItem,
@@ -134,6 +134,7 @@ export function IdeFileTree({
   workspaceId: string
   handle?: Ref<IdeFileTreeHandle>
 }) {
+  const { attach: attachGlass, className: glassClass } = useChromeMenuGlass()
   const [draft, setDraft] = useState<Draft>()
   const [doomed, setDoomed] = useState<Array<IdeFileEntry>>()
   const [problem, setProblem] = useState<string>()
@@ -399,7 +400,8 @@ export function IdeFileTree({
           <ContextMenu.Positioner className="z-50">
             <ContextMenu.Popup
               finalFocus={false}
-              className={cn('min-w-44', menuPopup)}
+              ref={attachGlass}
+              className={cn('min-w-44', glassClass)}
             >
               <ContextMenu.Item
                 className={menuItem}

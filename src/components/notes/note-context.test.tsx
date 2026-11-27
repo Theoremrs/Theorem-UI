@@ -21,6 +21,7 @@ test('context-menu capture sees editor changes before the delayed Markdown liste
     savedMarkdown: 'Saved.',
     revision: { position: 17, contentDigest: 'digest' },
     canonical: undefined,
+    documentKind: 'authored',
     editable: true,
     origin: {
       kind: 'user_authored',
@@ -64,6 +65,7 @@ test('NotePanel captures the synchronously flushed source rather than its prior 
     savedMarkdown: 'Saved.',
     revision: { position: 17, contentDigest: 'digest' },
     canonical: undefined,
+    documentKind: 'authored',
     editable: true,
     origin: {
       kind: 'user_authored',

@@ -1,0 +1,46 @@
+/*
+ * Astryx's tokens, drawn from the frame's Theorem variables. Unlayered, so
+ * these win over Astryx's layered theme inside a Theme element; each falls
+ * back to a neutral value when the App runs outside a Theorem frame.
+ * color-scheme is inherited so Astryx's light-dark() follows the frame's mode
+ * rather than the operating system's.
+ */
+.tn-theme {
+  color-scheme: inherit;
+  --color-text-primary: var(--theorem-ink, light-dark(#22201c, #ece7dd));
+  --color-text-secondary: var(--theorem-ink-muted, light-dark(#5d574d, #b7afa2));
+  --color-text-disabled: var(--theorem-ink-faint, light-dark(#9a9286, #6f685e));
+  --color-text-accent: var(--theorem-accent, light-dark(#a4442c, #dd7a5c));
+  --color-icon-primary: var(--theorem-ink, light-dark(#22201c, #ece7dd));
+  --color-icon-secondary: var(--theorem-ink-muted, light-dark(#5d574d, #b7afa2));
+  --color-icon-accent: var(--theorem-accent, light-dark(#a4442c, #dd7a5c));
+  --color-accent: var(--theorem-accent, light-dark(#a4442c, #dd7a5c));
+  --color-on-accent: var(--theorem-on-accent, #ffffff);
+  --color-accent-muted: var(--theorem-accent-container, light-dark(#f4ddd5, #4a2a20));
+  --color-background-body: var(--theorem-background, light-dark(#f6f2ea, #1d1b18));
+  --color-background-surface: var(--theorem-surface, light-dark(#fbf8f2, #26231f));
+  --color-background-card: var(--theorem-surface, light-dark(#fbf8f2, #26231f));
+  --color-background-popover: var(--theorem-surface, light-dark(#fbf8f2, #26231f));
+  --color-background-muted: var(--theorem-hover, light-dark(#efe9de, #302c27));
+  --color-border: var(--theorem-border, light-dark(#d9d2c5, #3d3832));
+  --color-border-emphasized: var(--theorem-border-control, light-dark(#bfb6a6, #57504746));
+  --color-success: var(--theorem-success, light-dark(#1d6f68, #6cc5b8));
+  --color-success-muted: var(--theorem-success-container, light-dark(#d6ece8, #1f3a37));
+  --color-warning: var(--theorem-warning, light-dark(#8a6416, #e0b25a));
+  --color-warning-muted: var(--theorem-warning-container, light-dark(#f3e7c8, #3d3220));
+  --color-error: var(--theorem-error, light-dark(#a12a2a, #f08a80));
+  --color-error-muted: var(--theorem-error-container, light-dark(#f6dada, #462424));
+  --focus-outline-color: var(--theorem-focus, light-dark(#2f6fd6, #7aa7f0));
+  --font-family-body: var(--theorem-font, system-ui, sans-serif);
+  --font-family-heading: var(--theorem-font, system-ui, sans-serif);
+  --font-family-code: var(--theorem-font-mono, ui-monospace, monospace);
+  --radius-element: var(--theorem-radius, 6px);
+  --radius-container: calc(var(--theorem-radius, 6px) + 2px);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-body);
+}
+.tn-theme *,
+.tn-theme *::before,
+.tn-theme *::after {
+  box-sizing: border-box;
+}

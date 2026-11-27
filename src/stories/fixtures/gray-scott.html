@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en"><head>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gray-Scott Reaction-Diffusion</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#11151f; --line:#1e2532; --text:#d7dde8;
+    --dim:#8a93a6; --accent:#4fd8c4; --accent2:#f2d9a0;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px 16px 24px}
+  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  h1{font-size:17px;font-weight:650;margin:0;letter-spacing:.2px}
+  header .sub{color:var(--dim);font-size:12.5px}
+  .stage{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    height:clamp(340px,60vh,680px);background:#000}
+  canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  .hint{position:absolute;left:10px;bottom:8px;font-size:11.5px;color:rgba(215,221,232,.55);
+    pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.8)}
+  .err{position:absolute;inset:0;display:none;place-items:center;padding:24px;text-align:center;color:var(--dim)}
+  .panel{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .row{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
+  .ctl{flex:1 1 180px;min-width:160px}
+  .ctl label{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-bottom:4px}
+  .ctl label output{color:var(--accent);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent);height:22px;margin:0}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  button{background:#1a2130;color:var(--text);border:1px solid var(--line);border-radius:7px;
+    padding:6px 12px;font-size:12.5px;cursor:pointer}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#08251f;font-weight:600}
+  button.primary:hover{filter:brightness(1.1);color:#08251f}
+  .presets{margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .presets span{font-size:12px;color:var(--dim);margin-right:4px}
+  .presets button{padding:4px 10px;font-size:12px;border-radius:999px}
+  .presets button.on{border-color:var(--accent);color:var(--accent)}
+  .foot{margin-top:10px;font-size:11.5px;color:var(--dim)}
+  .foot code{color:var(--accent2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Gray-Scott reaction-diffusion</h1>
+    <span class="sub">GPU simulation · WebGL2 · drag on the canvas to seed</span>
+  </header>
+
+  <div class="stage">
+    <canvas id="view"></canvas>
+    <div class="hint">drag to paint chemical B · space = pause</div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <div class="ctl">
+        <label>feed rate <output id="feedOut">0.0370</output></label>
+        <input id="feed" type="range" min="0.010" max="0.090" step="0.0001" value="0.037">
+      </div>
+      <div class="ctl">
+        <label>kill rate <output id="killOut">0.0600</output></label>
+        <input id="kill" type="range" min="0.040" max="0.070" step="0.0001" value="0.060">
+      </div>
+      <div class="ctl">
+        <label>steps / frame <output id="speedOut">10</output></label>
+        <input id="speed" type="range" min="1" max="24" step="1" value="10">
+      </div>
+      <div class="ctl">
+        <label>brush radius <output id="brushOut">12</output></label>
+        <input id="brush" type="range" min="2" max="40" step="1" value="12">
+      </div>
+    </div>
+    <div class="btns">
+      <button id="pause" class="primary">Pause</button>
+      <button id="sprinkle">Sprinkle spots</button>
+      <button id="reset">Reset</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="presets" id="presets"><span>presets</span></div>
+    <div class="foot">
+      Two virtual chemicals: <code>A</code> feeds in everywhere, <code>B</code> consumes it
+      (<code>A + 2B → 3B</code>) and decays at the kill rate. Both diffuse, B slower than A.
+      Tiny changes in feed/kill move you between spots, stripes, mazes and waves — try nudging
+      a slider while a pattern is growing.
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const canvas = document.getElementById('view');
+  const errBox = document.getElementById('err');
+  function fail(msg){ errBox.textContent = msg; errBox.style.display = 'grid'; }
+
+  const gl = canvas.getContext('webgl2', {antialias:false, depth:false, stencil:false, preserveDrawingBuffer:true});
+  if(!gl){ fail('This app needs WebGL2, which this browser did not provide.'); return; }
+  if(!gl.getExtension('EXT_color_buffer_float')){
+    fail('This GPU/browser cannot render to floating-point textures (EXT_color_buffer_float), which the simulation needs.');
+    return;
+  }
+
+  // Software renderers (SwiftShader, llvmpipe) are far slower; scale the work down for them.
+  let rendererName = '';
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  if(dbg){ try{ rendererName = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || ''); }catch(e){} }
+  const software = /swiftshader|llvmpipe|softpipe|software/i.test(rendererName);
+
+  // ---------- shaders ----------
+  const VERT = `#version 300 es
+  void main(){
+    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+  }`;
+
+  const SIM_FRAG = `#version 300 es
+  precision highp float;
+  uniform sampler2D uState;
+  uniform ivec2 uSize;
+  uniform float uFeed, uKill, uDu, uDv, uDt;
+  out vec4 outColor;
+  ivec2 wrap(ivec2 p){
+    return ivec2((p.x + uSize.x) % uSize.x, (p.y + uSize.y) % uSize.y);
+  }
+  vec2 at(ivec2 p){ return texelFetch(uState, wrap(p), 0).rg; }
+  void main(){
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    vec2 c = at(p);
+    vec2 lap = -c
+      + 0.20 * (at(p+ivec2(1,0)) + at(p+ivec2(-1,0)) + at(p+ivec2(0,1)) + at(p+ivec2(0,-1)))
+      + 0.05 * (at(p+ivec2(1,1)) + at(p+ivec2(-1,1)) + at(p+ivec2(1,-1)) + at(p+ivec2(-1,-1)));
+    float u = c.r, v = c.g;
+    float uvv = u * v * v;
+    float du = uDu * lap.r - uvv + uFeed * (1.0 - u);
+    float dv = uDv * lap.g + uvv - (uFeed + uKill) * v;
+    outColor = vec4(clamp(c + uDt * vec2(du, dv), 0.0, 1.0), 0.0, 1.0);
+  }`;
+
+  const SEED_FRAG = `#version 300 es
+  precision highp float;
+  uniform sampler2D uState;
+  uniform vec2 uBrush;
+  uniform float uRadius;
+  out vec4 outColor;
+  void main(){
+    vec2 c = texelFetch(uState, ivec2(gl_FragCoord.xy), 0).rg;
+    float d = length(gl_FragCoord.xy - uBrush);
+    float m = 1.0 - smoothstep(uRadius * 0.45, uRadius, d);
+    float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+    m *= 0.75 + 0.25 * jitter;
+    outColor = vec4(mix(c.r, 0.5, m), max(c.g, 0.9 * m), 0.0, 1.0);
+  }`;
+
+  const FILL_FRAG = `#version 300 es
+  precision highp float;
+  uniform vec2 uValue;
+  out vec4 outColor;
+  void main(){ outColor = vec4(uValue, 0.0, 1.0); }`;
+
+  const SHOW_FRAG = `#version 300 es
+  precision highp float;
+  uniform sampler2D uState;
+  uniform vec2 uRes;
+  out vec4 outColor;
+  void main(){
+    vec2 uv = gl_FragCoord.xy / uRes;
+    float v = texture(uState, uv).g;
+    float t = clamp(v * 2.6, 0.0, 1.0);
+    vec3 bg    = vec3(0.043, 0.055, 0.078);
+    vec3 mid   = vec3(0.075, 0.360, 0.440);
+    vec3 crest = vec3(0.965, 0.870, 0.620);
+    vec3 col = mix(bg, mid, smoothstep(0.02, 0.55, t));
+    col = mix(col, crest, smoothstep(0.55, 1.0, t));
+    vec2 q = uv - 0.5;
+    col *= 1.0 - 0.35 * dot(q, q);
+    outColor = vec4(col, 1.0);
+  }`;
+
+  function compile(type, src){
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+      throw new Error('Shader: ' + gl.getShaderInfoLog(s));
+    return s;
+  }
+  function program(fragSrc){
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fragSrc));
+    gl.linkProgram(p);
+    if(!gl.getProgramParameter(p, gl.LINK_STATUS))
+      throw new Error('Link: ' + gl.getProgramInfoLog(p));
+    const uniforms = {};
+    const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for(let i = 0; i < n; i++){
+      const info = gl.getActiveUniform(p, i);
+      uniforms[info.name] = gl.getUniformLocation(p, info.name);
+    }
+    return {p, u: uniforms};
+  }
+
+  let simProg, seedProg, fillProg, showProg;
+  try{
+    simProg  = program(SIM_FRAG);
+    seedProg = program(SEED_FRAG);
+    fillProg = program(FILL_FRAG);
+    showProg = program(SHOW_FRAG);
+  }catch(e){ fail(String(e.message || e)); return; }
+
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  gl.disable(gl.DEPTH_TEST);
+  gl.disable(gl.BLEND);
+
+  // ---------- state textures (ping-pong) ----------
+  const rect0 = canvas.parentElement.getBoundingClientRect();
+  const LONG = software ? 384 : 720;
+  const aspect = Math.max(0.4, Math.min(2.5, rect0.width / Math.max(1, rect0.height)));
+  const simW = aspect >= 1 ? LONG : Math.max(160, Math.round(LONG * aspect));
+  const simH = aspect >= 1 ? Math.max(160, Math.round(LONG / aspect)) : LONG;
+
+  function makeTarget(){
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, simW, simH, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    if(gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
+      throw new Error('Float framebuffer incomplete');
+    return {tex, fbo};
+  }
+  let A, B;
+  try{ A = makeTarget(); B = makeTarget(); }
+  catch(e){ fail(String(e.message || e)); return; }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+  function draw(){ gl.drawArrays(gl.TRIANGLES, 0, 3); }
+
+  function fill(u, v){
+    gl.bindFramebuffer(gl.FRAMEBUFFER, A.fbo);
+    gl.viewport(0, 0, simW, simH);
+    gl.useProgram(fillProg.p);
+    gl.uniform2f(fillProg.u.uValue, u, v);
+    draw();
+  }
+  function stamp(x, y, r){
+    gl.bindFramebuffer(gl.FRAMEBUFFER, B.fbo);
+    gl.viewport(0, 0, simW, simH);
+    gl.useProgram(seedProg.p);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, A.tex);
+    gl.uniform1i(seedProg.u.uState, 0);
+    gl.uniform2f(seedProg.u.uBrush, x, y);
+    gl.uniform1f(seedProg.u.uRadius, r);
+    draw();
+    const t = A; A = B; B = t;
+  }
+  function step(feed, kill){
+    gl.bindFramebuffer(gl.FRAMEBUFFER, B.fbo);
+    gl.viewport(0, 0, simW, simH);
+    gl.useProgram(simProg.p);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, A.tex);
+    gl.uniform1i(simProg.u.uState, 0);
+    gl.uniform2i(simProg.u.uSize, simW, simH);
+    gl.uniform1f(simProg.u.uFeed, feed);
+    gl.uniform1f(simProg.u.uKill, kill);
+    gl.uniform1f(simProg.u.uDu, 0.2097);
+    gl.uniform1f(simProg.u.uDv, 0.105);
+    gl.uniform1f(simProg.u.uDt, 1.0);
+    draw();
+    const t = A; A = B; B = t;
+  }
+  function show(){
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.useProgram(showProg.p);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, A.tex);
+    gl.uniform1i(showProg.u.uState, 0);
+    gl.uniform2f(showProg.u.uRes, canvas.width, canvas.height);
+    draw();
+  }
+
+  // ---------- controls ----------
+  const $ = id => document.getElementById(id);
+  const feedEl = $('feed'), killEl = $('kill'), speedEl = $('speed'), brushEl = $('brush');
+  const feedOut = $('feedOut'), killOut = $('killOut'), speedOut = $('speedOut'), brushOut = $('brushOut');
+  let running = true;
+  if(software){ speedEl.value = 4; brushEl.value = 7; }
+
+  function syncOutputs(){
+    feedOut.textContent = (+feedEl.value).toFixed(4);
+    killOut.textContent = (+killEl.value).toFixed(4);
+    speedOut.textContent = speedEl.value;
+    brushOut.textContent = brushEl.value;
+  }
+  [feedEl, killEl, speedEl, brushEl].forEach(el => el.addEventListener('input', () => {
+    syncOutputs(); markPreset();
+  }));
+  syncOutputs();
+
+  const pauseBtn = $('pause');
+  function setRunning(r){
+    running = r;
+    pauseBtn.textContent = r ? 'Pause' : 'Resume';
+  }
+  pauseBtn.addEventListener('click', () => setRunning(!running));
+  window.addEventListener('keydown', e => {
+    if(e.code === 'Space' && !/INPUT|BUTTON|SELECT|TEXTAREA/.test(document.activeElement.tagName)){
+      e.preventDefault(); setRunning(!running);
+    }
+  });
+
+  const PRESETS = [
+    ['coral growth', 0.0545, 0.0620],
+    ['mitosis',      0.0367, 0.0649],
+    ['solitons',     0.0300, 0.0620],
+    ['worms',        0.0780, 0.0610],
+    ['mazes',        0.0290, 0.0570],
+    ['chaos',        0.0260, 0.0510],
+    ['moving spots', 0.0140, 0.0540],
+    ['waves',        0.0140, 0.0450],
+    ['u-skate',      0.0620, 0.0609],
+  ];
+  const presetBox = $('presets');
+  const presetBtns = PRESETS.map(([name, f, k]) => {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.addEventListener('click', () => {
+      feedEl.value = f; killEl.value = k;
+      syncOutputs(); markPreset();
+    });
+    presetBox.appendChild(b);
+    return {b, f, k};
+  });
+  function markPreset(){
+    const f = +feedEl.value, k = +killEl.value;
+    presetBtns.forEach(({b, f: pf, k: pk}) =>
+      b.classList.toggle('on', Math.abs(f - pf) < 1e-6 && Math.abs(k - pk) < 1e-6));
+  }
+  markPreset();
+
+  // ---------- seeding ----------
+  const stamps = [];
+  const spotR = software ? 0.55 : 1;
+  function randomSpots(n){
+    for(let i = 0; i < n; i++){
+      stamps.push({
+        x: simW * (0.15 + 0.7 * Math.random()),
+        y: simH * (0.15 + 0.7 * Math.random()),
+        r: (5 + Math.random() * 7) * spotR
+      });
+    }
+  }
+  $('sprinkle').addEventListener('click', () => randomSpots(10));
+  $('reset').addEventListener('click', () => { fill(1, 0); randomSpots(12); });
+  $('clear').addEventListener('click', () => { fill(1, 0); stamps.length = 0; });
+
+  let dragging = false, lastPt = null;
+  function toSim(e){
+    const r = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - r.left) / r.width * simW,
+      y: (1 - (e.clientY - r.top) / r.height) * simH
+    };
+  }
+  function pushStroke(pt){
+    const r = +brushEl.value;
+    if(lastPt){
+      const dx = pt.x - lastPt.x, dy = pt.y - lastPt.y;
+      const dist = Math.hypot(dx, dy);
+      const n = Math.min(48, Math.max(1, Math.ceil(dist / (r * 0.4))));
+      for(let i = 1; i <= n; i++)
+        stamps.push({x: lastPt.x + dx * i / n, y: lastPt.y + dy * i / n, r});
+    }else{
+      stamps.push({x: pt.x, y: pt.y, r});
+    }
+    lastPt = pt;
+  }
+  canvas.addEventListener('pointerdown', e => {
+    dragging = true; lastPt = null;
+    canvas.setPointerCapture(e.pointerId);
+    pushStroke(toSim(e));
+    e.preventDefault();
+  });
+  canvas.addEventListener('pointermove', e => { if(dragging) pushStroke(toSim(e)); });
+  const endDrag = () => { dragging = false; lastPt = null; };
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
+  // ---------- sizing ----------
+  function fitCanvas(){
+    const r = canvas.parentElement.getBoundingClientRect();
+    const dpr = software ? 1 : Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(2, Math.round(r.width * dpr));
+    const h = Math.max(2, Math.round(r.height * dpr));
+    if(canvas.width !== w || canvas.height !== h){ canvas.width = w; canvas.height = h; }
+  }
+  new ResizeObserver(fitCanvas).observe(canvas.parentElement);
+  fitCanvas();
+
+  canvas.addEventListener('webglcontextlost', e => {
+    e.preventDefault();
+    fail('The graphics context was lost. Reload the app to restart the simulation.');
+  });
+
+  // ---------- startup: seed and develop briefly so first paint is alive ----------
+  fill(1, 0);
+  for(let i = 0; i < 12; i++){
+    stamp(simW * (0.15 + 0.7 * Math.random()),
+          simH * (0.15 + 0.7 * Math.random()),
+          (5 + Math.random() * 7) * spotR);
+  }
+  const warmup = software ? 20 : 60;
+  for(let i = 0; i < warmup; i++) step(+feedEl.value, +killEl.value);
+  show();
+
+  // ---------- main loop ----------
+  function frame(){
+    fitCanvas();
+    let budget = 64;
+    while(stamps.length && budget-- > 0){
+      const s = stamps.shift();
+      stamp(s.x, s.y, s.r);
+    }
+    if(running && !document.hidden){
+      const f = +feedEl.value, k = +killEl.value;
+      const n = +speedEl.value;
+      for(let i = 0; i < n; i++) step(f, k);
+    }
+    show();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>

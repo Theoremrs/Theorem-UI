@@ -2,6 +2,7 @@
 // source text, for the App build (export.ts) to bundle into an App that
 // imports it. A library's modules import each other as `./name`, with or
 // without the extension; `index` is its entry.
+import annotateCss from './annotate/annotate.css?raw'
 import annotateAnchors from './annotate/anchors.ts?raw'
 import annotateAnnotation from './annotate/annotation.tsx?raw'
 import annotateGlass from './annotate/glass.tsx?raw'
@@ -11,8 +12,6 @@ import annotateLayer from './annotate/layer.tsx?raw'
 import annotateNote from './annotate/note.tsx?raw'
 import annotatePaths from './annotate/paths.ts?raw'
 import annotatePlace from './annotate/place.ts?raw'
-import annotateThemeCss from './annotate/theme.css?raw'
-import annotateTheme from './annotate/theme.tsx?raw'
 import runtimeContext from './artifact-runtime/context.ts?raw'
 import runtimeDigest from './artifact-runtime/digest.ts?raw'
 import runtimeEvaluation from './artifact-runtime/evaluation.ts?raw'
@@ -35,10 +34,19 @@ import spatialRoute from './spatial/route.ts?raw'
 import spatialTimeline from './spatial/timeline.ts?raw'
 import spatialTrace from './spatial/trace.ts?raw'
 import spatialView from './spatial/view.ts?raw'
+import uiControls from './ui/controls.tsx?raw'
+import uiIndex from './ui/index.ts?raw'
+import uiMount from './ui/mount.tsx?raw'
+import uiReach from './ui/reach.ts?raw'
+import uiStageCss from './ui/stage.css?raw'
+import uiStage from './ui/stage.tsx?raw'
+import uiThemeCss from './ui/theme.css?raw'
+import uiTheme from './ui/theme.tsx?raw'
 
 /** Each library's modules by file name. */
 export const librarySources: Record<string, Record<string, string>> = {
   '@theorem/annotate': {
+    'annotate.css': annotateCss,
     'anchors.ts': annotateAnchors,
     'annotation.tsx': annotateAnnotation,
     'glass.tsx': annotateGlass,
@@ -48,8 +56,6 @@ export const librarySources: Record<string, Record<string, string>> = {
     'note.tsx': annotateNote,
     'paths.ts': annotatePaths,
     'place.ts': annotatePlace,
-    'theme.css': annotateThemeCss,
-    'theme.tsx': annotateTheme,
   },
   '@theorem/runtime': {
     'context.ts': runtimeContext,
@@ -76,6 +82,16 @@ export const librarySources: Record<string, Record<string, string>> = {
     'timeline.ts': spatialTimeline,
     'trace.ts': spatialTrace,
     'view.ts': spatialView,
+  },
+  '@theorem/ui': {
+    'controls.tsx': uiControls,
+    'index.ts': uiIndex,
+    'mount.tsx': uiMount,
+    'reach.ts': uiReach,
+    'stage.css': uiStageCss,
+    'stage.tsx': uiStage,
+    'theme.css': uiThemeCss,
+    'theme.tsx': uiTheme,
   },
 }
 

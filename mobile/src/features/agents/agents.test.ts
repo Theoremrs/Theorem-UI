@@ -387,7 +387,7 @@ describe('tmux scripts against a private tmux server', () => {
     sh(`tmux new-session -d -s shelled -x 200 -y 50 "sh -i"`, env())
     const pane = paneOf('shelled')
     // An interactive shell runs the "agent" as its own foreground job.
-    sh(`tmux send-keys -t ${pane.id} 'sh -c "echo \\$\\$ > ${pidFile}; exec cat > /dev/null"' Enter`, env())
+    sh(`tmux send-keys -t ${pane.id} 'sh -c "echo \\$\\$ > \\"${pidFile}\\"; exec cat > /dev/null"' Enter`, env())
     for (let i = 0; i < 40 && !readFileSync(pidFile, { flag: 'a+' }).toString().trim(); i++) await Bun.sleep(50)
     const agentPid = Number(readFileSync(pidFile, 'utf8').trim())
     expect(afterMark(sh(sendScript(pane.id, agentPid, 'for the agent', 'tok4'), env()))).toEqual(['sent'])
@@ -412,7 +412,18 @@ describe('tmux scripts against a private tmux server', () => {
   })
 
   test('startScript names what is missing', () => {
-    expect(afterMark(sh(startScript('codex', join(root, 'project dir'), 'x', 's', 't'), env()))).toEqual(['missing\tcodex'])
+    // Neither the runner's PATH nor the script's fallback directories (/opt/homebrew/bin,
+    // /usr/local/bin), which may hold a real codex: only a stand-in tmux and the core utilities.
+    const noCodex = join(root, 'no-codex-bin')
+    mkdirSync(noCodex, { recursive: true })
+    write(join(noCodex, 'tmux'), '#!/bin/sh\n')
+    chmodSync(join(noCodex, 'tmux'), 0o755)
+    for (const tool of ['sh', 'cat']) Bun.spawnSync(['ln', '-sf', Bun.which(tool)!, join(noCodex, tool)])
+    const start = startScript('codex', join(root, 'project dir'), 'x', 's', 't').replace(
+      /PATH="[^\n]*"/,
+      `PATH="${noCodex}"`,
+    )
+    expect(afterMark(sh(start, noCodex))).toEqual(['missing\tcodex'])
     const agentBin = join(root, 'agent-bin')
     expect(afterMark(sh(startScript('claude', join(root, 'no-such-dir'), 'x', 's2', 't'), `${agentBin}:${env()}`))).toEqual([
       'missing\tfolder',

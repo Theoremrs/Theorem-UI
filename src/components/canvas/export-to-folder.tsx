@@ -4,7 +4,7 @@
 import { Menu } from '@base-ui/react/menu'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@/components/icons'
-import { menuItem, menuPopup } from '@/components/shell/sidebar'
+import { ChromeMenuPopup, menuItem } from '@/components/shell/chrome-menu'
 import { Button } from '@/components/ui/button'
 import { exportSpace } from '@/lib/canvas/space-export'
 import { describeError } from '@/lib/theorem/client'
@@ -71,7 +71,7 @@ export function ExportToFolder({
         </Menu.Trigger>
         <Menu.Portal>
           <Menu.Positioner align="start" sideOffset={6} className="z-50">
-            <Menu.Popup className={`min-w-48 ${menuPopup}`}>
+            <ChromeMenuPopup className="min-w-48">
               {workspaces.map((workspace) => (
                 <Menu.Item
                   key={workspace.id}
@@ -82,7 +82,7 @@ export function ExportToFolder({
                   {workspace.name}
                 </Menu.Item>
               ))}
-            </Menu.Popup>
+            </ChromeMenuPopup>
           </Menu.Positioner>
         </Menu.Portal>
       </Menu.Root>

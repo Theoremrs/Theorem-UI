@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  threadDisplayTitle,
+  useRecoveredSearchTitles,
+  useThreadDisplayTitle,
+} from '@/lib/theorem/thread-title'
 import { useGlideHighlight, useLayoutSprings } from "@/components/motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,12 +22,15 @@ import {
 import type { Theorem } from "@/lib/theorem/client";
 import { cn } from "@/lib/utils";
 import {
+  AuiConfig,
+  AuiProvider,
   ThreadListItemMorePrimitive,
   ThreadListItemPrimitive,
   ThreadListPrimitive,
   useAui,
   useAuiState,
 } from "@assistant-ui/react";
+import { Derived } from "@assistant-ui/store";
 import { Collapsible } from "@base-ui/react/collapsible";
 import { ContextMenu } from "@base-ui/react/context-menu";
 import { useQueryClient } from "@tanstack/react-query";
@@ -38,7 +46,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ComponentPropsWithoutRef, FC } from "react";
+import type { ComponentPropsWithoutRef, FC, ReactNode } from "react";
 
 export const ThreadList: FC = () => {
   const [search, setSearch] = useState("");
@@ -281,19 +289,22 @@ export const useThreadListGroups = (searchQuery = "") => {
   const threadItems = useAuiState((s) => s.threads.threadItems);
 
   const query = searchQuery.trim().toLowerCase();
+  const recoveredTitles = useRecoveredSearchTitles(Boolean(query));
   const startOfToday = useStartOfToday();
 
   return useMemo(() => {
     const itemsById = new Map(threadItems.map((item) => [item.id, item]));
     const matches = threadIds
       .map((id, index) => ({ id, index }))
-      .filter(
-        ({ id }) =>
-          !query ||
-          (itemsById.get(id)?.title || "New Chat")
-            .toLowerCase()
-            .includes(query),
-      );
+      .filter(({ id }) => {
+        if (!query) return true;
+        const item = itemsById.get(id);
+        const recovered = item?.remoteId
+          ? recoveredTitles?.get(item.remoteId)?.title
+          : undefined;
+        const title = threadDisplayTitle(item?.title, recovered) || "New Chat";
+        return title.toLowerCase().includes(query);
+      });
 
     const idByRemoteId = new Map<string, string>();
     for (const { id } of matches) {
@@ -346,7 +357,7 @@ export const useThreadListGroups = (searchQuery = "") => {
       }
     }
     return { threadIds, filteredIndices, groups: result, childrenOf };
-  }, [threadIds, threadItems, query, startOfToday]);
+  }, [threadIds, threadItems, query, recoveredTitles, startOfToday]);
 };
 
 /** The listed threads forked or continued from each thread, by its list id. */
@@ -432,6 +443,41 @@ const ThreadListShowMore: FC = () => {
     >
       {isLoadingMore ? "Loading…" : "Show more"}
     </button>
+  );
+};
+
+/**
+ * A thread-list item scope found by its Theorem thread id, for a row drawn
+ * outside the list's own order, as the sidebar's project tree draws them:
+ * ThreadListItemByIndexProvider's lookup, by id. `scoped` is false while the
+ * runtime has not listed the thread yet.
+ */
+export const ThreadListItemByRemoteId: FC<{
+  remoteId: string;
+  children: (scoped: boolean) => ReactNode;
+}> = ({ remoteId, children }) => {
+  const aui = useAui();
+  const id = useAuiState(
+    (s) => s.threads.threadItems.find((item) => item.remoteId === remoteId)?.id,
+  );
+  const config = useMemo(
+    () =>
+      id === undefined
+        ? undefined
+        : AuiConfig({
+            threadListItem: Derived({
+              source: "threads",
+              query: { type: "id", id },
+              get: (client) => client.threads.item({ id }),
+            }),
+          }),
+    [id],
+  );
+  if (!config) return children(false);
+  return (
+    <AuiProvider extends={aui} config={config}>
+      {children(true)}
+    </AuiProvider>
   );
 };
 
@@ -621,7 +667,7 @@ export const ThreadListItem: FC = () => {
                 className="focus-visible:before:outline-focus min-w-0 truncate text-start outline-none before:absolute before:inset-0 before:rounded-md focus-visible:before:outline-2 focus-visible:before:-outline-offset-2"
               >
                 {origin && <OriginMark kind={origin.kind} />}
-                <ThreadListItemPrimitive.Title fallback="New Chat" />
+                <ThreadDisplayTitle />
                 {origin && <span className="sr-only">, {originLabel[origin.kind]}</span>}
                 {status && <span className="sr-only">, {statusLabel[status]}</span>}
               </ThreadListItemPrimitive.Trigger>
@@ -804,11 +850,14 @@ export const OriginMark: FC<{ kind: Theorem.ThreadOrigin["kind"] }> = ({ kind })
     />
   );
 };
+function ThreadDisplayTitle() {
+  return useThreadDisplayTitle() || "New Chat";
+}
 const ThreadListItemRename: FC<{
   onDone: (restoreFocus: boolean) => void;
 }> = ({ onDone }) => {
   const aui = useAui();
-  const title = useAuiState((s) => s.threadListItem.title) ?? "";
+  const title = useThreadDisplayTitle() ?? "";
   const [value, setValue] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
   const settledRef = useRef(false);

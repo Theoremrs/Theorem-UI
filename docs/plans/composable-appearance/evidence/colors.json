@@ -24522,110 +24522,110 @@
         "concrete": [
           {
             "name": "surface-neutral",
-            "raw": "#b4b0ac",
-            "value": "#b4b0ac",
+            "raw": "#b5afad",
+            "value": "#b5afad",
             "valid": true
           },
           {
             "name": "surface-sidebar",
-            "raw": "#b0aca8",
-            "value": "#b0aca8",
+            "raw": "#b1aba9",
+            "value": "#b1aba9",
             "valid": true
           },
           {
             "name": "surface-frame",
-            "raw": "#a8a4a0",
-            "value": "#a8a4a0",
+            "raw": "#aaa4a1",
+            "value": "#aaa4a1",
             "valid": true
           },
           {
             "name": "surface-raised",
-            "raw": "#c2bebb",
-            "value": "#c2bebb",
+            "raw": "#c3bebc",
+            "value": "#c3bebc",
             "valid": true
           },
           {
             "name": "surface-hover",
-            "raw": "#bbb7b3",
-            "value": "#bbb7b3",
+            "raw": "#bcb7b5",
+            "value": "#bcb7b5",
             "valid": true
           },
           {
             "name": "surface-selected",
-            "raw": "#a39f9a",
-            "value": "#a39f9a",
+            "raw": "#a49e9c",
+            "value": "#a49e9c",
             "valid": true
           },
           {
             "name": "surface-composer",
-            "raw": "#c2bebb",
-            "value": "#c2bebb",
+            "raw": "#c3bebc",
+            "value": "#c3bebc",
             "valid": true
           },
           {
             "name": "surface-artifact",
-            "raw": "#bab6b2",
-            "value": "#bab6b2",
+            "raw": "#bbb5b3",
+            "value": "#bbb5b3",
             "valid": true
           },
           {
             "name": "surface-rail",
-            "raw": "#dad7d5",
-            "value": "#dad7d5",
+            "raw": "#dad7d6",
+            "value": "#dad7d6",
             "valid": true
           },
           {
             "name": "sheet-from",
-            "raw": "#cfccc9",
-            "value": "#cfccc9",
+            "raw": "#d0ccca",
+            "value": "#d0ccca",
             "valid": true
           },
           {
             "name": "sheet-to",
-            "raw": "#aeaaa6",
-            "value": "#aeaaa6",
+            "raw": "#afa9a7",
+            "value": "#afa9a7",
             "valid": true
           },
           {
             "name": "ink-faint-top",
-            "raw": "#595552",
-            "value": "#595552",
+            "raw": "#5a5553",
+            "value": "#5a5553",
             "valid": true
           },
           {
             "name": "ink-faint-bottom",
-            "raw": "#3b3836",
-            "value": "#3b3836",
+            "raw": "#3c3837",
+            "value": "#3c3837",
             "valid": true
           },
           {
             "name": "ink",
-            "raw": "#32302e",
-            "value": "#32302e",
+            "raw": "#181615",
+            "value": "#181615",
             "valid": true
           },
           {
             "name": "ink-muted",
-            "raw": "#383532",
-            "value": "#383532",
+            "raw": "#393533",
+            "value": "#393533",
             "valid": true
           },
           {
             "name": "ink-faint",
-            "raw": "#5d5956",
-            "value": "#5d5956",
+            "raw": "#5e5957",
+            "value": "#5e5957",
             "valid": true
           },
           {
             "name": "line-control",
-            "raw": "#514e4b",
-            "value": "#514e4b",
+            "raw": "#534e4c",
+            "value": "#534e4c",
             "valid": true
           },
           {
             "name": "line-separator",
-            "raw": "#9d9995",
-            "value": "#9d9995",
+            "raw": "#9f9896",
+            "value": "#9f9896",
             "valid": true
           },
           {
@@ -24636,20 +24636,20 @@
           },
           {
             "name": "graph-note",
-            "raw": "#4d4a46",
-            "value": "#4d4a46",
+            "raw": "#4e4947",
+            "value": "#4e4947",
             "valid": true
           },
           {
             "name": "graph-unresolved",
-            "raw": "#86827d",
-            "value": "#86827d",
+            "raw": "#87817f",
+            "value": "#87817f",
             "valid": true
           },
           {
             "name": "graph-link",
-            "raw": "#999591",
-            "value": "#999591",
+            "raw": "#9b9492",
+            "value": "#9b9492",
             "valid": true
           },
           {
@@ -24768,8 +24768,8 @@
           },
           {
             "name": "attention-ink",
-            "raw": "#4d3200",
-            "value": "#4d3200",
+            "raw": "#4a2f00",
+            "value": "#4a2f00",
             "valid": true
           },
           {
@@ -24828,14 +24828,14 @@
           },
           {
             "name": "surface-user-message",
-            "raw": "#c2bebb",
-            "value": "#c2bebb",
+            "raw": "#c3bebc",
+            "value": "#c3bebc",
             "valid": true
           },
           {
             "name": "popover",
             "raw": "var(--surface-raised)",
-            "value": "#c2bebb",
+            "value": "#c3bebc",
             "valid": true
           },
           {
@@ -24859,61 +24859,61 @@
           {
             "name": "graph-label",
             "raw": "var(--ink)",
-            "value": "#32302e",
+            "value": "#181615",
             "valid": true
           },
           {
             "name": "term-bg",
-            "raw": "#292623",
-            "value": "#292623",
+            "raw": "#181412",
+            "value": "#181412",
             "valid": true
           },
           {
             "name": "term-raised",
-            "raw": "#332f2b",
-            "value": "#332f2b",
+            "raw": "#221c19",
+            "value": "#221c19",
             "valid": true
           },
           {
             "name": "term-line",
-            "raw": "#48433e",
-            "value": "#48433e",
+            "raw": "#352f2b",
+            "value": "#352f2b",
             "valid": true
           },
           {
             "name": "term-ink",
-            "raw": "#d1cfcd",
-            "value": "#d1cfcd",
+            "raw": "#bfbcbb",
+            "value": "#bfbcbb",
             "valid": true
           },
           {
             "name": "term-bright",
-            "raw": "#ebe9e8",
-            "value": "#ebe9e8",
+            "raw": "#d6d4d3",
+            "value": "#d6d4d3",
             "valid": true
           },
           {
             "name": "term-muted",
-            "raw": "#999695",
-            "value": "#999695",
+            "raw": "#8a8786",
+            "value": "#8a8786",
             "valid": true
           },
           {
             "name": "term-sage",
-            "raw": "#8aa8a0",
-            "value": "#8aa8a0",
+            "raw": "#7a9890",
+            "value": "#7a9890",
             "valid": true
           },
           {
             "name": "term-gold",
-            "raw": "#d6bc8a",
-            "value": "#d6bc8a",
+            "raw": "#c4aa79",
+            "value": "#c4aa79",
             "valid": true
           },
           {
             "name": "term-error",
-            "raw": "#e08a8f",
-            "value": "#e08a8f",
+            "raw": "#cf7a7f",
+            "value": "#cf7a7f",
             "valid": true
           }
         ]
@@ -24927,10 +24927,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 6.099746
+        "background": "#b5afad",
+        "ratio": 8.330396
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -24951,10 +24951,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 6.099746
+        "background": "#b5afad",
+        "ratio": 8.330396
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -24975,10 +24975,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.65523
+        "background": "#b5afad",
+        "ratio": 5.603742
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -24999,10 +24999,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.65523
+        "background": "#b5afad",
+        "ratio": 5.603742
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25025,8 +25025,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.575117
+        "background": "#b5afad",
+        "ratio": 5.54861
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25049,8 +25049,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.575117
+        "background": "#b5afad",
+        "ratio": 5.54861
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25071,10 +25071,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.500915
+        "background": "#b5afad",
+        "ratio": 5.713457
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25095,10 +25095,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.500915
+        "background": "#b5afad",
+        "ratio": 5.713457
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25119,10 +25119,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.828104
+        "background": "#b1aba9",
+        "ratio": 7.958828
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25143,10 +25143,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.828104
+        "background": "#b1aba9",
+        "ratio": 7.958828
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25167,10 +25167,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.403385
+        "background": "#b1aba9",
+        "ratio": 5.353793
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25191,10 +25191,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.403385
+        "background": "#b1aba9",
+        "ratio": 5.353793
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25217,8 +25217,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.326839
+        "background": "#b1aba9",
+        "ratio": 5.301121
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25241,8 +25241,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.326839
+        "background": "#b1aba9",
+        "ratio": 5.301121
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25263,10 +25263,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.255942
+        "background": "#b1aba9",
+        "ratio": 5.458615
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25287,10 +25287,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.255942
+        "background": "#b1aba9",
+        "ratio": 5.458615
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25311,10 +25311,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 7.120061
+        "background": "#c3bebc",
+        "ratio": 9.800475
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25335,10 +25335,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 7.120061
+        "background": "#c3bebc",
+        "ratio": 9.800475
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25359,10 +25359,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.601191
+        "background": "#c3bebc",
+        "ratio": 6.592643
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25383,10 +25383,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.601191
+        "background": "#c3bebc",
+        "ratio": 6.592643
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25409,8 +25409,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25433,8 +25433,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25455,10 +25455,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.421063
+        "background": "#c3bebc",
+        "ratio": 6.721721
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25479,10 +25479,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.421063
+        "background": "#c3bebc",
+        "ratio": 6.721721
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25503,10 +25503,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 7.120061
+        "background": "#c3bebc",
+        "ratio": 9.800475
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25527,10 +25527,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 7.120061
+        "background": "#c3bebc",
+        "ratio": 9.800475
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25551,10 +25551,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 6.601191
+        "background": "#c3bebc",
+        "ratio": 6.592643
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25575,10 +25575,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 6.601191
+        "background": "#c3bebc",
+        "ratio": 6.592643
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25601,8 +25601,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25625,8 +25625,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25647,10 +25647,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 6.421063
+        "background": "#c3bebc",
+        "ratio": 6.721721
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25671,10 +25671,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 6.421063
+        "background": "#c3bebc",
+        "ratio": 6.721721
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25695,10 +25695,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 6.099746
+        "background": "#b5afad",
+        "ratio": 8.330396
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25719,10 +25719,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 6.099746
+        "background": "#b5afad",
+        "ratio": 8.330396
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25743,10 +25743,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.65523
+        "background": "#b5afad",
+        "ratio": 5.603742
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25767,10 +25767,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.65523
+        "background": "#b5afad",
+        "ratio": 5.603742
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25793,8 +25793,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.575117
+        "background": "#b5afad",
+        "ratio": 5.54861
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25817,8 +25817,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.575117
+        "background": "#b5afad",
+        "ratio": 5.54861
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25839,10 +25839,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.500915
+        "background": "#b5afad",
+        "ratio": 5.713457
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25863,10 +25863,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.500915
+        "background": "#b5afad",
+        "ratio": 5.713457
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25887,10 +25887,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 7.120061
+        "background": "#c3bebc",
+        "ratio": 9.800475
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25911,10 +25911,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 7.120061
+        "background": "#c3bebc",
+        "ratio": 9.800475
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25935,10 +25935,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 6.601191
+        "background": "#c3bebc",
+        "ratio": 6.592643
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25959,10 +25959,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 6.601191
+        "background": "#c3bebc",
+        "ratio": 6.592643
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -25985,8 +25985,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26009,8 +26009,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26031,10 +26031,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 6.421063
+        "background": "#c3bebc",
+        "ratio": 6.721721
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26055,10 +26055,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 6.421063
+        "background": "#c3bebc",
+        "ratio": 6.721721
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26079,10 +26079,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 6.522416
+        "background": "#bbb5b3",
+        "ratio": 8.908599
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26103,10 +26103,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 6.522416
+        "background": "#bbb5b3",
+        "ratio": 8.908599
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26127,10 +26127,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 6.047099
+        "background": "#bbb5b3",
+        "ratio": 5.992691
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26151,10 +26151,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 6.047099
+        "background": "#bbb5b3",
+        "ratio": 5.992691
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26177,8 +26177,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 5.961434
+        "background": "#bbb5b3",
+        "ratio": 5.933733
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26201,8 +26201,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 5.961434
+        "background": "#bbb5b3",
+        "ratio": 5.933733
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26223,10 +26223,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 5.882091
+        "background": "#bbb5b3",
+        "ratio": 6.110021
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26247,10 +26247,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 5.882091
+        "background": "#bbb5b3",
+        "ratio": 6.110021
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26271,10 +26271,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 6.594649
+        "background": "#bcb7b5",
+        "ratio": 9.085049
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26295,10 +26295,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 6.594649
+        "background": "#bcb7b5",
+        "ratio": 9.085049
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26319,10 +26319,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 6.114068
+        "background": "#bcb7b5",
+        "ratio": 6.111386
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26343,10 +26343,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 6.114068
+        "background": "#bcb7b5",
+        "ratio": 6.111386
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26369,8 +26369,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 6.027454
+        "background": "#bcb7b5",
+        "ratio": 6.05126
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26393,8 +26393,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 6.027454
+        "background": "#bcb7b5",
+        "ratio": 6.05126
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26415,10 +26415,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 5.947232
+        "background": "#bcb7b5",
+        "ratio": 6.231041
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26439,10 +26439,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 5.947232
+        "background": "#bcb7b5",
+        "ratio": 6.231041
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26463,10 +26463,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.996188
+        "background": "#a49e9c",
+        "ratio": 6.826777
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26487,10 +26487,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#32302e",
+        "foreground": "#181615",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.996188
+        "background": "#a49e9c",
+        "ratio": 6.826777
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26511,10 +26511,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.632093
+        "background": "#a49e9c",
+        "ratio": 4.592278
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26535,10 +26535,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.632093
+        "background": "#a49e9c",
+        "ratio": 4.592278
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26561,8 +26561,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.566474
+        "background": "#a49e9c",
+        "ratio": 4.547098
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26585,8 +26585,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.566474
+        "background": "#a49e9c",
+        "ratio": 4.547098
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26607,10 +26607,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.505697
+        "background": "#a49e9c",
+        "ratio": 4.68219
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26631,10 +26631,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "attention-ink",
-        "foreground": "#4d3200",
+        "foreground": "#4a2f00",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.505697
+        "background": "#a49e9c",
+        "ratio": 4.68219
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26655,10 +26655,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.601191
+        "background": "#c3bebc",
+        "ratio": 6.592643
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -26679,10 +26679,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#383532",
+        "foreground": "#393533",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.601191
+        "background": "#c3bebc",
+        "ratio": 6.592643
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27137,8 +27137,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.575117
+        "background": "#b5afad",
+        "ratio": 5.54861
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27161,8 +27161,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.575117
+        "background": "#b5afad",
+        "ratio": 5.54861
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27185,8 +27185,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.620988
+        "background": "#b5afad",
+        "ratio": 5.594263
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27209,8 +27209,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.620988
+        "background": "#b5afad",
+        "ratio": 5.594263
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27233,8 +27233,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.326839
+        "background": "#b1aba9",
+        "ratio": 5.301121
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27257,8 +27257,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.326839
+        "background": "#b1aba9",
+        "ratio": 5.301121
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27281,8 +27281,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.370667
+        "background": "#b1aba9",
+        "ratio": 5.344737
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27305,8 +27305,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 5.370667
+        "background": "#b1aba9",
+        "ratio": 5.344737
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27329,8 +27329,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27353,8 +27353,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27377,8 +27377,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.56122
+        "background": "#c3bebc",
+        "ratio": 6.581492
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27401,8 +27401,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 6.56122
+        "background": "#c3bebc",
+        "ratio": 6.581492
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27425,8 +27425,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27449,8 +27449,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27473,8 +27473,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 6.56122
+        "background": "#c3bebc",
+        "ratio": 6.581492
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27497,8 +27497,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 6.56122
+        "background": "#c3bebc",
+        "ratio": 6.581492
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27521,8 +27521,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.575117
+        "background": "#b5afad",
+        "ratio": 5.54861
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27545,8 +27545,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.575117
+        "background": "#b5afad",
+        "ratio": 5.54861
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27569,8 +27569,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.620988
+        "background": "#b5afad",
+        "ratio": 5.594263
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27593,8 +27593,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 5.620988
+        "background": "#b5afad",
+        "ratio": 5.594263
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27617,8 +27617,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27641,8 +27641,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 6.507676
+        "background": "#c3bebc",
+        "ratio": 6.527783
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27665,8 +27665,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 6.56122
+        "background": "#c3bebc",
+        "ratio": 6.581492
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27689,8 +27689,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 6.56122
+        "background": "#c3bebc",
+        "ratio": 6.581492
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27713,8 +27713,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 5.961434
+        "background": "#bbb5b3",
+        "ratio": 5.933733
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27737,8 +27737,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 5.961434
+        "background": "#bbb5b3",
+        "ratio": 5.933733
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27761,8 +27761,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 6.010483
+        "background": "#bbb5b3",
+        "ratio": 5.982554
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27785,8 +27785,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 6.010483
+        "background": "#bbb5b3",
+        "ratio": 5.982554
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27809,8 +27809,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 6.027454
+        "background": "#bcb7b5",
+        "ratio": 6.05126
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27833,8 +27833,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 6.027454
+        "background": "#bcb7b5",
+        "ratio": 6.05126
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27857,8 +27857,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 6.077047
+        "background": "#bcb7b5",
+        "ratio": 6.101049
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27881,8 +27881,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 6.077047
+        "background": "#bcb7b5",
+        "ratio": 6.101049
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27905,8 +27905,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.566474
+        "background": "#a49e9c",
+        "ratio": 4.547098
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27929,8 +27929,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#57282e",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.566474
+        "background": "#a49e9c",
+        "ratio": 4.547098
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27953,8 +27953,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.604046
+        "background": "#a49e9c",
+        "ratio": 4.584511
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -27977,8 +27977,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#463300",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 4.604046
+        "background": "#a49e9c",
+        "ratio": 4.584511
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28001,8 +28001,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.753496
+        "background": "#b5afad",
+        "ratio": 3.73565
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28025,8 +28025,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.753496
+        "background": "#b5afad",
+        "ratio": 3.73565
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28049,8 +28049,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.698556
+        "background": "#b5afad",
+        "ratio": 3.680972
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28073,8 +28073,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.698556
+        "background": "#b5afad",
+        "ratio": 3.680972
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28097,8 +28097,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.703613
+        "background": "#b5afad",
+        "ratio": 3.686005
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28121,8 +28121,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.703613
+        "background": "#b5afad",
+        "ratio": 3.686005
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28145,8 +28145,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.749139
+        "background": "#b5afad",
+        "ratio": 3.731314
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28169,8 +28169,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.749139
+        "background": "#b5afad",
+        "ratio": 3.731314
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28193,8 +28193,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.702251
+        "background": "#b5afad",
+        "ratio": 3.68465
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28217,8 +28217,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.702251
+        "background": "#b5afad",
+        "ratio": 3.68465
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28241,8 +28241,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.586341
+        "background": "#b1aba9",
+        "ratio": 3.569026
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28265,8 +28265,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.586341
+        "background": "#b1aba9",
+        "ratio": 3.569026
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28289,8 +28289,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.533847
+        "background": "#b1aba9",
+        "ratio": 3.516786
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28313,8 +28313,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.533847
+        "background": "#b1aba9",
+        "ratio": 3.516786
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28337,8 +28337,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.538679
+        "background": "#b1aba9",
+        "ratio": 3.521594
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28361,8 +28361,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.538679
+        "background": "#b1aba9",
+        "ratio": 3.521594
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28385,8 +28385,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.582177
+        "background": "#b1aba9",
+        "ratio": 3.564883
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28409,8 +28409,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.582177
+        "background": "#b1aba9",
+        "ratio": 3.564883
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28433,8 +28433,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.537378
+        "background": "#b1aba9",
+        "ratio": 3.5203
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28457,8 +28457,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.537378
+        "background": "#b1aba9",
+        "ratio": 3.5203
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28481,8 +28481,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.38135
+        "background": "#c3bebc",
+        "ratio": 4.394887
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28505,8 +28505,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.38135
+        "background": "#c3bebc",
+        "ratio": 4.394887
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28529,8 +28529,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.31722
+        "background": "#c3bebc",
+        "ratio": 4.330559
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28553,8 +28553,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.31722
+        "background": "#c3bebc",
+        "ratio": 4.330559
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28577,8 +28577,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.323123
+        "background": "#c3bebc",
+        "ratio": 4.33648
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28601,8 +28601,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.323123
+        "background": "#c3bebc",
+        "ratio": 4.33648
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28625,8 +28625,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.376264
+        "background": "#c3bebc",
+        "ratio": 4.389785
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28649,8 +28649,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.376264
+        "background": "#c3bebc",
+        "ratio": 4.389785
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28673,8 +28673,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.321534
+        "background": "#c3bebc",
+        "ratio": 4.334886
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28697,8 +28697,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.321534
+        "background": "#c3bebc",
+        "ratio": 4.334886
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28721,8 +28721,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 4.38135
+        "background": "#c3bebc",
+        "ratio": 4.394887
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28745,8 +28745,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 4.38135
+        "background": "#c3bebc",
+        "ratio": 4.394887
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28769,8 +28769,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 4.31722
+        "background": "#c3bebc",
+        "ratio": 4.330559
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28793,8 +28793,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 4.31722
+        "background": "#c3bebc",
+        "ratio": 4.330559
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28817,8 +28817,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 4.323123
+        "background": "#c3bebc",
+        "ratio": 4.33648
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28841,8 +28841,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 4.323123
+        "background": "#c3bebc",
+        "ratio": 4.33648
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28865,8 +28865,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 4.376264
+        "background": "#c3bebc",
+        "ratio": 4.389785
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28889,8 +28889,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 4.376264
+        "background": "#c3bebc",
+        "ratio": 4.389785
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28913,8 +28913,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 4.321534
+        "background": "#c3bebc",
+        "ratio": 4.334886
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28937,8 +28937,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-user-message",
-        "background": "#c2bebb",
-        "ratio": 4.321534
+        "background": "#c3bebc",
+        "ratio": 4.334886
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28961,8 +28961,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.753496
+        "background": "#b5afad",
+        "ratio": 3.73565
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -28985,8 +28985,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.753496
+        "background": "#b5afad",
+        "ratio": 3.73565
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29009,8 +29009,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.698556
+        "background": "#b5afad",
+        "ratio": 3.680972
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29033,8 +29033,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.698556
+        "background": "#b5afad",
+        "ratio": 3.680972
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29057,8 +29057,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.703613
+        "background": "#b5afad",
+        "ratio": 3.686005
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29081,8 +29081,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.703613
+        "background": "#b5afad",
+        "ratio": 3.686005
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29105,8 +29105,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.749139
+        "background": "#b5afad",
+        "ratio": 3.731314
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29129,8 +29129,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.749139
+        "background": "#b5afad",
+        "ratio": 3.731314
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29153,8 +29153,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.702251
+        "background": "#b5afad",
+        "ratio": 3.68465
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29177,8 +29177,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.702251
+        "background": "#b5afad",
+        "ratio": 3.68465
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29201,8 +29201,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.38135
+        "background": "#c3bebc",
+        "ratio": 4.394887
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29225,8 +29225,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.38135
+        "background": "#c3bebc",
+        "ratio": 4.394887
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29249,8 +29249,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.31722
+        "background": "#c3bebc",
+        "ratio": 4.330559
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29273,8 +29273,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.31722
+        "background": "#c3bebc",
+        "ratio": 4.330559
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29297,8 +29297,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.323123
+        "background": "#c3bebc",
+        "ratio": 4.33648
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29321,8 +29321,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.323123
+        "background": "#c3bebc",
+        "ratio": 4.33648
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29345,8 +29345,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.376264
+        "background": "#c3bebc",
+        "ratio": 4.389785
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29369,8 +29369,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.376264
+        "background": "#c3bebc",
+        "ratio": 4.389785
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29393,8 +29393,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.321534
+        "background": "#c3bebc",
+        "ratio": 4.334886
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29417,8 +29417,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.321534
+        "background": "#c3bebc",
+        "ratio": 4.334886
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29441,8 +29441,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 4.013587
+        "background": "#bbb5b3",
+        "ratio": 3.994937
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29465,8 +29465,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 4.013587
+        "background": "#bbb5b3",
+        "ratio": 3.994937
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29489,8 +29489,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 3.95484
+        "background": "#bbb5b3",
+        "ratio": 3.936463
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29513,8 +29513,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 3.95484
+        "background": "#bbb5b3",
+        "ratio": 3.936463
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29537,8 +29537,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 3.960248
+        "background": "#bbb5b3",
+        "ratio": 3.941846
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29561,8 +29561,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 3.960248
+        "background": "#bbb5b3",
+        "ratio": 3.941846
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29585,8 +29585,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 4.008928
+        "background": "#bbb5b3",
+        "ratio": 3.9903
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29609,8 +29609,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 4.008928
+        "background": "#bbb5b3",
+        "ratio": 3.9903
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29633,8 +29633,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 3.958792
+        "background": "#bbb5b3",
+        "ratio": 3.940397
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29657,8 +29657,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 3.958792
+        "background": "#bbb5b3",
+        "ratio": 3.940397
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29681,8 +29681,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 4.058036
+        "background": "#bcb7b5",
+        "ratio": 4.074064
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29705,8 +29705,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 4.058036
+        "background": "#bcb7b5",
+        "ratio": 4.074064
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29729,8 +29729,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 3.998639
+        "background": "#bcb7b5",
+        "ratio": 4.014432
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29753,8 +29753,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 3.998639
+        "background": "#bcb7b5",
+        "ratio": 4.014432
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29777,8 +29777,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 4.004106
+        "background": "#bcb7b5",
+        "ratio": 4.019921
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29801,8 +29801,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 4.004106
+        "background": "#bcb7b5",
+        "ratio": 4.019921
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29825,8 +29825,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 4.053325
+        "background": "#bcb7b5",
+        "ratio": 4.069334
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29849,8 +29849,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 4.053325
+        "background": "#bcb7b5",
+        "ratio": 4.069334
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29873,8 +29873,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 4.002634
+        "background": "#bcb7b5",
+        "ratio": 4.018443
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29897,8 +29897,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-hover",
-        "background": "#bbb7b3",
-        "ratio": 4.002634
+        "background": "#bcb7b5",
+        "ratio": 4.018443
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29921,8 +29921,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 3.074418
+        "background": "#a49e9c",
+        "ratio": 3.061373
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29945,8 +29945,8 @@
         "foregroundRole": "series-1",
         "foreground": "#354e88",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 3.074418
+        "background": "#a49e9c",
+        "ratio": 3.061373
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29969,8 +29969,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 3.029418
+        "background": "#a49e9c",
+        "ratio": 3.016564
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -29993,8 +29993,8 @@
         "foregroundRole": "series-2",
         "foreground": "#005c4c",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 3.029418
+        "background": "#a49e9c",
+        "ratio": 3.016564
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30017,8 +30017,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 3.03356
+        "background": "#a49e9c",
+        "ratio": 3.020689
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30041,8 +30041,8 @@
         "foregroundRole": "series-3",
         "foreground": "#644e00",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 3.03356
+        "background": "#a49e9c",
+        "ratio": 3.020689
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30065,8 +30065,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 3.070849
+        "background": "#a49e9c",
+        "ratio": 3.057819
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30089,8 +30089,8 @@
         "foregroundRole": "series-4",
         "foreground": "#82393c",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 3.070849
+        "background": "#a49e9c",
+        "ratio": 3.057819
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30113,8 +30113,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 3.032445
+        "background": "#a49e9c",
+        "ratio": 3.019578
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30137,8 +30137,8 @@
         "foregroundRole": "series-5",
         "foreground": "#6c4076",
         "backgroundRole": "surface-selected",
-        "background": "#a39f9a",
-        "ratio": 3.032445
+        "background": "#a49e9c",
+        "ratio": 3.019578
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30161,8 +30161,8 @@
         "foregroundRole": "focus",
         "foreground": "#184d60",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 4.294949
+        "background": "#b5afad",
+        "ratio": 4.274529
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30185,8 +30185,8 @@
         "foregroundRole": "focus",
         "foreground": "#184d60",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 4.294949
+        "background": "#b5afad",
+        "ratio": 4.274529
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30207,10 +30207,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#514e4b",
+        "foreground": "#534e4c",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.835362
+        "background": "#b5afad",
+        "ratio": 3.786293
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30231,10 +30231,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#514e4b",
+        "foreground": "#534e4c",
         "backgroundRole": "surface-neutral",
-        "background": "#b4b0ac",
-        "ratio": 3.835362
+        "background": "#b5afad",
+        "ratio": 3.786293
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30257,8 +30257,8 @@
         "foregroundRole": "focus",
         "foreground": "#184d60",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 4.103681
+        "background": "#b1aba9",
+        "ratio": 4.083869
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30281,8 +30281,8 @@
         "foregroundRole": "focus",
         "foreground": "#184d60",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 4.103681
+        "background": "#b1aba9",
+        "ratio": 4.083869
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30303,10 +30303,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#514e4b",
+        "foreground": "#534e4c",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.664561
+        "background": "#b1aba9",
+        "ratio": 3.61741
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30327,10 +30327,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#514e4b",
+        "foreground": "#534e4c",
         "backgroundRole": "surface-sidebar",
-        "background": "#b0aca8",
-        "ratio": 3.664561
+        "background": "#b1aba9",
+        "ratio": 3.61741
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30353,8 +30353,8 @@
         "foregroundRole": "focus",
         "foreground": "#184d60",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 5.013373
+        "background": "#c3bebc",
+        "ratio": 5.028863
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30377,8 +30377,8 @@
         "foregroundRole": "focus",
         "foreground": "#184d60",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 5.013373
+        "background": "#c3bebc",
+        "ratio": 5.028863
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30399,10 +30399,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#514e4b",
+        "foreground": "#534e4c",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.47691
+        "background": "#c3bebc",
+        "ratio": 4.454467
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30423,10 +30423,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#514e4b",
+        "foreground": "#534e4c",
         "backgroundRole": "surface-composer",
-        "background": "#c2bebb",
-        "ratio": 4.47691
+        "background": "#c3bebc",
+        "ratio": 4.454467
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30449,8 +30449,8 @@
         "foregroundRole": "focus",
         "foreground": "#184d60",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 5.013373
+        "background": "#c3bebc",
+        "ratio": 5.028863
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30473,8 +30473,8 @@
         "foregroundRole": "focus",
         "foreground": "#184d60",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 5.013373
+        "background": "#c3bebc",
+        "ratio": 5.028863
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30495,10 +30495,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#514e4b",
+        "foreground": "#534e4c",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.47691
+        "background": "#c3bebc",
+        "ratio": 4.454467
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30519,10 +30519,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#514e4b",
+        "foreground": "#534e4c",
         "backgroundRole": "popover",
-        "background": "#c2bebb",
-        "ratio": 4.47691
+        "background": "#c3bebc",
+        "ratio": 4.454467
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30545,8 +30545,8 @@
         "foregroundRole": "focus",
         "foreground": "#184d60",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 4.59256
+        "background": "#bbb5b3",
+        "ratio": 4.571219
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30569,8 +30569,8 @@
         "foregroundRole": "focus",
         "foreground": "#184d60",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 4.59256
+        "background": "#bbb5b3",
+        "ratio": 4.571219
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30591,10 +30591,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#514e4b",
+        "foreground": "#534e4c",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 4.101126
+        "background": "#bbb5b3",
+        "ratio": 4.049095
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30615,10 +30615,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#514e4b",
+        "foreground": "#534e4c",
         "backgroundRole": "surface-artifact",
-        "background": "#bab6b2",
-        "ratio": 4.101126
+        "background": "#bbb5b3",
+        "ratio": 4.049095
       },
       "evidence": {
         "mode": "[data-palette='stone']",
@@ -30654,8 +30654,8 @@
           },
           {
             "name": "surface-sidebar",
-            "raw": "#191918",
-            "value": "#191918",
+            "raw": "#1a1818",
+            "value": "#1a1818",
             "valid": true
           },
           {
@@ -30666,8 +30666,8 @@
           },
           {
             "name": "surface-raised",
-            "raw": "#21201e",
-            "value": "#21201e",
+            "raw": "#211f1f",
+            "value": "#211f1f",
             "valid": true
           },
           {
@@ -30678,14 +30678,14 @@
           },
           {
             "name": "surface-selected",
-            "raw": "#292826",
-            "value": "#292826",
+            "raw": "#292727",
+            "value": "#292727",
             "valid": true
           },
           {
             "name": "surface-composer",
-            "raw": "#201f1d",
-            "value": "#201f1d",
+            "raw": "#201e1e",
+            "value": "#201e1e",
             "valid": true
           },
           {
@@ -30702,8 +30702,8 @@
           },
           {
             "name": "sheet-from",
-            "raw": "#252422",
-            "value": "#252422",
+            "raw": "#252323",
+            "value": "#252323",
             "valid": true
           },
           {
@@ -30714,44 +30714,44 @@
           },
           {
             "name": "ink-faint-top",
-            "raw": "#8e8c88",
-            "value": "#8e8c88",
+            "raw": "#8f8b89",
+            "value": "#8f8b89",
             "valid": true
           },
           {
             "name": "ink-faint-bottom",
-            "raw": "#82807d",
-            "value": "#82807d",
+            "raw": "#837f7e",
+            "value": "#837f7e",
             "valid": true
           },
           {
             "name": "ink",
-            "raw": "#ceccca",
-            "value": "#ceccca",
+            "raw": "#cecbca",
+            "value": "#cecbca",
             "valid": true
           },
           {
             "name": "ink-muted",
-            "raw": "#979491",
-            "value": "#979491",
+            "raw": "#989492",
+            "value": "#989492",
             "valid": true
           },
           {
             "name": "ink-faint",
-            "raw": "#7c7977",
-            "value": "#7c7977",
+            "raw": "#7d7977",
+            "value": "#7d7977",
             "valid": true
           },
           {
             "name": "line-control",
-            "raw": "#6c6b69",
-            "value": "#6c6b69",
+            "raw": "#6d6a6a",
+            "value": "#6d6a6a",
             "valid": true
           },
           {
             "name": "line-separator",
-            "raw": "#31302e",
-            "value": "#31302e",
+            "raw": "#322f2f",
+            "value": "#322f2f",
             "valid": true
           },
           {
@@ -30768,26 +30768,26 @@
           },
           {
             "name": "graph-note",
-            "raw": "#cbc9c7",
-            "value": "#cbc9c7",
+            "raw": "#cbc8c7",
+            "value": "#cbc8c7",
             "valid": true
           },
           {
             "name": "graph-unresolved",
-            "raw": "#605e5b",
-            "value": "#605e5b",
+            "raw": "#615d5c",
+            "value": "#615d5c",
             "valid": true
           },
           {
             "name": "graph-link",
-            "raw": "#4c4a47",
-            "value": "#4c4a47",
+            "raw": "#4c4948",
+            "value": "#4c4948",
             "valid": true
           },
           {
             "name": "graph-label",
-            "raw": "#d7d6d4",
-            "value": "#d7d6d4",
+            "raw": "#d8d6d5",
+            "value": "#d8d6d5",
             "valid": true
           },
           {
@@ -30966,8 +30966,8 @@
           },
           {
             "name": "surface-user-message",
-            "raw": "#201f1d",
-            "value": "#201f1d",
+            "raw": "#201e1e",
+            "value": "#201e1e",
             "valid": true
           },
           {
@@ -30990,56 +30990,56 @@
           },
           {
             "name": "term-bg",
-            "raw": "#232220",
-            "value": "#232220",
+            "raw": "#232120",
+            "value": "#232120",
             "valid": true
           },
           {
             "name": "term-raised",
-            "raw": "#2c2b28",
-            "value": "#2c2b28",
+            "raw": "#2d2a28",
+            "value": "#2d2a28",
             "valid": true
           },
           {
             "name": "term-line",
-            "raw": "#403f3b",
-            "value": "#403f3b",
+            "raw": "#413d3c",
+            "value": "#413d3c",
             "valid": true
           },
           {
             "name": "term-ink",
-            "raw": "#cbc9c8",
-            "value": "#cbc9c8",
+            "raw": "#cac9c8",
+            "value": "#cac9c8",
             "valid": true
           },
           {
             "name": "term-bright",
-            "raw": "#e3e3e2",
-            "value": "#e3e3e2",
+            "raw": "#e3e2e1",
+            "value": "#e3e2e1",
             "valid": true
           },
           {
             "name": "term-muted",
-            "raw": "#949291",
-            "value": "#949291",
+            "raw": "#939291",
+            "value": "#939291",
             "valid": true
           },
           {
             "name": "term-sage",
-            "raw": "#86a39c",
-            "value": "#86a39c",
+            "raw": "#85a39b",
+            "value": "#85a39b",
             "valid": true
           },
           {
             "name": "term-gold",
-            "raw": "#d0b785",
-            "value": "#d0b785",
+            "raw": "#d0b684",
+            "value": "#d0b684",
             "valid": true
           },
           {
             "name": "term-error",
-            "raw": "#db868b",
-            "value": "#db868b",
+            "raw": "#da858a",
+            "value": "#da858a",
             "valid": true
           }
         ]
@@ -31053,10 +31053,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-neutral",
         "background": "#141312",
-        "ratio": 11.588935
+        "ratio": 11.505186
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31077,10 +31077,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-neutral",
         "background": "#141312",
-        "ratio": 11.588935
+        "ratio": 11.505186
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31101,10 +31101,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-neutral",
         "background": "#141312",
-        "ratio": 6.151042
+        "ratio": 6.173501
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31125,10 +31125,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-neutral",
         "background": "#141312",
-        "ratio": 6.151042
+        "ratio": 6.173501
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31245,10 +31245,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 10.98745
+        "background": "#1a1818",
+        "ratio": 10.961414
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31269,10 +31269,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 10.98745
+        "background": "#1a1818",
+        "ratio": 10.961414
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31293,10 +31293,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 5.831793
+        "background": "#1a1818",
+        "ratio": 5.881722
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31317,10 +31317,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 5.831793
+        "background": "#1a1818",
+        "ratio": 5.881722
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31343,8 +31343,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#7dd3f0",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 10.429122
+        "background": "#1a1818",
+        "ratio": 10.480145
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31367,8 +31367,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#7dd3f0",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 10.429122
+        "background": "#1a1818",
+        "ratio": 10.480145
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31391,8 +31391,8 @@
         "foregroundRole": "attention-ink",
         "foreground": "#f8c885",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 11.387367
+        "background": "#1a1818",
+        "ratio": 11.443077
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31415,8 +31415,8 @@
         "foregroundRole": "attention-ink",
         "foreground": "#f8c885",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 11.387367
+        "background": "#1a1818",
+        "ratio": 11.443077
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31437,10 +31437,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 10.284552
+        "background": "#201e1e",
+        "ratio": 10.285076
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31461,10 +31461,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 10.284552
+        "background": "#201e1e",
+        "ratio": 10.285076
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31485,10 +31485,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 5.458716
+        "background": "#201e1e",
+        "ratio": 5.518809
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31509,10 +31509,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 5.458716
+        "background": "#201e1e",
+        "ratio": 5.518809
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31535,8 +31535,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#7dd3f0",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 9.761942
+        "background": "#201e1e",
+        "ratio": 9.833502
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31559,8 +31559,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#7dd3f0",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 9.761942
+        "background": "#201e1e",
+        "ratio": 9.833502
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31583,8 +31583,8 @@
         "foregroundRole": "attention-ink",
         "foreground": "#f8c885",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 10.658885
+        "background": "#201e1e",
+        "ratio": 10.73702
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31607,8 +31607,8 @@
         "foregroundRole": "attention-ink",
         "foreground": "#f8c885",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 10.658885
+        "background": "#201e1e",
+        "ratio": 10.73702
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31629,10 +31629,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 10.284552
+        "background": "#201e1e",
+        "ratio": 10.285076
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31653,10 +31653,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 10.284552
+        "background": "#201e1e",
+        "ratio": 10.285076
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31677,10 +31677,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 5.458716
+        "background": "#201e1e",
+        "ratio": 5.518809
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31701,10 +31701,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 5.458716
+        "background": "#201e1e",
+        "ratio": 5.518809
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31727,8 +31727,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#7dd3f0",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 9.761942
+        "background": "#201e1e",
+        "ratio": 9.833502
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31751,8 +31751,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#7dd3f0",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 9.761942
+        "background": "#201e1e",
+        "ratio": 9.833502
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31775,8 +31775,8 @@
         "foregroundRole": "attention-ink",
         "foreground": "#f8c885",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 10.658885
+        "background": "#201e1e",
+        "ratio": 10.73702
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31799,8 +31799,8 @@
         "foregroundRole": "attention-ink",
         "foreground": "#f8c885",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 10.658885
+        "background": "#201e1e",
+        "ratio": 10.73702
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31821,10 +31821,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-neutral",
         "background": "#141312",
-        "ratio": 11.588935
+        "ratio": 11.505186
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31845,10 +31845,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-neutral",
         "background": "#141312",
-        "ratio": 11.588935
+        "ratio": 11.505186
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31869,10 +31869,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-neutral",
         "background": "#141312",
-        "ratio": 6.151042
+        "ratio": 6.173501
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -31893,10 +31893,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-neutral",
         "background": "#141312",
-        "ratio": 6.151042
+        "ratio": 6.173501
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32013,10 +32013,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "popover",
         "background": "#222120",
-        "ratio": 10.038429
+        "ratio": 9.965886
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32037,10 +32037,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "popover",
         "background": "#222120",
-        "ratio": 10.038429
+        "ratio": 9.965886
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32061,10 +32061,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "popover",
         "background": "#222120",
-        "ratio": 5.328082
+        "ratio": 5.347537
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32085,10 +32085,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "popover",
         "background": "#222120",
-        "ratio": 5.328082
+        "ratio": 5.347537
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32205,10 +32205,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-artifact",
         "background": "#1a1918",
-        "ratio": 10.96368
+        "ratio": 10.88445
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32229,10 +32229,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-artifact",
         "background": "#1a1918",
-        "ratio": 10.96368
+        "ratio": 10.88445
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32253,10 +32253,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-artifact",
         "background": "#1a1918",
-        "ratio": 5.819176
+        "ratio": 5.840424
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32277,10 +32277,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-artifact",
         "background": "#1a1918",
-        "ratio": 5.819176
+        "ratio": 5.840424
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32397,10 +32397,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-hover",
         "background": "#1d1c1b",
-        "ratio": 10.626057
+        "ratio": 10.549267
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32421,10 +32421,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-hover",
         "background": "#1d1c1b",
-        "ratio": 10.626057
+        "ratio": 10.549267
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32445,10 +32445,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-hover",
         "background": "#1d1c1b",
-        "ratio": 5.639977
+        "ratio": 5.66057
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32469,10 +32469,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-hover",
         "background": "#1d1c1b",
-        "ratio": 5.639977
+        "ratio": 5.66057
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32589,10 +32589,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 9.197973
+        "background": "#292727",
+        "ratio": 9.209014
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32613,10 +32613,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink",
-        "foreground": "#ceccca",
+        "foreground": "#cecbca",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 9.197973
+        "background": "#292727",
+        "ratio": 9.209014
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32637,10 +32637,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 4.881995
+        "background": "#292727",
+        "ratio": 4.941411
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32661,10 +32661,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 4.881995
+        "background": "#292727",
+        "ratio": 4.941411
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32687,8 +32687,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#7dd3f0",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 8.730578
+        "background": "#292727",
+        "ratio": 8.804685
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32711,8 +32711,8 @@
         "foregroundRole": "redwood-ink",
         "foreground": "#7dd3f0",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 8.730578
+        "background": "#292727",
+        "ratio": 8.804685
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32735,8 +32735,8 @@
         "foregroundRole": "attention-ink",
         "foreground": "#f8c885",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 9.532758
+        "background": "#292727",
+        "ratio": 9.613674
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32759,8 +32759,8 @@
         "foregroundRole": "attention-ink",
         "foreground": "#f8c885",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 9.532758
+        "background": "#292727",
+        "ratio": 9.613674
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32781,10 +32781,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 5.458716
+        "background": "#201e1e",
+        "ratio": 5.518809
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -32805,10 +32805,10 @@
       "expected": "contrast >= 4.5:1",
       "observed": {
         "foregroundRole": "ink-muted",
-        "foreground": "#979491",
+        "foreground": "#989492",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 5.458716
+        "background": "#201e1e",
+        "ratio": 5.518809
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33359,8 +33359,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#faacb4",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 9.739523
+        "background": "#1a1818",
+        "ratio": 9.787172
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33383,8 +33383,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#faacb4",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 9.739523
+        "background": "#1a1818",
+        "ratio": 9.787172
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33407,8 +33407,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#e0c17e",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 10.136523
+        "background": "#1a1818",
+        "ratio": 10.186114
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33431,8 +33431,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#e0c17e",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 10.136523
+        "background": "#1a1818",
+        "ratio": 10.186114
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33455,8 +33455,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#faacb4",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 9.116458
+        "background": "#201e1e",
+        "ratio": 9.183287
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33479,8 +33479,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#faacb4",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 9.116458
+        "background": "#201e1e",
+        "ratio": 9.183287
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33503,8 +33503,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#e0c17e",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 9.488062
+        "background": "#201e1e",
+        "ratio": 9.557614
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33527,8 +33527,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#e0c17e",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 9.488062
+        "background": "#201e1e",
+        "ratio": 9.557614
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33551,8 +33551,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#faacb4",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 9.116458
+        "background": "#201e1e",
+        "ratio": 9.183287
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33575,8 +33575,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#faacb4",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 9.116458
+        "background": "#201e1e",
+        "ratio": 9.183287
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33599,8 +33599,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#e0c17e",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 9.488062
+        "background": "#201e1e",
+        "ratio": 9.557614
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -33623,8 +33623,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#e0c17e",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 9.488062
+        "background": "#201e1e",
+        "ratio": 9.557614
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34031,8 +34031,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#faacb4",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 8.153291
+        "background": "#292727",
+        "ratio": 8.222498
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34055,8 +34055,8 @@
         "foregroundRole": "action-ink",
         "foreground": "#faacb4",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 8.153291
+        "background": "#292727",
+        "ratio": 8.222498
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34079,8 +34079,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#e0c17e",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 8.485633
+        "background": "#292727",
+        "ratio": 8.557661
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34103,8 +34103,8 @@
         "foregroundRole": "insight-ink",
         "foreground": "#e0c17e",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 8.485633
+        "background": "#292727",
+        "ratio": 8.557661
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34367,8 +34367,8 @@
         "foregroundRole": "series-1",
         "foreground": "#86aafc",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 7.682132
+        "background": "#1a1818",
+        "ratio": 7.719715
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34391,8 +34391,8 @@
         "foregroundRole": "series-1",
         "foreground": "#86aafc",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 7.682132
+        "background": "#1a1818",
+        "ratio": 7.719715
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34415,8 +34415,8 @@
         "foregroundRole": "series-2",
         "foreground": "#3bc6a8",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 8.234935
+        "background": "#1a1818",
+        "ratio": 8.275223
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34439,8 +34439,8 @@
         "foregroundRole": "series-2",
         "foreground": "#3bc6a8",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 8.234935
+        "background": "#1a1818",
+        "ratio": 8.275223
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34463,8 +34463,8 @@
         "foregroundRole": "series-3",
         "foreground": "#cba843",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 7.72586
+        "background": "#1a1818",
+        "ratio": 7.763657
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34487,8 +34487,8 @@
         "foregroundRole": "series-3",
         "foreground": "#cba843",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 7.72586
+        "background": "#1a1818",
+        "ratio": 7.763657
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34511,8 +34511,8 @@
         "foregroundRole": "series-4",
         "foreground": "#f18b8b",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 7.377841
+        "background": "#1a1818",
+        "ratio": 7.413936
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34535,8 +34535,8 @@
         "foregroundRole": "series-4",
         "foreground": "#f18b8b",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 7.377841
+        "background": "#1a1818",
+        "ratio": 7.413936
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34559,8 +34559,8 @@
         "foregroundRole": "series-5",
         "foreground": "#cf92dd",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 7.380109
+        "background": "#1a1818",
+        "ratio": 7.416215
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34583,8 +34583,8 @@
         "foregroundRole": "series-5",
         "foreground": "#cf92dd",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 7.380109
+        "background": "#1a1818",
+        "ratio": 7.416215
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34607,8 +34607,8 @@
         "foregroundRole": "series-1",
         "foreground": "#86aafc",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 7.190684
+        "background": "#201e1e",
+        "ratio": 7.243395
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34631,8 +34631,8 @@
         "foregroundRole": "series-1",
         "foreground": "#86aafc",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 7.190684
+        "background": "#201e1e",
+        "ratio": 7.243395
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34655,8 +34655,8 @@
         "foregroundRole": "series-2",
         "foreground": "#3bc6a8",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 7.708124
+        "background": "#201e1e",
+        "ratio": 7.764628
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34679,8 +34679,8 @@
         "foregroundRole": "series-2",
         "foreground": "#3bc6a8",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 7.708124
+        "background": "#201e1e",
+        "ratio": 7.764628
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34703,8 +34703,8 @@
         "foregroundRole": "series-3",
         "foreground": "#cba843",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 7.231615
+        "background": "#201e1e",
+        "ratio": 7.284626
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34727,8 +34727,8 @@
         "foregroundRole": "series-3",
         "foreground": "#cba843",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 7.231615
+        "background": "#201e1e",
+        "ratio": 7.284626
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34751,8 +34751,8 @@
         "foregroundRole": "series-4",
         "foreground": "#f18b8b",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 6.90586
+        "background": "#201e1e",
+        "ratio": 6.956484
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34775,8 +34775,8 @@
         "foregroundRole": "series-4",
         "foreground": "#f18b8b",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 6.90586
+        "background": "#201e1e",
+        "ratio": 6.956484
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34799,8 +34799,8 @@
         "foregroundRole": "series-5",
         "foreground": "#cf92dd",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 6.907983
+        "background": "#201e1e",
+        "ratio": 6.958622
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34823,8 +34823,8 @@
         "foregroundRole": "series-5",
         "foreground": "#cf92dd",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 6.907983
+        "background": "#201e1e",
+        "ratio": 6.958622
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34847,8 +34847,8 @@
         "foregroundRole": "series-1",
         "foreground": "#86aafc",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 7.190684
+        "background": "#201e1e",
+        "ratio": 7.243395
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34871,8 +34871,8 @@
         "foregroundRole": "series-1",
         "foreground": "#86aafc",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 7.190684
+        "background": "#201e1e",
+        "ratio": 7.243395
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34895,8 +34895,8 @@
         "foregroundRole": "series-2",
         "foreground": "#3bc6a8",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 7.708124
+        "background": "#201e1e",
+        "ratio": 7.764628
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34919,8 +34919,8 @@
         "foregroundRole": "series-2",
         "foreground": "#3bc6a8",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 7.708124
+        "background": "#201e1e",
+        "ratio": 7.764628
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34943,8 +34943,8 @@
         "foregroundRole": "series-3",
         "foreground": "#cba843",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 7.231615
+        "background": "#201e1e",
+        "ratio": 7.284626
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34967,8 +34967,8 @@
         "foregroundRole": "series-3",
         "foreground": "#cba843",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 7.231615
+        "background": "#201e1e",
+        "ratio": 7.284626
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -34991,8 +34991,8 @@
         "foregroundRole": "series-4",
         "foreground": "#f18b8b",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 6.90586
+        "background": "#201e1e",
+        "ratio": 6.956484
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -35015,8 +35015,8 @@
         "foregroundRole": "series-4",
         "foreground": "#f18b8b",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 6.90586
+        "background": "#201e1e",
+        "ratio": 6.956484
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -35039,8 +35039,8 @@
         "foregroundRole": "series-5",
         "foreground": "#cf92dd",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 6.907983
+        "background": "#201e1e",
+        "ratio": 6.958622
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -35063,8 +35063,8 @@
         "foregroundRole": "series-5",
         "foreground": "#cf92dd",
         "backgroundRole": "surface-user-message",
-        "background": "#201f1d",
-        "ratio": 6.907983
+        "background": "#201e1e",
+        "ratio": 6.958622
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36047,8 +36047,8 @@
         "foregroundRole": "series-1",
         "foreground": "#86aafc",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 6.430977
+        "background": "#292727",
+        "ratio": 6.485565
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36071,8 +36071,8 @@
         "foregroundRole": "series-1",
         "foreground": "#86aafc",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 6.430977
+        "background": "#292727",
+        "ratio": 6.485565
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36095,8 +36095,8 @@
         "foregroundRole": "series-2",
         "foreground": "#3bc6a8",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 6.893749
+        "background": "#292727",
+        "ratio": 6.952264
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36119,8 +36119,8 @@
         "foregroundRole": "series-2",
         "foreground": "#3bc6a8",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 6.893749
+        "background": "#292727",
+        "ratio": 6.952264
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36143,8 +36143,8 @@
         "foregroundRole": "series-3",
         "foreground": "#cba843",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 6.467583
+        "background": "#292727",
+        "ratio": 6.522482
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36167,8 +36167,8 @@
         "foregroundRole": "series-3",
         "foreground": "#cba843",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 6.467583
+        "background": "#292727",
+        "ratio": 6.522482
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36191,8 +36191,8 @@
         "foregroundRole": "series-4",
         "foreground": "#f18b8b",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 6.176245
+        "background": "#292727",
+        "ratio": 6.228671
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36215,8 +36215,8 @@
         "foregroundRole": "series-4",
         "foreground": "#f18b8b",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 6.176245
+        "background": "#292727",
+        "ratio": 6.228671
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36239,8 +36239,8 @@
         "foregroundRole": "series-5",
         "foreground": "#cf92dd",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 6.178144
+        "background": "#292727",
+        "ratio": 6.230586
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36263,8 +36263,8 @@
         "foregroundRole": "series-5",
         "foreground": "#cf92dd",
         "backgroundRole": "surface-selected",
-        "background": "#292826",
-        "ratio": 6.178144
+        "background": "#292727",
+        "ratio": 6.230586
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36333,10 +36333,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#6c6b69",
+        "foreground": "#6d6a6a",
         "backgroundRole": "surface-neutral",
         "background": "#141312",
-        "ratio": 3.485855
+        "ratio": 3.464016
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36357,10 +36357,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#6c6b69",
+        "foreground": "#6d6a6a",
         "backgroundRole": "surface-neutral",
         "background": "#141312",
-        "ratio": 3.485855
+        "ratio": 3.464016
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36383,8 +36383,8 @@
         "foregroundRole": "focus",
         "foreground": "#3ca6a8",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 6.042386
+        "background": "#1a1818",
+        "ratio": 6.071947
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36407,8 +36407,8 @@
         "foregroundRole": "focus",
         "foreground": "#3ca6a8",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 6.042386
+        "background": "#1a1818",
+        "ratio": 6.071947
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36429,10 +36429,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#6c6b69",
+        "foreground": "#6d6a6a",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 3.304934
+        "background": "#1a1818",
+        "ratio": 3.300295
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36453,10 +36453,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#6c6b69",
+        "foreground": "#6d6a6a",
         "backgroundRole": "surface-sidebar",
-        "background": "#191918",
-        "ratio": 3.304934
+        "background": "#1a1818",
+        "ratio": 3.300295
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36479,8 +36479,8 @@
         "foregroundRole": "focus",
         "foreground": "#3ca6a8",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 5.655837
+        "background": "#201e1e",
+        "ratio": 5.697298
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36503,8 +36503,8 @@
         "foregroundRole": "focus",
         "foreground": "#3ca6a8",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 5.655837
+        "background": "#201e1e",
+        "ratio": 5.697298
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36525,10 +36525,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#6c6b69",
+        "foreground": "#6d6a6a",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 3.093508
+        "background": "#201e1e",
+        "ratio": 3.096662
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36549,10 +36549,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#6c6b69",
+        "foreground": "#6d6a6a",
         "backgroundRole": "surface-composer",
-        "background": "#201f1d",
-        "ratio": 3.093508
+        "background": "#201e1e",
+        "ratio": 3.096662
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36621,10 +36621,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#6c6b69",
+        "foreground": "#6d6a6a",
         "backgroundRole": "popover",
         "background": "#222120",
-        "ratio": 3.019476
+        "ratio": 3.000559
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36645,10 +36645,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#6c6b69",
+        "foreground": "#6d6a6a",
         "backgroundRole": "popover",
         "background": "#222120",
-        "ratio": 3.019476
+        "ratio": 3.000559
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36717,10 +36717,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#6c6b69",
+        "foreground": "#6d6a6a",
         "backgroundRole": "surface-artifact",
         "background": "#1a1918",
-        "ratio": 3.297784
+        "ratio": 3.277123
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
@@ -36741,10 +36741,10 @@
       "expected": "contrast >= 3:1",
       "observed": {
         "foregroundRole": "line-control",
-        "foreground": "#6c6b69",
+        "foreground": "#6d6a6a",
         "backgroundRole": "surface-artifact",
         "background": "#1a1918",
-        "ratio": 3.297784
+        "ratio": 3.277123
       },
       "evidence": {
         "mode": ".dark[data-palette='stone']",
