@@ -86,9 +86,8 @@ test('every shipped destination, preset and the shipped shell register as built-
   expect(contributionsOf('shell').map((one) => one.id)).toContain(
     'theorem.shell.default',
   )
-  expect(SHIPPED_PRESETS.map((one) => one.arrangement).sort()).toEqual(
-    Object.keys(ARRANGEMENTS).sort(),
-  )
+  const presets: string[] = SHIPPED_PRESETS.map((one) => one.arrangement)
+  expect(presets.sort()).toEqual(Object.keys(ARRANGEMENTS).sort())
   expect(contributionsOf('layout-preset').length).toBeGreaterThanOrEqual(3)
   expect(contributionsOf('theme').length).toBeGreaterThan(0)
 })
