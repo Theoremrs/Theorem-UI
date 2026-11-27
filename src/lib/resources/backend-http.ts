@@ -30,7 +30,8 @@ type WireRef =
   | { kind: 'conversation'; threadId: string }
   | { kind: 'extension'; namespace: string; resourceType: string; id: string }
 
-interface WireLocation {
+/** A `ResourceLocation` as the wire carries it; Work keeps one as an item's origin. */
+export interface WireLocation {
   resource: WireRef
   range?: {
     start: { line: number; character: number }
@@ -178,7 +179,7 @@ export function fromWireRef(ref: WireRef): ResourceIdentity {
   }
 }
 
-function toWireLocation(ref: ResourceRef): WireLocation | undefined {
+export function toWireLocation(ref: ResourceRef): WireLocation | undefined {
   // A message inside a thread is the message's own identity on the wire.
   const resource =
     ref.resource.kind === 'thread' && ref.location?.messageId
@@ -198,7 +199,10 @@ function toWireLocation(ref: ResourceRef): WireLocation | undefined {
   }
 }
 
-function fromWireLocation(location: WireLocation, label?: string): ResourceRef {
+export function fromWireLocation(
+  location: WireLocation,
+  label?: string,
+): ResourceRef {
   return {
     resource: fromWireRef(location.resource),
     revision:

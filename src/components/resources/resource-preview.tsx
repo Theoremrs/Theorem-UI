@@ -2,6 +2,7 @@
 import type { ComponentType } from 'react'
 import { createElement, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { commandById, executeCommand } from '@/lib/commands/registry'
 import { resolveHandler } from '@/lib/contributions/registry'
 import type { PreviewData } from '@/lib/resources/provider'
 import { STATE_DETAIL, STATE_LABEL } from '@/lib/resources/state'
@@ -56,6 +57,9 @@ export function DefaultPreviewBody({ preview }: { preview: PreviewData }) {
  * read until `enabled`. A resource that is not ready says so in plain words
  * and shows nothing it remembered.
  */
+/** Work's command, reached by id so this layer does not depend on Work. */
+const MAKE_WORK = 'theorem.work.create-from'
+
 export function ResourcePreview({
   resourceRef,
   enabled = true,
@@ -104,7 +108,7 @@ export function ResourcePreview({
           {refusal}
         </p>
       )}
-      <div>
+      <div className="flex gap-2">
         <Button
           size="sm"
           variant="outline"
@@ -112,6 +116,25 @@ export function ResourcePreview({
         >
           Open
         </Button>
+        {resourceRef.resource.kind !== 'work-item' &&
+          commandById(MAKE_WORK) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void executeCommand(
+                  MAKE_WORK,
+                  { ref: resourceRef },
+                  { focus: 'none', path: window.location.pathname },
+                  'menu',
+                ).then((result) => {
+                  if (!result.ok) setRefusal(result.message)
+                })
+              }
+            >
+              Make work item
+            </Button>
+          )}
       </div>
     </section>
   )

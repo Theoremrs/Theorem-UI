@@ -3,6 +3,7 @@
 // The shapes of /api/work/v1, plus the small request and page shapes the
 // WorkSource interface needs. Nothing here is GitHub-specific except the
 // optional fields the contract itself marks as such (pullRequest, repo).
+import type { WireLocation } from '@/lib/resources/backend-http'
 
 export type WorkStatusCategory =
   | 'triage'
@@ -80,6 +81,12 @@ export type WorkItem = {
   threadId?: string
   /** The run in that conversation. */
   runId?: string
+  /**
+   * What the item was made from (a message, a document passage, a record),
+   * as the person could see it then. Recorded once at creation (WORK-01);
+   * what it is now is asked of its owner.
+   */
+  origin?: WorkItemOrigin
   /** Opaque; sent as If-Match on PATCH. */
   revision: string
 }
@@ -319,6 +326,8 @@ export type WorkItemPatch = Partial<{
   dueAt: string | null
 }>
 
+export type WorkItemOrigin = { source: WireLocation; recordedAt: string }
+
 export type NewWorkItem = {
   title: string
   bodyMarkdown?: string
@@ -329,6 +338,8 @@ export type NewWorkItem = {
   labels?: string[]
   assignees?: string[]
   target?: { provider: 'github'; repo: string }
+  /** Make the item from this source; the server checks the person can see it. */
+  source?: WireLocation
 }
 
 export type InboxPage = {

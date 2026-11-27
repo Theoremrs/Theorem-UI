@@ -34,6 +34,8 @@ import {
 import { useWorkSource } from './source'
 import { describeEvent } from './timeline'
 import type { TimelineEvent, TimelineEventType, WorkItem } from './contract'
+import { ResourceChip } from '@/components/resources/resource-chip'
+import { fromWireLocation } from '@/lib/resources/backend-http'
 
 // Crepe is large and only wanted once someone edits a description.
 const MarkdownBlocks = lazy(() =>
@@ -224,6 +226,13 @@ function Properties({
             <Icon.Conversation className="size-3.5 shrink-0" />
             <span className="truncate">Open</span>
           </ThreadLink>
+        </Row>
+      )}
+      {item.origin && (
+        // Where it was made from, asked of its owner now: a source since
+        // deleted or hidden says so rather than showing what it was.
+        <Row label="Made from">
+          <ResourceChip resourceRef={fromWireLocation(item.origin.source)} />
         </Row>
       )}
       <Row label="Created">

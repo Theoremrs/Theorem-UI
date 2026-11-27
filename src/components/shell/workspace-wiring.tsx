@@ -2,12 +2,18 @@
 // none of them owns the shell: components/resources (the resource layer's
 // built-in providers and previews), lib/resources/backend-http (Theorem's
 // /api/resources/v1 Resolve and References routes behind that layer), lib/releases (release tracking and the
-// rollback recovery actions, through its vault wiring) and lib/shell/recovery
-// (the host's recovery page). Mounted once by the shell; renders nothing.
+// rollback recovery actions, through its vault wiring), lib/shell/recovery
+// (the host's recovery page), and components/work/from-source (making a Work
+// item from any resource). Mounted once by the shell; renders only that
+// dialog, while it is open.
 import { useEffect } from 'react'
 import { registerResourceLayer } from '@/components/resources'
 import { installBackend } from '@/lib/resources/backend'
 import { httpBackend } from '@/lib/resources/backend-http'
+import {
+  registerWorkFromSource,
+  WorkFromSourceHost,
+} from '@/components/work/from-source'
 import { useVaultClient } from '@/components/vault/vault-panels'
 import { recoveryActions } from '@/lib/releases/recovery'
 import { useReleases } from '@/lib/releases/store'
@@ -51,6 +57,8 @@ export function WorkspaceWiring() {
   // backend's (REF-02, LINK-04).
   useEffect(() => installBackend(httpBackend()), [])
   useEffect(() => connectReleaseRecovery(), [])
+  // Any surface can make a Work item from what it shows (WORK-01).
+  useEffect(() => registerWorkFromSource(), [])
   useReleaseTracking(client)
-  return null
+  return <WorkFromSourceHost />
 }
