@@ -70,10 +70,10 @@ test('the command opens the dialog, and the item is created with its source as a
   })
 })
 
-test('an item is not made from another item, nor from a source the wire cannot name', async () => {
+test('a source the wire cannot name, or no reference at all, is refused', async () => {
   unregister = registerWorkFromSource()
-  const itself = await run(live({ kind: 'work-item', itemId: 'wi_1' }))
-  expect(itself.ok).toBe(false)
+  // A follow-up to another item is made from it like any other source.
+  expect((await run(live({ kind: 'work-item', itemId: 'wi_1' }))).ok).toBe(true)
   const unnamed = await run(
     live({ kind: 'extension', extensionKind: 'acme.ticket', id: '1' }),
   )

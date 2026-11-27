@@ -14,9 +14,9 @@ const useWorkFromSource = create<{ from?: ResourceRef }>(() => ({}))
 
 /** Whether the Work owner can keep `ref` as an item's origin. */
 export const canMakeWorkFrom = (ref: ResourceRef) =>
-  // An item is not made from another item; a source the wire cannot name
-  // could not be recorded.
-  ref.resource.kind !== 'work-item' && toWireLocation(ref) !== undefined
+  // A source the wire cannot name could not be recorded. Another item is a
+  // source like any other: a follow-up keeps a link to what it follows.
+  toWireLocation(ref) !== undefined
 
 const refArgs = z.object({
   ref: z.custom<ResourceRef>(

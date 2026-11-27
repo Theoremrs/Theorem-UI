@@ -116,25 +116,24 @@ export function ResourcePreview({
         >
           Open
         </Button>
-        {resourceRef.resource.kind !== 'work-item' &&
-          commandById(MAKE_WORK) && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() =>
-                void executeCommand(
-                  MAKE_WORK,
-                  { ref: resourceRef },
-                  { focus: 'none', path: window.location.pathname },
-                  'menu',
-                ).then((result) => {
-                  if (!result.ok) setRefusal(result.message)
-                })
-              }
-            >
-              Make work item
-            </Button>
-          )}
+        {commandById(MAKE_WORK) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              void executeCommand(
+                MAKE_WORK,
+                { ref: resourceRef },
+                { focus: 'none', path: window.location.pathname },
+                'menu',
+              ).then((result) => {
+                if (!result.ok) setRefusal(result.message)
+              })
+            }
+          >
+            Make work item
+          </Button>
+        )}
       </div>
     </section>
   )
