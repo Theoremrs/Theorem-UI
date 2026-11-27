@@ -7,7 +7,13 @@ import { emptyRecord, useReleases } from '@/lib/releases'
 import type { ModuleRecord } from '@/lib/releases'
 import { ReleasesSection } from './releases-section'
 
-afterEach(cleanup)
+// The catalog is shared with every other test file: keep the built-ins that
+// registered at import, and put them back after each test.
+const shipped = useModuleCatalog.getState()
+afterEach(() => {
+  cleanup()
+  useModuleCatalog.setState(shipped, true)
+})
 beforeEach(() => {
   useReleases.setState({ modules: {} })
   useModuleCatalog.setState({ builtins: [], installed: [], problems: [] })
