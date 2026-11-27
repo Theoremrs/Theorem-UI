@@ -357,6 +357,20 @@ export async function* tailRun(
   }
 }
 
+/**
+ * Whether an abort was the person stopping the run. assistant-ui aborts with
+ * `detach` set when its runtime goes away (a panel closing, the view
+ * unmounting); that only stops watching a durable run, which finishes
+ * without this view (AGENT-03).
+ */
+export const stoppedByPerson = (signal: AbortSignal) =>
+  signal.aborted &&
+  !(
+    typeof signal.reason === 'object' &&
+    signal.reason !== null &&
+    (signal.reason as { detach?: unknown }).detach === true
+  )
+
 /** Reattach to a run that was live when the thread loaded (reload, tab switch). */
 async function* resumeLiveRun(
   runId: string,
@@ -372,7 +386,7 @@ async function* resumeLiveRun(
     }
   } finally {
     noteLiveRun(threadId, undefined)
-    if (!settled && abortSignal.aborted) {
+    if (!settled && stoppedByPerson(abortSignal)) {
       await mutate((headers) =>
         theorem().chat.runs.cancel({
           runId,
