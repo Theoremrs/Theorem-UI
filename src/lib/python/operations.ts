@@ -4,10 +4,13 @@
 // part, and the page answers with a `client-operation-receipt` command through
 // @theoremharness/sdk's chat.runs.command; @tanstack/react-query's
 // MutationObserver retries a receipt that failed to post. The run is Pyodide's
-// in the page's worker (runner.ts).
+// in the page's worker (runner.ts); a `machine.compute` call goes the same way
+// to the person's own machine (lib/machine/operations.ts).
 import type { ThreadMessage } from '@assistant-ui/react'
 import { MutationObserver, QueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
+import { MACHINE_COMPUTE, answerMachineRequest } from '@/lib/machine/operations'
+import type { MachineAnswer } from '@/lib/machine/operations'
 import { hasStatus, mutate, theorem } from '@/lib/theorem/client'
 import { runInBrowser } from './runner'
 import type { BrowserPythonOutcome } from './runner'
@@ -102,7 +105,7 @@ function pendingPythonRequests(
       (data.state ?? 'pending') !== 'pending' ||
       typeof requestRef !== 'string' ||
       typeof operation !== 'string' ||
-      !operation.startsWith('python.')
+      !(operation.startsWith('python.') || operation === MACHINE_COMPUTE)
     )
       return []
     return [
@@ -145,6 +148,9 @@ export interface PythonAnswer {
   readonly reason?: string
   readonly result?: BrowserPythonOutcome & { where: 'browser' }
 }
+
+/** What the page says back to a Python run or a call on the person's machine. */
+type Answer = PythonAnswer | MachineAnswer
 
 const strings = (value: unknown) =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
@@ -217,7 +223,7 @@ export async function answerPythonRequest(
 
 function postReceipt(
   request: PythonRunRequest,
-  receipt: PythonAnswer & { revision: number },
+  receipt: Answer & { revision: number },
 ) {
   return mutate((headers) =>
     theorem().chat.runs.command({
@@ -246,7 +252,7 @@ export function servePythonRequests(
   requests: ReadonlyArray<PythonRunRequest>,
   post: (
     request: PythonRunRequest,
-    receipt: PythonAnswer & { revision: number },
+    receipt: Answer & { revision: number },
   ) => Promise<unknown> = postReceipt,
   run: typeof runInBrowser = runInBrowser,
   retryDelay: (failures: number) => number = receiptDelay,
@@ -256,9 +262,12 @@ export function servePythonRequests(
       .filter((request) => !served.has(request.requestRef))
       .map(async (request) => {
         served.add(request.requestRef)
-        const answer = await answerPythonRequest(request, run)
+        const answer: Answer =
+          request.operation === MACHINE_COMPUTE
+            ? await answerMachineRequest(request.args)
+            : await answerPythonRequest(request, run)
         await new MutationObserver(receipts, {
-          mutationFn: (receipt: PythonAnswer & { revision: number }) =>
+          mutationFn: (receipt: Answer & { revision: number }) =>
             post(request, receipt),
           retry: (failures, error) =>
             failures < RECEIPT_RETRIES && !hasStatus(error, 400, 404, 409, 422),

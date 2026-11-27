@@ -6,14 +6,17 @@ import { appTurnOptions } from '@/lib/blocks/app-operations'
 import { faceTurnOptions } from '@/lib/face/operations'
 import { generativeTurnOptions } from '@/lib/generative/operations'
 import { kitTurnOptions } from '@/lib/kit/operations'
+import { machineTurnOptions } from '@/lib/machine/operations'
 import { pythonTurnOptions } from '@/lib/python/operations'
 import { workbenchTurnOptions } from '@/lib/workbench/agent/operations'
 
 /**
  * The page's operations for a turn: checking Apps and running Python always,
+ * computing on the person's machine while this browser is paired with one,
  * Kit and Theo while each is on screen, and the interface the reply may paint.
  * Theorem admits at most twenty a send; Kit's nine, the check, Python's run,
- * the face's three, the workbench's two and the present one are seventeen. The revision is Kit's stage's
+ * the machine's call, the face's three, the workbench's two and the present
+ * one are eighteen. The revision is Kit's stage's
  * when Kit is there, since Kit is the surface whose state a run must not act
  * on stale; a check changes nothing, the face is driven, not edited, and the workbench
  * answers with the revision the run expected (its tree has revisions of its own).
@@ -25,6 +28,7 @@ export function clientSurfaceTurnOptions() {
       ...('clientOperations' in kit ? kit.clientOperations : []),
       ...appTurnOptions().clientOperations,
       ...pythonTurnOptions().clientOperations,
+      ...machineTurnOptions().clientOperations,
       ...faceTurnOptions().clientOperations,
       ...workbenchTurnOptions().clientOperations,
       ...generativeTurnOptions().clientOperations,

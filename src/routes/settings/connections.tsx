@@ -1,4 +1,4 @@
-// SOURCING: @tanstack/react-router file route (validateSearch for what Theorem appends after a sign-in) over the settings frame; the sections are components/connections (GitHub, MCP servers, other connections)
+// SOURCING: @tanstack/react-router file route (validateSearch for what Theorem appends after a sign-in) over the settings frame; the sections are components/connections (GitHub, MCP servers, other connections, this machine)
 import { useCallback, useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
@@ -12,6 +12,7 @@ import type { ConnectionOutcome } from '@/components/connections/connection-retu
 import { GithubSection } from '@/components/connections/github-card'
 import { McpServers } from '@/components/connections/mcp-servers'
 import { OtherConnections } from '@/components/connections/other-connections'
+import { ThisMachine } from '@/components/connections/this-machine'
 import { SettingsPage } from '@/components/settings/settings-frame'
 import { connectionKeys } from '@/lib/theorem/connections'
 import { catalogKey } from '@/lib/theorem/catalog'
@@ -78,6 +79,7 @@ function ConnectionsSettings() {
       <GithubSection />
       <McpServers excludeGithub />
       <OtherConnections />
+      <ThisMachine />
     </SettingsPage>
   )
 }
