@@ -40,6 +40,7 @@ import {
 } from '@/lib/modules/sandbox'
 import { useModuleFiles, useVaultClient } from '@/lib/modules/store'
 import { AskAboutModule } from './module-agent'
+import { useRunningModuleFiles } from './running-release'
 import { WithFallback } from './module-fallback'
 import { useModuleActions, usePageRuntime } from './page-runtime'
 import type { ModuleFiles } from '@/lib/modules/store'
@@ -170,7 +171,15 @@ export function VaultModule({
   entry: string
   view: ModuleViewProps
 }) {
-  const files = useModuleFiles(client, folder, entry)
+  const vaultFiles = useModuleFiles(client, folder, entry)
+  // The active release runs, which after a rollback is not the vault's latest.
+  const running = useRunningModuleFiles(
+    definition.id,
+    folder,
+    entry,
+    vaultFiles.data,
+  )
+  const files = { error: vaultFiles.error, data: running }
   const key = grantKey(client.workspace.id, definition.id)
   const digest = files.data?.digest
   const grant = useModuleGrants((s) => grantFor(s.grants, key, digest))

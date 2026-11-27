@@ -51,6 +51,7 @@ import {
 } from '@/lib/shell/host-registry'
 import type { ShellPresentationProps } from '@/lib/shell/host-registry'
 import { ModePage } from '@/components/pages/mode-page'
+import { WorkspaceWiring } from './workspace-wiring'
 import { IdePageShown, OnIdePage } from '@/components/ide/ide-page'
 import { IdeStatusBar } from '@/components/ide/ide-status-bar'
 
@@ -577,6 +578,7 @@ export function ChatShell({
   )
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-rail text-ink">
+      <WorkspaceWiring />
       {custom && Custom ? (
         <ContributionBoundary
           area="shell"

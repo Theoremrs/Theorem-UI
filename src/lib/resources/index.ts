@@ -37,4 +37,4 @@ export type {
 } from './registry'
 export { installBackend } from './backend'
 export type { BackendRoutes } from './backend'
-export { hrefFor, registerBuiltInOpenHandlers } from './open'
+export { hrefFor, navigateByRoute, registerBuiltInOpenHandlers } from './open'

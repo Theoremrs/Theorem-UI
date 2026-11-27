@@ -179,12 +179,12 @@ export function registerBuiltin(definition: ModuleDefinition): () => void {
         at < 0 ? [...builtins, definition] : builtins.with(at, definition),
     }
   })
-  syncModuleContributions(allModules())
+  syncModuleContributions(admittedModules())
   return () => {
     useModuleCatalog.setState(({ builtins }) => ({
       builtins: builtins.filter((m) => m !== definition),
     }))
-    syncModuleContributions(allModules())
+    syncModuleContributions(admittedModules())
   }
 }
 
@@ -209,8 +209,22 @@ export function setInstalled(
     kept.push(definition)
   }
   useModuleCatalog.setState({ installed: kept, problems: refused })
-  syncModuleContributions(allModules())
+  syncModuleContributions(admittedModules())
 }
+
+/**
+ * Which catalog modules may register their commands and contributions. The
+ * releases owner sets it so a module the person turned off stays off when
+ * the vault is read again; by default every module is admitted.
+ */
+let admits: (id: string) => boolean = () => true
+export function setModuleAdmission(admit: (id: string) => boolean) {
+  admits = admit
+  syncModuleContributions(admittedModules())
+}
+export const admittedModules = (
+  catalog: Catalog = useModuleCatalog.getState(),
+) => allModules(catalog).filter((m) => admits(m.id))
 
 export const allModules = (catalog: Catalog = useModuleCatalog.getState()) => [
   ...catalog.builtins,

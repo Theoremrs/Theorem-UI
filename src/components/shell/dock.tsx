@@ -42,7 +42,9 @@ import {
 } from '@/components/workspace/workspace-file-panel'
 import { useNote } from '@/lib/theorem/notes'
 import { useFileDock } from '@/lib/theorem/project-files'
-import { useWorkspaceFileView } from '@/lib/workspace/open'
+import { fileRef, useWorkspaceFileView } from '@/lib/workspace/open'
+import { navigateByRoute, registerOpenHost } from '@/lib/resources'
+import type { OpenRequest } from '@/lib/resources'
 import { THREAD, followFront, holdsPanelsMenu } from './arrangements'
 import { FilePanel } from './file-panel'
 import { hasOwnView, ModeView, modeLabel, useShellMode } from './modes'
@@ -679,6 +681,28 @@ function springMaximize(dock: DockviewApi) {
     }),
   ]
 }
+/** Shows a resource the registry chose to open, in a panel where one exists. */
+function openResource(api: DockviewApi, request: OpenRequest) {
+  const { resource } = request.ref
+  switch (resource.kind) {
+    case 'document':
+      return openNote(api, resource.documentId)
+    case 'artifact':
+      return openArtifact(api, resource.artifactId)
+    case 'file':
+      return openWorkspaceFilePanel(
+        api,
+        fileRef({
+          workspaceId: resource.workspaceId,
+          path: resource.path,
+        }),
+        THREAD,
+      )
+    default:
+      return navigateByRoute(request)
+  }
+}
+
 /** Notes join the open note tabs, else open beside the conversation. */
 function openNote(api: DockviewApi, documentId: string) {
   const id = `${NOTE}${documentId}`
@@ -900,6 +924,13 @@ export function DockShell({
     }
     persistLayout()
   }, [dock, threadId, projectId])
+
+  // Resources open in this dock: notes, artifacts and workspace files as
+  // panels; any other kind still navigates by route (REF-04).
+  useEffect(() => {
+    if (!dock) return
+    return registerOpenHost((request) => openResource(dock, request))
+  }, [dock])
 
   // Panel commands: every panel action has a path that is not a drag.
   useEffect(() => {

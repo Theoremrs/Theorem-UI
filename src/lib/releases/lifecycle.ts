@@ -10,7 +10,7 @@ import type { CommandSource } from '@/lib/commands/registry'
 import { resolveHandler, useContributions } from '@/lib/contributions/registry'
 import type { RegisteredContribution } from '@/lib/contributions/registry'
 import { syncModuleContributions } from '@/lib/modules/contribute'
-import { allModules } from '@/lib/modules/registry'
+import { allModules, setModuleAdmission } from '@/lib/modules/registry'
 import { activeInstances } from './instance-scope'
 import { releaseRecords } from './store'
 import { addHistory } from './state'
@@ -80,6 +80,10 @@ export function removeContributionsBySource(
  */
 export const isModuleDisabled = (identity: string) =>
   releaseRecords.get(identity)?.disabled === true
+
+// The catalog sync reads this, so a vault re-read does not bring a disabled
+// module's registrations back.
+setModuleAdmission((identity) => !isModuleDisabled(identity))
 
 export type LifecycleResult = {
   removed: RemovedContributions
