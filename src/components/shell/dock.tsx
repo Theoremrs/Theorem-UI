@@ -522,13 +522,18 @@ function buildDefaultLayout(api: DockviewApi) {
   })
 }
 
-/** Restores a saved layout, or reports that it is unusable. */
+/**
+ * Restores a saved layout, or reports that it is unusable. `reuse` keeps the
+ * open panels' content in place, so a live conversation's editor and draft
+ * survive a slot switch rather than remounting.
+ */
 function restoreLayout(
   api: DockviewApi,
   dock: Parameters<DockviewApi['fromJSON']>[0],
+  reuse = false,
 ) {
   try {
-    api.fromJSON(dock)
+    api.fromJSON(dock, reuse ? { reuseExistingPanels: true } : undefined)
   } catch {
     api.clear()
     return false
@@ -963,6 +968,7 @@ export function DockShell({
       !restoreLayout(
         dock,
         loaded.vendor as unknown as Parameters<typeof dock.fromJSON>[0],
+        true,
       )
     )
       return
