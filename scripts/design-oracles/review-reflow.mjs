@@ -218,14 +218,26 @@ try {
       prose: p.getBoundingClientRect().toJSON(),
       editor: e.getBoundingClientRect().toJSON(),
       text: p.textContent,
+      viewportWidth: innerWidth,
       pageWidth: document.documentElement.scrollWidth,
     }
   })
+  // The centered composer is wider than the reply track in both directions.
+  const proseCenter = (rtl.prose.left + rtl.prose.right) / 2
+  const editorCenter = (rtl.editor.left + rtl.editor.right) / 2
   check(
-    'RTL and CJK content reflows with logical track alignment',
+    'RTL and CJK content reflows with centered, viewport-bounded tracks',
     rtl.direction === 'rtl' &&
-      rtl.pageWidth <= 320 &&
-      Math.abs(rtl.prose.right - rtl.editor.right) <= 1 &&
+      rtl.viewportWidth === 320 &&
+      rtl.pageWidth <= rtl.viewportWidth &&
+      [rtl.prose, rtl.editor].every(
+        (track) => track.left >= 0 && track.right <= rtl.viewportWidth,
+      ) &&
+      Math.abs(proseCenter - editorCenter) <= 1 &&
+      rtl.editor.width > rtl.prose.width &&
+      rtl.editor.left <= rtl.prose.left &&
+      rtl.editor.right >= rtl.prose.right &&
+      /مرحبا/.test(rtl.text) &&
       /日本語/.test(rtl.text),
     rtl,
   )
