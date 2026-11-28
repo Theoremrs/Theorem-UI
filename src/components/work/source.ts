@@ -4,6 +4,8 @@ import type { ReactNode } from 'react'
 import * as api from './api'
 import { WORK_EVENT_TYPES } from './contract'
 import type {
+  AgentAssignmentResult,
+  AssignAgentInput,
   InboxAction,
   InboxBulkAction,
   InboxEntry,
@@ -12,6 +14,7 @@ import type {
   NewWorkItem,
   SyncState,
   TimelineEvent,
+  WorkAgent,
   WorkEvent,
   WorkFacets,
   WorkItem,
@@ -52,6 +55,14 @@ export interface WorkSource {
     revision: string,
   ) => Promise<WorkItem>
   comment?: (itemId: string, bodyMarkdown: string) => Promise<TimelineEvent>
+  /** The agents an assignment can start; without it, nothing is offered. */
+  listAgents?: () => Promise<WorkAgent[]>
+  /** Records an assignment and starts its run (AGENT-02); `revision` is the item's. */
+  assignAgent?: (
+    itemId: string,
+    input: AssignAgentInput,
+    revision: string,
+  ) => Promise<AgentAssignmentResult>
   /** Creates the view, or replaces it when `revision` is given. */
   saveView?: (view: WorkView, revision?: string) => Promise<WorkView>
   deleteView?: (viewId: string) => Promise<void>
@@ -137,6 +148,8 @@ export const theoremWorkSource: WorkSource = {
   createItem: api.createItem,
   patchItem: api.patchItem,
   comment: api.addComment,
+  listAgents: api.listAgents,
+  assignAgent: api.assignAgent,
   saveView: api.putView,
   deleteView: api.deleteView,
   listInbox: api.listInbox,

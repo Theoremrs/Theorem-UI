@@ -3,6 +3,7 @@
 // Routing events, the depth and rate guards and composite scoping are this
 // app's own (docs/plans/modular-interface.md, "Connections").
 import type { TheoremContextReference } from '@theoremharness/sdk'
+import { create } from 'zustand'
 import { createStore } from 'zustand/vanilla'
 import type { StoreApi } from 'zustand/vanilla'
 import type { Route } from './contract'
@@ -22,6 +23,95 @@ export const MAX_EVENTS_PER_SECOND = 30
  * the instance in between (`used`) starts its next event afresh.
  */
 export const CHAIN_WINDOW_MS = 5000
+
+/**
+ * Why an event stopped, kept where a person can read it (EXT-06). `loop` is
+ * the same instance and event meeting itself inside one causal chain.
+ */
+export interface LoopDiagnostic {
+  id: string
+  at: number
+  kind: 'loop' | 'depth' | 'rate'
+  /** The durable id of the chain the event belonged to. */
+  causeId: string
+  /** `instance.event` for each hop the chain made, oldest first. */
+  hops: string[]
+  /** The instance that sent the event that was stopped: the source to stop. */
+  instance: string
+  event: string
+  message: string
+}
+
+interface Diagnostics {
+  records: LoopDiagnostic[]
+}
+
+const MAX_DIAGNOSTICS = 100
+
+export const useLoopDiagnostics = create<Diagnostics>()(() => ({
+  records: [],
+}))
+
+/** Every guard trip so far, newest last. */
+export const listLoopDiagnostics = (): readonly LoopDiagnostic[] =>
+  useLoopDiagnostics.getState().records
+
+export const clearLoopDiagnostics = () =>
+  useLoopDiagnostics.setState({ records: [] })
+
+let causeCounter = 0
+const newCauseId = (at: number) =>
+  `c${at.toString(36)}-${(++causeCounter).toString(36)}`
+
+/**
+ * The identity an event carries as it is handed on: one durable cause id for
+ * everything a first event sets off, and the hops it made. The depth and
+ * rate guards remain; this adds detection across delayed deliveries.
+ */
+export interface Causal {
+  causeId: string
+  hops: string[]
+}
+
+const openRuntimes = new Set<PageRuntime>()
+
+/** The runtimes of pages that are open now (not disposed). */
+export const openPageRuntimes = (): readonly PageRuntime[] => [...openRuntimes]
+
+export type ModuleActionResult =
+  { ok: true; instance: string } | { ok: false; message: string }
+
+/**
+ * Calls a module action on a placed instance of `moduleId` on an open page.
+ * A module command routes here. With no instance placed, or none handling the
+ * action, the answer says so instead of doing nothing (EXT-02).
+ */
+export function runModuleAction(
+  moduleId: string,
+  action: string,
+  payload: unknown,
+  instance?: string,
+): ModuleActionResult {
+  const placed = openPageRuntimes().flatMap((runtime) =>
+    runtime
+      .instancesOf(moduleId)
+      .filter((id) => !instance || id === instance)
+      .map((id) => ({ runtime, id })),
+  )
+  if (!placed.length)
+    return {
+      ok: false,
+      message: instance
+        ? `${instance} is not on an open page`
+        : `${moduleId} is not placed on the open page; add it to a page to run this`,
+    }
+  for (const { runtime, id } of placed)
+    if (runtime.act(id, action, payload)) return { ok: true, instance: id }
+  return {
+    ok: false,
+    message: `${moduleId} is placed but is not handling "${action}" yet`,
+  }
+}
 
 /** What the page lends its modules outside themselves. None calls a model. */
 export interface RuntimeHost {
@@ -80,8 +170,14 @@ export interface PageRuntime {
    * next is theirs, not a reply to the last action that reached it.
    */
   used: (instance: string) => void
-  /** Calls one of an instance's actions, as a route to it would. */
-  act: (instance: string, action: string, payload: unknown) => void
+  /** Calls one of an instance's actions, as a route to it would; false when nothing handled it. */
+  act: (instance: string, action: string, payload: unknown) => boolean
+  /** The placed instances of a module type, composite insides included. */
+  instancesOf: (type: string) => string[]
+  /** Stops an instance's events, as the person's own control (EXT-06). */
+  stop: (instance: string) => void
+  /** Lets a stopped instance send events again. */
+  restart: (instance: string) => void
   /** Hands an inner instance's event on as its composite's own event. */
   forward: (
     inner: string,
@@ -116,17 +212,45 @@ export function createPageRuntime(
   let depth = 0
   let disposed = false
   // The depth of the last action each instance was handed, and when.
-  const reached = new Map<string, { depth: number; at: number }>()
+  const reached = new Map<
+    string,
+    { depth: number; at: number; causal?: Causal }
+  >()
+  // The chain being handed on right now, so a handler that answers at once
+  // and one that answers later both continue the same cause.
+  let chain: Causal | undefined
   const handOn = (target: string, handler: ActionHandler, value: unknown) => {
-    reached.set(target, { depth, at: now() })
+    reached.set(target, { depth, at: now(), causal: chain })
     handler(value)
   }
   const carried = (instance: string) => {
     const last = reached.get(instance)
-    if (!last) return 0
-    if (now() - last.at < CHAIN_WINDOW_MS) return last.depth
+    if (!last) return { depth: 0 as number, causal: undefined }
+    if (now() - last.at < CHAIN_WINDOW_MS)
+      return { depth: last.depth, causal: last.causal }
     reached.delete(instance)
-    return 0
+    return { depth: 0 as number, causal: undefined }
+  }
+  const diagnose = (
+    kind: LoopDiagnostic['kind'],
+    instance: string,
+    event: string,
+    causal: Causal,
+    message: string,
+  ) => {
+    const record: LoopDiagnostic = {
+      id: `${causal.causeId}:${instance}.${event}:${kind}`,
+      at: now(),
+      kind,
+      causeId: causal.causeId,
+      hops: causal.hops,
+      instance,
+      event,
+      message,
+    }
+    useLoopDiagnostics.setState(({ records }) => ({
+      records: [...records, record].slice(-MAX_DIAGNOSTICS),
+    }))
   }
 
   const key = (instance: string, name: string) => `${instance}\u0000${name}`
@@ -141,7 +265,7 @@ export function createPageRuntime(
   }
 
   /** Whether the instance is within its event budget; stops it once it is not. */
-  const allowed = (instance: string) => {
+  const allowed = (instance: string, event: string) => {
     if (stopped.has(instance)) return false
     const at = now()
     const window = (recent.get(instance) ?? []).filter((t) => at - t < 1000)
@@ -149,6 +273,13 @@ export function createPageRuntime(
     recent.set(instance, window)
     if (window.length <= MAX_EVENTS_PER_SECOND) return true
     stopped.add(instance)
+    diagnose(
+      'rate',
+      instance,
+      event,
+      chain ?? { causeId: newCauseId(at), hops: [] },
+      `${instance} sent more than ${MAX_EVENTS_PER_SECOND} events in a second and was stopped`,
+    )
     host.notice?.(
       instance,
       'Stopped: it sent more events than a person could. Reload the page to start it again.',
@@ -157,14 +288,26 @@ export function createPageRuntime(
   }
 
   const emit = (instance: string, event: string, payload: unknown) => {
-    if (disposed || !allowed(instance)) return
+    if (disposed || !allowed(instance, event)) return
     // Outside a running chain, one an action started a moment ago goes on.
-    const inherited = depth === 0 ? carried(instance) : 0
-    if (depth + inherited >= MAX_EVENT_DEPTH) {
-      host.notice?.(
-        instance,
-        `"${event}" was handed on too many times and was dropped.`,
-      )
+    const inherited = depth === 0 ? carried(instance) : undefined
+    const before = chain ?? inherited?.causal
+    const causal: Causal = before ?? {
+      causeId: newCauseId(now()),
+      hops: [],
+    }
+    const hop = `${instance}.${event}`
+    if (causal.hops.includes(hop)) {
+      const message = `"${event}" came back to ${instance} through its own chain and was dropped. Stop ${instance} to end the loop.`
+      diagnose('loop', instance, event, causal, message)
+      host.notice?.(instance, message)
+      return
+    }
+    const carriedDepth = inherited?.depth ?? 0
+    if (depth + carriedDepth >= MAX_EVENT_DEPTH) {
+      const message = `"${event}" was handed on too many times and was dropped.`
+      diagnose('depth', instance, event, causal, message)
+      host.notice?.(instance, message)
       return
     }
     const wired = wiring.get(instance)
@@ -175,7 +318,9 @@ export function createPageRuntime(
       (wired &&
         lookup(wired.type)?.events.find((e) => e.name === event)?.type) ??
       'json'
-    depth += inherited + 1
+    const enclosing = chain
+    chain = { causeId: causal.causeId, hops: [...causal.hops, hop] }
+    depth += carriedDepth + 1
     try {
       for (const route of wired?.on[event] ?? []) {
         if ('host' in route.to) {
@@ -201,7 +346,8 @@ export function createPageRuntime(
       for (const next of forwards.get(key(instance, event)) ?? [])
         emit(next.outer, next.event, payload)
     } finally {
-      depth -= inherited + 1
+      depth -= carriedDepth + 1
+      chain = enclosing
     }
   }
 
@@ -212,7 +358,7 @@ export function createPageRuntime(
     }
   }
 
-  return {
+  const runtime: PageRuntime = {
     outputs,
     setOutput,
     wire: (instance, value) => {
@@ -234,7 +380,20 @@ export function createPageRuntime(
     },
     act: (instance, action, payload) => {
       const handler = disposed ? undefined : handlers.get(key(instance, action))
-      if (handler) handOn(instance, handler, payload)
+      if (!handler) return false
+      handOn(instance, handler, payload)
+      return true
+    },
+    instancesOf: (type) =>
+      [...wiring].filter(([, value]) => value.type === type).map(([id]) => id),
+    stop: (instance) => {
+      stopped.add(instance)
+    },
+    restart: (instance) => {
+      stopped.delete(instance)
+      recent.delete(instance)
+      // A restart is the person's: what it sends next starts a new cause.
+      reached.delete(instance)
     },
     route: (instance, on) => {
       const wired = wiring.get(instance)
@@ -257,6 +416,7 @@ export function createPageRuntime(
     emit,
     dispose: () => {
       disposed = true
+      openRuntimes.delete(runtime)
       wiring.clear()
       handlers.clear()
       reached.clear()
@@ -264,6 +424,9 @@ export function createPageRuntime(
     },
     resume: () => {
       disposed = false
+      openRuntimes.add(runtime)
     },
   }
+  openRuntimes.add(runtime)
+  return runtime
 }

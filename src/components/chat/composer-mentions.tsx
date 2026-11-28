@@ -12,7 +12,7 @@ import type {
   TriggerMatcher,
 } from '@assistant-ui/react'
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FC } from 'react'
 import { ComposerTriggerPopover } from '@/components/assistant-ui/elements/composer-trigger-popover.aui'
 import { BUILT_IN, builtInName } from '@/components/crm/model'
@@ -27,6 +27,16 @@ import type { ObjectType, RecordRow } from '@/components/records/contract'
 import { recordItemId, recordTitle } from '@/components/records/model'
 import { useDataModel } from '@/components/records/queries'
 import { create } from 'zustand'
+import {
+  decodeIdentity,
+  encodeIdentity,
+  toContextReference,
+} from '@/lib/resources/mention'
+import {
+  search as searchResources,
+  useResourceProviders,
+} from '@/lib/resources/registry'
+import type { SearchHit } from '@/lib/resources/provider'
 import { referenceKey, useComposerReferences } from './composer-references'
 import type { ComposerReference } from './composer-references'
 
@@ -66,9 +76,11 @@ export function mentionRank(title: string, query: string): number | undefined {
 type Cite = {
   icon: string
   kind: string
-  cite: 'record' | 'document'
+  cite: 'record' | 'document' | 'resource'
   objectType: string
   objectId: string
+  /** For a pick from the provider registry: the identity token, which decodes to the resource. */
+  token?: string
 }
 
 type Mention = TriggerItem & { metadata: Cite }
@@ -112,6 +124,13 @@ export function mentionReference(
   item: TriggerItem,
 ): ComposerReference | undefined {
   const cite = item.metadata as Partial<Cite> | undefined
+  if (cite?.cite === 'resource' && cite.token) {
+    // A kind picked from the provider registry: the token carries the identity.
+    const decoded = decodeIdentity(cite.token)
+    return decoded.known
+      ? toContextReference(decoded.resource, item.label)
+      : undefined
+  }
   if (!cite?.objectId || !cite.objectType) return undefined
   if (cite.cite === 'record')
     return recordReference(cite.objectType, cite.objectId, item.label)
@@ -151,6 +170,76 @@ export function matchRecords(
     )
     .slice(0, limit)
     .map(({ mention }) => mention)
+}
+
+/**
+ * A pick from a provider the registry holds. The directive's name is the
+ * identity token, so the mention keeps exactly what it names whatever its
+ * label says or whether the resource is still available.
+ */
+export const resourceMention = (hit: SearchHit): Mention => ({
+  id: encodeIdentity(hit.ref.resource),
+  type: 'resource',
+  label: hit.title,
+  metadata: {
+    icon: 'record',
+    kind: hit.typeLabel,
+    cite: 'resource',
+    token: encodeIdentity(hit.ref.resource),
+    objectType: hit.ref.resource.kind,
+    objectId: encodeIdentity(hit.ref.resource),
+  },
+})
+
+/** These two have their own sources above; every other searchable provider is asked through the registry. */
+const OWN_SOURCES = new Set(['theorem.records', 'theorem.documents'])
+
+/**
+ * Mentions for every other kind the provider registry can search (Work
+ * items, conversations, files, extension kinds). With none registered it asks
+ * nothing, and a group that failed or was bounded is reported, not hidden.
+ */
+function useRegistryMentions(q: string | undefined, open: boolean) {
+  const providers = useResourceProviders((state) => state.providers)
+  const ids = useMemo(
+    () =>
+      [...providers.values()]
+        .filter((p) => p.support.search && !OWN_SOURCES.has(p.id))
+        .map((p) => p.id),
+    [providers],
+  )
+  const enabled = open && q !== undefined && ids.length > 0
+  const result = useQuery({
+    queryKey: ['resources', 'mention', q, ids.join(',')],
+    queryFn: ({ signal }) =>
+      searchResources({
+        query: q ?? '',
+        providerIds: ids,
+        limit: MENTION_LIMIT,
+        signal,
+      }),
+    enabled,
+    staleTime: 10_000,
+    retry: false,
+  })
+  const items = useMemo(
+    () =>
+      (result.data?.groups ?? []).flatMap((group) =>
+        (group.page?.hits ?? []).slice(0, MENTION_LIMIT).map(resourceMention),
+      ),
+    [result.data],
+  )
+  const incomplete =
+    enabled &&
+    (result.isError ||
+      (result.data?.groups.some((g) => g.status !== 'ok') ?? false))
+  return {
+    items,
+    enabled,
+    pending: enabled && result.isPending,
+    incomplete,
+    retry: result.refetch,
+  }
 }
 
 const DEBOUNCE_MS = 150
@@ -408,8 +497,10 @@ export function ComposerMentionTrigger() {
         : [],
     [documents.data],
   )
+  const registry = useRegistryMentions(q, open)
   const failedRecords =
-    open && types.some((t) => records.statusOf(t) === 'failed')
+    open &&
+    (types.some((t) => records.statusOf(t) === 'failed') || registry.incomplete)
   const adapter = useMemo<TriggerAdapter>(
     () => ({
       categories: () => [],
@@ -418,18 +509,29 @@ export function ComposerMentionTrigger() {
       // on, they answer an earlier query and are not offered.
       search: (typed) =>
         typed.trim() === q
-          ? [...matchRecords(types, records.recordsOf, typed), ...documentItems]
+          ? [
+              ...matchRecords(types, records.recordsOf, typed),
+              ...documentItems,
+              ...registry.items,
+            ]
           : [],
     }),
-    [types, records, documentItems, q],
+    [types, records, documentItems, registry.items, q],
   )
   const loading =
     open &&
     (model.isPending ||
       query.trim() !== q ||
       documents.isPending ||
+      registry.pending ||
       types.some((type) => records.statusOf(type) === 'pending'))
-  const retryFailed = records.retryFailed
+  const retryRecords = records.retryFailed
+  const retryRegistry = registry.retry
+  const registryIncomplete = registry.incomplete
+  const retryFailed = useCallback(() => {
+    retryRecords()
+    if (registryIncomplete) void retryRegistry()
+  }, [retryRecords, retryRegistry, registryIncomplete])
   const note = useMemo(
     () => (
       <MentionNote

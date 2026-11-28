@@ -27,6 +27,9 @@ import { useCreateWorkItem, useWorkFacets } from './queries'
 import { useWorkTracker } from './settings'
 import { useWorkSource } from './source'
 import type { Option } from './edits'
+import { ResourceChip } from '@/components/resources/resource-chip'
+import { toWireLocation } from '@/lib/resources/backend-http'
+import type { ResourceRef } from '@/lib/resources/types'
 import type { NewWorkItem, WorkItem, WorkItemKind, WorkPriority } from './contract'
 
 const LOCAL = 'local'
@@ -126,11 +129,18 @@ export function NewItemDialog({
   onOpenChange,
   defaults,
   onCreated,
+  from,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   defaults?: NewItemDefaults
   onCreated?: (item: WorkItem) => void
+  /**
+   * What the item is made from (WORK-01). It travels as a reference only:
+   * none of its content is copied into the title or description, which the
+   * person writes themselves.
+   */
+  from?: ResourceRef
 }) {
   const facets = useWorkFacets().data
   const tracker = useWorkTracker()
@@ -144,6 +154,7 @@ export function NewItemDialog({
   const [labels, setLabels] = useState(defaults?.labels ?? [])
   const [assignees, setAssignees] = useState(defaults?.assignees ?? [])
   const [where, setWhere] = useState(LOCAL)
+  const origin = from ? toWireLocation(from) : undefined
 
   const repos =
     tracker.state === 'on' && tracker.github ? tracker.settings.github.repos : []
@@ -161,6 +172,7 @@ export function NewItemDialog({
       ...(labels.length && { labels }),
       ...(assignees.length && { assignees }),
       ...(where !== LOCAL && { target: { provider: 'github' as const, repo: where } }),
+      ...(origin && { source: origin }),
     }
     create.mutate(input, {
       onSuccess: (item) => {
@@ -194,6 +206,11 @@ export function NewItemDialog({
             onChange={(event) => setBody(event.target.value)}
             className="min-h-24"
           />
+          {from && (
+            <Row label="Made from">
+              <ResourceChip resourceRef={from} withPreview={false} />
+            </Row>
+          )}
           <div className="flex flex-col gap-2">
             <Choice
               label="Type"

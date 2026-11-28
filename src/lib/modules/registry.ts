@@ -6,13 +6,18 @@ import { create } from 'zustand'
 import type {
   AgentRepresentation,
   ComponentData,
+  Contributes,
   MigrationStep,
   ModuleFallback,
   ModuleManifest,
   PortSpec,
   RequestedCapabilities,
   SettingSpec,
+  TrustTier,
 } from './contract'
+import { syncModuleContributions } from './contribute'
+import { resolveDependencies } from './dependencies'
+import type { ResolvedDependency } from './dependencies'
 
 /** What a built-in module's view receives. */
 export interface ModuleViewProps {
@@ -75,6 +80,15 @@ export interface ModuleDefinition {
   agent?: AgentRepresentation
   /** What is shown instead when its sandbox is unavailable, not granted, or fails. */
   fallback?: ModuleFallback
+  /**
+   * How much of the host its code reaches. A built-in is `trusted` (host
+   * code, not sandboxed); a vault module is `isolated` or `composition`.
+   */
+  trust: TrustTier
+  /** What it adds to the workspace; registering it grants nothing. */
+  contributes?: Contributes
+  /** Declared packages as the App resolver resolved them (EXT-05). */
+  dependencies?: ResolvedDependency[]
 }
 
 const NONE: RequestedCapabilities = { read: [], write: [], state: [], net: [] }
@@ -97,6 +111,7 @@ export function builtin(
     actions: [],
     capabilities: NONE,
     migrations: [],
+    trust: 'trusted',
     ...rest,
     origin: 'builtin',
     implementation: { kind: 'builtin', Component },
@@ -133,6 +148,11 @@ export function fromManifest(
     path,
     agent: manifest.agent,
     fallback: manifest.fallback,
+    trust: implementation.kind === 'composite' ? 'composition' : 'isolated',
+    ...(manifest.contributes && { contributes: manifest.contributes }),
+    ...(manifest.dependencies && {
+      dependencies: resolveDependencies(manifest.dependencies),
+    }),
   }
 }
 
@@ -159,10 +179,13 @@ export function registerBuiltin(definition: ModuleDefinition): () => void {
         at < 0 ? [...builtins, definition] : builtins.with(at, definition),
     }
   })
-  return () =>
+  syncModuleContributions(admittedModules())
+  return () => {
     useModuleCatalog.setState(({ builtins }) => ({
       builtins: builtins.filter((m) => m !== definition),
     }))
+    syncModuleContributions(admittedModules())
+  }
 }
 
 export function setInstalled(
@@ -186,7 +209,22 @@ export function setInstalled(
     kept.push(definition)
   }
   useModuleCatalog.setState({ installed: kept, problems: refused })
+  syncModuleContributions(admittedModules())
 }
+
+/**
+ * Which catalog modules may register their commands and contributions. The
+ * releases owner sets it so a module the person turned off stays off when
+ * the vault is read again; by default every module is admitted.
+ */
+let admits: (id: string) => boolean = () => true
+export function setModuleAdmission(admit: (id: string) => boolean) {
+  admits = admit
+  syncModuleContributions(admittedModules())
+}
+export const admittedModules = (
+  catalog: Catalog = useModuleCatalog.getState(),
+) => allModules(catalog).filter((m) => admits(m.id))
 
 export const allModules = (catalog: Catalog = useModuleCatalog.getState()) => [
   ...catalog.builtins,

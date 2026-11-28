@@ -36,12 +36,22 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
-import type { CSSProperties } from 'react'
+import type { ComponentType, CSSProperties } from 'react'
 
+import { ContributionBoundary } from './contribution-boundary'
+import { moduleComponentOf } from './module-mount'
+import {
+  useHostContributions,
+  useNavEntries,
+  useSelectedShell,
+} from '@/lib/shell/host-registry'
+import type { ShellPresentationProps } from '@/lib/shell/host-registry'
 import { ModePage } from '@/components/pages/mode-page'
+import { WorkspaceWiring } from './workspace-wiring'
 import { IdePageShown, OnIdePage } from '@/components/ide/ide-page'
 import { IdeStatusBar } from '@/components/ide/ide-status-bar'
 
@@ -538,7 +548,14 @@ function DesktopShell(route: DockRoute) {
     </div>
   )
 }
-/** Rail, panel, conversation and artifacts. Mounted inside TheoremRuntimeProvider. */
+/**
+ * Rail, panel, conversation and artifacts. Mounted inside TheoremRuntimeProvider.
+ * The shipped presentation is the `theorem.shell.default` contribution. A
+ * `shell` contribution the person selected replaces it, receiving the same
+ * navigation and panel contributions; if it throws, the failure is recorded
+ * and the shipped presentation takes its place. Recovery and sign-in are
+ * mounted by the root, outside this component, so no shell can remove them.
+ */
 export function ChatShell({
   projectId,
   threadId,
@@ -546,9 +563,39 @@ export function ChatShell({
   projectId: string
   threadId: string | undefined
 }) {
+  const custom = useSelectedShell()
+  const navigation = useNavEntries()
+  const panels = useHostContributions('panel')
+  const shipped = <DesktopShell projectId={projectId} threadId={threadId} />
+  // A shell a module declares has no component code: the module runtime
+  // mounts it. Memoized so the mounted module is not remounted each render.
+  const Custom = useMemo(
+    () =>
+      (custom?.Component ??
+        (custom ? moduleComponentOf(custom) : undefined)) as
+        ComponentType<ShellPresentationProps> | undefined,
+    [custom],
+  )
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-rail text-ink">
-      <DesktopShell projectId={projectId} threadId={threadId} />
+      <WorkspaceWiring />
+      {custom && Custom ? (
+        <ContributionBoundary
+          area="shell"
+          contributionId={custom.id}
+          fallback={shipped}
+        >
+          <Custom
+            projectId={projectId}
+            threadId={threadId}
+            navigation={navigation}
+            panels={panels}
+            shipped={shipped}
+          />
+        </ContributionBoundary>
+      ) : (
+        shipped
+      )}
       <AgentComposer projectId={projectId} />
       <WorkspaceCommands />
       <SideTerminal />

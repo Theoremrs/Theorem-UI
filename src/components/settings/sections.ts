@@ -10,7 +10,11 @@ export const SETTINGS_GROUPS = [
     sections: [
       { path: '/settings/profile', label: 'Profile', Mark: UserRound },
       { path: '/settings/appearance', label: 'Appearance', Mark: Icon.Sun },
-      { path: '/settings/companions', label: 'Theo and Kit', Mark: Icon.Sparkle },
+      {
+        path: '/settings/companions',
+        label: 'Theo and Kit',
+        Mark: Icon.Sparkle,
+      },
       { path: '/settings/responses', label: 'Responses', Mark: Icon.ReadAloud },
       { path: '/settings/styles', label: 'Response styles', Mark: Icon.Draft },
     ],
@@ -27,18 +31,44 @@ export const SETTINGS_GROUPS = [
     // What the agent can reach and use.
     label: 'Tools',
     sections: [
-      { path: '/settings/connections', label: 'Connections', Mark: Icon.Plugin },
-      { path: '/settings/plugins', label: 'Plugins and skills', Mark: Icon.Skill },
+      {
+        path: '/settings/connections',
+        label: 'Connections',
+        Mark: Icon.Plugin,
+      },
+      {
+        path: '/settings/plugins',
+        label: 'Plugins and skills',
+        Mark: Icon.Skill,
+      },
       { path: '/settings/work', label: 'Work tracker', Mark: Icon.Checklist },
+      // Installed modules and apps: releases, recovery, disable, export and import.
+      {
+        path: '/settings/releases',
+        label: 'Modules and releases',
+        Mark: Icon.Archive,
+        width: 880,
+      },
+      // Which handler, application and shell serves what: the person's choice (EXT-03).
+      { path: '/settings/defaults', label: 'Defaults', Mark: Icon.Layout },
     ],
   },
   {
     // What your Theorem knows and how it is running.
     label: 'Your Theorem',
     sections: [
-      { path: '/settings/import', label: 'Import context', Mark: Icon.Download },
+      {
+        path: '/settings/import',
+        label: 'Import context',
+        Mark: Icon.Download,
+      },
       // Tables of turns and a time axis: wider than a page of fields.
-      { path: '/settings/observe', label: 'Observe', Mark: Icon.Eye, width: 1080 },
+      {
+        path: '/settings/observe',
+        label: 'Observe',
+        Mark: Icon.Eye,
+        width: 1080,
+      },
     ],
   },
 ] as const

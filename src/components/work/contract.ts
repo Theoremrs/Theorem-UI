@@ -3,6 +3,7 @@
 // The shapes of /api/work/v1, plus the small request and page shapes the
 // WorkSource interface needs. Nothing here is GitHub-specific except the
 // optional fields the contract itself marks as such (pullRequest, repo).
+import type { WireLocation } from '@/lib/resources/backend-http'
 
 export type WorkStatusCategory =
   | 'triage'
@@ -80,6 +81,12 @@ export type WorkItem = {
   threadId?: string
   /** The run in that conversation. */
   runId?: string
+  /**
+   * What the item was made from (a message, a document passage, a record),
+   * as the person could see it then. Recorded once at creation (WORK-01);
+   * what it is now is asked of its owner.
+   */
+  origin?: WorkItemOrigin
   /** Opaque; sent as If-Match on PATCH. */
   revision: string
 }
@@ -244,6 +251,7 @@ export type TimelineEventType =
   | 'reference'
   | 'milestone'
   | 'project'
+  | 'agent_assigned'
 
 export type TimelineEvent = {
   id: string
@@ -254,6 +262,42 @@ export type TimelineEvent = {
   bodyMarkdown?: string
   /** From and to values for a change. */
   data?: Record<string, unknown>
+}
+
+/** An agent an assignment can start (GET /api/work/v1/agents). */
+export type WorkAgent = {
+  id: string
+  label: string
+  available: boolean
+  unavailableReason?: string
+}
+
+/**
+ * POST /api/work/v1/items/:id/agent-assignments (AGENT-02). Each is one
+ * operation under its Idempotency-Key: sent again it starts nothing new.
+ */
+export type AssignAgentInput = {
+  agentId: string
+  instructions?: string
+  /** Stop the agent already working on the item first; never implied. */
+  replaceRunning?: boolean
+}
+
+export type AgentAssignment = {
+  assignmentId: string
+  itemId: string
+  agentId: string
+  assignedBy: WorkActor
+  assignedAt: string
+  runId?: string
+  threadId?: string
+  /** The run `replaceRunning` stopped before this one started. */
+  stoppedRunId?: string
+}
+
+export type AgentAssignmentResult = {
+  assignment: AgentAssignment
+  item: WorkItem
 }
 
 export type SyncState = {
@@ -319,6 +363,8 @@ export type WorkItemPatch = Partial<{
   dueAt: string | null
 }>
 
+export type WorkItemOrigin = { source: WireLocation; recordedAt: string }
+
 export type NewWorkItem = {
   title: string
   bodyMarkdown?: string
@@ -329,6 +375,8 @@ export type NewWorkItem = {
   labels?: string[]
   assignees?: string[]
   target?: { provider: 'github'; repo: string }
+  /** Make the item from this source; the server checks the person can see it. */
+  source?: WireLocation
 }
 
 export type InboxPage = {

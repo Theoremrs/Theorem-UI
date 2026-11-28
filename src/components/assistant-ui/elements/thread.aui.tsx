@@ -28,6 +28,9 @@ import { ComposerEditor } from '@/components/chat/composer-editor'
 import { Composer, composerSurface } from '@/components/chat/composer'
 import type { ComposerLayout, ComposerSlots } from '@/components/chat/composer'
 import { ReadAloud } from '@/components/chat/read-aloud'
+import { CREATE_FROM_COMMAND as MAKE_WORK } from '@/components/work/from-source'
+import { commandById, executeCommand } from '@/lib/commands/registry'
+import { live } from '@/lib/resources/types'
 import {
   ResponseDetailsDialog,
   ResponseDetailsItem,
@@ -874,6 +877,32 @@ const ForkFromMessage: FC = () => {
   )
 }
 /**
+ * Makes a Work item from this reply, keeping the message as the item's source
+ * (WORK-01). Only the reference travels; the person writes the item.
+ */
+const MakeWorkFromMessage: FC = () => {
+  const threadId = useAuiState((s) => s.threadListItem.remoteId)
+  const messageId = useAuiState((s) => s.message.id)
+  if (!threadId || !commandById(MAKE_WORK)) return null
+  return (
+    <ActionBarMorePrimitive.Item
+      className="aui-action-bar-more-item hover:bg-hover focus:bg-hover flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm outline-none select-none"
+      onSelect={() =>
+        void executeCommand(
+          MAKE_WORK,
+          { ref: live({ kind: 'message', threadId, messageId }) },
+          { focus: 'none', path: window.location.pathname },
+          'menu',
+        )
+      }
+    >
+      <Icon.Checklist className="size-4" />
+      Make work item
+    </ActionBarMorePrimitive.Item>
+  )
+}
+
+/**
  * Saving and expanding a view drawn in this reply. Views carry no chrome of
  * their own, so these sit in the reply's menu, shown only when it has one.
  */
@@ -941,6 +970,7 @@ const AssistantActionBar: FC = () => {
           className="aui-action-bar-more-content bg-popover text-popover-foreground shadow-popover data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-xl border p-1.5"
         >
           <ForkFromMessage />
+          <MakeWorkFromMessage />
           <ViewItems />
           <ResponseDetailsItem />
           <ActionBarPrimitive.ExportMarkdown

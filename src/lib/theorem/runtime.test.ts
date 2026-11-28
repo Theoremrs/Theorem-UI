@@ -67,6 +67,8 @@ let titleReadGate: (() => Promise<void>) | undefined
 let titleReads: string[] = []
 /** The event streams the next runs answer with; a run past them answers with `closedRun`. */
 let runEvents: string[] = []
+/** Runs a cancel was asked for. */
+let cancels: string[] = []
 
 function titleSnapshot(threadId: string) {
   const saved = titleThreads.get(threadId)!
@@ -185,6 +187,10 @@ async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
   const path = new URL(request.url).pathname
   if (path.endsWith('/bootstrap'))
     return Response.json({ csrfToken: 'csrf', tenantId: 't' })
+  if (path.endsWith('/cancel') && request.method === 'POST') {
+    cancels.push(path.split('/').at(-2)!)
+    return Response.json({ runId: path.split('/').at(-2), seq: 1 })
+  }
   if (path.endsWith('/events')) {
     return new Response(runEvents.shift() ?? closedRun, {
       headers: { 'content-type': 'text/event-stream' },
@@ -405,6 +411,30 @@ test('a reload reattaches to the run left live', async () => {
   const steps: unknown[] = []
   for await (const step of resume) steps.push(step)
   expect(JSON.stringify(steps)).toContain('Answered')
+})
+
+test('a view going away stops watching a live run; only a stop cancels it', async () => {
+  // assistant-ui's AbortError carries `detach` when its runtime goes away.
+  const abortedWith = (reason: unknown) => {
+    const controller = new AbortController()
+    controller.abort(reason)
+    return controller.signal
+  }
+  for (const [reason, cancelled] of [
+    [Object.assign(new Error('detached'), { detach: true }), []],
+    [Object.assign(new Error('stopped'), { detach: false }), ['run-live']],
+  ] as const) {
+    cancels = []
+    const threadId = `thread-${crypto.randomUUID()}`
+    liveRunId = 'run-live'
+    await createHistoryAdapter(() => threadId).load()
+    const resume = createHistoryAdapter(() => threadId).resume!({
+      ...options(''),
+      abortSignal: abortedWith(reason),
+    })
+    await drain(resume).catch(() => undefined)
+    expect(cancels).toEqual([...cancelled])
+  }
 })
 
 test('tailRun names the durable assistant message only once the run persists it', async () => {

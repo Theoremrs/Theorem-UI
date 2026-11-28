@@ -1,0 +1,11 @@
+// SOURCING: none. The shared resource components (REF-05, LINK-03, LINK-06) and the hooks behind them.
+export { ResourceChip, chipLabel } from './resource-chip'
+export { ResourcePreview, DefaultPreviewBody } from './resource-preview'
+export type { PreviewRendererProps } from './resource-preview'
+export { ResourcePicker, groupNotice, coverageNotice } from './resource-picker'
+export { ReferenceRow, ReferencesPanel } from './references-panel'
+export { Embed, EmbedRoot, embedModeLabel } from './embed'
+export { registerRecordPreview } from './record-preview-fields'
+export { openResource } from './open-resource'
+export { useResolved, usePreview, useReferences } from './use-resource'
+export { registerResourceLayer } from './register'
