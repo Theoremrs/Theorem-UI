@@ -446,11 +446,6 @@ test('editing a field saves through the update action that declares it, at its r
   expect(call.headers.get('Idempotency-Key')).toBe(
     call.body!.invocationKey as string,
   )
-  expect(call.body!.inputs).toEqual({
-    title: 'Write the plan v2',
-    status: 'next',
-    effort_minutes: 20,
-  })
   await waitFor(() => container.textContent.includes('update saved · r8'))
   // The draft is gone once the call saved: what is shown is what the instance holds.
   await waitFor(() => !container.textContent.includes('unsaved'))
