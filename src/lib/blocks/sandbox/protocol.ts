@@ -260,6 +260,14 @@ export interface PageMethods {
    * chunk, and a kept state against its digest.
    */
   'artifacts.run': { params: { id: string }; result: ReopenedRun }
+  /**
+   * A computation call, the same one the agent's `compute` operation takes
+   * (`run`, `submit`, `rerun`, `status`, `wait`, `receipt`, `compare`, ...),
+   * answered by Theorem's compute backend for this person.
+   */
+  'compute.call': { params: { request: Record<string, unknown> }; result: unknown }
+  /** A computation's output by job and name: its bytes and media type. */
+  'compute.output': { params: { job: string; name: string }; result: { bytes: Uint8Array; mediaType: string } }
 }
 
 /** A kept run as it is read back, from this or any other conversation or App. */

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import type { AppDocument, AppSnapshot } from '../theorem/apps'
 import { describeError } from '../theorem/client'
 import { appArtifacts } from '../theorem/app-artifacts'
+import { appCompute } from '../theorem/app-compute'
 import { traceRecording } from '../theorem/app-traces'
 import { contentDigest } from '../theorem/note-canonical'
 import { BridgeDenied } from './bridge'
@@ -116,6 +117,7 @@ export function pinnedAppHost(
     state,
     db,
     recording: traceRecording,
+    compute: appCompute(),
     client: {
       async read(path) {
         if (path !== 'index.html')
@@ -165,6 +167,7 @@ export function documentAppHost(
     state,
     db,
     recording: traceRecording,
+    compute: appCompute(),
     artifacts,
     client: {
       async read(path) {

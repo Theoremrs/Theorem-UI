@@ -80,6 +80,7 @@ import { Figures } from '@/components/face/figures'
 import { useKitRequests } from '@/lib/kit/operations'
 import { usePresentRequests } from '@/lib/generative/operations'
 import { useAppRequests } from '@/lib/blocks/app-operations'
+import { usePythonRequests } from '@/lib/python/operations'
 import { useFaceRequests } from '@/lib/face/operations'
 import { useWorkbenchRequests } from '@/lib/workbench/agent/operations'
 import { useSessionNoticeDelivery } from '@/lib/workbench/agent/deliver'
@@ -762,6 +763,8 @@ function useTheoremThreadRuntime() {
   useKitRequests(runtime)
   // The agent checks Apps with the page's compiler; this answers it.
   useAppRequests(runtime)
+  // The agent runs Python in the page's Pyodide; this answers it.
+  usePythonRequests(runtime)
   // The agent drives Theo, its face, through the page; this answers it.
   useFaceRequests(runtime, faceEffort)
   // The agent reads and acts on the workbench; this answers it.

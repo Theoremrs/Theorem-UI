@@ -9,6 +9,7 @@ import { useKitStage } from '@/lib/kit/stage'
 import { FACE_OPERATIONS } from '@/lib/face/operations'
 import { useFaceStage } from '@/lib/face/store'
 import { WORKBENCH_OPERATIONS } from '@/lib/workbench/agent/operations'
+import { PYTHON_OPERATIONS } from '@/lib/python/operations'
 import { clientSurfaceTurnOptions } from '@/lib/theorem/client-surface'
 import { DISPLAYED_CAPABILITIES } from '@/lib/artifacts/capabilities/records'
 import type { AppInspection } from './app-inspect'
@@ -110,6 +111,7 @@ describe('the operations a turn declares', () => {
     expect(clientSurfaceTurnOptions()).toEqual({
       clientOperations: [
         ...APP_OPERATIONS,
+        ...PYTHON_OPERATIONS,
         ...WORKBENCH_OPERATIONS,
         ...GENERATIVE_OPERATIONS,
       ],
@@ -122,6 +124,7 @@ describe('the operations a turn declares', () => {
       expect(options.clientOperations).toEqual([
         ...KIT_OPERATIONS,
         ...APP_OPERATIONS,
+        ...PYTHON_OPERATIONS,
         ...WORKBENCH_OPERATIONS,
         ...GENERATIVE_OPERATIONS,
       ])
@@ -133,6 +136,7 @@ describe('the operations a turn declares', () => {
       expect(everything).toEqual([
         ...KIT_OPERATIONS,
         ...APP_OPERATIONS,
+        ...PYTHON_OPERATIONS,
         ...FACE_OPERATIONS,
         ...WORKBENCH_OPERATIONS,
         ...GENERATIVE_OPERATIONS,

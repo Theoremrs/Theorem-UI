@@ -354,6 +354,20 @@ const theorem = {
       call<PageMethods, 'artifacts.run'>((await context_()).rpc, 'artifacts.run', { id }),
   },
   /**
+   * Theorem's computations, the same calls the agent's `compute` operation
+   * takes, run for this person: `call({ action: 'rerun', job, params })`
+   * recomputes a job with new parameters and no model; `run`, `submit`,
+   * `status`, `wait`, `receipt`, `compare` and `discover` work the same way.
+   * A job's outputs are read by name with `output(job, name)`. A refusal
+   * rejects with the backend's code in its message.
+   */
+  compute: {
+    call: async (request: { action: string; [key: string]: unknown }) =>
+      call<PageMethods, 'compute.call'>((await context_()).rpc, 'compute.call', { request }),
+    output: async (job: string, name: string) =>
+      call<PageMethods, 'compute.output'>((await context_()).rpc, 'compute.output', { job, name }),
+  },
+  /**
    * Capability instances a page module's manifest declared and the person
    * allowed, reached through the page with its own session: the App never
    * holds a credential. A refusal comes back as `{ ok: false, error }` with

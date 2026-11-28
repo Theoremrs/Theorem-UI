@@ -7,19 +7,21 @@ import { appTurnOptions } from '@/lib/blocks/app-operations'
 import { faceTurnOptions } from '@/lib/face/operations'
 import { generativeTurnOptions } from '@/lib/generative/operations'
 import { kitTurnOptions } from '@/lib/kit/operations'
+import { machineTurnOptions } from '@/lib/machine/operations'
+import { pythonTurnOptions } from '@/lib/python/operations'
 import { workbenchTurnOptions } from '@/lib/workbench/agent/operations'
 
 /**
- * The page's operations for a turn: checking Apps always, and Kit and Theo
- * while each is on screen, and the interface the reply may paint and the views
- * in it. Theorem admits at most twenty a send; Kit's nine, the App check and
- * control, the face's three, the workbench's two, present and view are
- * eighteen. The
- * revision is Kit's stage's when Kit is there, since Kit is the surface whose
- * state a run must not act on stale; a check changes nothing, a control's
- * receipt carries the value read back, the face is
- * driven, not edited, and the workbench answers with the revision the run
- * expected (its tree has revisions of its own).
+ * The page's operations for a turn: checking Apps and running Python always,
+ * computing on the person's machine while this browser is paired with one,
+ * Kit and Theo while each is on screen, and the interface the reply may paint
+ * and the views in it. Theorem admits at most twenty a send; Kit's nine, the
+ * App check and control, Python's run, the machine's call, the face's three,
+ * the workbench's two, present and view are twenty. The revision is Kit's
+ * stage's when Kit is there, since Kit is the surface whose state a run must
+ * not act on stale; a check changes nothing, a control's receipt carries the
+ * value read back, the face is driven, not edited, and the workbench answers
+ * with the revision the run expected (its tree has revisions of its own).
  * `capabilities` names the formats and components this page draws, so the
  * agent's search says what it can show here.
  */
@@ -29,6 +31,8 @@ export function clientSurfaceTurnOptions() {
     clientOperations: [
       ...('clientOperations' in kit ? kit.clientOperations : []),
       ...appTurnOptions().clientOperations,
+      ...pythonTurnOptions().clientOperations,
+      ...machineTurnOptions().clientOperations,
       ...faceTurnOptions().clientOperations,
       ...workbenchTurnOptions().clientOperations,
       ...generativeTurnOptions().clientOperations,

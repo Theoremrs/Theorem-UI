@@ -63,6 +63,7 @@ import { Route as ApiAppsV1SplatRouteImport } from './routes/api/apps/v1/$'
 import { Route as ApiArtifactsV1SplatRouteImport } from './routes/api/artifacts/v1/$'
 import { Route as ApiCapabilitiesV1SplatRouteImport } from './routes/api/capabilities/v1/$'
 import { Route as ApiChatV1SplatRouteImport } from './routes/api/chat/v1/$'
+import { Route as ApiComputeV1SplatRouteImport } from './routes/api/compute/v1/$'
 import { Route as ApiDocumentsV2SplatRouteImport } from './routes/api/documents/v2/$'
 import { Route as ApiEnvironmentV1SplatRouteImport } from './routes/api/environment/v1/$'
 import { Route as ApiFilesV1SplatRouteImport } from './routes/api/files/v1/$'
@@ -366,6 +367,11 @@ const ApiChatV1SplatRoute = ApiChatV1SplatRouteImport.update({
   path: '/api/chat/v1/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiComputeV1SplatRoute = ApiComputeV1SplatRouteImport.update({
+  id: '/api/compute/v1/$',
+  path: '/api/compute/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDocumentsV2SplatRoute = ApiDocumentsV2SplatRouteImport.update({
   id: '/api/documents/v2/$',
   path: '/api/documents/v2/$',
@@ -597,6 +603,7 @@ export interface FileRoutesByFullPath {
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
+  '/api/compute/v1/$': typeof ApiComputeV1SplatRoute
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
@@ -682,6 +689,7 @@ export interface FileRoutesByTo {
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
+  '/api/compute/v1/$': typeof ApiComputeV1SplatRoute
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
@@ -770,6 +778,7 @@ export interface FileRoutesById {
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
+  '/api/compute/v1/$': typeof ApiComputeV1SplatRoute
   '/api/documents/v2/$': typeof ApiDocumentsV2SplatRoute
   '/api/environment/v1/$': typeof ApiEnvironmentV1SplatRoute
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
@@ -858,6 +867,7 @@ export interface FileRouteTypes {
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
+    | '/api/compute/v1/$'
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
@@ -943,6 +953,7 @@ export interface FileRouteTypes {
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
+    | '/api/compute/v1/$'
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
@@ -1030,6 +1041,7 @@ export interface FileRouteTypes {
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
+    | '/api/compute/v1/$'
     | '/api/documents/v2/$'
     | '/api/environment/v1/$'
     | '/api/files/v1/$'
@@ -1093,6 +1105,7 @@ export interface RootRouteChildren {
   ApiArtifactsV1SplatRoute: typeof ApiArtifactsV1SplatRoute
   ApiCapabilitiesV1SplatRoute: typeof ApiCapabilitiesV1SplatRoute
   ApiChatV1SplatRoute: typeof ApiChatV1SplatRoute
+  ApiComputeV1SplatRoute: typeof ApiComputeV1SplatRoute
   ApiDocumentsV2SplatRoute: typeof ApiDocumentsV2SplatRoute
   ApiEnvironmentV1SplatRoute: typeof ApiEnvironmentV1SplatRoute
   ApiFilesV1SplatRoute: typeof ApiFilesV1SplatRoute
@@ -1505,6 +1518,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatV1SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/compute/v1/$': {
+      id: '/api/compute/v1/$'
+      path: '/api/compute/v1/$'
+      fullPath: '/api/compute/v1/$'
+      preLoaderRoute: typeof ApiComputeV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/documents/v2/$': {
       id: '/api/documents/v2/$'
       path: '/api/documents/v2/$'
@@ -1846,6 +1866,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiArtifactsV1SplatRoute: ApiArtifactsV1SplatRoute,
   ApiCapabilitiesV1SplatRoute: ApiCapabilitiesV1SplatRoute,
   ApiChatV1SplatRoute: ApiChatV1SplatRoute,
+  ApiComputeV1SplatRoute: ApiComputeV1SplatRoute,
   ApiDocumentsV2SplatRoute: ApiDocumentsV2SplatRoute,
   ApiEnvironmentV1SplatRoute: ApiEnvironmentV1SplatRoute,
   ApiFilesV1SplatRoute: ApiFilesV1SplatRoute,
