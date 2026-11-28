@@ -231,6 +231,196 @@ const sendHello = (recovery: ReturnType<typeof createSendRecovery>) =>
     body: JSON.stringify({ text: 'Hello', branchId: 'branch-1' }),
   })
 
+const otherOperations = [
+  ...Array.from({ length: 9 }, (_, index) => `kit.action${index}`),
+  'app.check',
+  'app.control',
+  'workbench.read',
+  'workbench.act',
+  'ui.present',
+  'ui.view',
+].map((name) => ({ name }))
+const faceOperations = ['face.read', 'face.perform', 'face.define'].map(
+  (name) => ({ name }),
+)
+const capabilityTurn = {
+  text: 'Ask about the selected record',
+  branchId: 'branch-1',
+  contextReferences: [{ location: { resource: { kind: 'capability' } } }],
+  clientSurface: { revision: 7, capabilities: ['component:Chart'] },
+  clientOperations: [...otherOperations, ...faceOperations],
+}
+
+const sendCapabilityTurn = (
+  recovery: ReturnType<typeof createSendRecovery>,
+  body = capabilityTurn,
+) =>
+  recovery.fetch('https://example.test/api/chat/v1/threads/thread-1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': 'stable-key',
+      'If-Match': '1',
+      'X-CSRF-Token': 'old-csrf',
+    },
+    body: JSON.stringify(body),
+  })
+
+test('a legacy surface refusal retries the same turn and persists its retry body', async () => {
+  const storage = storageFixture()
+  const received: Array<{ headers: Headers; body: unknown }> = []
+  const transport = Object.assign(
+    async (input: RequestInfo | URL) => {
+      const request = new Request(input)
+      received.push({ headers: request.headers, body: await request.json() })
+      if (received.length === 1) {
+        return Response.json(
+          {
+            code: 'invalid_chat_request',
+            detail: 'unknown field `capabilities`, expected `revision`',
+          },
+          { status: 422 },
+        )
+      }
+      if (received.length === 2) throw new TypeError('Network disconnected')
+      return Response.json({ run: { runId: 'run-1' } }, { status: 201 })
+    },
+    { preconnect: fetch.preconnect },
+  )
+  await expect(
+    sendCapabilityTurn(createSendRecovery(storage, transport)),
+  ).rejects.toThrow('Network disconnected')
+
+  const reloaded = createSendRecovery(storage, transport)
+  expect(
+    await reloaded.resume('thread-1', 'https://example.test', 'new-csrf'),
+  ).toBe('run-1')
+  const compatible = {
+    ...capabilityTurn,
+    clientSurface: { revision: 7 },
+    clientOperations: otherOperations,
+  }
+  expect(received.map(({ body }) => body)).toEqual([
+    capabilityTurn,
+    compatible,
+    compatible,
+  ])
+  expect(received.map(({ headers }) => headers.get('Idempotency-Key'))).toEqual(
+    ['stable-key', 'stable-key', 'stable-key'],
+  )
+  expect(received.map(({ headers }) => headers.get('If-Match'))).toEqual([
+    '1',
+    '1',
+    '1',
+  ])
+  expect(received.map(({ headers }) => headers.get('X-CSRF-Token'))).toEqual([
+    'old-csrf',
+    'old-csrf',
+    'new-csrf',
+  ])
+  expect(reloaded.has('thread-1')).toBe(false)
+})
+
+test.each([
+  [201, undefined],
+  [422, 'unknown field `extra`, expected `revision`'],
+])(
+  'a %i turn without the legacy surface refusal is sent once',
+  async (status, detail) => {
+    const bodies: unknown[] = []
+    const transport = Object.assign(
+      async (input: RequestInfo | URL) => {
+        bodies.push(await new Request(input).json())
+        return status === 201
+          ? Response.json({ run: { runId: 'run-1' } }, { status })
+          : Response.json({ code: 'invalid_chat_request', detail }, { status })
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const recovery = createSendRecovery(storageFixture(), transport)
+    expect((await sendCapabilityTurn(recovery)).status).toBe(status)
+    expect(bodies).toEqual([capabilityTurn])
+    expect(recovery.has('thread-1')).toBe(false)
+  },
+)
+
+test('a legacy refusal on replay does not rewrite an ambiguous original send', async () => {
+  const bodies: unknown[] = []
+  const transport = Object.assign(
+    async (input: RequestInfo | URL) => {
+      bodies.push(await new Request(input).json())
+      if (bodies.length === 1) throw new TypeError('Network disconnected')
+      return Response.json(
+        {
+          code: 'invalid_chat_request',
+          detail: 'unknown field `capabilities`, expected `revision`',
+        },
+        { status: 422 },
+      )
+    },
+    { preconnect: fetch.preconnect },
+  )
+  const recovery = createSendRecovery(storageFixture(), transport)
+  await expect(sendCapabilityTurn(recovery)).rejects.toThrow(
+    'Network disconnected',
+  )
+  await expect(
+    recovery.resume('thread-1', 'https://example.test', 'csrf'),
+  ).rejects.toBeInstanceOf(RefusedSend)
+  expect(bodies).toEqual([capabilityTurn, capabilityTurn])
+})
+
+test.each([
+  [
+    'the complete face group fits when removed',
+    [...otherOperations, ...faceOperations],
+    true,
+  ],
+  [
+    'only part of the face group is present',
+    [...otherOperations, ...faceOperations.slice(1)],
+    false,
+  ],
+  [
+    'the remaining operations still exceed the limit',
+    [
+      ...otherOperations,
+      ...faceOperations,
+      { name: 'one.more' },
+      { name: 'one.last' },
+    ],
+    false,
+  ],
+] as const)(
+  'an operation limit refusal retries only when %s',
+  async (_, operations, retry) => {
+    const bodies: unknown[] = []
+    const transport = Object.assign(
+      async (input: RequestInfo | URL) => {
+        bodies.push(await new Request(input).json())
+        if (bodies.length > 1)
+          return Response.json({ run: { runId: 'run-1' } }, { status: 201 })
+        return Response.json(
+          {
+            code: 'client_operations_invalid',
+            detail: 'at most 16 client operations may be declared',
+          },
+          { status: 422 },
+        )
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const recovery = createSendRecovery(storageFixture(), transport)
+    const turn = { ...capabilityTurn, clientOperations: [...operations] }
+    expect((await sendCapabilityTurn(recovery, turn)).status).toBe(
+      retry ? 201 : 422,
+    )
+    expect(bodies).toEqual(
+      retry ? [turn, { ...turn, clientOperations: otherOperations }] : [turn],
+    )
+  },
+)
+
 /** A send whose run did not start, so it stays saved; `answer` answers its replay. */
 async function savedSend(answer: () => Response) {
   let reply = () =>

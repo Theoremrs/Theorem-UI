@@ -23,6 +23,67 @@ type Answer = {
   detail?: string
   run?: { runId?: unknown }
 }
+type TurnPayload = {
+  role?: unknown
+  clientSurface?: Record<string, unknown>
+  clientOperations?: Array<{ name: string }>
+}
+
+const LEGACY_OPERATION_LIMIT = 16
+// These names identify Theo's optional group on the client-operation wire.
+const FACE_OPERATIONS = new Set(['face.read', 'face.perform', 'face.define'])
+
+function withoutFaceOperations(operations: TurnPayload['clientOperations']) {
+  if (!Array.isArray(operations) || operations.length <= LEGACY_OPERATION_LIMIT)
+    return undefined
+  const names = new Set(operations.map((operation) => operation?.name))
+  if ([...FACE_OPERATIONS].some((name) => !names.has(name))) return undefined
+  const remaining = operations.filter(
+    (operation) => !FACE_OPERATIONS.has(operation?.name),
+  )
+  if (
+    remaining.length <= LEGACY_OPERATION_LIMIT &&
+    operations.length - remaining.length === FACE_OPERATIONS.size
+  )
+    return remaining
+  return undefined
+}
+
+function legacyTurnBody(payload: TurnPayload, answer: Answer | undefined) {
+  const surface = payload.clientSurface
+  if (
+    surface &&
+    Array.isArray(surface.capabilities) &&
+    answer?.code === 'invalid_chat_request' &&
+    answer.detail === 'unknown field `capabilities`, expected `revision`'
+  ) {
+    // Servers before the artifact capability registry accept only the surface
+    // revision and cap operation declarations at sixteen.
+    const { capabilities: _capabilities, ...clientSurface } = surface
+    const clientOperations = withoutFaceOperations(payload.clientOperations)
+    return JSON.stringify({
+      ...payload,
+      clientSurface,
+      ...(clientOperations ? { clientOperations } : {}),
+    })
+  }
+  if (
+    answer?.code === 'client_operations_invalid' &&
+    answer.detail ===
+      `at most ${LEGACY_OPERATION_LIMIT} client operations may be declared`
+  ) {
+    const clientOperations = withoutFaceOperations(payload.clientOperations)
+    if (clientOperations)
+      return JSON.stringify({ ...payload, clientOperations })
+  }
+  return undefined
+}
+
+const turnAnswer = async (response: Response): Promise<Answer | undefined> =>
+  response
+    .clone()
+    .json()
+    .catch(() => undefined)
 
 /** Theorem refused a saved send for good, so its message never went in. */
 export class RefusedSend extends TheoremError {
@@ -88,7 +149,8 @@ export function createSendRecovery(
     const match = /^\/api\/chat\/v1\/threads\/([^/]+)\/messages$/.exec(path)
     if (request.method !== 'POST' || !match?.[1]) return transport(request)
     const body = await request.clone().text()
-    if ('role' in JSON.parse(body)) return transport(request)
+    const payload = JSON.parse(body) as TurnPayload
+    if ('role' in payload) return transport(request)
     const threadId = decodeURIComponent(match[1])
     const pending = {
       body,
@@ -102,11 +164,22 @@ export function createSendRecovery(
       )
     }
     storage.setItem(slot(threadId), JSON.stringify(pending))
-    const response = await transport(request)
-    const answer = (await response
-      .clone()
-      .json()
-      .catch(() => undefined)) as Answer | undefined
+    let response = await transport(request)
+    let answer = await turnAnswer(response)
+    const retryBody =
+      !existing && response.status === 422
+        ? legacyTurnBody(payload, answer)
+        : undefined
+    if (retryBody) {
+      // These old-contract refusals come from validation before the turn commits.
+      // Persist the exact retry body before it can be accepted under this key.
+      storage.setItem(
+        slot(threadId),
+        JSON.stringify({ ...pending, body: retryBody }),
+      )
+      response = await transport(new Request(request, { body: retryBody }))
+      answer = await turnAnswer(response)
+    }
     if (settles(response, answer, existing !== undefined))
       storage.removeItem(slot(threadId))
     return response
