@@ -118,11 +118,14 @@ export function decodeRecord(raw: unknown): RecordRow | undefined {
     if (typeof type === 'string' && typeof to === 'string')
       (relations[type] ??= []).push(to)
   }
-  return {
-    id: raw.id,
-    values: isObject(raw.fields) ? raw.fields : {},
-    relations,
-  }
+  // The Data API names a record's values `fields`; a record verb's result
+  // (create_one, update_one) returns the graph node, whose values are `properties`.
+  const values = isObject(raw.fields)
+    ? raw.fields
+    : isObject(raw.properties)
+      ? raw.properties
+      : {}
+  return { id: raw.id, values, relations }
 }
 
 export async function readRecords(
@@ -152,7 +155,9 @@ export async function readRecord(id: string) {
     `query Record($id: String!) { dataRecord(id: $id, hydrateLinks: true) }`,
     { id },
   )
-  const records = isObject(data.dataRecord) ? data.dataRecord.records : undefined
+  const records = isObject(data.dataRecord)
+    ? data.dataRecord.records
+    : undefined
   return decodeRecord(Array.isArray(records) ? records[0] : undefined)
 }
 
