@@ -50,6 +50,19 @@ export function workerEngine(): PythonEngine {
     name: 'theorem-python',
   })
   const rpc = rpcOver(worker)
+  // A worker that cannot load, or throws outside a call, fails the run now
+  // rather than at its time limit.
+  worker.addEventListener('error', (event) => {
+    event.preventDefault()
+    rpc.rejectAllPendingRequests(
+      `The Python worker failed: ${event.message || 'it could not be loaded.'}`,
+    )
+  })
+  worker.addEventListener('messageerror', () =>
+    rpc.rejectAllPendingRequests(
+      'The Python worker sent a message that could not be read.',
+    ),
+  )
   let onOutput: (stream: PythonStream, text: string) => void = () => {}
   rpc.addMethod('python.output', (params) => {
     const { stream, text } = params as { stream: PythonStream; text: string }

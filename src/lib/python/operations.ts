@@ -152,6 +152,16 @@ export interface PythonAnswer {
 /** What the page says back to a Python run or a call on the person's machine. */
 type Answer = PythonAnswer | MachineAnswer
 
+/** The session pattern the declaration states. */
+const SESSION = /^[A-Za-z0-9_-]{1,64}$/
+
+/** A path that stays inside the run's directory: relative, with no `..` part. */
+const insideRun = (path: string) =>
+  path !== '' &&
+  !path.startsWith('/') &&
+  !/^[A-Za-z]:/.test(path) &&
+  !path.split(/[\\/]/).some((part) => part === '..')
+
 const strings = (value: unknown) =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
 
@@ -162,16 +172,25 @@ function requestOf(args: Record<string, unknown>): PythonRequest | string {
     return 'Pass the Python to run as code.'
   if (packages !== undefined && !strings(packages))
     return 'packages is a list of package names.'
-  if (
-    files !== undefined &&
-    !Object.values(record(files)).every((text) => typeof text === 'string')
-  )
-    return 'files maps paths to text.'
+  if (files !== undefined) {
+    if (
+      typeof files !== 'object' ||
+      files === null ||
+      Array.isArray(files) ||
+      !Object.values(files).every((text) => typeof text === 'string')
+    )
+      return 'files maps paths to text.'
+    const outside = Object.keys(files).find((path) => !insideRun(path))
+    if (outside !== undefined)
+      return `files paths are relative to the run's directory; ${JSON.stringify(outside)} is not.`
+  }
+  if (session !== undefined && (typeof session !== 'string' || !SESSION.test(session)))
+    return 'session is 1 to 64 letters, digits, - or _.'
   return {
     code,
     ...(packages ? { packages: packages } : {}),
-    ...(files ? { files: record(files) as Record<string, string> } : {}),
-    ...(typeof session === 'string' && session ? { session } : {}),
+    ...(files ? { files: files as Record<string, string> } : {}),
+    ...(typeof session === 'string' ? { session } : {}),
   }
 }
 

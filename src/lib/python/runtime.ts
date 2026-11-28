@@ -170,7 +170,9 @@ async def run(code, files, session, limits):
         namespace = {"__name__": "__main__"}
     os.makedirs(root, exist_ok=True)
     for name, text in files.items():
-        path = os.path.join(root, name)
+        path = os.path.normpath(os.path.join(root, name))
+        if os.path.commonpath([root, path]) != root or path == root:
+            raise ValueError(f"{name!r} is outside the run's directory; files paths are relative to it.")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as file:
             file.write(text)
@@ -255,7 +257,12 @@ export async function runPython(
   if (request.packages?.length) {
     const micropip = py.pyimport('micropip')
     try {
-      await micropip.install(py.toPy(request.packages))
+      const packages = py.toPy(request.packages)
+      try {
+        await micropip.install(packages)
+      } finally {
+        packages.destroy()
+      }
     } catch (error) {
       return {
         error: `Installing ${request.packages.join(', ')} with micropip failed:\n${message(error)}`,
@@ -267,11 +274,14 @@ export async function runPython(
       micropip.destroy()
     }
   }
-  const text = await run(
-    request.code,
-    py.toPy(request.files ?? {}),
-    request.session ?? null,
-    py.toPy(RUN_LIMITS),
-  )
+  const files = py.toPy(request.files ?? {})
+  const limits = py.toPy(RUN_LIMITS)
+  let text: string
+  try {
+    text = await run(request.code, files, request.session ?? null, limits)
+  } finally {
+    files.destroy()
+    limits.destroy()
+  }
   return { ...(JSON.parse(text) as PythonRunResult), loaded: loadedSince() }
 }

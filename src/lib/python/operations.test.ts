@@ -138,6 +138,27 @@ test('a request without code, or for another operation, is rejected', async () =
   ).toMatchObject({ outcome: 'rejected' })
 })
 
+test('files that are not a map of relative paths, or a malformed session, are rejected', async () => {
+  for (const args of [
+    { code: 'x', files: 'data.csv' },
+    { code: 'x', files: ['a'] },
+    { code: 'x', files: { '../escape.txt': 'no' } },
+    { code: 'x', files: { '/etc/passwd': 'no' } },
+    { code: 'x', files: { 'a/../../b': 'no' } },
+    { code: 'x', session: '../other' },
+    { code: 'x', session: '' },
+  ])
+    expect(await answerPythonRequest(request(args), ran)).toMatchObject({
+      outcome: 'rejected',
+    })
+  expect(
+    await answerPythonRequest(
+      request({ code: 'x', files: { 'data/in.csv': '1' }, session: 'work_1' }),
+      ran,
+    ),
+  ).toMatchObject({ outcome: 'applied' })
+})
+
 test('each request is run and answered once, with the revision the run expected', async () => {
   const posted: Array<[string, unknown]> = []
   let runs = 0

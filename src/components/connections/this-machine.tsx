@@ -94,9 +94,9 @@ function Paired({ pairing }: { pairing: MachinePairing }) {
   )
 }
 
-function Unpaired() {
-  const [url, setUrl] = useState(DEFAULT_URL)
-  const [token, setToken] = useState('')
+function Unpaired({ linked }: { linked?: MachinePairing }) {
+  const [url, setUrl] = useState(linked?.url ?? DEFAULT_URL)
+  const [token, setToken] = useState(linked?.token ?? '')
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string>()
   const address = normalUrl(url)
@@ -160,21 +160,25 @@ function Unpaired() {
 /** Computing on the person's own machine: pairing this browser with its server. */
 export function ThisMachine() {
   const pairing = useMachinePairing()
+  // The link theorem-compute-serve prints carries the pairing after `#`. It
+  // only fills the form: pairing waits for Pair, which checks the server.
+  const [linked] = useState(() =>
+    typeof window === 'undefined'
+      ? undefined
+      : pairingFromHash(window.location.hash),
+  )
   useEffect(() => {
-    // The link theorem-compute-serve prints carries the pairing after `#`.
-    const linked = pairingFromHash(window.location.hash)
     if (!linked) return
-    setMachinePairing(linked)
     window.history.replaceState(
       window.history.state,
       '',
       window.location.pathname + window.location.search,
     )
-  }, [])
+  }, [linked])
   return (
     <SettingsSection title="Compute">
       <SettingsBox>
-        {pairing ? <Paired pairing={pairing} /> : <Unpaired />}
+        {pairing ? <Paired pairing={pairing} /> : <Unpaired linked={linked} />}
       </SettingsBox>
     </SettingsSection>
   )
