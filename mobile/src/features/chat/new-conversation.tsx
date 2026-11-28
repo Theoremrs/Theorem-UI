@@ -310,7 +310,7 @@ export function NewConversation({
         // Hidden while any start is busy: `start` clears the create key while `busy` runs
         // on through readiness and send, and a file chosen in that window would create a
         // second thread, splitting the typed words and the file across two conversations.
-        controls={chosen?.kind === 'theorem' && !busy ? <AttachButton onAcquire={attachToThread} /> : null}
+        leadingControls={chosen?.kind === 'theorem' && !busy ? <AttachButton onAcquire={attachToThread} /> : null}
         empty={
           <EmptyConversation
             title={chosen ? destinationName(chosen) : 'New conversation'}
