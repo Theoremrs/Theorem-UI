@@ -56,6 +56,8 @@ The November 27 integration and review fixes passed the app and test TypeScript 
 
 An existing native development client on the iOS 26.5 simulator loaded the reviewed branch through Metro. The app used its supported development-token sign-in against an isolated local Theorem authority. Signed-in Chat accepted composer input, recorded a new message, and queued a follow-up while a run was active. Pressing Stop paused the outbox and left the follow-up visible. The model was a local fixture. The simulator's regular OAuth path returned Apple's missing webcredentials-association error because the installed binary carried no associated-domains signing entitlement.
 
+A fresh launch of the reviewed program tree at `e482f939` showed the stopped run and paused follow-up after the restart. The fixture reply rendered its table, code and Copy control, reference link, and external-image prompt. The loopback image endpoint received zero requests before the reader action and one after Load external image. The leading attachment control opened Camera, Photos, and Files fully within the screen.
+
 - App and test TypeScript configurations passed.
 - Full mobile suite passed: 231 tests, 0 failures, 1,342 assertions across 25 files.
 - iOS production export passed: 2,592 modules and an 8.3 MB Hermes bundle.
