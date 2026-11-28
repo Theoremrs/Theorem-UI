@@ -255,11 +255,21 @@ export function saveAction(
   if (faithful) return { action: faithful, overrides: [] }
   // A generic update writes only what it is given: an action that also writes
   // a literal or the time it runs would change a field nobody edited unasked.
-  const generic = candidates.find(
-    (action) =>
-      action.effects.every((effect) => effect.source === 'input') &&
-      editedKeys.every((key) => inputKeyOf(action, key) !== undefined),
-  )
+  const generic = candidates.find((action) => {
+    const keys = editedKeys.map((key) => inputKeyOf(action, key))
+    if (keys.some((key) => key === undefined)) return false
+    const supplied = new Set([
+      ...keys,
+      ...action.input
+        .filter((field) => field.required)
+        .map((field) => field.key),
+    ])
+    return action.effects.every(
+      (effect) =>
+        effect.source === 'input' &&
+        (Object.hasOwn(edited, effect.fieldKey) || !supplied.has(effect.key)),
+    )
+  })
   if (generic) return { action: generic, overrides: [] }
   const declared = exact[0]
   return declared

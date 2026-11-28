@@ -43,6 +43,7 @@ let invokeDispatched = false
 let invokeFailure: { code: string; message: string } | undefined
 /** A receipt read back is refused. */
 let receiptRefused = false
+let recordReadGate: Promise<void> | undefined
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), {
     status,
@@ -103,6 +104,7 @@ beforeEach(() => {
   invokeDispatched = false
   invokeFailure = undefined
   receiptRefused = false
+  recordReadGate = undefined
   window.fetch = (async (info: RequestInfo | URL, init?: RequestInit) => {
     const request = info instanceof Request ? info : undefined
     const url = new URL(request ? request.url : String(info))
@@ -139,6 +141,7 @@ beforeEach(() => {
       })
     }
     if (rest[2] === 'records') {
+      if (recordReadGate) await recordReadGate
       // One record, read by id. Absent and withheld are the same refusal.
       const wanted = decodeURIComponent(rest[3] ?? '')
       const found = rows.find((one) => one.id === wanted)
@@ -434,10 +437,8 @@ test('editing a field saves through the update action that declares it, at its r
   await waitFor(() => container.textContent.includes('unsaved'))
   await act(async () => button(container, 'Save Title')?.click())
   const call = await waitFor(() => invoked()[0])
-  // `update` is the generic action: it declares an input for the edited field.
-  // An action writes its whole effect set, so the fields nobody edited ride at
-  // the values the row shows — which is why a declared action whose effects are
-  // exactly the edited fields is preferred over this one.
+  // An untouched lifecycle status must not be sent back as a self-transition.
+  expect(call.body!.inputs).toEqual({ title: 'Write the plan v2' })
   expect(call.body!.actionKey).toBe('update')
   expect(call.body!.recordId).toBe('rec-1')
   expect(call.body!.expectedRevision).toBe(6)
@@ -490,6 +491,40 @@ test('a stale revision is a reload-and-retry state', async () => {
     'changed this record while you were looking at it',
   )
   expect(button(container, 'Reload')).toBeTruthy()
+})
+
+test('a draft cannot be retried until the latest record has loaded', async () => {
+  invokeRefusal = { status: 409, code: codes.REVISION_CONFLICT }
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => editMark(container, 'Title')?.click())
+  const field = await waitFor(() => input(container, 'Title'))
+  type(field, 'My draft')
+  pressEnter(field)
+  await act(async () => button(container, 'Save Title')?.click())
+  await waitFor(() => button(container, 'Reload'))
+
+  const gate = Promise.withResolvers<void>()
+  recordReadGate = gate.promise
+  rows = taskRows.map((row) =>
+    row.id === 'rec-1' ? { ...row, revision: 7 } : row,
+  )
+  try {
+    await act(async () => button(container, 'Reload')?.click())
+    expect(button(container, 'Save Title')?.disabled).toBe(true)
+    expect(invoked()).toHaveLength(1)
+  } finally {
+    gate.resolve()
+  }
+
+  invokeRefusal = undefined
+  await waitFor(() => button(container, 'Save Title')?.disabled === false)
+  await act(async () => button(container, 'Save Title')?.click())
+  await waitFor(() => invoked().length === 2)
+  expect(invoked()[1]!.body).toMatchObject({
+    expectedRevision: 7,
+    inputs: { title: 'My draft' },
+  })
 })
 
 test('a record that is not in the collections says so', async () => {

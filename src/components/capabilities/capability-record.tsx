@@ -428,9 +428,19 @@ function CapabilityRecordBody({
     if (!row) return
     const saved = draft.values
     setConfirming(undefined)
-    // The action's inputs are the record's current values with the edits over
-    // them, so an input the person never touched is not sent as a blank.
-    void run(action, inputsFor(action, { ...row.fields, ...saved }), {
+    // An absent optional input leaves its field alone. Re-sending an
+    // untouched lifecycle status would attempt a transition to itself.
+    const values = inputsFor(action, saved)
+    const current = inputsFor(action, row.fields)
+    for (const input of action.input) {
+      if (
+        input.required &&
+        !Object.hasOwn(values, input.key) &&
+        Object.hasOwn(current, input.key)
+      )
+        values[input.key] = current[input.key]
+    }
+    void run(action, values, {
       revision: draft.base ?? row.revision,
       saved,
     })
@@ -507,17 +517,23 @@ function CapabilityRecordBody({
    * the record as it was, so it closes.
    */
   const reload = async () => {
+    if (running.current) return
+    running.current = true
+    setBusy(true)
     setStatus(undefined)
     setCalling(undefined)
     setConfirming(undefined)
-    const fresh = await found.refetch()
-    const revision =
-      fresh.data?.kind === 'found' ? fresh.data.row.revision : undefined
-    if (revision !== undefined) {
+    try {
+      const fresh = await found.refetch()
+      if (!fresh.isSuccess || fresh.data?.kind !== 'found') return
+      const { revision } = fresh.data.row
       setDraft((held) =>
         Object.keys(held.values).length ? { ...held, base: revision } : held,
       )
       setEditing((open) => open && { ...open, revision })
+    } finally {
+      running.current = false
+      setBusy(false)
     }
   }
 

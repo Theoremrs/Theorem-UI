@@ -68,6 +68,7 @@ import { Route as ApiEnvironmentV1SplatRouteImport } from './routes/api/environm
 import { Route as ApiFilesV1SplatRouteImport } from './routes/api/files/v1/$'
 import { Route as ApiLinkPreviewV1SplatRouteImport } from './routes/api/link-preview/v1/$'
 import { Route as ApiObserveV1SplatRouteImport } from './routes/api/observe/v1/$'
+import { Route as ApiPagesV1SplatRouteImport } from './routes/api/pages/v1/$'
 import { Route as ApiProjectFilesV1SplatRouteImport } from './routes/api/project-files/v1/$'
 import { Route as ApiSceneV1SplatRouteImport } from './routes/api/scene/v1/$'
 import { Route as ApiSpacesV1SplatRouteImport } from './routes/api/spaces/v1/$'
@@ -390,6 +391,11 @@ const ApiObserveV1SplatRoute = ApiObserveV1SplatRouteImport.update({
   path: '/api/observe/v1/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPagesV1SplatRoute = ApiPagesV1SplatRouteImport.update({
+  id: '/api/pages/v1/$',
+  path: '/api/pages/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiProjectFilesV1SplatRoute = ApiProjectFilesV1SplatRouteImport.update({
   id: '/api/project-files/v1/$',
   path: '/api/project-files/v1/$',
@@ -596,6 +602,7 @@ export interface FileRoutesByFullPath {
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
   '/api/link-preview/v1/$': typeof ApiLinkPreviewV1SplatRoute
   '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
+  '/api/pages/v1/$': typeof ApiPagesV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
@@ -680,6 +687,7 @@ export interface FileRoutesByTo {
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
   '/api/link-preview/v1/$': typeof ApiLinkPreviewV1SplatRoute
   '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
+  '/api/pages/v1/$': typeof ApiPagesV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
@@ -767,6 +775,7 @@ export interface FileRoutesById {
   '/api/files/v1/$': typeof ApiFilesV1SplatRoute
   '/api/link-preview/v1/$': typeof ApiLinkPreviewV1SplatRoute
   '/api/observe/v1/$': typeof ApiObserveV1SplatRoute
+  '/api/pages/v1/$': typeof ApiPagesV1SplatRoute
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
@@ -854,6 +863,7 @@ export interface FileRouteTypes {
     | '/api/files/v1/$'
     | '/api/link-preview/v1/$'
     | '/api/observe/v1/$'
+    | '/api/pages/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
@@ -938,6 +948,7 @@ export interface FileRouteTypes {
     | '/api/files/v1/$'
     | '/api/link-preview/v1/$'
     | '/api/observe/v1/$'
+    | '/api/pages/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
@@ -1024,6 +1035,7 @@ export interface FileRouteTypes {
     | '/api/files/v1/$'
     | '/api/link-preview/v1/$'
     | '/api/observe/v1/$'
+    | '/api/pages/v1/$'
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
@@ -1086,6 +1098,7 @@ export interface RootRouteChildren {
   ApiFilesV1SplatRoute: typeof ApiFilesV1SplatRoute
   ApiLinkPreviewV1SplatRoute: typeof ApiLinkPreviewV1SplatRoute
   ApiObserveV1SplatRoute: typeof ApiObserveV1SplatRoute
+  ApiPagesV1SplatRoute: typeof ApiPagesV1SplatRoute
   ApiProjectFilesV1SplatRoute: typeof ApiProjectFilesV1SplatRoute
   ApiSceneV1SplatRoute: typeof ApiSceneV1SplatRoute
   ApiSpacesV1SplatRoute: typeof ApiSpacesV1SplatRoute
@@ -1527,6 +1540,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiObserveV1SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/pages/v1/$': {
+      id: '/api/pages/v1/$'
+      path: '/api/pages/v1/$'
+      fullPath: '/api/pages/v1/$'
+      preLoaderRoute: typeof ApiPagesV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/project-files/v1/$': {
       id: '/api/project-files/v1/$'
       path: '/api/project-files/v1/$'
@@ -1831,6 +1851,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiFilesV1SplatRoute: ApiFilesV1SplatRoute,
   ApiLinkPreviewV1SplatRoute: ApiLinkPreviewV1SplatRoute,
   ApiObserveV1SplatRoute: ApiObserveV1SplatRoute,
+  ApiPagesV1SplatRoute: ApiPagesV1SplatRoute,
   ApiProjectFilesV1SplatRoute: ApiProjectFilesV1SplatRoute,
   ApiSceneV1SplatRoute: ApiSceneV1SplatRoute,
   ApiSpacesV1SplatRoute: ApiSpacesV1SplatRoute,
