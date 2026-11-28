@@ -133,8 +133,8 @@ export function useCapabilityRows(
       return page
     },
     initialPageParam: undefined as string | undefined,
-    // An absent cursor is the last page.
-    getNextPageParam: (last: QueryResult) => last.nextCursor,
+    getNextPageParam: (last, _pages, _current, cursors) =>
+      cursors.includes(last.nextCursor) ? undefined : last.nextCursor,
     enabled: enabled && !!instanceId && !!viewKey,
     staleTime: 10_000,
     retry,
@@ -156,28 +156,67 @@ export function flattenRows(data: { pages: QueryResult[] } | undefined) {
   }
 }
 
-/**
- * One page over a collection, for a control that picks a record to reference.
- * A single page each: a picker reads a bounded slice and says so, rather than
- * walking a whole collection to fill a dropdown.
- */
+type PickerCursors = Record<string, string | undefined>
+
+/** Reference choices by collection. Read another page only when requested. */
 export function useCapabilityPickers(
   instanceId: string | undefined,
   collectionKeys: ReadonlyArray<string>,
 ) {
-  const joined = collectionKeys.join('\u0000')
-  return useQuery({
-    queryKey: [...capabilityKeys.instance(instanceId ?? ''), 'pickers', joined],
-    queryFn: async () => {
-      const pages = await Promise.all(
-        collectionKeys.map((key) =>
-          queryCollection(instanceId!, key, { limit: QUERY_LIMIT_MAX }),
+  const initialPageParam: PickerCursors = Object.fromEntries(
+    collectionKeys.map((key) => [key, undefined]),
+  )
+  return useInfiniteQuery({
+    queryKey: [
+      ...capabilityKeys.instance(instanceId ?? ''),
+      'pickers',
+      collectionKeys,
+    ],
+    queryFn: async ({ pageParam }) =>
+      Object.fromEntries(
+        await Promise.all(
+          Object.entries(pageParam).map(
+            async ([key, cursor]) =>
+              [
+                key,
+                await queryCollection(instanceId!, key, {
+                  limit: QUERY_LIMIT_MAX,
+                  cursor,
+                }),
+              ] as const,
+          ),
         ),
+      ),
+    initialPageParam,
+    getNextPageParam: (
+      last,
+      _pages,
+      _current,
+      usedPages,
+    ): PickerCursors | undefined => {
+      const next = Object.entries(last).flatMap(([key, { nextCursor }]) =>
+        nextCursor !== undefined &&
+        !usedPages.some((used) => used[key] === nextCursor)
+          ? [[key, nextCursor] as const]
+          : [],
       )
-      return Object.fromEntries(
-        collectionKeys.map((key, at) => [key, pages[at]!.records]),
-      )
+      return next.length ? Object.fromEntries(next) : undefined
     },
+    select: ({ pages }) =>
+      Object.fromEntries(
+        collectionKeys.map((key) => [
+          key,
+          [
+            ...new Map(
+              pages.flatMap((page) =>
+                (page[key]?.records ?? []).map(
+                  (record) => [record.id, record] as const,
+                ),
+              ),
+            ).values(),
+          ],
+        ]),
+      ),
     enabled: !!instanceId && collectionKeys.length > 0,
     staleTime: 30_000,
     retry,

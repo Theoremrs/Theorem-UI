@@ -3,6 +3,7 @@
 // Table; the page module boundary (lib/modules/registry) and its composer reference path. Data is
 // only ever lib/capabilities/api: one view's rows, one declared action per click, no model call.
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { isEqual } from 'lodash-es'
 import { askAbout } from '@/components/chat/composer-references'
 import {
   Empty,
@@ -631,8 +632,16 @@ function MoreRows({
   total: number
   truncated: boolean
 }) {
+  const next = query.data?.pages.at(-1)?.nextCursor
+  const repeated = next !== undefined && query.data?.pageParams.includes(next)
   return (
     <>
+      {repeated && (
+        <p role="alert" className="p-2 text-xs text-error-ink">
+          The view returned a page cursor it already used. The next page cannot
+          be read.
+        </p>
+      )}
       {query.isFetchNextPageError && (
         <p role="alert" className="p-2 text-xs text-error-ink">
           {query.error instanceof EchoedCursorError
@@ -852,7 +861,7 @@ function CapabilityTableBody({
   // Each open form has its own number, so the answer to a call made from one
   // closes that form and never a newer one opened since.
   const forms = useRef(0)
-  const [adding, setAdding] = useState<number>()
+  const [adding, setAdding] = useState<{ action: ActionSpec; form: number }>()
   const [calling, setCalling] = useState<{
     action: ActionSpec
     row: CapabilityRecordRow
@@ -885,6 +894,20 @@ function CapabilityTableBody({
     view.settings.actions,
     grant,
   )
+  const offered = view.settings.actions
+  const currentCreate =
+    adding &&
+    definition.actions.find((action) => action.key === adding.action.key)
+  const activeAdd =
+    adding &&
+    currentCreate?.collectionKey === spec.collectionKey &&
+    canInvoke(grant, adding.action.key) &&
+    (!Array.isArray(offered) || offered.includes(adding.action.key)) &&
+    isEqual(adding.action, currentCreate)
+      ? adding
+      : undefined
+  if (adding && !activeAdd) setAdding(undefined)
+  const createAction = activeAdd?.action ?? quick
 
   /**
    * The envelope the composer carries: what is on screen, and no record bodies.
@@ -996,7 +1019,7 @@ function CapabilityTableBody({
   /** Close the form a finished call came from, if it is still the one open. */
   const closeForm = (form: number | undefined) => {
     if (form === undefined) return
-    setAdding((open) => (open === form ? undefined : open))
+    setAdding((open) => (open?.form === form ? undefined : open))
     setCalling((open) => (open?.form === form ? undefined : open))
   }
 
@@ -1168,16 +1191,24 @@ function CapabilityTableBody({
           its rows in the view's own order.
         </p>
       )}
-      {quick && (
+      {createAction && (
         <QuickAdd
           instanceId={instanceId}
-          action={quick}
-          adding={adding !== undefined}
+          action={createAction}
+          adding={activeAdd !== undefined}
           grant={grant}
           schemas={described.collectionSchemas}
           busy={pending}
-          onAdding={(open) => setAdding(open ? ++forms.current : undefined)}
-          onSubmit={(values) => void run({ action: quick }, values, adding)}
+          onAdding={(opened) =>
+            setAdding(
+              opened
+                ? { action: createAction, form: ++forms.current }
+                : undefined,
+            )
+          }
+          onSubmit={(values) => {
+            if (activeAdd) void run(activeAdd, values, activeAdd.form)
+          }}
         />
       )}
       <div className="min-h-0 flex-1 overflow-auto">

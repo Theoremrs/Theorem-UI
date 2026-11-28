@@ -286,9 +286,13 @@ export function AuthoringDialog({
     })
     try {
       await client.invalidateQueries(
-        { queryKey: capabilityKeys.instance(instanceId) },
+        { queryKey: capabilityKeys.describe(instanceId), exact: true },
         { throwOnError: true },
       )
+      void client.invalidateQueries({
+        queryKey: capabilityKeys.rows(instanceId, viewKey),
+        exact: true,
+      })
       setStatus({
         kind: 'failed',
         message: `${conflict} The current definition has been read again: check your change against the fields now shown and submit it once more.`,

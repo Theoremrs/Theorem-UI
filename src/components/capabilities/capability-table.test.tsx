@@ -20,6 +20,7 @@ import type {
   InvokeTarget,
   QueryFilter,
   QueryRequest,
+  QueryResult,
   Grant,
 } from '@/lib/capabilities/contract'
 import {
@@ -28,6 +29,7 @@ import {
   ownerGrant,
   queryResult,
   readerGrant,
+  row,
   taskRows,
   trackerDefinition,
 } from './fixture'
@@ -65,6 +67,7 @@ let answers: Record<
 >
 /** The next query answers this problem instead of rows. */
 let queryRefusal: string | undefined
+let cursorPages: Map<string | undefined, QueryResult> | undefined
 /** Invokes answer a journaled call that has not finished. */
 let invokeDispatched = false
 /** A receipt read back answers this problem instead of the finished call. */
@@ -104,6 +107,7 @@ beforeEach(() => {
   library = []
   invokeOutcome = undefined
   queryRefusal = undefined
+  cursorPages = undefined
   invokeDispatched = false
   receiptRefusal = undefined
   answers = {
@@ -165,6 +169,8 @@ beforeEach(() => {
     if (tail === 'query') {
       if (queryRefusal) return problem(503, queryRefusal)
       const asked = body as unknown as QueryRequest
+      if (asked.viewKey === 'next' && cursorPages)
+        return json(cursorPages.get(asked.cursor) ?? queryResult([]))
       const answer = answers[asked.viewKey ?? ''] ?? {
         rows: [],
         filtered: false,
@@ -419,6 +425,52 @@ test('a second click while a create is running is not a second create', async ()
   })
   await waitFor(() => container.textContent.includes('add saved'))
   expect(sentTo('/invoke').length).toBe(1)
+})
+
+test('quick-add keeps its create action through refresh and closes if that action disappears', async () => {
+  const { container, queryClient } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Add task')?.click())
+  const field = () =>
+    container.querySelector<HTMLInputElement>('input[aria-label="title"]')
+  type(await waitFor(field), 'Draft for the original action')
+
+  const original = described.definition.actions.find(
+    (action) => action.key === 'add',
+  )!
+  const replacement = {
+    ...original,
+    key: 'add-replacement',
+    label: 'Add replacement',
+  }
+  const refresh = async (actions: typeof described.definition.actions) => {
+    described = {
+      ...described,
+      definition: { ...described.definition, actions },
+    }
+    await act(async () => {
+      queryClient.setQueryData(
+        capabilityKeys.describe('tracker/main'),
+        described,
+      )
+    })
+    await settle()
+  }
+  await refresh([replacement, ...described.definition.actions])
+  expect(field()?.value).toBe('Draft for the original action')
+  expect(button(container, 'Add task')).toBeDefined()
+  expect(button(container, 'Add replacement')).toBeUndefined()
+
+  await refresh(
+    described.definition.actions.filter(
+      (action) => action.key !== original.key,
+    ),
+  )
+  await waitFor(() => button(container, 'Add replacement'))
+  expect(field()).toBeNull()
+  expect(sentTo('/invoke')).toHaveLength(0)
+  await act(async () => button(container, 'Add replacement')?.click())
+  expect((await waitFor(field)).value).toBe('')
 })
 
 test('a refusal the executor answers with is a failed state, not a silent one', async () => {
@@ -1560,6 +1612,32 @@ test('a second page loads on asking, and an answer the page cut short says how m
   expect(cut.container.textContent).toContain(
     `The page cut the answer short: ${taskRows.length} of 9 rows are shown.`,
   )
+})
+
+test('a view stops if the server returns a page cursor used earlier in the walk', async () => {
+  const page = (record: CapabilityRecordRow, nextCursor: string) =>
+    queryResult([record], { total: 4, nextCursor })
+  cursorPages = new Map([
+    [undefined, page(taskRows[0]!, 'first')],
+    ['first', page(taskRows[1]!, 'second')],
+    ['second', page(row('rec-3', { title: 'Last distinct page' }, 1), 'first')],
+  ])
+  const { container } = await showTable()
+  const more = 'Load more (4 in all)'
+  await waitFor(() => button(container, more))
+  await act(async () => button(container, more)?.click())
+  await waitFor(() => container.textContent.includes('Sketch the page'))
+  await act(async () => button(container, more)?.click())
+  await waitFor(() => container.textContent.includes('Last distinct page'))
+  expect(container.textContent).toContain(
+    'returned a page cursor it already used',
+  )
+  expect(button(container, more)).toBeUndefined()
+  expect(sentTo('/query').map((call) => call.body?.cursor)).toEqual([
+    undefined,
+    'first',
+    'second',
+  ])
 })
 
 test('a row action with inputs asks for them first, naming the record at the revision on screen', async () => {

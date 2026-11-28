@@ -44,6 +44,7 @@ let invokeFailure: { code: string; message: string } | undefined
 /** A receipt read back is refused. */
 let receiptRefused = false
 let recordReadGate: Promise<void> | undefined
+let pagePeople = false
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), {
     status,
@@ -105,6 +106,7 @@ beforeEach(() => {
   invokeFailure = undefined
   receiptRefused = false
   recordReadGate = undefined
+  pagePeople = false
   window.fetch = (async (info: RequestInfo | URL, init?: RequestInit) => {
     const request = info instanceof Request ? info : undefined
     const url = new URL(request ? request.url : String(info))
@@ -132,6 +134,18 @@ beforeEach(() => {
       const people =
         (body?.query as { collectionKey?: string } | undefined)
           ?.collectionKey === 'people'
+      if (people && pagePeople)
+        return json({
+          records:
+            body?.cursor === 'next-person'
+              ? peopleRows.slice(1)
+              : peopleRows.slice(0, 1),
+          total: peopleRows.length,
+          filtered: false,
+          truncated: body?.cursor === undefined,
+          definitionId: 'capdef:abc',
+          ...(body?.cursor === undefined ? { nextCursor: 'next-person' } : {}),
+        })
       return json({
         records: people ? peopleRows : rows,
         total: rows.length,
@@ -396,6 +410,33 @@ test('an empty relation shows a placeholder that cannot be chosen', async () => 
   const call = await waitFor(() => invoked()[0])
   expect(call.body!.inputs).toEqual({ assignee: 'person-1' })
   expect(sentValues()).not.toContain(null)
+})
+
+test('a record action can select a reference found on a later page', async () => {
+  pagePeople = true
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Assign')?.click())
+  const select = await waitFor(() =>
+    container.querySelector<HTMLSelectElement>('select'),
+  )
+  await waitFor(() =>
+    optionsOf(select).some((option) => option.value === 'person-1'),
+  )
+  expect(optionsOf(select).some((option) => option.value === 'person-2')).toBe(
+    false,
+  )
+  await act(async () =>
+    button(container, 'Load more reference choices')?.click(),
+  )
+  await waitFor(() =>
+    optionsOf(select).some((option) => option.value === 'person-2'),
+  )
+  choose(select, 'person-2')
+  await act(async () => button(container, 'Assign')?.click())
+  expect((await waitFor(() => invoked()[0])).body?.inputs).toEqual({
+    assignee: 'person-2',
+  })
 })
 
 test('the fields come from the resolved schema, at the revision on screen', async () => {

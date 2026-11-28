@@ -47,7 +47,7 @@ import type {
 import { capabilityContextReference } from '@/lib/capabilities/reference'
 import type { ModuleViewProps } from '@/lib/modules/registry'
 import { usePagePath } from '../pages/page-route'
-import { ActionCall } from './action-form'
+import { ActionCall, ReferencePageControls } from './action-form'
 import {
   DescribeState,
   Loading,
@@ -122,7 +122,7 @@ function RelationPick({
       </p>
     )
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <select
         aria-label={`Choose ${field.label}`}
         className={fieldControl}
@@ -148,6 +148,7 @@ function RelationPick({
       <Button size="xs" variant="ghost" onClick={onCancel}>
         Cancel
       </Button>
+      <ReferencePageControls query={pickers} />
     </div>
   )
 }

@@ -309,7 +309,7 @@ export function ActionForm({
 
 /**
  * One action's form over a record, with a picker over each collection its
- * inputs reference. A picker is one page of that collection, labelled the way
+ * inputs reference. Reference choices load a page at a time, labelled the way
  * a row is labelled everywhere else. The form starts from the record's values,
  * read under the input names the action's effects give them.
  */
@@ -344,14 +344,47 @@ export function ActionCall({
     [action, row],
   )
   return (
-    <ActionForm
-      action={action}
-      defaults={defaults}
-      options={options}
-      submitLabel={submitLabel}
-      busy={busy}
-      onSubmit={onSubmit}
-      onCancel={onCancel}
-    />
+    <>
+      <ActionForm
+        action={action}
+        defaults={defaults}
+        options={options}
+        submitLabel={submitLabel}
+        busy={busy}
+        onSubmit={onSubmit}
+        onCancel={onCancel}
+      />
+      <ReferencePageControls query={pickers} />
+    </>
+  )
+}
+
+export function ReferencePageControls({
+  query,
+}: {
+  query: ReturnType<typeof useCapabilityPickers>
+}) {
+  if (!query.hasNextPage && !query.isError) return null
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {query.isError && (
+        <span role="alert" className="text-xs text-error-ink">
+          Reference choices could not be loaded.
+        </span>
+      )}
+      <Button
+        type="button"
+        size="xs"
+        variant="outline"
+        disabled={query.isFetching}
+        onClick={() =>
+          void (query.hasNextPage ? query.fetchNextPage() : query.refetch())
+        }
+      >
+        {query.isError
+          ? 'Retry reference choices'
+          : 'Load more reference choices'}
+      </Button>
+    </div>
   )
 }
