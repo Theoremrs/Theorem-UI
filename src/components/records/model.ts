@@ -53,14 +53,33 @@ export function isEmptyValue(value: unknown) {
 }
 
 /** What a record is called: its label identifier, else the usual suspects. */
-export function recordTitle(type: ObjectType, row: RecordRow | undefined) {
-  if (!row) return 'Untitled'
-  for (const key of [type.label_identifier_field, 'name', 'title', 'label']) {
+/** The key a record's title is read from, when one holds a value. */
+export function titleKey(type: ObjectType, row: RecordRow | undefined) {
+  if (!row) return undefined
+  // The declared identifier first, then the names records commonly carry,
+  // then the field the table's first column shows.
+  return [
+    type.label_identifier_field,
+    'name',
+    'title',
+    'label',
+    ...type.fields
+      .filter((field) => field.field_type.kind === 'text')
+      .map((field) => field.key),
+    'text',
+    'summary',
+  ].find((key) => {
     const value = row.values[key]
-    if (typeof value === 'string' && value.trim()) return value
-    if (typeof value === 'number') return String(value)
-  }
-  return 'Untitled'
+    return (
+      (typeof value === 'string' && value.trim() !== '') ||
+      typeof value === 'number'
+    )
+  })
+}
+
+export function recordTitle(type: ObjectType, row: RecordRow | undefined) {
+  const key = titleKey(type, row)
+  return key && row ? String(row.values[key]) : 'Untitled'
 }
 
 /** The field the first column shows: the label identifier when it is a field. */
