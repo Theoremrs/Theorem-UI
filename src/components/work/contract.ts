@@ -291,13 +291,13 @@ export type AgentAssignment = {
   assignedAt: string
   runId?: string
   threadId?: string
+  /** The run `replaceRunning` stopped before this one started. */
+  stoppedRunId?: string
 }
 
 export type AgentAssignmentResult = {
   assignment: AgentAssignment
   item: WorkItem
-  /** The run `replaceRunning` stopped. */
-  stoppedRunId?: string
 }
 
 export type SyncState = {
