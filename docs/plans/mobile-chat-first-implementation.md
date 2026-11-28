@@ -10,7 +10,7 @@ The November 27 integration brought in #152's durable outbox, Stop error reporti
 
 ## User-visible behavior
 
-- Native Markdown renders paragraphs, headings, emphasis, lists, task lists, quotes, links, inline code, fenced code, tables, and supported images. Code has a Copy action. Tables and code scroll horizontally inside the reply.
+- Native Markdown renders paragraphs, headings, emphasis, lists, task lists, quotes, links, inline code, fenced code, tables, and supported images. Code has a Copy action. Tables and code scroll horizontally inside the reply. Embedded raster images stay inline. External images in Markdown and typed parts show their host and load only when the reader selects Load external image. Web links and image addresses with embedded credentials are refused.
 - Citations no longer produce a stack of generic rows. One source control opens a deduplicated sheet that distinguishes explicit references from retrieved research pages.
 - Each assistant message has one activity control for supplied reasoning, tool inputs/results, and event details. Terminal states override stale progress. Hosted TheoPresence owns the generic live caption, avoiding a second Working label while preserving specific progress and history.
 - Native App revisions and automatic App checks retain their existing rendered components, request identities, run IDs, and running state. App checks remain mounted in the reply body.
@@ -19,7 +19,7 @@ The November 27 integration brought in #152's durable outbox, Stop error reporti
 - Copy and Share use the native clipboard/share sheet. Existing user-message long-press and accessibility copy actions remain.
 - The composer uses native clear Liquid Glass when both compiled-design and runtime checks support it. Reduce Transparency and unsupported systems use a solid theme surface. A material change leaves the input mounted.
 - The transparent dock reserves its measured height in the transcript. The multiline input grows to 180 points, then scrolls internally. Main's native safe-area/keyboard behavior and 16-point composer radius remain.
-- The attachment entry sits before recipient context in new and existing conversations and continues through the existing intake flow. Split-pane sharing and remote-agent controls retain their current behavior.
+- The attachment entry sits before recipient context in new and existing conversations and continues through the existing intake flow. Its menu stays within the window's safe horizontal margins. Split-pane sharing and remote-agent controls retain their current behavior.
 - During a hosted run, Queue submits through the existing outbox without interrupting the run. Stop remains a separate explicit action. Normal Send uses Assistant UI's primitive and readiness rules.
 
 ## Runtime and content boundaries
@@ -52,7 +52,9 @@ The only dependency added relative to this main baseline is the explicit `marked
 
 ## Verification
 
-The November 27 integration passed the app and test TypeScript checks, 250 mobile tests across 26 files, and the iOS production export of 2,593 modules (8.3 MB Hermes bundle). The earlier simulator results below apply to the original mobile branch revision.
+The November 27 integration and review fixes passed the app and test TypeScript checks, 251 mobile tests across 26 files with a space in the temporary directory path, and the iOS production export of 2,594 modules (8.3 MB Hermes bundle). The earlier build results below apply to the original mobile branch revision.
+
+An existing native development client on the iOS 26.5 simulator loaded the reviewed branch through Metro. The app used its supported development-token sign-in against an isolated local Theorem authority. Signed-in Chat accepted composer input, recorded a new message, and queued a follow-up while a run was active. Pressing Stop paused the outbox and left the follow-up visible. The model was a local fixture. The simulator's regular OAuth path returned Apple's missing webcredentials-association error because the installed binary carried no associated-domains signing entitlement.
 
 - App and test TypeScript configurations passed.
 - Full mobile suite passed: 231 tests, 0 failures, 1,342 assertions across 25 files.
@@ -65,7 +67,7 @@ The November 27 integration passed the app and test TypeScript checks, 250 mobil
 
 ## Device review and remaining scope
 
-Authenticated chat interaction has not been exercised in the simulator or on a physical iPhone in this pass. The current simulator startup remains at a system Open confirmation above the development launcher; an earlier build reached the sign-in screen. The host has not granted UI automation permission, so this work does not claim visual approval of the authenticated conversation, keyboard transitions, source sheet, dark theme, or Dynamic Type. Continue through the normal Open and sign-in flow for that review.
+Authenticated simulator coverage is recorded above. A production-signed build, normal OAuth sign-in, and a physical iPhone remain outside that evidence. The keyboard transitions, source sheet, dark theme, and Dynamic Type still need device review.
 
 The next review should open a real rich reply, verify code/table horizontal scrolling and source links, exercise Copy/Share and attachments, check Queue/Stop with a real run, and inspect the composer above the tabs with the keyboard open and closed. Check light/dark, Reduce Transparency, and larger text. Those observations are separate from automated and build results.
 

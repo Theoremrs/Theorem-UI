@@ -9,13 +9,15 @@ export const object = (value: unknown): Json =>
 export const string = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() ? value : undefined
 
-/** Only web links may leave a message. Credentials are never attached to them. */
+/** Only web links without embedded credentials are accepted. */
+export const isWebUrl = (url: URL): boolean =>
+  (url.protocol === 'https:' || url.protocol === 'http:') && !!url.hostname && !url.username && !url.password
+
 export function webUrl(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   try {
     const url = new URL(value)
-    return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password
-      ? url.href : undefined
+    return isWebUrl(url) ? url.href : undefined
   } catch { return undefined }
 }
 

@@ -73,6 +73,14 @@ describe('native Markdown link and image boundary', () => {
     expect(markdownImageUrl('javascript:alert(1)')).toBeUndefined()
   })
 
+  test('rejects user information in web links and image addresses', () => {
+    for (const address of ['https://display-name:password@example.com/image.png', 'https://display-name@example.com/image.png']) {
+      expect(markdownWebUrl(address)).toBeUndefined()
+      expect(markdownLinkUrl(address)).toBeUndefined()
+      expect(markdownImageUrl(address)).toBeUndefined()
+    }
+  })
+
   test('uses the language name rather than fence metadata in the code header', () => {
     expect(markdownCodeLanguage('typescript title="example"')).toBe('typescript')
     expect(markdownCodeLanguage('')).toBe('text')

@@ -21,6 +21,7 @@
 // SOURCING: assistant-ui's native markdown-text.tsx (MIT), react-native-marked 8.3.4 / marked 18.1.3.
 // https://github.com/assistant-ui/assistant-ui/blob/main/packages/ui/src/components/react-native/assistant-ui/elements/markdown-text.tsx
 import { Tokenizer } from 'marked'
+import { isWebUrl } from './message-presentation'
 
 type ListToken = NonNullable<ReturnType<Tokenizer['list']>>
 type ListItem = ListToken['items'][number]
@@ -59,14 +60,14 @@ function markdownUrl(value: string | undefined): URL | undefined {
 /** Web destinations stay in the retained, contextual browser. */
 export function markdownWebUrl(value: string | undefined): string | undefined {
   const url = markdownUrl(value)
-  return url && (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname ? url.href : undefined
+  return url && isWebUrl(url) ? url.href : undefined
 }
 
 /** Preserve the existing email-link handoff; no other app or executable scheme is opened. */
 export function markdownLinkUrl(value: string | undefined): string | undefined {
   const url = markdownUrl(value)
   if (url?.protocol === 'mailto:') return url.href
-  return url && (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname ? url.href : undefined
+  return url && isWebUrl(url) ? url.href : undefined
 }
 
 /** Markdown images never interpret HTML or SVG payloads. Other files keep their readable alt text. */

@@ -10,6 +10,7 @@ import { openInBrowser } from '@/features/browser/store'
 import { fonts, radius, space, touchTarget, type as typography, type Palette } from '@/theme/tokens'
 import { Text } from '@/ui/text'
 import { useTheme } from '@/ui/theme'
+import { RemoteImagePrompt } from './remote-image-prompt'
 import { markdownCodeLanguage, markdownImageUrl, markdownLinkUrl, NativeTaskListTokenizer } from './rich-text-markdown'
 
 type Variant = 'prose' | 'body'
@@ -82,10 +83,18 @@ function MarkdownImage({ uri, alt, href }: { uri: string; alt?: string; href?: s
   const { palette } = useTheme()
   const [failed, setFailed] = useState(false)
   const [aspectRatio, setAspectRatio] = useState(4 / 3)
+  const [requested, setRequested] = useState<string>()
   const source = markdownImageUrl(uri)
   const target = markdownLinkUrl(href ?? uri)
   useEffect(() => { setFailed(false); setAspectRatio(4 / 3) }, [uri])
   const caption = alt?.trim() || 'Image'
+  if (source && !source.startsWith('data:') && requested !== source)
+    return (
+      <View style={[styles.imageFallback, { borderColor: palette.lineSeparator }]}>
+        <Text selectable>{caption}</Text>
+        <RemoteImagePrompt uri={source} onLoad={() => setRequested(source)} />
+      </View>
+    )
   if (!source || failed) {
     return (
       <View style={[styles.imageFallback, { borderColor: palette.lineSeparator }]}>

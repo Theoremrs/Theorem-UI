@@ -19,6 +19,7 @@ import { awaitsDecision, readApproval } from './approval'
 import { ApprovalCard } from './approval-card'
 import { completionNotice, errorMessage, imageUri, object, string, toolResultOf, unavailablePreviewText, webUrl } from './message-presentation'
 import { Disclosure, InspectDetails } from './reply-details'
+import { RemoteImagePrompt } from './remote-image-prompt'
 import { RichText } from './rich-text'
 
 type Part = MessageState['content'][number]
@@ -38,6 +39,9 @@ function ImagePreview({ uri, label }: { uri: string; label: string }) {
   const { palette, reduceMotion } = useTheme()
   const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState(false)
+  const [requested, setRequested] = useState(false)
+  if (webUrl(uri) && !requested)
+    return <RemoteImagePrompt uri={uri} onLoad={() => setRequested(true)} />
   return (
     <>
       {failed ? <Text variant="label" tone="muted">The image preview could not be loaded.</Text> : (

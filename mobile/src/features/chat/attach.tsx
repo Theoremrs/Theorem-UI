@@ -19,6 +19,7 @@ import {
 } from 'react-native'
 import { GlassContainer, GlassView, isLiquidGlassAvailable } from 'expo-glass-effect'
 import { router } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { fromCamera, fromFiles, fromLibrary } from '@/features/intake/acquire'
 import type { IntakeItem } from '@/features/intake/model'
 import { stage, unstage } from '@/features/intake/staged'
@@ -29,6 +30,7 @@ import { useTheme } from '@/ui/theme'
 
 const ROUND = 36
 const GAP = space.xs
+const MENU_WIDTH = 132
 
 type Choice = { key: string; label: string; hint: string; acquire: () => Promise<IntakeItem[]> }
 
@@ -90,17 +92,21 @@ export function AttachButton({
   const { palette, reduceMotion } = useTheme()
   const glass = useGlass()
   const anchor = useRef<ComponentRef<typeof View>>(null)
-  const [origin, setOrigin] = useState<{ right: number; y: number }>()
+  const [origin, setOrigin] = useState<{ x: number; y: number; width: number }>()
   const progress = useRef(new Animated.Value(0)).current
   const window = useWindowDimensions()
+  const insets = useSafeAreaInsets()
+  const leading = insets.left + space.sm
+  const trailing = window.width - insets.right - space.sm
+  const menuWidth = Math.min(trailing - leading, MENU_WIDTH * Math.max(1, window.fontScale))
 
   const open = useCallback(() => {
     anchor.current?.measureInWindow((x, y, width) => {
-      setOrigin({ right: window.width - (x + width), y })
+      setOrigin({ x, y, width })
       progress.setValue(reduceMotion ? 1 : 0)
       if (!reduceMotion) Animated.spring(progress, { toValue: 1, useNativeDriver: true, damping: 16, stiffness: 220 }).start()
     })
-  }, [progress, reduceMotion, window.width])
+  }, [progress, reduceMotion])
 
   const close = useCallback(() => setOrigin(undefined), [])
 
@@ -156,11 +162,12 @@ export function AttachButton({
             style={[
               styles.menu,
               {
-                right: origin.right,
+                left: Math.max(leading, Math.min(origin.x + origin.width, trailing) - menuWidth),
+                width: menuWidth,
                 bottom: window.height - origin.y + space.sm,
                 opacity: progress,
                 transform: [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
-                transformOrigin: 'right bottom',
+                transformOrigin: origin.x < window.width / 2 ? 'left bottom' : 'right bottom',
               },
             ]}
           >
@@ -194,7 +201,6 @@ const styles = StyleSheet.create({
   column: { gap: GAP },
   choice: {
     minHeight: touchTarget,
-    minWidth: 132,
     paddingHorizontal: space.lg,
     borderRadius: radius.pill,
     justifyContent: 'center',
