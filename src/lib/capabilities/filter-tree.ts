@@ -63,13 +63,16 @@ export function editTree(filter: QueryFilter): EditNode {
       kind: 'not',
       child: editTree(node.condition as QueryFilter),
     }
-  if (editableLeaf(node))
+  if (editableLeaf(node)) {
+    const row = rowOfFilter(node)
+    delete row.original
     return {
       id: freshId(),
       kind: 'leaf',
-      row: rowOfFilter(node),
+      row,
       original: node,
     }
+  }
   return { id: freshId(), kind: 'opaque', original: node }
 }
 

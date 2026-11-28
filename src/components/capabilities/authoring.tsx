@@ -210,6 +210,7 @@ function SectionBody({
           definition={definition}
           schemas={schemas}
           startViewKey={viewKey}
+          definitionId={described.definitionId}
           busy={busy}
           onSubmit={onSubmit}
         />
@@ -267,14 +268,49 @@ export function AuthoringDialog({
   const [section, setSection] = useState<Section>('fields')
   const [tab, setTab] = useState<Tab>('add')
   const [status, setStatus] = useState<Status | undefined>()
+  // Reading the current definition back after a conflict: nothing is sent
+  // until it has answered, so a retry is authored against what is really there.
+  const [refreshing, setRefreshing] = useState(false)
   const authoring = useCapabilityAuthor(instanceId)
   const repinning = useCapabilityRepin(instanceId)
   const client = useQueryClient()
-  const { definition } = described
-  const expectedDefinitionId = described.definitionId
+  const { definition, definitionId: expectedDefinitionId } = described
+  const busy = authoring.isPending || repinning.isPending || refreshing
 
-  const submit: Submit = async (ops, what) => {
-    if (!expectedDefinitionId) {
+  /** Read the instance again, and say so only once its definition is back. */
+  const reread = async (conflict: string) => {
+    setRefreshing(true)
+    setStatus({
+      kind: 'pending',
+      message: `${conflict} Reading the current definition…`,
+    })
+    try {
+      await client.invalidateQueries(
+        { queryKey: capabilityKeys.describe(instanceId), exact: true },
+        { throwOnError: true },
+      )
+      void client.invalidateQueries({
+        queryKey: capabilityKeys.rows(instanceId, viewKey),
+        exact: true,
+      })
+      setStatus({
+        kind: 'failed',
+        message: `${conflict} The current definition has been read again: check your change against the fields now shown and submit it once more.`,
+      })
+    } catch (error) {
+      setStatus({
+        kind: 'failed',
+        message: `${conflict} Reading the current definition failed too: ${refusalMessage(error, 'The definition')}`,
+        retry: () => void reread(conflict),
+      })
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const submit: Submit = async (ops, what, base) => {
+    const expected = base ?? expectedDefinitionId
+    if (!expected) {
       setStatus({
         kind: 'failed',
         message:
@@ -285,28 +321,22 @@ export function AuthoringDialog({
     setStatus({ kind: 'pending', message: `${what}…` })
     try {
       const result = await authoring.mutateAsync({
-        expectedDefinitionId,
+        expectedDefinitionId: expected,
         ops,
       })
       setStatus({
         kind: 'saved',
         message: `${what} · the definition is now ${result.definitionId}.`,
       })
-      return true
+      return result.definitionId
     } catch (error) {
-      if (refusalCode(error) === codes.DEFINITION_CONFLICT) {
-        // Read the current definition back before asking again, so the retry is
-        // authored against what is really there.
-        void client.invalidateQueries({
-          queryKey: capabilityKeys.instance(instanceId),
-        })
+      if (refusalCode(error) === codes.DEFINITION_CONFLICT)
+        await reread(refusalMessage(error, 'Authoring'))
+      else
         setStatus({
           kind: 'failed',
-          message: `${refusalMessage(error, 'Authoring')} The current definition has been read again: check your change against the fields now shown and submit it once more.`,
+          message: refusalMessage(error, 'Authoring'),
         })
-        return false
-      }
-      setStatus({ kind: 'failed', message: refusalMessage(error, 'Authoring') })
       return false
     }
   }
@@ -327,7 +357,6 @@ export function AuthoringDialog({
       })
     }
   }
-  const busy = authoring.isPending || repinning.isPending
 
   return (
     <Dialog open onOpenChange={(shown) => !shown && onClose()}>
@@ -407,7 +436,16 @@ function AddField({
   if (kind === 'reference' && !referenced) problems.push('what it refers to')
 
   return (
-    <div className="flex flex-col gap-2">
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (problems.length || busy) return
+        onSubmit(
+          addFieldOp(collectionKey, { key, label: label.trim(), fieldType }),
+        )
+      }}
+    >
       <Row label="Collection">
         <Choice
           label="Collection"
@@ -481,18 +519,14 @@ function AddField({
       )}
       <Button
         size="sm"
+        type="submit"
         disabled={problems.length > 0 || busy}
         aria-busy={busy}
         aria-label="Add optional field"
-        onClick={() =>
-          onSubmit(
-            addFieldOp(collectionKey, { key, label: label.trim(), fieldType }),
-          )
-        }
       >
         Add field
       </Button>
-    </div>
+    </form>
   )
 }
 
@@ -516,7 +550,14 @@ function RenameField({
   const [label, setLabel] = useState('')
 
   return (
-    <div className="flex flex-col gap-2">
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (!chosen || !label.trim() || busy) return
+        onSubmit(renameFieldOp(collectionKey, chosen.key, label.trim()))
+      }}
+    >
       <Row label="Collection">
         <Choice
           label="Collection"
@@ -553,15 +594,12 @@ function RenameField({
       </Row>
       <Button
         size="sm"
+        type="submit"
         disabled={!chosen || !label.trim() || busy}
         aria-busy={busy}
-        onClick={() =>
-          chosen &&
-          onSubmit(renameFieldOp(collectionKey, chosen.key, label.trim()))
-        }
       >
         Rename field
       </Button>
-    </div>
+    </form>
   )
 }

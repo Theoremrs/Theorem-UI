@@ -19,6 +19,8 @@ import {
   fieldsByKey,
   filterRows,
   inputsFor,
+  listText,
+  listValues,
   opsForField,
   parseCapabilityRecordItem,
   parseValue,
@@ -38,7 +40,12 @@ import {
   viewFor,
 } from './model'
 import { matchAll } from './contract'
-import type { QueryFilter, ResolvedField } from './contract'
+import type {
+  ActionSpec,
+  CapabilityDefinition,
+  QueryFilter,
+  ResolvedField,
+} from './contract'
 
 const fields = tasksSchema.fields
 const fieldFor = (key: string) => fields.find((one) => one.key === key)
@@ -79,32 +86,130 @@ describe('actions', () => {
     expect(quickAction(trackerDefinition, 'people')).toBeUndefined()
   })
 
+  test('quick-add takes the first create action the grant reaches, else still names the declared one', () => {
+    const add = trackerDefinition.actions.find((one) => one.key === 'add')!
+    const twoCreates: CapabilityDefinition = {
+      ...trackerDefinition,
+      actions: [{ ...add, key: 'import', label: 'Import task' }, add],
+    }
+    expect(quickAction(twoCreates, 'tasks', { invoke: ['add'] })?.key).toBe(
+      'add',
+    )
+    // None granted: the first stays, so the module shows it shut and says why.
+    expect(quickAction(twoCreates, 'tasks', { invoke: [] })?.key).toBe('import')
+  })
+
   test('a save prefers the action whose effects are exactly what was edited', () => {
     // Title and effort plus status: `update` writes all three, so it is the change.
     expect(
-      saveAction(trackerDefinition, 'tasks', [
-        'title',
-        'status',
-        'effort_minutes',
-      ])?.key,
+      saveAction(trackerDefinition, 'tasks', {
+        title: 'A',
+        status: 'next',
+        effort_minutes: 20,
+      })?.action.key,
     ).toBe('update')
     // Status alone: `complete` also writes completed_at, which nobody edited, so
     // the generic update takes it instead.
-    expect(saveAction(trackerDefinition, 'tasks', ['status'])?.key).toBe(
+    expect(
+      saveAction(trackerDefinition, 'tasks', { status: 'done' })?.action.key,
+    ).toBe('update')
+  })
+
+  test('an exact action that would write something other than was entered is named with what it writes', () => {
+    // Status and its completion time together are `complete`'s own meaning, but
+    // it writes `done` and the time it runs: the module asks before running it.
+    expect(
+      saveAction(trackerDefinition, 'tasks', {
+        status: 'done',
+        completed_at: '2026-11-20T10:30:00.000Z',
+      }),
+    ).toEqual({
+      action: trackerDefinition.actions.find((one) => one.key === 'complete')!,
+      overrides: [{ fieldKey: 'completed_at', writes: 'now' }],
+    })
+    const plan = saveAction(trackerDefinition, 'tasks', {
+      status: 'next',
+      completed_at: '2026-11-20T10:30:00.000Z',
+    })
+    expect(plan?.action.key).toBe('complete')
+    expect(plan?.overrides).toEqual([
+      { fieldKey: 'status', writes: 'literal', value: 'done' },
+      { fieldKey: 'completed_at', writes: 'now' },
+    ])
+  })
+
+  test('an exact action whose literal is what was entered runs as it is', () => {
+    const close: ActionSpec = {
+      key: 'close',
+      label: 'Close',
+      collectionKey: 'tasks',
+      creates: false,
+      input: [],
+      preconditions: [],
+      effects: [{ fieldKey: 'status', source: 'literal', value: 'done' }],
+    }
+    const withClose = {
+      ...trackerDefinition,
+      actions: [close, ...trackerDefinition.actions],
+    }
+    expect(saveAction(withClose, 'tasks', { status: 'done' })).toEqual({
+      action: close,
+      overrides: [],
+    })
+    // Another value is not what `close` writes, so the generic update writes it.
+    expect(saveAction(withClose, 'tasks', { status: 'next' })?.action.key).toBe(
       'update',
     )
-    // Status and its completion time together are `complete`'s own meaning.
+  })
+
+  test('an action that also writes a literal is not a generic update for the fields it takes as input', () => {
+    const retitleAndClose: ActionSpec = {
+      key: 'retitle_close',
+      label: 'Retitle and close',
+      collectionKey: 'tasks',
+      creates: false,
+      input: [
+        { key: 'new_title', fieldType: { kind: 'text' }, required: true },
+      ],
+      preconditions: [],
+      effects: [
+        { fieldKey: 'title', source: 'input', key: 'new_title' },
+        { fieldKey: 'status', source: 'literal', value: 'done' },
+      ],
+    }
+    // Editing the title alone must not close the task unasked.
     expect(
-      saveAction(trackerDefinition, 'tasks', ['status', 'completed_at'])?.key,
-    ).toBe('complete')
+      saveAction(
+        { ...trackerDefinition, actions: [retitleAndClose] },
+        'tasks',
+        {
+          title: 'Ship it',
+        },
+      ),
+    ).toBeUndefined()
+  })
+
+  test('a save only picks an action the grant reaches', () => {
+    expect(
+      saveAction(trackerDefinition, 'tasks', { title: 'A' }, (action) =>
+        canInvoke({ invoke: ['complete'] }, action.key),
+      ),
+    ).toBeUndefined()
+    expect(
+      saveAction(trackerDefinition, 'tasks', { title: 'A' }, (action) =>
+        canInvoke({ invoke: ['update'] }, action.key),
+      )?.action.key,
+    ).toBe('update')
   })
 
   test('a field no declared action writes saves through nothing', () => {
     expect(
-      saveAction(trackerDefinition, 'tasks', ['completed_at']),
+      saveAction(trackerDefinition, 'tasks', { completed_at: null }),
     ).toBeUndefined()
-    expect(saveAction(trackerDefinition, 'tasks', [])).toBeUndefined()
-    expect(saveAction(trackerDefinition, 'people', ['name'])).toBeUndefined()
+    expect(saveAction(trackerDefinition, 'tasks', {})).toBeUndefined()
+    expect(
+      saveAction(trackerDefinition, 'people', { name: 'A' }),
+    ).toBeUndefined()
   })
 
   test('a call carries only the inputs the action declares', () => {
@@ -119,6 +224,29 @@ describe('actions', () => {
         due_at: 'x',
       }),
     ).toEqual({ title: 'A', status: 'next', effort_minutes: 20 })
+  })
+
+  test('an input that writes a field under another name carries that field’s value', () => {
+    const retitle: ActionSpec = {
+      key: 'retitle',
+      label: 'Retitle',
+      collectionKey: 'tasks',
+      creates: false,
+      input: [
+        { key: 'new_title', fieldType: { kind: 'text' }, required: true },
+      ],
+      preconditions: [],
+      effects: [{ fieldKey: 'title', source: 'input', key: 'new_title' }],
+    }
+    const withRetitle = { ...trackerDefinition, actions: [retitle] }
+    // An inline title edit selects it by the field it writes…
+    expect(
+      saveAction(withRetitle, 'tasks', { title: 'Ship it' })?.action.key,
+    ).toBe('retitle')
+    // …and sends the edited title under the input's own key.
+    expect(inputsFor(retitle, { title: 'Ship it', status: 'next' })).toEqual({
+      new_title: 'Ship it',
+    })
   })
 
   test('a grant of every action reaches any action, and a named one reaches only that one', () => {
@@ -206,6 +334,15 @@ describe('values', () => {
       ok: false,
       message: 'not a whole number',
     })
+    // Past 2^53 a whole number is not held exactly, so it is refused, not rounded.
+    expect(parseValue({ kind: 'integer' }, '9007199254740993')).toEqual({
+      ok: false,
+      message: 'too large to hold exactly',
+    })
+    expect(parseValue({ kind: 'integer' }, '20')).toEqual({
+      ok: true,
+      value: 20,
+    })
     expect(parseValue({ kind: 'number' }, '2.5')).toEqual({
       ok: true,
       value: 2.5,
@@ -276,19 +413,33 @@ describe('filter editing', () => {
     }
     const { rows, groups } = filterRows(filter)
     expect(groups).toBe(0)
-    expect(rows).toEqual([
+    const typed = rows.map(({ fieldKey, op, value }) => ({
+      fieldKey,
+      op,
+      value,
+    }))
+    expect(typed).toEqual([
       { fieldKey: 'status', op: 'eq', value: 'next' },
       { fieldKey: 'completed_at', op: 'is_empty', value: '' },
       { fieldKey: 'effort_minutes', op: 'lte', value: '20' },
     ])
-    // The editor writes the same tree back, with the number typed as a number.
+    // The editor writes the same tree back: unedited rows as they were read,
+    // and edited ones from their text, with the number typed as a number.
     expect(rowsFilter(rows, fieldFor)).toEqual(filter)
+    expect(rowsFilter(typed, fieldFor)).toEqual(filter)
   })
 
   test('a single leaf reads as one row, and an empty and reads as none', () => {
     expect(filterRows({ op: 'eq', fieldKey: 'status', value: 'next' })).toEqual(
       {
-        rows: [{ fieldKey: 'status', op: 'eq', value: 'next' }],
+        rows: [
+          {
+            fieldKey: 'status',
+            op: 'eq',
+            value: 'next',
+            original: { op: 'eq', fieldKey: 'status', value: 'next' },
+          },
+        ],
         groups: 0,
       },
     )
@@ -311,7 +462,14 @@ describe('filter editing', () => {
       ],
     }
     expect(filterRows(filter)).toEqual({
-      rows: [{ fieldKey: 'status', op: 'eq', value: 'next' }],
+      rows: [
+        {
+          fieldKey: 'status',
+          op: 'eq',
+          value: 'next',
+          original: { op: 'eq', fieldKey: 'status', value: 'next' },
+        },
+      ],
       groups: 1,
     })
   })
@@ -334,8 +492,72 @@ describe('filter editing', () => {
     // The row a stored `in` reads back as, is the same text a person would type.
     expect(
       filterRows({ op: 'in', fieldKey: 'status', values: ['next', 'done'] })
-        .rows,
-    ).toEqual(rows)
+        .rows[0]?.value,
+    ).toBe('next, done')
+  })
+
+  test('an `in` value holding a comma survives an unchanged row and an edited one', () => {
+    const stored: QueryFilter = {
+      op: 'and',
+      conditions: [
+        { op: 'in', fieldKey: 'title', values: ['Acme, Inc.', 'Globex'] },
+        { op: 'eq', fieldKey: 'status', value: 'next' },
+      ],
+    }
+    const { rows } = filterRows(stored)
+    // The list shows the comma-holding value quoted, so it reads as one.
+    expect(rows[0]!.value).toBe('"Acme, Inc.", Globex')
+    // Saving after changing another row keeps it one value.
+    const changed = rows.map((one, at) =>
+      at === 1 ? { fieldKey: 'status', op: 'eq' as const, value: 'done' } : one,
+    )
+    expect(rowsFilter(changed, fieldFor)).toEqual({
+      op: 'and',
+      conditions: [
+        { op: 'in', fieldKey: 'title', values: ['Acme, Inc.', 'Globex'] },
+        { op: 'eq', fieldKey: 'status', value: 'done' },
+      ],
+    })
+    // Edited as text, the quoted list still reads as the same two values.
+    const retyped = [
+      { fieldKey: 'title', op: 'in' as const, value: rows[0]!.value },
+    ]
+    expect(rowsFilter(retyped, fieldFor)).toEqual({
+      op: 'and',
+      conditions: [
+        { op: 'in', fieldKey: 'title', values: ['Acme, Inc.', 'Globex'] },
+      ],
+    })
+  })
+
+  test('a list line splits at commas outside quotes, and quotes inside quotes double', () => {
+    expect(listValues('next, done')).toEqual(['next', 'done'])
+    expect(listValues('next,"Smith, Jane"')).toEqual(['next', 'Smith, Jane'])
+    expect(listValues('next, "Smith, Jane" , x')).toEqual([
+      'next',
+      'Smith, Jane',
+      'x',
+    ])
+    expect(listValues('"say ""hi"""')).toEqual(['say "hi"'])
+    expect(listValues('a,, b,')).toEqual(['a', 'b'])
+    expect(listValues('')).toEqual([])
+    const values = ['plain', 'Acme, Inc.', 'say "hi"']
+    expect(listValues(listText(values))).toEqual(values)
+    expect(listValues(listText(['', ' spaced ']))).toEqual(['', ' spaced '])
+  })
+
+  test('a stored comparison the text cannot hold is written back as it was', () => {
+    const stored: QueryFilter = {
+      op: 'and',
+      conditions: [
+        { op: 'eq', fieldKey: 'title', value: null },
+        { op: 'eq', fieldKey: 'title', value: { lang: 'en' } },
+        { op: 'in', fieldKey: 'title', values: [['a', 'b'], null, 3] },
+        { op: 'eq', fieldKey: 'status', value: 20 },
+      ],
+    }
+    const { rows } = filterRows(stored)
+    expect(rowsFilter(rows, fieldFor)).toEqual(stored)
   })
 
   test('the ops offered are the ones the field’s type can answer', () => {

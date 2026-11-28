@@ -56,12 +56,14 @@ export function ViewEditor({
   definition,
   schemas,
   startViewKey,
+  definitionId,
   busy,
   onSubmit,
 }: {
   definition: CapabilityDefinition
   schemas: CollectionSchema[]
   startViewKey: string
+  definitionId: string
   busy: boolean
   onSubmit: Submit
 }) {
@@ -92,9 +94,10 @@ export function ViewEditor({
         definition={definition}
         schemas={schemas}
         view={view}
+        definitionId={definitionId}
         busy={busy}
         onSubmit={onSubmit}
-        onAdded={() => setRound((n) => n + 1)}
+        onReset={() => setRound((n) => n + 1)}
         onRemoved={() =>
           setChoice(
             firstViewKey(
@@ -189,18 +192,20 @@ function ViewForm({
   definition,
   schemas,
   view,
+  definitionId,
   busy,
   onSubmit,
-  onAdded,
+  onReset,
   onRemoved,
 }: {
   definition: CapabilityDefinition
   schemas: CollectionSchema[]
   /** The view as read; absent for a new one. */
   view: ViewSpec | undefined
+  definitionId: string
   busy: boolean
   onSubmit: Submit
-  onAdded: () => void
+  onReset: () => void
   onRemoved: () => void
 }) {
   const collections = definition.collections.map((collection) => ({
@@ -219,6 +224,13 @@ function ViewForm({
     start.displayFields,
   )
   const [tree, setTree] = useState(() => editTree(start.filter))
+  const [base, setBase] = useState(definitionId)
+  const stale = base !== definitionId
+  const submit: Submit = async (ops, what) => {
+    const saved = await onSubmit(ops, what, base)
+    if (saved) setBase(saved)
+    return saved
+  }
 
   const schema = schemaFor(schemas, collectionKey)
   const fields = useMemo(() => fieldsByKey(schema), [schema])
@@ -294,23 +306,57 @@ function ViewForm({
           instance's grants decide who may read.
         </Note>
       </div>
+      {stale && (
+        <div
+          role="alert"
+          className="flex flex-col gap-2 rounded-md bg-raised p-2"
+        >
+          <Note>
+            The definition changed while you were editing. Review the current
+            view before replacing it.
+          </Note>
+          {view && (
+            <Note>
+              {view.label} · {view.layout} · {describeFilter(view.filter)}
+            </Note>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={busy}
+              onClick={onReset}
+            >
+              Load current view
+            </Button>
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={busy}
+              onClick={() => setBase(definitionId)}
+            >
+              Keep my draft
+            </Button>
+          </div>
+        </div>
+      )}
       {blocked && <Note>Still to do: {problems.join(', ')}.</Note>}
       {view ? (
         <SavedViewActions
           view={view}
           next={next}
           blocked={blocked}
-          busy={busy}
-          onSubmit={onSubmit}
+          busy={busy || stale}
+          onSubmit={submit}
           onRemoved={onRemoved}
         />
       ) : (
         <AddView
           next={next}
           blocked={blocked}
-          busy={busy}
-          onSubmit={onSubmit}
-          onAdded={onAdded}
+          busy={busy || stale}
+          onSubmit={submit}
+          onAdded={onReset}
         />
       )}
     </div>

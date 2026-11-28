@@ -3,7 +3,6 @@
 // lib/capabilities/api. Nothing here calls a model; a click runs one declared action through the
 // same route the agent uses.
 import {
-  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -20,11 +19,12 @@ import {
   listTemplates,
   queryCollection,
   queryView,
+  readReceipt,
   readRecordAnywhere,
   repin,
   saveTemplate,
 } from '@/lib/capabilities/api'
-import type { InvokeInput } from '@/lib/capabilities/api'
+import type { InvokeInput, RecordScanResume } from '@/lib/capabilities/api'
 import {
   QUERY_LIMIT_DEFAULT,
   QUERY_LIMIT_MAX,
@@ -55,8 +55,20 @@ export const capabilityKeys = {
     [...capabilityKeys.instance(instanceId), 'describe'] as const,
   rows: (instanceId: string, viewKey: string) =>
     [...capabilityKeys.instance(instanceId), 'rows', viewKey] as const,
-  record: (instanceId: string, recordId: string) =>
-    [...capabilityKeys.instance(instanceId), 'record', recordId] as const,
+  /** A record, by how it was asked for: a collection hint or a resumed scan is its own answer. */
+  record: (
+    instanceId: string,
+    recordId: string,
+    collectionKey = '',
+    resume: RecordScanResume | undefined = undefined,
+  ) =>
+    [
+      ...capabilityKeys.instance(instanceId),
+      'record',
+      recordId,
+      collectionKey,
+      resume ?? null,
+    ] as const,
   discover: () => [...capabilityKeys.all, 'discover'] as const,
   /** Slice 2: under the instance, so an authoring write refreshes the history too. */
   history: (instanceId: string) =>
@@ -90,7 +102,20 @@ export function useCapabilityDescribe(instanceId: string | undefined) {
   })
 }
 
-/** One view's rows, page by page. */
+/** A view that answers with the cursor it was asked for would page in a loop. */
+export class EchoedCursorError extends Error {
+  constructor(readonly cursor: string) {
+    super(
+      'The view answered with the same page cursor it was asked for, so its next page cannot be read.',
+    )
+  }
+}
+
+/**
+ * One view's rows, page by page. A switched view starts from no rows rather
+ * than keeping the last view's: what a module selects and puts in context has
+ * to be the rows of the view it names.
+ */
 export function useCapabilityRows(
   instanceId: string | undefined,
   viewKey: string | undefined,
@@ -98,14 +123,18 @@ export function useCapabilityRows(
 ) {
   return useInfiniteQuery({
     queryKey: capabilityKeys.rows(instanceId ?? '', viewKey ?? ''),
-    queryFn: ({ pageParam }) =>
-      queryView(instanceId!, viewKey!, {
+    queryFn: async ({ pageParam }) => {
+      const page = await queryView(instanceId!, viewKey!, {
         cursor: pageParam,
         limit: QUERY_LIMIT_DEFAULT,
-      }),
+      })
+      if (pageParam !== undefined && page.nextCursor === pageParam)
+        throw new EchoedCursorError(pageParam)
+      return page
+    },
     initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last: QueryResult) => last.nextCursor,
-    placeholderData: keepPreviousData,
+    getNextPageParam: (last, _pages, _current, cursors) =>
+      cursors.includes(last.nextCursor) ? undefined : last.nextCursor,
     enabled: enabled && !!instanceId && !!viewKey,
     staleTime: 10_000,
     retry,
@@ -127,28 +156,67 @@ export function flattenRows(data: { pages: QueryResult[] } | undefined) {
   }
 }
 
-/**
- * One page over a collection, for a control that picks a record to reference.
- * A single page each: a picker reads a bounded slice and says so, rather than
- * walking a whole collection to fill a dropdown.
- */
+type PickerCursors = Record<string, string | undefined>
+
+/** Reference choices by collection. Read another page only when requested. */
 export function useCapabilityPickers(
   instanceId: string | undefined,
   collectionKeys: ReadonlyArray<string>,
 ) {
-  const joined = collectionKeys.join('\u0000')
-  return useQuery({
-    queryKey: [...capabilityKeys.instance(instanceId ?? ''), 'pickers', joined],
-    queryFn: async () => {
-      const pages = await Promise.all(
-        collectionKeys.map((key) =>
-          queryCollection(instanceId!, key, { limit: QUERY_LIMIT_MAX }),
+  const initialPageParam: PickerCursors = Object.fromEntries(
+    collectionKeys.map((key) => [key, undefined]),
+  )
+  return useInfiniteQuery({
+    queryKey: [
+      ...capabilityKeys.instance(instanceId ?? ''),
+      'pickers',
+      collectionKeys,
+    ],
+    queryFn: async ({ pageParam }) =>
+      Object.fromEntries(
+        await Promise.all(
+          Object.entries(pageParam).map(
+            async ([key, cursor]) =>
+              [
+                key,
+                await queryCollection(instanceId!, key, {
+                  limit: QUERY_LIMIT_MAX,
+                  cursor,
+                }),
+              ] as const,
+          ),
         ),
+      ),
+    initialPageParam,
+    getNextPageParam: (
+      last,
+      _pages,
+      _current,
+      usedPages,
+    ): PickerCursors | undefined => {
+      const next = Object.entries(last).flatMap(([key, { nextCursor }]) =>
+        nextCursor !== undefined &&
+        !usedPages.some((used) => used[key] === nextCursor)
+          ? [[key, nextCursor] as const]
+          : [],
       )
-      return Object.fromEntries(
-        collectionKeys.map((key, at) => [key, pages[at]!.records]),
-      )
+      return next.length ? Object.fromEntries(next) : undefined
     },
+    select: ({ pages }) =>
+      Object.fromEntries(
+        collectionKeys.map((key) => [
+          key,
+          [
+            ...new Map(
+              pages.flatMap((page) =>
+                (page[key]?.records ?? []).map(
+                  (record) => [record.id, record] as const,
+                ),
+              ),
+            ).values(),
+          ],
+        ]),
+      ),
     enabled: !!instanceId && collectionKeys.length > 0,
     staleTime: 30_000,
     retry,
@@ -166,9 +234,15 @@ export function useCapabilityRecord(
   definition: CapabilityDefinition | undefined,
   recordId: string | undefined,
   collectionKey?: string | undefined,
+  resume?: RecordScanResume,
 ) {
   return useQuery({
-    queryKey: capabilityKeys.record(instanceId ?? '', recordId ?? ''),
+    queryKey: capabilityKeys.record(
+      instanceId ?? '',
+      recordId ?? '',
+      collectionKey,
+      resume,
+    ),
     // A record that is not there answers null: React Query treats an undefined
     // result as a failed query, and "not there" is an answer, not a failure.
     queryFn: async () =>
@@ -177,6 +251,7 @@ export function useCapabilityRecord(
         definition!,
         recordId!,
         collectionKey,
+        resume,
       )) ?? null,
     enabled: !!instanceId && !!definition && !!recordId,
     staleTime: 10_000,
@@ -194,6 +269,24 @@ export function useCapabilityInvoke() {
       // at the revisions the journal reports.
       if (receipt.status === 'finished' && receipt.instanceId)
         void client.invalidateQueries({
+          queryKey: capabilityKeys.instance(receipt.instanceId),
+        })
+    },
+  })
+}
+
+/**
+ * Read a journaled call's receipt back. One that has finished has moved the
+ * records it named, so the instance is read again exactly as after `invoke`.
+ */
+export function useCapabilityReceipt() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (at: { instanceId: string; recordId: string }) =>
+      readReceipt(at.instanceId, at.recordId),
+    onSuccess: (receipt: InvocationReceipt) => {
+      if (receipt.status === 'finished' && receipt.instanceId)
+        return client.invalidateQueries({
           queryKey: capabilityKeys.instance(receipt.instanceId),
         })
     },

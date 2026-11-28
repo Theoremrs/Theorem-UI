@@ -43,6 +43,8 @@ let invokeDispatched = false
 let invokeFailure: { code: string; message: string } | undefined
 /** A receipt read back is refused. */
 let receiptRefused = false
+let recordReadGate: Promise<void> | undefined
+let pagePeople = false
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), {
     status,
@@ -103,6 +105,8 @@ beforeEach(() => {
   invokeDispatched = false
   invokeFailure = undefined
   receiptRefused = false
+  recordReadGate = undefined
+  pagePeople = false
   window.fetch = (async (info: RequestInfo | URL, init?: RequestInit) => {
     const request = info instanceof Request ? info : undefined
     const url = new URL(request ? request.url : String(info))
@@ -130,6 +134,18 @@ beforeEach(() => {
       const people =
         (body?.query as { collectionKey?: string } | undefined)
           ?.collectionKey === 'people'
+      if (people && pagePeople)
+        return json({
+          records:
+            body?.cursor === 'next-person'
+              ? peopleRows.slice(1)
+              : peopleRows.slice(0, 1),
+          total: peopleRows.length,
+          filtered: false,
+          truncated: body?.cursor === undefined,
+          definitionId: 'capdef:abc',
+          ...(body?.cursor === undefined ? { nextCursor: 'next-person' } : {}),
+        })
       return json({
         records: people ? peopleRows : rows,
         total: rows.length,
@@ -139,6 +155,7 @@ beforeEach(() => {
       })
     }
     if (rest[2] === 'records') {
+      if (recordReadGate) await recordReadGate
       // One record, read by id. Absent and withheld are the same refusal.
       const wanted = decodeURIComponent(rest[3] ?? '')
       const found = rows.find((one) => one.id === wanted)
@@ -395,6 +412,33 @@ test('an empty relation shows a placeholder that cannot be chosen', async () => 
   expect(sentValues()).not.toContain(null)
 })
 
+test('a record action can select a reference found on a later page', async () => {
+  pagePeople = true
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Assign')?.click())
+  const select = await waitFor(() =>
+    container.querySelector<HTMLSelectElement>('select'),
+  )
+  await waitFor(() =>
+    optionsOf(select).some((option) => option.value === 'person-1'),
+  )
+  expect(optionsOf(select).some((option) => option.value === 'person-2')).toBe(
+    false,
+  )
+  await act(async () =>
+    button(container, 'Load more reference choices')?.click(),
+  )
+  await waitFor(() =>
+    optionsOf(select).some((option) => option.value === 'person-2'),
+  )
+  choose(select, 'person-2')
+  await act(async () => button(container, 'Assign')?.click())
+  expect((await waitFor(() => invoked()[0])).body?.inputs).toEqual({
+    assignee: 'person-2',
+  })
+})
+
 test('the fields come from the resolved schema, at the revision on screen', async () => {
   const { container, outputs } = await showRecord()
   await waitFor(() => container.textContent.includes('Write the plan'))
@@ -434,10 +478,8 @@ test('editing a field saves through the update action that declares it, at its r
   await waitFor(() => container.textContent.includes('unsaved'))
   await act(async () => button(container, 'Save Title')?.click())
   const call = await waitFor(() => invoked()[0])
-  // `update` is the generic action: it declares an input for the edited field.
-  // An action writes its whole effect set, so the fields nobody edited ride at
-  // the values the row shows — which is why a declared action whose effects are
-  // exactly the edited fields is preferred over this one.
+  // An untouched lifecycle status must not be sent back as a self-transition.
+  expect(call.body!.inputs).toEqual({ title: 'Write the plan v2' })
   expect(call.body!.actionKey).toBe('update')
   expect(call.body!.recordId).toBe('rec-1')
   expect(call.body!.expectedRevision).toBe(6)
@@ -445,11 +487,6 @@ test('editing a field saves through the update action that declares it, at its r
   expect(call.headers.get('Idempotency-Key')).toBe(
     call.body!.invocationKey as string,
   )
-  expect(call.body!.inputs).toEqual({
-    title: 'Write the plan v2',
-    status: 'next',
-    effort_minutes: 20,
-  })
   await waitFor(() => container.textContent.includes('update saved · r8'))
   // The draft is gone once the call saved: what is shown is what the instance holds.
   await waitFor(() => !container.textContent.includes('unsaved'))
@@ -466,7 +503,9 @@ test('a change no declared action writes is refused here, and says what the acti
   await waitFor(() => container.textContent.includes('unsaved'))
   await act(async () => button(container, 'Save Due')?.click())
   await waitFor(() => container.querySelector('[role="alert"]'))
-  expect(container.textContent).toContain('No declared action covers due_at')
+  expect(container.textContent).toContain(
+    'No declared action your grant reaches covers due_at',
+  )
   expect(container.textContent).toContain('Complete (status, completed_at)')
   expect(invoked().length).toBe(0)
 })
@@ -488,6 +527,40 @@ test('a stale revision is a reload-and-retry state', async () => {
     'changed this record while you were looking at it',
   )
   expect(button(container, 'Reload')).toBeTruthy()
+})
+
+test('a draft cannot be retried until the latest record has loaded', async () => {
+  invokeRefusal = { status: 409, code: codes.REVISION_CONFLICT }
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => editMark(container, 'Title')?.click())
+  const field = await waitFor(() => input(container, 'Title'))
+  type(field, 'My draft')
+  pressEnter(field)
+  await act(async () => button(container, 'Save Title')?.click())
+  await waitFor(() => button(container, 'Reload'))
+
+  const gate = Promise.withResolvers<void>()
+  recordReadGate = gate.promise
+  rows = taskRows.map((row) =>
+    row.id === 'rec-1' ? { ...row, revision: 7 } : row,
+  )
+  try {
+    await act(async () => button(container, 'Reload')?.click())
+    expect(button(container, 'Save Title')?.disabled).toBe(true)
+    expect(invoked()).toHaveLength(1)
+  } finally {
+    gate.resolve()
+  }
+
+  invokeRefusal = undefined
+  await waitFor(() => button(container, 'Save Title')?.disabled === false)
+  await act(async () => button(container, 'Save Title')?.click())
+  await waitFor(() => invoked().length === 2)
+  expect(invoked()[1]!.body).toMatchObject({
+    expectedRevision: 7,
+    inputs: { title: 'My draft' },
+  })
 })
 
 test('a record that is not in the collections says so', async () => {
@@ -586,6 +659,61 @@ test('a grant without read is a permission state, and nothing is walked', async 
     container.textContent.includes('does not include reading'),
   )
   expect(calls.filter((call) => call.path.endsWith('/query')).length).toBe(0)
+})
+
+test('an action that would write something other than was entered asks before it runs', async () => {
+  // The only action over `title` writes a literal, not what is typed.
+  described = {
+    ...describeResult(),
+    definition: {
+      ...describeResult().definition,
+      actions: [
+        {
+          key: 'reset_title',
+          label: 'Reset title',
+          collectionKey: 'tasks',
+          creates: false,
+          input: [],
+          preconditions: [],
+          effects: [
+            { fieldKey: 'title', source: 'literal', value: 'Untitled' },
+          ],
+        },
+      ],
+    },
+  }
+  const { container } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => editMark(container, 'Title')?.click())
+  const field = await waitFor(() => input(container, 'Title'))
+  type(field, 'Ship it')
+  pressEnter(field)
+  await waitFor(() => container.textContent.includes('unsaved'))
+  await act(async () => button(container, 'Save Title')?.click())
+  await waitFor(() => container.textContent.includes('not what you entered'))
+  expect(container.textContent).toContain(
+    'Reset title writes title as Untitled',
+  )
+  expect(invoked().length).toBe(0)
+  // Keeping on editing runs nothing; going ahead runs the named action once.
+  await act(async () => button(container, 'Keep editing')?.click())
+  expect(container.textContent).not.toContain('not what you entered')
+  await act(async () => button(container, 'Save Title')?.click())
+  await act(async () => button(container, 'Reset title anyway')?.click())
+  const call = await waitFor(() => invoked()[0])
+  expect(call.body!.actionKey).toBe('reset_title')
+  expect(call.body!.expectedRevision).toBe(6)
+  expect(invoked().length).toBe(1)
+})
+
+test('what the module published is withdrawn once it no longer shows the record', async () => {
+  const { container, outputs } = await showRecord()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await waitFor(() => outputs.context?.at(-1))
+  expect(outputs.selected?.at(-1)).toBeDefined()
+  cleanup()
+  expect(outputs.context?.at(-1)).toBeUndefined()
+  expect(outputs.selected?.at(-1)).toBeUndefined()
 })
 
 test('a call the journal holds unfinished says so, and its receipt is read back on asking', async () => {

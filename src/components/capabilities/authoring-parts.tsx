@@ -3,6 +3,7 @@
 // agent-access and field tabs share, styled with pages/resource-field's fieldControl and the
 // DESIGN.md state grammar tokens (bg-raised for pending and saved, bg-error-container for failed).
 import type { ReactNode } from 'react'
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/coss/checkbox'
 import { fieldControl } from '@/components/pages/resource-field'
 import type { PatchOp } from '@/lib/capabilities/contract'
@@ -79,22 +80,31 @@ export function Tick({
   )
 }
 
-export type Status = { kind: 'pending' | 'saved' | 'failed'; message: string }
+export type Status = {
+  kind: 'pending' | 'saved' | 'failed'
+  message: string
+  retry?: () => void
+}
 
 /** One control's line: what it is doing, and the refusal that stopped it. */
 export function StatusLine({ status }: { status: Status | undefined }) {
   if (!status) return null
   return (
-    <p
+    <div
       role={status.kind === 'failed' ? 'alert' : 'status'}
       className={
         status.kind === 'failed'
-          ? 'rounded-md bg-error-container px-2 py-1.5 text-xs text-error-ink'
-          : 'rounded-md bg-raised px-2 py-1.5 text-xs text-ink-muted'
+          ? 'flex items-center gap-2 rounded-md bg-error-container px-2 py-1.5 text-xs text-error-ink'
+          : 'flex items-center gap-2 rounded-md bg-raised px-2 py-1.5 text-xs text-ink-muted'
       }
     >
-      {status.message}
-    </p>
+      <span className="min-w-0 flex-1">{status.message}</span>
+      {status.retry && (
+        <Button size="xs" variant="outline" onClick={status.retry}>
+          Read it again
+        </Button>
+      )}
+    </div>
   )
 }
 
@@ -105,6 +115,10 @@ export function Note({ children }: { children: ReactNode }) {
 
 /**
  * What an authoring control hands the dialog: the ops to send, in one patch,
- * and the words for the saved line. It answers whether the patch was taken.
+ * and the words for the saved line. It returns the saved definition id or false if refused.
  */
-export type Submit = (ops: PatchOp[], what: string) => Promise<boolean>
+export type Submit = (
+  ops: PatchOp[],
+  what: string,
+  base?: string,
+) => Promise<string | false>

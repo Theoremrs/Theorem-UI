@@ -597,10 +597,12 @@ function LifecycleForm({
             'Lifecycle saved',
           )
         }
-        onClear={() =>
-          onSubmit(
-            [{ op: 'set_lifecycle', collectionKey, lifecycle: null }],
-            'Lifecycle cleared',
+        onClear={async () =>
+          Boolean(
+            await onSubmit(
+              [{ op: 'set_lifecycle', collectionKey, lifecycle: null }],
+              'Lifecycle cleared',
+            ),
           )
         }
       />

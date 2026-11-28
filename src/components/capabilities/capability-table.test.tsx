@@ -8,6 +8,7 @@ import { act } from 'react'
 import { cleanup, render, settle, waitFor } from '../../../test/workspace'
 import { useComposerReferences } from '@/components/chat/composer-references'
 import { CapabilityTableModule } from './capability-table'
+import { capabilityKeys } from './queries'
 import { PageFileContext } from '../pages/page-route'
 import { PageRuntimeProvider } from '../pages/page-runtime'
 import { CAPABILITIES } from '@/lib/capabilities/api'
@@ -19,13 +20,16 @@ import type {
   InvokeTarget,
   QueryFilter,
   QueryRequest,
+  QueryResult,
   Grant,
 } from '@/lib/capabilities/contract'
 import {
   describeResult,
+  discoverResult,
   ownerGrant,
   queryResult,
   readerGrant,
+  row,
   taskRows,
   trackerDefinition,
 } from './fixture'
@@ -63,6 +67,7 @@ let answers: Record<
 >
 /** The next query answers this problem instead of rows. */
 let queryRefusal: string | undefined
+let cursorPages: Map<string | undefined, QueryResult> | undefined
 /** Invokes answer a journaled call that has not finished. */
 let invokeDispatched = false
 /** A receipt read back answers this problem instead of the finished call. */
@@ -102,6 +107,7 @@ beforeEach(() => {
   library = []
   invokeOutcome = undefined
   queryRefusal = undefined
+  cursorPages = undefined
   invokeDispatched = false
   receiptRefusal = undefined
   answers = {
@@ -158,11 +164,13 @@ beforeEach(() => {
         )
       return json({ templates: library })
     }
-    if (rest.length === 1) return json({ instances: [] })
+    if (rest.length === 1) return json(discoverResult())
     if (rest.length === 2) return json(described)
     if (tail === 'query') {
       if (queryRefusal) return problem(503, queryRefusal)
       const asked = body as unknown as QueryRequest
+      if (asked.viewKey === 'next' && cursorPages)
+        return json(cursorPages.get(asked.cursor) ?? queryResult([]))
       const answer = answers[asked.viewKey ?? ''] ?? {
         rows: [],
         filtered: false,
@@ -248,7 +256,11 @@ beforeEach(() => {
       })
     }
     if (tail === 'author') {
-      if (body?.expectedDefinitionId !== 'capdef:abc')
+      if (body?.expectedDefinitionId !== 'capdef:abc') {
+        // The refusal names the version that is pinned now; both reads
+        // return it, and the dialog authors against the definition it receives.
+        pinned = 'capdef:abc'
+        described = { ...described, definitionId: pinned }
         return new Response(
           JSON.stringify({
             type: 'about:blank',
@@ -262,6 +274,7 @@ beforeEach(() => {
             headers: { 'content-type': 'application/problem+json' },
           },
         )
+      }
       return json({
         definitionId: 'capdef:def',
         instance: { instanceId: 'tracker/main', definitionId: 'capdef:def' },
@@ -385,8 +398,79 @@ test('a row action names the record and the revision on screen', async () => {
     inputs: {},
   })
   await waitFor(() => container.textContent.includes('complete saved · r7'))
-  // The row is marked at the revision the journal reports until the rows read back the same.
-  expect(container.textContent).toContain('saved · r7')
+  // The row is marked at the revision the journal reports until the rows read
+  // back the same: rec-1's own row carries it, not just the status line.
+  const records = [...container.querySelectorAll('li, tr')]
+  const marked = records.find((one) =>
+    one.textContent.includes('Write the plan'),
+  )
+  expect(marked?.textContent ?? '').toContain('saved · r7')
+  expect(
+    records.filter((one) => one.textContent.includes('saved · r7')).length,
+  ).toBe(1)
+})
+
+test('a second click while a create is running is not a second create', async () => {
+  const { container } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Add task')?.click())
+  const title = await waitFor(() =>
+    container.querySelector<HTMLInputElement>('input[aria-label="title"]'),
+  )
+  type(title, 'Ship the slice')
+  await act(async () => {
+    const submit = button(container, 'Add task')!
+    submit.click()
+    submit.click()
+  })
+  await waitFor(() => container.textContent.includes('add saved'))
+  expect(sentTo('/invoke').length).toBe(1)
+})
+
+test('quick-add keeps its create action through refresh and closes if that action disappears', async () => {
+  const { container, queryClient } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await act(async () => button(container, 'Add task')?.click())
+  const field = () =>
+    container.querySelector<HTMLInputElement>('input[aria-label="title"]')
+  type(await waitFor(field), 'Draft for the original action')
+
+  const original = described.definition.actions.find(
+    (action) => action.key === 'add',
+  )!
+  const replacement = {
+    ...original,
+    key: 'add-replacement',
+    label: 'Add replacement',
+  }
+  const refresh = async (actions: typeof described.definition.actions) => {
+    described = {
+      ...described,
+      definition: { ...described.definition, actions },
+    }
+    await act(async () => {
+      queryClient.setQueryData(
+        capabilityKeys.describe('tracker/main'),
+        described,
+      )
+    })
+    await settle()
+  }
+  await refresh([replacement, ...described.definition.actions])
+  expect(field()?.value).toBe('Draft for the original action')
+  expect(button(container, 'Add task')).toBeDefined()
+  expect(button(container, 'Add replacement')).toBeUndefined()
+
+  await refresh(
+    described.definition.actions.filter(
+      (action) => action.key !== original.key,
+    ),
+  )
+  await waitFor(() => button(container, 'Add replacement'))
+  expect(field()).toBeNull()
+  expect(sentTo('/invoke')).toHaveLength(0)
+  await act(async () => button(container, 'Add replacement')?.click())
+  expect((await waitFor(field)).value).toBe('')
 })
 
 test('a refusal the executor answers with is a failed state, not a silent one', async () => {
@@ -495,6 +579,9 @@ test('a module that names no instance lists what this caller may see', async () 
   await waitFor(() =>
     container.textContent.includes('Name the capability instance'),
   )
+  // The instances the caller may see are listed by id and name.
+  await waitFor(() => container.textContent.includes('Project tracker'))
+  expect(container.querySelector('code')?.textContent).toBe('tracker/main')
   expect(sentTo('/query').length).toBe(0)
 })
 
@@ -924,6 +1011,37 @@ async function viewEditor() {
   await waitFor(() => dialogInput('View label'))
 }
 
+test('a refreshed definition requires explicit rebasing before a view draft can replace it', async () => {
+  described = { ...describeResult(), definitionId: 'capdef:older' }
+  const { container, queryClient } = await showTable()
+  await waitFor(() => container.textContent.includes('Write the plan'))
+  await authoring()
+  await section('Views')
+  const label = await waitFor(() => dialogInput('View label'))
+  fill(label, 'My draft')
+
+  described = describeResult()
+  await act(async () => {
+    queryClient.setQueryData(capabilityKeys.describe('tracker/main'), described)
+  })
+  await waitFor(() =>
+    screen().textContent.includes(
+      'The definition changed while you were editing.',
+    ),
+  )
+  expect(dialogInput('View label')?.value).toBe('My draft')
+  expect(button(screen(), 'Save view')?.disabled).toBe(true)
+  expect(authored()).toHaveLength(0)
+
+  await act(async () => button(screen(), 'Keep my draft')?.click())
+  await act(async () => button(screen(), 'Save view')?.click())
+  await waitFor(() => authored().length === 1)
+  expect(authored()[0]).toMatchObject({
+    expectedDefinitionId: 'capdef:abc',
+    ops: [{ op: 'replace_view', view: { label: 'My draft' } }],
+  })
+})
+
 test('an any-of group with no condition is named and holds Save until it has one', async () => {
   await viewEditor()
   // Beside the lone condition: an and of it and a new, empty any-of group.
@@ -1061,6 +1179,14 @@ test('a stale definition base is refused, the current one is read back, and the 
   // current definition back and asks, so the person checks the change against it.
   expect(sentTo('/author').length).toBe(1)
   expect(reads().length).toBeGreaterThan(before)
+  // Submitting once more patches the version that was read back, and lands.
+  await waitFor(() => sentTo('/query').length > 1)
+  await act(async () => byLabel(screen(), 'Add optional field')?.click())
+  await waitFor(() => sentTo('/author').length === 2)
+  expect(sentTo('/author')[1]!.body?.expectedDefinitionId).toBe('capdef:abc')
+  await waitFor(() =>
+    screen().textContent.includes('the definition is now capdef:def'),
+  )
 })
 
 // Saving replaces the whole grant list, so a list refused as stale and sent
@@ -1486,6 +1612,32 @@ test('a second page loads on asking, and an answer the page cut short says how m
   expect(cut.container.textContent).toContain(
     `The page cut the answer short: ${taskRows.length} of 9 rows are shown.`,
   )
+})
+
+test('a view stops if the server returns a page cursor used earlier in the walk', async () => {
+  const page = (record: CapabilityRecordRow, nextCursor: string) =>
+    queryResult([record], { total: 4, nextCursor })
+  cursorPages = new Map([
+    [undefined, page(taskRows[0]!, 'first')],
+    ['first', page(taskRows[1]!, 'second')],
+    ['second', page(row('rec-3', { title: 'Last distinct page' }, 1), 'first')],
+  ])
+  const { container } = await showTable()
+  const more = 'Load more (4 in all)'
+  await waitFor(() => button(container, more))
+  await act(async () => button(container, more)?.click())
+  await waitFor(() => container.textContent.includes('Sketch the page'))
+  await act(async () => button(container, more)?.click())
+  await waitFor(() => container.textContent.includes('Last distinct page'))
+  expect(container.textContent).toContain(
+    'returned a page cursor it already used',
+  )
+  expect(button(container, more)).toBeUndefined()
+  expect(sentTo('/query').map((call) => call.body?.cursor)).toEqual([
+    undefined,
+    'first',
+    'second',
+  ])
 })
 
 test('a row action with inputs asks for them first, naming the record at the revision on screen', async () => {
