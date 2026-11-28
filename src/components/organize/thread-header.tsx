@@ -24,7 +24,7 @@ import { ProjectGlyph } from './glyphs'
 import { ThreadMenuItems } from './thread-menu'
 
 const headerButton =
-  'flex size-7 shrink-0 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover'
+  'group/thread-more flex size-7 min-h-(--appearance-control-min) min-w-(--appearance-control-min) shrink-0 items-center justify-center rounded-md text-ink-muted outline-none hover:text-ink focus-visible:outline-2 focus-visible:outline-focus'
 
 /** Where the thread sits and what can be done to it; the dock's one layout menu sits at its end. */
 export function ThreadHeader({ actions }: { actions?: ReactNode }) {
@@ -105,7 +105,12 @@ export function ThreadHeader({ actions }: { actions?: ReactNode }) {
       {thread && (
         <Menu>
           <MenuTrigger aria-label="More" className={headerButton}>
-            <Icon.More className="size-4" />
+            <span
+              aria-hidden
+              className="pointer-events-none flex size-7 items-center justify-center rounded-md group-hover/thread-more:bg-hover group-data-popup-open/thread-more:bg-hover"
+            >
+              <Icon.More className="size-4" />
+            </span>
           </MenuTrigger>
           <MenuPopup align="end" className="min-w-48">
             <ThreadMenuItems
